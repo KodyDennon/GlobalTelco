@@ -7,17 +7,25 @@
 class ACesiumGeoreference;
 class ACesium3DTileset;
 class ACesiumSunSky;
+class UStaticMeshComponent;
+class UMaterialInstanceDynamic;
 
 /**
  * AGTGlobeActor
  *
- * Top-level actor that configures the Cesium globe for the GlobalTelco world.
- * Spawns and configures the CesiumGeoreference, Cesium World Terrain tileset,
- * Bing Maps imagery, and CesiumSunSky for correct lighting.
+ * Top-level actor that configures the globe for the GlobalTelco world.
+ * Supports two modes:
+ *
+ * Online mode (bUseRealEarth = true):
+ *   Spawns Cesium 3D Tileset with streaming terrain/imagery from Cesium ion.
+ *   Requires internet connection.
+ *
+ * Offline mode (bUseRealEarth = false):
+ *   Renders a procedural sphere mesh with a solid color or bundled texture.
+ *   Works fully offline for singleplayer. Uses UGTGeoCoordinates for
+ *   all coordinate conversions instead of Cesium georeference.
  *
  * Place one of these in the level — it handles all globe setup on BeginPlay.
- * Supports switching between real-Earth mode (Cesium streaming) and
- * procedural-generation mode (for offline/testing).
  */
 UCLASS()
 class GLOBALTELCO_API AGTGlobeActor : public AActor
@@ -57,21 +65,46 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Globe|Initial View")
 	double StartAltitude = 20000000.0;
 
+	/** Whether we're running in offline mode (no Cesium). */
+	UFUNCTION(BlueprintPure, Category = "Globe")
+	bool IsOfflineMode() const { return !bUseRealEarth; }
+
 	UFUNCTION(BlueprintPure, Category = "Globe")
 	ACesiumGeoreference* GetGeoreference() const { return Georeference; }
 
 	UFUNCTION(BlueprintPure, Category = "Globe")
 	ACesium3DTileset* GetTerrainTileset() const { return TerrainTileset; }
 
+	/** Get the offline sphere mesh (only valid when bUseRealEarth = false). */
+	UFUNCTION(BlueprintPure, Category = "Globe")
+	UStaticMeshComponent* GetOfflineGlobeMesh() const { return OfflineGlobeMesh; }
+
+	/**
+	 * Convert lon/lat/height to world position. Automatically uses Cesium
+	 * georeference if available, otherwise falls back to pure math.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Globe")
+	FVector LonLatHeightToWorld(double Longitude, double Latitude, double HeightMeters) const;
+
+	/**
+	 * Convert world position to lon/lat/height. Automatically uses Cesium
+	 * georeference if available, otherwise falls back to pure math.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Globe")
+	FVector WorldToLonLatHeight(const FVector& WorldPosition) const;
+
 protected:
-	/** Set up the Cesium georeference for the world. */
+	/** Set up the Cesium georeference for the world (online mode). */
 	void InitializeGeoreference();
 
-	/** Spawn and configure the terrain 3D tileset. */
+	/** Spawn and configure the terrain 3D tileset (online mode). */
 	void InitializeTerrainTileset();
 
-	/** Spawn and configure the sun/sky actor for correct globe lighting. */
+	/** Spawn and configure the sun/sky actor (online mode). */
 	void InitializeSunSky();
+
+	/** Create a procedural sphere mesh for the offline globe. */
+	void InitializeOfflineGlobe();
 
 private:
 	UPROPERTY()
@@ -82,4 +115,7 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<ACesiumSunSky> SunSky;
+
+	UPROPERTY(VisibleAnywhere)
+	TObjectPtr<UStaticMeshComponent> OfflineGlobeMesh;
 };

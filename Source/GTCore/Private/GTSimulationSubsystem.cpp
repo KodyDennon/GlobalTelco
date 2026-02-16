@@ -8,6 +8,8 @@ void UGTSimulationSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	EventQueue = NewObject<UGTEventQueue>(this);
 	CurrentTick = 0;
 	TimeSinceLastTick = 0.0f;
+	bSimulationPaused = false;
+	SimulationSpeedMultiplier = 1.0f;
 }
 
 void UGTSimulationSubsystem::Deinitialize()
@@ -20,7 +22,14 @@ void UGTSimulationSubsystem::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	TimeSinceLastTick += DeltaTime;
+	if (bSimulationPaused)
+	{
+		return;
+	}
+
+	// Apply speed multiplier to the effective delta time.
+	const float EffectiveDelta = DeltaTime * SimulationSpeedMultiplier;
+	TimeSinceLastTick += EffectiveDelta;
 
 	if (TimeSinceLastTick >= EconomicTickInterval)
 	{
@@ -32,6 +41,18 @@ void UGTSimulationSubsystem::Tick(float DeltaTime)
 TStatId UGTSimulationSubsystem::GetStatId() const
 {
 	RETURN_QUICK_DECLARE_CYCLE_STAT(UGTSimulationSubsystem, STATGROUP_Tickables);
+}
+
+void UGTSimulationSubsystem::SetPaused(bool bPaused)
+{
+	bSimulationPaused = bPaused;
+	UE_LOG(LogTemp, Log, TEXT("GTSimulation: %s"), bPaused ? TEXT("PAUSED") : TEXT("RESUMED"));
+}
+
+void UGTSimulationSubsystem::SetSpeedMultiplier(float Multiplier)
+{
+	SimulationSpeedMultiplier = FMath::Clamp(Multiplier, 0.25f, 8.0f);
+	UE_LOG(LogTemp, Log, TEXT("GTSimulation: Speed set to %.1fx"), SimulationSpeedMultiplier);
 }
 
 void UGTSimulationSubsystem::ProcessEconomicTick()

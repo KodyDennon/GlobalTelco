@@ -15,6 +15,7 @@ public class GTFrontend : ModuleRules
 			"GTCore",
 			"GTEconomy",
 			"GTMultiplayer",
+			"GTInfrastructure",
 			"Slate",
 			"SlateCore",
 			"UMG"

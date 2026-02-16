@@ -81,6 +81,22 @@ struct GTMULTIPLAYER_API FGTLandParcel
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parcel")
 	float PowerGridReliability = 0.95f;
+
+	/** Region this parcel belongs to. -1 if unassigned. */
+	UPROPERTY(BlueprintReadOnly, Category = "Parcel")
+	int32 RegionId = -1;
+
+	/** Geodesic grid cell index that this parcel maps to. */
+	UPROPERTY(BlueprintReadOnly, Category = "Parcel")
+	int32 GeodesicCellIndex = -1;
+
+	/** Longitude in degrees. */
+	UPROPERTY(BlueprintReadOnly, Category = "Parcel")
+	double Longitude = 0.0;
+
+	/** Latitude in degrees. */
+	UPROPERTY(BlueprintReadOnly, Category = "Parcel")
+	double Latitude = 0.0;
 };
 
 /**
@@ -122,6 +138,22 @@ public:
 	/** Check if a given infrastructure type can be built on this parcel's zoning. */
 	UFUNCTION(BlueprintPure, Category = "Land")
 	bool IsZoningCompatible(int32 ParcelId, EGTZoningCategory RequiredZoning) const;
+
+	/** Total number of registered parcels. */
+	UFUNCTION(BlueprintPure, Category = "Land")
+	int32 GetParcelCount() const { return Parcels.Num(); }
+
+	/** Update parcel data in place. Returns false if ParcelId not found. */
+	UFUNCTION(BlueprintCallable, Category = "Land")
+	bool UpdateParcel(int32 ParcelId, const FGTLandParcel& UpdatedData);
+
+	/** Find a parcel by its geodesic cell index. Returns -1 if none found. */
+	UFUNCTION(BlueprintPure, Category = "Land")
+	int32 FindParcelByCellIndex(int32 CellIndex) const;
+
+	/** Get all parcels in a given region. */
+	UFUNCTION(BlueprintPure, Category = "Land")
+	TArray<int32> GetParcelsInRegion(int32 RegionId) const;
 
 private:
 	TMap<int32, FGTLandParcel> Parcels;

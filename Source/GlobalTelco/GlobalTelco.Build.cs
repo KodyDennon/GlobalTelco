@@ -14,6 +14,8 @@ public class GlobalTelco : ModuleRules
 			"InputCore",
 			"EnhancedInput",
 			"CesiumRuntime",
+			"AIModule",
+			"GameplayTasks",
 			"GTCore",
 			"GTInfrastructure",
 			"GTEconomy",

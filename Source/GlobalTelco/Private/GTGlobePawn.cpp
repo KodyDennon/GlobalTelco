@@ -1,4 +1,6 @@
 #include "GTGlobePawn.h"
+#include "GTGlobeActor.h"
+#include "GTGeoCoordinates.h"
 #include "Camera/CameraComponent.h"
 #include "CesiumGlobeAnchorComponent.h"
 #include "CesiumFlyToComponent.h"
@@ -8,6 +10,7 @@
 #include "InputActionValue.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "Kismet/GameplayStatics.h"
 
 AGTGlobePawn::AGTGlobePawn()
 {
@@ -27,6 +30,27 @@ void AGTGlobePawn::BeginPlay()
 {
 	Super::BeginPlay();
 
+	// Detect offline mode by finding the globe actor.
+	CachedGlobeActor = Cast<AGTGlobeActor>(
+		UGameplayStatics::GetActorOfClass(GetWorld(), AGTGlobeActor::StaticClass()));
+	bOfflineMode = CachedGlobeActor && CachedGlobeActor->IsOfflineMode();
+
+	if (bOfflineMode)
+	{
+		UE_LOG(LogTemp, Log, TEXT("GTGlobePawn: Offline mode — using math-based orbit."));
+		// Disable Cesium components in offline mode.
+		if (GlobeAnchor)
+		{
+			GlobeAnchor->DestroyComponent();
+			GlobeAnchor = nullptr;
+		}
+		if (FlyToComponent)
+		{
+			FlyToComponent->DestroyComponent();
+			FlyToComponent = nullptr;
+		}
+	}
+
 	// Add input mapping context.
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
@@ -43,12 +67,17 @@ void AGTGlobePawn::BeginPlay()
 		PC->bEnableClickEvents = true;
 	}
 
-	// Set initial position on globe.
+	// Set initial position.
 	TargetLongitude = FocusLongitude;
 	TargetLatitude = FocusLatitude;
 	TargetAltitude = CurrentAltitude;
 
-	if (GlobeAnchor)
+	if (bOfflineMode)
+	{
+		// Set initial position immediately.
+		UpdateCameraPositionOffline(0.0f);
+	}
+	else if (GlobeAnchor)
 	{
 		GlobeAnchor->MoveToLongitudeLatitudeHeight(
 			FVector(TargetLongitude, TargetLatitude, TargetAltitude));
@@ -58,7 +87,15 @@ void AGTGlobePawn::BeginPlay()
 void AGTGlobePawn::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	UpdateCameraPosition(DeltaTime);
+
+	if (bOfflineMode)
+	{
+		UpdateCameraPositionOffline(DeltaTime);
+	}
+	else
+	{
+		UpdateCameraPosition(DeltaTime);
+	}
 }
 
 void AGTGlobePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -108,15 +145,12 @@ void AGTGlobePawn::HandleOrbit(const FInputActionValue& Value)
 
 	const FVector2D Delta = Value.Get<FVector2D>();
 
-	// Horizontal drag rotates longitude, vertical drag rotates latitude.
 	const double AltitudeScale = FMath::Clamp(CurrentAltitude / MaxAltitude, 0.01, 1.0);
 	TargetLongitude -= Delta.X * OrbitSensitivity * AltitudeScale;
 	TargetLatitude += Delta.Y * OrbitSensitivity * AltitudeScale;
 
-	// Clamp latitude to avoid pole singularity.
 	TargetLatitude = FMath::Clamp(TargetLatitude, -89.0, 89.0);
 
-	// Wrap longitude.
 	if (TargetLongitude > 180.0)
 	{
 		TargetLongitude -= 360.0;
@@ -136,7 +170,6 @@ void AGTGlobePawn::HandleZoom(const FInputActionValue& Value)
 {
 	const float ScrollDelta = Value.Get<float>();
 
-	// Logarithmic zoom for smooth transition across vast distances.
 	const double LogAlt = FMath::Loge(TargetAltitude);
 	const double NewLogAlt = LogAlt - ScrollDelta * ZoomSensitivity;
 	TargetAltitude = FMath::Clamp(FMath::Exp(NewLogAlt), MinAltitude, MaxAltitude);
@@ -151,7 +184,6 @@ void AGTGlobePawn::HandlePan(const FInputActionValue& Value)
 
 	const FVector2D Delta = Value.Get<FVector2D>();
 
-	// At low altitude, pan shifts the focus point on the globe surface.
 	const double AltitudeScale = FMath::Clamp(CurrentAltitude / MaxAltitude, 0.001, 1.0);
 	TargetLongitude -= Delta.X * OrbitSensitivity * AltitudeScale * 0.5;
 	TargetLatitude += Delta.Y * OrbitSensitivity * AltitudeScale * 0.5;
@@ -187,7 +219,6 @@ void AGTGlobePawn::HandleSelect(const FInputActionValue& Value)
 		return;
 	}
 
-	// Line trace from mouse cursor into the world.
 	FHitResult Hit;
 	const FVector TraceEnd = WorldLocation + WorldDirection * 1000000000.0;
 
@@ -201,17 +232,35 @@ void AGTGlobePawn::UpdateCameraPosition(float DeltaTime)
 {
 	const float Alpha = FMath::Clamp(DeltaTime * CameraSmoothing, 0.0f, 1.0f);
 
-	// Smooth interpolation toward target values.
 	FocusLongitude = FMath::Lerp(FocusLongitude, TargetLongitude, static_cast<double>(Alpha));
 	FocusLatitude = FMath::Lerp(FocusLatitude, TargetLatitude, static_cast<double>(Alpha));
 	CurrentAltitude = FMath::Lerp(CurrentAltitude, TargetAltitude, static_cast<double>(Alpha));
 
-	// Update globe anchor position.
 	if (GlobeAnchor)
 	{
 		GlobeAnchor->MoveToLongitudeLatitudeHeight(
 			FVector(FocusLongitude, FocusLatitude, CurrentAltitude));
 	}
+}
+
+void AGTGlobePawn::UpdateCameraPositionOffline(float DeltaTime)
+{
+	const float Alpha = (DeltaTime > 0.0f) ? FMath::Clamp(DeltaTime * CameraSmoothing, 0.0f, 1.0f) : 1.0f;
+
+	FocusLongitude = FMath::Lerp(FocusLongitude, TargetLongitude, static_cast<double>(Alpha));
+	FocusLatitude = FMath::Lerp(FocusLatitude, TargetLatitude, static_cast<double>(Alpha));
+	CurrentAltitude = FMath::Lerp(CurrentAltitude, TargetAltitude, static_cast<double>(Alpha));
+
+	// Compute camera world position orbiting the globe at current altitude.
+	const FVector CameraWorldPos = UGTGeoCoordinates::LonLatHeightToWorld(
+		FocusLongitude, FocusLatitude, CurrentAltitude);
+
+	SetActorLocation(CameraWorldPos);
+
+	// Point camera toward globe center (origin).
+	const FVector ToCenter = -CameraWorldPos.GetSafeNormal();
+	const FRotator LookAtRotation = ToCenter.Rotation();
+	SetActorRotation(LookAtRotation);
 }
 
 void AGTGlobePawn::FlyTo(double Longitude, double Latitude, double Altitude)
@@ -220,8 +269,8 @@ void AGTGlobePawn::FlyTo(double Longitude, double Latitude, double Altitude)
 	TargetLatitude = FMath::Clamp(Latitude, -89.0, 89.0);
 	TargetAltitude = FMath::Clamp(Altitude, MinAltitude, MaxAltitude);
 
-	// Also use Cesium's FlyTo for cinematic movement if the component exists.
-	if (FlyToComponent)
+	// Use Cesium's FlyTo for cinematic movement in online mode.
+	if (!bOfflineMode && FlyToComponent)
 	{
 		FlyToComponent->FlyToLocationLongitudeLatitudeHeight(
 			FVector(Longitude, Latitude, Altitude),

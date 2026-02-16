@@ -25,6 +25,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Corporation")
 	FString CorporationName;
 
+	/** True if this corporation is controlled by AI (single-player opponents). */
+	UPROPERTY(BlueprintReadOnly, Category = "Corporation")
+	bool bIsAI = false;
+
+	/** Index into UGTAIArchetypeRegistry for AI personality. -1 for player corps. */
+	UPROPERTY(BlueprintReadOnly, Category = "Corporation")
+	int32 ArchetypeIndex = -1;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Finance")
 	FGTBalanceSheet BalanceSheet;
 

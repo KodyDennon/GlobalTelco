@@ -39,8 +39,30 @@ public:
 	int64 GetCurrentTick() const { return CurrentTick; }
 
 	/** Economic tick interval in seconds (default 4.0, range 3-5 per design doc). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Simulation", meta = (ClampMin = "3.0", ClampMax = "5.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Simulation", meta = (ClampMin = "1.0", ClampMax = "10.0"))
 	float EconomicTickInterval = 4.0f;
+
+	// --- Speed Controls ---
+
+	/** Pause or resume the simulation. */
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+	void SetPaused(bool bPaused);
+
+	/** Check if the simulation is currently paused. */
+	UFUNCTION(BlueprintPure, Category = "Simulation")
+	bool IsPaused() const { return bSimulationPaused; }
+
+	/** Set the simulation speed multiplier (1.0 = normal, 2.0 = 2x, etc.). */
+	UFUNCTION(BlueprintCallable, Category = "Simulation")
+	void SetSpeedMultiplier(float Multiplier);
+
+	/** Get the current simulation speed multiplier. */
+	UFUNCTION(BlueprintPure, Category = "Simulation")
+	float GetSpeedMultiplier() const { return SimulationSpeedMultiplier; }
+
+	/** Number of auto-save ticks between auto-saves (0 = disabled). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Simulation")
+	int32 AutoSaveInterval = 50;
 
 protected:
 	/** Process a single economic tick: drain events, update all systems. */
@@ -52,4 +74,6 @@ private:
 
 	int64 CurrentTick = 0;
 	float TimeSinceLastTick = 0.0f;
+	bool bSimulationPaused = false;
+	float SimulationSpeedMultiplier = 1.0f;
 };

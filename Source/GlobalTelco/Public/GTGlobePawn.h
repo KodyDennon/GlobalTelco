@@ -10,11 +10,12 @@ class UCesiumGlobeAnchorComponent;
 class UCesiumFlyToComponent;
 class UInputAction;
 class UInputMappingContext;
+class AGTGlobeActor;
 
 /**
  * AGTGlobePawn
  *
- * Spectator-style pawn for navigating the Cesium globe. Provides:
+ * Spectator-style pawn for navigating the globe. Provides:
  * - Orbit: Right-click + drag rotates around the globe center
  * - Zoom: Scroll wheel zooms in/out (from space view to street level)
  * - Pan: Middle-click + drag pans at close zoom levels
@@ -22,7 +23,10 @@ class UInputMappingContext;
  *
  * All camera movements use smooth interpolation. Uses Enhanced Input
  * with Input Actions and a Mapping Context assigned in the editor.
- * Positioned on the globe via UCesiumGlobeAnchorComponent.
+ *
+ * Supports two positioning modes:
+ * - Online: UCesiumGlobeAnchorComponent for WGS84 positioning
+ * - Offline: Pure math orbit using UGTGeoCoordinates (singleplayer)
  */
 UCLASS()
 class GLOBALTELCO_API AGTGlobePawn : public ADefaultPawn
@@ -121,6 +125,16 @@ protected:
 	void HandleSelect(const struct FInputActionValue& Value);
 
 	void UpdateCameraPosition(float DeltaTime);
+
+	/** Update camera using pure math (offline mode). */
+	void UpdateCameraPositionOffline(float DeltaTime);
+
+	/** Whether we're in offline mode (detected at BeginPlay). */
+	bool bOfflineMode = false;
+
+	/** Cached reference to the globe actor for coordinate conversion. */
+	UPROPERTY()
+	TObjectPtr<AGTGlobeActor> CachedGlobeActor;
 
 private:
 	/** Current target values for smooth interpolation. */

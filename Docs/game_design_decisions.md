@@ -66,3 +66,26 @@ Concrete implementation decisions derived from design questionnaire. These suppl
 - **Service layer:** Cloudflare Workers — authentication, APIs, matchmaking, CDN.
 - **Database:** PostgreSQL (Hetzner managed or Cloudflare D1 for lightweight data).
 - **No AWS, no Azure, no Oracle.**
+
+---
+
+## 7. Offline Single-Player Mode
+
+- **Game mode:** `AGTSinglePlayerGameMode` (extends `AGameModeBase`, not the multiplayer `AGTGameMode`) — no networking assumptions.
+- **Session flow:** Main Menu widget → New Game settings widget → `UGTGameInstance` stores config → Level transition → GameMode reads config from GameInstance, generates world, creates corps, starts simulation.
+- **AI corporations:** Full UE5 Behavior Tree system (programmatic C++ construction, no .uasset files). Each AI corp has an `AGTAICorporationController` (AAIController without pawn) that runs a strategy tree with tasks: acquire land, build nodes/edges, manage finances, propose contracts.
+- **AI archetype system:** 4 built-in personality archetypes defined in code (no editor assets):
+  1. **Aggressive Expander** — fast growth, high debt, competitive pricing
+  2. **Defensive Consolidator** — cautious, debt-averse, strong local networks
+  3. **Tech Innovator** — high-capacity infrastructure, R&D focus, balanced
+  4. **Budget Operator** — minimal spending, no debt, cost-effective only
+- **Archetype assignment:** Round-robin from registry, varied by world seed for uniqueness. Each archetype has 8 company names in its pool.
+- **AI strategy selection:** Dynamic based on financial health + archetype weights. 4 modes: Expand (buy land + build), Consolidate (improve existing + contracts), Compete (undercut competitors), Survive (cut costs when insolvent).
+- **Save/load format:** UE5 `USaveGame` binary serialization (FMemoryArchive). Complete world snapshot: simulation tick, all parcels, all corporation financial state + owned assets, regional economy, contracts/alliances, world settings.
+- **Save slot naming:** Internal format `GT_<SlotName>.sav` in `Saved/SaveGames/`. `UGTSaveLoadSubsystem` (GameInstance subsystem) manages enumeration, save, load, delete.
+- **Auto-save:** Every 50 economic ticks to "AutoSave" slot, triggered by the GameMode's EconomicTick listener.
+- **Save version:** Integer version field (`GT_SAVE_VERSION`) in save header. Forward-compatibility guard: refuse to load saves with higher version than current.
+- **Speed controls:** Pause, 1x, 2x, 4x via `UGTSimulationSubsystem::SetPaused()` / `SetSpeedMultiplier()`. Speed multiplier scales DeltaTime before tick accumulation.
+- **Difficulty presets:** Easy (3 AI, low aggression, calm disasters), Normal (5 AI, standard aggression, moderate disasters), Hard (8 AI, high aggression, brutal disasters), Custom (full override).
+- **New game customization:** Corporation name, difficulty dropdown, AI corporation count slider (0-10), disaster severity dropdown, world seed input (0=random).
+- **DefaultEngine.ini:** `GameInstanceClass=/Script/GlobalTelco.GTGameInstance`, `GlobalDefaultGameMode=/Script/GlobalTelco.GTSinglePlayerGameMode`.

@@ -72,6 +72,45 @@ int32 UGTLandParcelSystem::FindParcelAtCoordinates(FVector2D HexCoords) const
 	return -1;
 }
 
+bool UGTLandParcelSystem::UpdateParcel(int32 ParcelId, const FGTLandParcel& UpdatedData)
+{
+	FGTLandParcel* Parcel = Parcels.Find(ParcelId);
+	if (!Parcel)
+	{
+		return false;
+	}
+
+	// Preserve the ParcelId — callers cannot change it.
+	*Parcel = UpdatedData;
+	Parcel->ParcelId = ParcelId;
+	return true;
+}
+
+int32 UGTLandParcelSystem::FindParcelByCellIndex(int32 CellIndex) const
+{
+	for (const auto& Pair : Parcels)
+	{
+		if (Pair.Value.GeodesicCellIndex == CellIndex)
+		{
+			return Pair.Key;
+		}
+	}
+	return -1;
+}
+
+TArray<int32> UGTLandParcelSystem::GetParcelsInRegion(int32 InRegionId) const
+{
+	TArray<int32> Result;
+	for (const auto& Pair : Parcels)
+	{
+		if (Pair.Value.RegionId == InRegionId)
+		{
+			Result.Add(Pair.Key);
+		}
+	}
+	return Result;
+}
+
 bool UGTLandParcelSystem::IsZoningCompatible(int32 ParcelId, EGTZoningCategory RequiredZoning) const
 {
 	const FGTLandParcel* Parcel = Parcels.Find(ParcelId);
