@@ -43,6 +43,10 @@
 		{
 			"Name": "OnlineSubsystemUtils",
 			"Enabled": true
+		},
+		{
+			"Name": "CesiumForUnreal",
+			"Enabled": true
 		}
 	]
 }

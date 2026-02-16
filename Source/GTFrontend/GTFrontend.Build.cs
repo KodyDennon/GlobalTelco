@@ -11,8 +11,10 @@ public class GTFrontend : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
+			"CesiumRuntime",
 			"GTCore",
 			"GTEconomy",
+			"GTMultiplayer",
 			"Slate",
 			"SlateCore",
 			"UMG"

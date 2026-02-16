@@ -13,6 +13,7 @@ public class GlobalTelco : ModuleRules
 			"Engine",
 			"InputCore",
 			"EnhancedInput",
+			"CesiumRuntime",
 			"GTCore",
 			"GTInfrastructure",
 			"GTEconomy",

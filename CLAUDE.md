@@ -116,6 +116,7 @@ All located in `Docs/`:
 | `telecom_mmo_infrastructure_simulation.md` | Infrastructure module spec |
 | `telecom_mmo_economic_corporate_simulation.md` | Economy module spec |
 | `telecom_mmo_multiplayer_governance_simulation.md` | Multiplayer module spec |
+| `game_design_decisions.md` | Concrete implementation decisions — MVP scope, build UX, economy settings, tech tree, multiplayer, hosting |
 
 ## Development Charter Rules (Mandatory)
 
@@ -136,3 +137,42 @@ All located in `Docs/`:
 **Modular Industry Abstraction:** The simulation core is industry-agnostic, built around: Node, Edge, Resource, Dependency, Throughput, Risk, Ownership, Jurisdiction. Telecom is the first module; energy, water, and transportation are planned future modules.
 
 **Cooperative Ownership:** Infrastructure assets can be jointly owned by multiple players with shared revenue and upgrade voting.
+
+## Hosting Architecture
+
+```
+Players ──► Cloudflare Workers (auth, matchmaking, APIs, CDN)
+                │
+                ▼
+           Hetzner (UE5 dedicated server binary × 1-5 instances)
+                │
+                ▼
+           Database (Cloudflare D1 or Hetzner managed PostgreSQL)
+```
+
+**Game servers:** Hetzner (hetzner.com) — x86_64 Linux dedicated servers
+- Dev/testing: Hetzner Cloud CX22 (2 vCPU, 4GB RAM, ~€3.49/month)
+- Production: Hetzner Dedicated AX42 (Ryzen 7 7700, 64GB RAM, ~€57/month, runs 3-5 sim instances)
+- €20 signup credit covers ~5 months of dev usage
+
+**Service layer:** Cloudflare Workers — authentication, account persistence, market APIs, matchmaking
+- Free tier: 100k requests/day
+- Paid ($5/month): 10M requests, Durable Objects, D1 database
+
+## Dedicated Server Build (Source Engine Required)
+
+The binary UE5 distribution from Epic Games Launcher **cannot build server targets**. Building a dedicated server requires a source-built engine:
+
+1. Link Epic Games account to GitHub at unrealengine.com
+2. Clone UE5 source: `git clone https://github.com/EpicGames/UnrealEngine.git -b 5.7`
+3. Run `Setup.sh` then `GenerateProjectFiles.sh`
+4. Build the engine: `make`
+5. Use the source-built engine to build the server target:
+   ```bash
+   # Cross-compile Linux x86_64 server from Mac
+   <source-engine-path>/Engine/Build/BatchFiles/RunUBT.sh \
+     GlobalTelcoServer Linux Development \
+     -project="/Users/kody/NuGit/GlobalTelco/GlobalTelco.uproject"
+   ```
+
+The current binary engine install at `/Users/Shared/Epic Games/UE_5.7/` works for editor and game client builds during development.
