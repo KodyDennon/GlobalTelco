@@ -1,0 +1,34 @@
+# Unreal Engine generated directories
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+
+# IDE project files (regenerated from .uproject)
+*.xcworkspace
+*.xcodeproj
+*.sln
+*.suo
+*.vcxproj*
+.vs/
+.idea/
+
+# macOS
+.DS_Store
+*.dSYM
+
+# Build artifacts
+*.o
+*.d
+*.pch
+*.gch
+
+# Compiled shaders
+*.ushaderbytecode
+
+# Crashpad
+CrashReportClient/
+
+# Content cooking
+Cooked/
+Staging/
