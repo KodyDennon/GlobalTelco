@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="currentColor">
+  <!-- Shore/beach line -->
+  <path d="M0 42c8-2 16-4 28-4h36" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"/>
+  <!-- Landing station building -->
+  <rect x="6" y="18" width="30" height="22" rx="2"/>
+  <rect x="4" y="16" width="34" height="4" rx="1" opacity="0.8"/>
+  <!-- Building windows -->
+  <rect x="10" y="22" width="5" height="4" rx="0.5" opacity="0.3" fill="#fff"/>
+  <rect x="18" y="22" width="5" height="4" rx="0.5" opacity="0.3" fill="#fff"/>
+  <rect x="26" y="22" width="5" height="4" rx="0.5" opacity="0.3" fill="#fff"/>
+  <!-- Equipment indicators -->
+  <rect x="10" y="30" width="5" height="6" rx="0.5" opacity="0.2" fill="#fff"/>
+  <rect x="18" y="30" width="5" height="6" rx="0.5" opacity="0.2" fill="#fff"/>
+  <circle cx="12.5" cy="33" r="1" fill="#fff" opacity="0.5"/>
+  <circle cx="20.5" cy="33" r="1" fill="#fff" opacity="0.5"/>
+  <!-- Door -->
+  <rect x="27" y="30" width="6" height="10" rx="0.5" opacity="0.25" fill="#fff"/>
+  <!-- Cable manhole -->
+  <rect x="36" y="34" width="8" height="6" rx="1" opacity="0.7"/>
+  <line x1="38" y1="34" x2="38" y2="40" stroke="currentColor" stroke-width="0.75" opacity="0.3"/>
+  <line x1="42" y1="34" x2="42" y2="40" stroke="currentColor" stroke-width="0.75" opacity="0.3"/>
+  <!-- Submarine cable going into water -->
+  <path d="M40 40c0 4 2 6 4 8c2 2 6 4 10 5c4 1 8 2 10 4" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+  <!-- Cable armor detail -->
+  <path d="M40 40c0 4 2 6 4 8c2 2 6 4 10 5c4 1 8 2 10 4" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" opacity="0.3"/>
+  <!-- Water waves -->
+  <path d="M42 48c3-1 6-1 9 0s6 1 9 0" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+  <path d="M46 52c3-1 6-1 9 0s6 1 9 0" fill="none" stroke="currentColor" stroke-width="1" opacity="0.2"/>
+  <path d="M50 56c3-1 6-1 9 0s5 1 8 0" fill="none" stroke="currentColor" stroke-width="1" opacity="0.15"/>
+  <!-- Antenna on building -->
+  <rect x="18" y="10" width="2" height="6" rx="0.5"/>
+  <rect x="15" y="10" width="8" height="1.5" rx="0.5"/>
+  <!-- Foundation -->
+  <rect x="4" y="40" width="34" height="3" rx="1" opacity="0.5"/>
+</svg>

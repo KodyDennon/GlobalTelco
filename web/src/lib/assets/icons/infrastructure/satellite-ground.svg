@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="currentColor">
+  <!-- Dish reflector -->
+  <path d="M8 36C8 20 18 8 32 4c14 4 24 16 24 32" fill="none" stroke="currentColor" stroke-width="3"/>
+  <path d="M12 34C12 22 20 12 32 8c12 4 20 14 20 26" fill="currentColor" opacity="0.3"/>
+  <!-- Dish surface detail rings -->
+  <path d="M18 30C18 24 24 16 32 13c8 3 14 11 14 17" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+  <path d="M24 28C24 24 28 19 32 17c4 2 8 7 8 11" fill="none" stroke="currentColor" stroke-width="1" opacity="0.2"/>
+  <!-- Feed horn / LNB -->
+  <circle cx="32" cy="24" r="3"/>
+  <circle cx="32" cy="24" r="1.5" opacity="0.4" fill="#fff"/>
+  <!-- Feed arm -->
+  <line x1="32" y1="27" x2="32" y2="38" stroke="currentColor" stroke-width="2.5"/>
+  <!-- Struts to dish edge -->
+  <line x1="32" y1="27" x2="16" y2="34" stroke="currentColor" stroke-width="1.5" opacity="0.6"/>
+  <line x1="32" y1="27" x2="48" y2="34" stroke="currentColor" stroke-width="1.5" opacity="0.6"/>
+  <!-- Mount / pedestal -->
+  <rect x="28" y="38" width="8" height="6" rx="1"/>
+  <polygon points="24,44 40,44 38,52 26,52"/>
+  <!-- Base -->
+  <rect x="20" y="52" width="24" height="4" rx="1.5"/>
+  <!-- Ground platform -->
+  <rect x="14" y="56" width="36" height="4" rx="2" opacity="0.5"/>
+  <!-- Signal beam going up -->
+  <line x1="32" y1="4" x2="32" y2="0" stroke="currentColor" stroke-width="1" opacity="0.4" stroke-dasharray="2 2"/>
+  <line x1="28" y1="2" x2="28" y2="0" stroke="currentColor" stroke-width="0.75" opacity="0.2" stroke-dasharray="1 2"/>
+  <line x1="36" y1="2" x2="36" y2="0" stroke="currentColor" stroke-width="0.75" opacity="0.2" stroke-dasharray="1 2"/>
+</svg>

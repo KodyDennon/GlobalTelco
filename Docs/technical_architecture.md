@@ -438,3 +438,114 @@ When "Procedural World" is selected:
 - **WebSocket latency:** < 100ms round-trip for player commands
 - **Save file size:** < 50MB for a mature game world
 - **Memory usage:** < 500MB in browser for large worlds
+
+---
+
+## 8. SVG Asset Pipeline
+
+All visual assets (icons, symbols, indicators) use inline SVG with a unified pipeline from source files through Svelte UI and Three.js map rendering.
+
+### Directory Structure
+
+```
+web/src/lib/assets/icons/
+├── infrastructure/          # Node type icons (7)
+│   ├── central-office.svg
+│   ├── exchange-point.svg
+│   ├── cell-tower.svg
+│   ├── data-center.svg
+│   ├── satellite-ground.svg
+│   ├── submarine-landing.svg
+│   └── wireless-relay.svg
+├── edges/                   # Edge type icons (5)
+│   ├── fiber-optic.svg
+│   ├── copper.svg
+│   ├── microwave.svg
+│   ├── satellite.svg
+│   └── submarine.svg
+├── ui/                      # UI icons (12)
+│   ├── pause.svg
+│   ├── play.svg
+│   ├── fast-forward.svg
+│   ├── ultra-speed.svg
+│   ├── save.svg
+│   ├── money.svg
+│   ├── research.svg
+│   ├── workforce.svg
+│   ├── contract.svg
+│   ├── settings.svg
+│   ├── warning.svg
+│   └── dashboard.svg
+└── index.ts                 # Icon registry (typed exports)
+```
+
+### SVG Conventions
+
+- **ViewBox:** All icons use `viewBox="0 0 64 64"` for consistent detail resolution
+- **Color:** All icons use `currentColor` or `fill="currentColor"` for runtime recoloring
+- **Detail levels:** Icons use opacity layers (0.15-0.9) and `fill="#fff"` cutouts for depth
+- **No external dependencies:** No fonts, gradients defs, or external references
+- **Naming:** Kebab-case matching Rust enum variants (e.g., `cell-tower` maps to `CellTower`)
+
+### Svelte UI Integration
+
+Icons are imported as raw strings via Vite's `?raw` suffix and rendered inline:
+
+```svelte
+<script>
+  import Icon from '$lib/components/Icon.svelte';
+</script>
+
+<Icon name="cell-tower" size={32} color="#00d4ff" />
+<Icon name="warning" size={16} color="#ffaa00" title="Network overloaded" />
+```
+
+**Icon.svelte props:**
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `name` | `IconName` | required | Icon key from registry |
+| `size` | `number` | `24` | Rendered size in pixels |
+| `color` | `string` | `'currentColor'` | Fill/stroke color |
+| `class` | `string` | `''` | Additional CSS classes |
+| `title` | `string` | `undefined` | Accessible label (adds `role="img"`) |
+
+### Three.js Map Integration
+
+For rendering infrastructure icons on the 2D political map, SVGs are rasterized to canvas textures via `SpriteFactory`:
+
+```typescript
+import { createIconSprite, preloadInfrastructureIcons, clearTextureCache } from '$lib/game/SpriteFactory';
+
+// Single sprite
+const tower = await createIconSprite('cell-tower', {
+  size: 128,             // Rasterization resolution (px)
+  color: '#00ff88',      // Player's company color
+  worldSize: 2,          // Size in Three.js world units
+});
+scene.add(tower);
+
+// Preload all infrastructure icons at game start
+const textures = await preloadInfrastructureIcons('#ffffff', 64);
+
+// Clear cache on theme/color change
+clearTextureCache();
+```
+
+**Pipeline:** SVG string → `currentColor` replacement → Blob URL → Image → Canvas → `THREE.CanvasTexture` → `THREE.SpriteMaterial` → `THREE.Sprite`
+
+**Caching:** Textures are cached by `name:size:color:padding` key. Same combo returns the same texture instance. Call `clearTextureCache()` when player changes company color or UI theme.
+
+### Adding New Icons
+
+1. Create SVG file in the appropriate subdirectory (`infrastructure/`, `edges/`, or `ui/`)
+2. Use `viewBox="0 0 64 64"` and `fill="currentColor"`
+3. Add the `?raw` import to `web/src/lib/assets/icons/index.ts`
+4. Add the key to the `icons` object and the appropriate category array
+5. The `IconName` type updates automatically via `keyof typeof icons`
+
+### Player Branding
+
+Infrastructure icons on the map are rendered in the player's company color. The color is passed to `SpriteFactory` at rasterization time, replacing `currentColor` with the hex value. This means:
+- No separate sprite sheets per player/AI corporation
+- Color changes only require cache invalidation, not new assets
+- AI corporations each get their own color, applied at the same pipeline stage
