@@ -1,21 +1,27 @@
 <script lang="ts">
-	let { onNewGame, onLoadGame, onSettings }: { onNewGame: () => void; onLoadGame: () => void; onSettings: () => void } = $props();
+	import { tr } from '$lib/i18n/index';
+
+	let { onNewGame, onLoadGame, onSettings, onMultiplayer, onCredits }: { onNewGame: () => void; onLoadGame: () => void; onSettings: () => void; onMultiplayer: () => void; onCredits: () => void } = $props();
+
+	const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.1.0';
 </script>
 
-<div class="main-menu">
+<div class="main-menu" role="navigation" aria-label={$tr('menu.title')}>
 	<div class="menu-content">
-		<h1 class="title">GlobalTelco</h1>
-		<p class="subtitle">Build your telecom empire</p>
+		<h1 class="title">{$tr('menu.title')}</h1>
+		<p class="subtitle">{$tr('menu.subtitle')}</p>
 
 		<div class="menu-buttons">
-			<button class="menu-btn primary" onclick={onNewGame}>New Game</button>
-			<button class="menu-btn" onclick={onLoadGame}>Load Game</button>
-			<button class="menu-btn" onclick={onSettings}>Settings</button>
+			<button class="menu-btn primary" onclick={onNewGame}>{$tr('menu.new_game')}</button>
+			<button class="menu-btn" onclick={onLoadGame}>{$tr('menu.load_game')}</button>
+			<button class="menu-btn" onclick={onMultiplayer}>{$tr('menu.multiplayer')}</button>
+			<button class="menu-btn" onclick={onSettings}>{$tr('menu.settings')}</button>
+			<button class="menu-btn" onclick={onCredits}>{$tr('menu.credits')}</button>
 		</div>
 	</div>
 
 	<div class="menu-footer">
-		<span>v0.1.0 - Early Development</span>
+		<span>{$tr('menu.version', { version })}</span>
 	</div>
 </div>
 

@@ -102,6 +102,7 @@ impl TechResearch {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn with_details(
         category: ResearchCategory,
         name: impl Into<String>,

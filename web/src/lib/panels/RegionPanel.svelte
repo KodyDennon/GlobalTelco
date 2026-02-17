@@ -2,6 +2,7 @@
 	import { regions, cities, formatMoney, formatPopulation, allCorporations } from '$lib/stores/gameState';
 	import { activePanel } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
+	import PopulationChart from '$lib/charts/PopulationChart.svelte';
 
 	function close() {
 		activePanel.set('none');
@@ -42,6 +43,11 @@
 				<span class="value mono">{$regions.length}</span>
 			</div>
 		</div>
+	</div>
+
+	<div class="section">
+		<h3>Population by City</h3>
+		<PopulationChart />
 	</div>
 
 	{#each $regions as region}

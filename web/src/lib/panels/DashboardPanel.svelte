@@ -4,6 +4,7 @@
 	import * as bridge from '$lib/wasm/bridge';
 	import type { DebtInfo } from '$lib/wasm/types';
 	import FinanceChart from '$lib/charts/FinanceChart.svelte';
+	import { tr } from '$lib/i18n/index';
 
 	let debts: DebtInfo[] = $state([]);
 	let showLoanDialog = $state(false);
@@ -41,25 +42,25 @@
 	let totalPayments = $derived(debts.reduce((s, d) => s + d.payment_per_tick, 0));
 </script>
 
-<div class="panel">
+<div class="panel" aria-label={$tr('panels.dashboard')}>
 	<div class="panel-header">
-		<span class="title">Financial Dashboard</span>
+		<span class="title">{$tr('panels.dashboard')}</span>
 		<button class="close" onclick={close}>x</button>
 	</div>
 
 	<div class="section">
-		<h3>Income Statement</h3>
+		<h3>{$tr('panels.income_statement')}</h3>
 		<div class="stat-grid">
 			<div class="stat">
-				<span class="label">Revenue</span>
+				<span class="label">{$tr('panels.revenue')}</span>
 				<span class="value green">{formatMoney($playerCorp?.revenue_per_tick ?? 0)}/tick</span>
 			</div>
 			<div class="stat">
-				<span class="label">Costs</span>
+				<span class="label">{$tr('panels.costs')}</span>
 				<span class="value red">{formatMoney($playerCorp?.cost_per_tick ?? 0)}/tick</span>
 			</div>
 			<div class="stat">
-				<span class="label">Net Income</span>
+				<span class="label">{$tr('panels.net_income')}</span>
 				<span class="value" class:green={($playerCorp?.profit_per_tick ?? 0) >= 0} class:red={($playerCorp?.profit_per_tick ?? 0) < 0}>
 					{formatMoney($playerCorp?.profit_per_tick ?? 0)}/tick
 				</span>
@@ -68,43 +69,43 @@
 	</div>
 
 	<div class="section">
-		<h3>Balance Sheet</h3>
+		<h3>{$tr('panels.balance_sheet')}</h3>
 		<div class="stat-grid">
 			<div class="stat">
-				<span class="label">Cash</span>
+				<span class="label">{$tr('panels.cash')}</span>
 				<span class="value mono">{formatMoney($playerCorp?.cash ?? 0)}</span>
 			</div>
 			<div class="stat">
-				<span class="label">Total Debt</span>
+				<span class="label">{$tr('panels.total_debt')}</span>
 				<span class="value mono red">{formatMoney(totalDebt)}</span>
 			</div>
 			<div class="stat">
-				<span class="label">Debt Payments</span>
+				<span class="label">{$tr('panels.debt_payments')}</span>
 				<span class="value mono">{formatMoney(totalPayments)}/tick</span>
 			</div>
 			<div class="stat">
-				<span class="label">Credit Rating</span>
+				<span class="label">{$tr('panels.credit_rating')}</span>
 				<span class="value amber">{$playerCorp?.credit_rating ?? '---'}</span>
 			</div>
 			<div class="stat">
-				<span class="label">Employees</span>
+				<span class="label">{$tr('panels.employees')}</span>
 				<span class="value mono">{$playerCorp?.employee_count ?? 0}</span>
 			</div>
 			<div class="stat">
-				<span class="label">Morale</span>
+				<span class="label">{$tr('panels.morale')}</span>
 				<span class="value mono">{(($playerCorp?.morale ?? 0) * 100).toFixed(0)}%</span>
 			</div>
 		</div>
 	</div>
 
 	<div class="section">
-		<h3>Revenue Trend</h3>
+		<h3>{$tr('panels.revenue_trend')}</h3>
 		<FinanceChart />
 	</div>
 
 	<div class="section">
 		<div class="section-header">
-			<h3>Loans ({debts.length})</h3>
+			<h3>{$tr('panels.loans', { count: debts.length })}</h3>
 			<button class="action-btn" onclick={() => (showLoanDialog = !showLoanDialog)}>+ Take Loan</button>
 		</div>
 
@@ -115,7 +116,7 @@
 					<input type="range" min={100000} max={50000000} step={100000} bind:value={loanAmount} />
 					<span class="mono">{formatMoney(loanAmount)}</span>
 				</label>
-				<button class="confirm-btn" onclick={takeLoan}>Confirm Loan</button>
+				<button class="confirm-btn" onclick={takeLoan}>{$tr('panels.confirm_loan')}</button>
 			</div>
 		{/if}
 
@@ -125,13 +126,13 @@
 					<span class="mono">{formatMoney(debt.principal)}</span>
 					<span class="muted">{(debt.interest_rate * 100).toFixed(1)}% rate | {debt.remaining_ticks} ticks left</span>
 				</div>
-				<button class="small-btn" onclick={() => repayLoan(debt.id)}>Repay</button>
+				<button class="small-btn" onclick={() => repayLoan(debt.id)}>{$tr('panels.repay')}</button>
 			</div>
 		{/each}
 	</div>
 
 	<div class="section">
-		<h3>Competitors</h3>
+		<h3>{$tr('panels.competitors')}</h3>
 		{#each $allCorporations.filter((c) => !c.is_player) as corp}
 			<div class="competitor-row">
 				<span class="name">{corp.name}</span>

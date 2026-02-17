@@ -226,3 +226,60 @@ export interface CorpSummary {
 	revenue: number;
 	cost: number;
 }
+
+// Phase 10 types
+export interface AuctionInfo {
+	id: number;
+	seller: number;
+	seller_name: string;
+	asset_count: number;
+	bid_count: number;
+	highest_bid: number;
+	highest_bidder: number;
+	start_tick: number;
+	end_tick: number;
+	status: string;
+}
+
+export interface AcquisitionInfo {
+	id: number;
+	acquirer: number;
+	acquirer_name: string;
+	target: number;
+	target_name: string;
+	offer: number;
+	status: string;
+	tick: number;
+}
+
+export interface CovertOpsInfo {
+	security_level: number;
+	active_missions: number;
+	detection_count: number;
+}
+
+export interface LobbyingInfo {
+	id: number;
+	region: number;
+	region_name: string;
+	policy: string;
+	budget_spent: number;
+	budget_total: number;
+	influence: number;
+	threshold: number;
+	active: boolean;
+}
+
+export interface AchievementsInfo {
+	unlocked: string[];
+	progress: Record<string, number>;
+}
+
+export interface VictoryInfo {
+	domination_score: number;
+	tech_score: number;
+	wealth_score: number;
+	infrastructure_score: number;
+	total_score: number;
+	victory_type: string | null;
+}

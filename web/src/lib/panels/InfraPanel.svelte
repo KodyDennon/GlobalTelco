@@ -3,6 +3,8 @@
 	import { activePanel, selectedEntityId, selectedEntityType } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
 	import type { InfraNode, InfraEdge, InfrastructureList } from '$lib/wasm/types';
+	import NetworkDiagram from '$lib/charts/NetworkDiagram.svelte';
+	import { tr } from '$lib/i18n/index';
 
 	let infra: InfrastructureList = $state({ nodes: [], edges: [] });
 
@@ -38,43 +40,48 @@
 	let totalMaintenance = $derived(operationalNodes.reduce((s, n) => s + n.maintenance_cost, 0));
 </script>
 
-<div class="panel">
+<div class="panel" aria-label={$tr('panels.infrastructure')}>
 	<div class="panel-header">
-		<span class="title">Infrastructure</span>
+		<span class="title">{$tr('panels.infrastructure')}</span>
 		<button class="close" onclick={close}>x</button>
 	</div>
 
 	<div class="section">
-		<h3>Summary</h3>
+		<h3>{$tr('panels.summary')}</h3>
 		<div class="summary-row">
 			<span>{operationalNodes.length} operational</span>
 			<span>{constructingNodes.length} building</span>
 			<span>{infra.edges.length} edges</span>
 		</div>
 		<div class="summary-row">
-			<span>Maint: <span class="mono red">{formatMoney(totalMaintenance)}/tick</span></span>
+			<span>{$tr('panels.maintenance')}: <span class="mono red">{formatMoney(totalMaintenance)}/tick</span></span>
 		</div>
+	</div>
+
+	<div class="section">
+		<h3>{$tr('panels.network_topology')}</h3>
+		<NetworkDiagram />
 	</div>
 
 	{#if constructingNodes.length > 0}
 		<div class="section">
-			<h3>Under Construction</h3>
+			<h3>{$tr('panels.under_construction')}</h3>
 			{#each constructingNodes as node}
-				<div class="node-row construction" onclick={() => selectNode(node.id)}>
+				<button class="node-row construction" onclick={() => selectNode(node.id)}>
 					<div class="node-info">
 						<span class="node-type">{node.node_type}</span>
 						<span class="node-level">{node.network_level}</span>
 					</div>
-					<span class="badge building">Building</span>
-				</div>
+					<span class="badge building">{$tr('panels.building')}</span>
+				</button>
 			{/each}
 		</div>
 	{/if}
 
 	<div class="section">
-		<h3>Operational Nodes ({operationalNodes.length})</h3>
+		<h3>{$tr('panels.operational_nodes', { count: operationalNodes.length })}</h3>
 		{#each operationalNodes as node}
-			<div class="node-row" onclick={() => selectNode(node.id)}>
+			<div class="node-row" role="button" tabindex="0" onclick={() => selectNode(node.id)} onkeydown={(e) => { if (e.key === 'Enter') selectNode(node.id); }}>
 				<div class="node-info">
 					<span class="node-type">{node.node_type}</span>
 					<div class="node-stats">
@@ -83,7 +90,7 @@
 							<span class="mono" class:warn={node.health < 0.5}>{(node.health * 100).toFixed(0)}%</span>
 						</span>
 						<span>
-							<span class="muted">Util</span>
+							<span class="muted">{$tr('panels.utilization')}</span>
 							<span class="mono">{(node.utilization * 100).toFixed(0)}%</span>
 						</span>
 						<span>
@@ -102,7 +109,7 @@
 
 	{#if infra.edges.length > 0}
 		<div class="section">
-			<h3>Connections ({infra.edges.length})</h3>
+			<h3>{$tr('panels.connections', { count: infra.edges.length })}</h3>
 			{#each infra.edges as edge}
 				<div class="edge-row">
 					<span class="edge-type">{edge.edge_type}</span>
@@ -191,6 +198,14 @@
 		cursor: pointer;
 		transition: background 0.15s;
 		border-bottom: 1px solid rgba(55, 65, 81, 0.2);
+		background: transparent;
+		border-top: none;
+		border-left: none;
+		border-right: none;
+		width: 100%;
+		color: inherit;
+		font: inherit;
+		text-align: left;
 	}
 
 	.node-row:hover {

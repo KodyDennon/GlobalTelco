@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/nicedoc/tauri/dev/core/tauri-config-schema/schema.json",
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
   "productName": "GlobalTelco",
   "version": "0.1.0",
   "identifier": "com.globaltelco.app",
@@ -24,6 +24,13 @@
     ],
     "security": {
       "csp": null
+    }
+  },
+  "plugins": {
+    "fs": {
+      "scope": {
+        "allow": ["$APPDATA/**", "$APPDATA/saves/**"]
+      }
     }
   }
 }

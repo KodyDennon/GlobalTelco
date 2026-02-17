@@ -83,6 +83,88 @@ pub enum Command {
         value: String,
     },
 
+    // Subsidiary
+    CreateSubsidiary {
+        parent: EntityId,
+        name: String,
+    },
+
+    // Insurance
+    PurchaseInsurance {
+        node: EntityId,
+    },
+    CancelInsurance {
+        node: EntityId,
+    },
+
+    // Bankruptcy & Auctions
+    DeclareBankruptcy {
+        entity: EntityId,
+    },
+    RequestBailout {
+        entity: EntityId,
+    },
+    AcceptBailout {
+        entity: EntityId,
+    },
+    PlaceBid {
+        auction: EntityId,
+        amount: Money,
+    },
+
+    // Mergers & Acquisitions
+    ProposeAcquisition {
+        target: EntityId,
+        offer: Money,
+    },
+    RespondToAcquisition {
+        proposal: EntityId,
+        accept: bool,
+    },
+
+    // Espionage & Sabotage
+    LaunchEspionage {
+        target: EntityId,
+        region: EntityId,
+    },
+    LaunchSabotage {
+        target: EntityId,
+        node: EntityId,
+    },
+    UpgradeSecurity {
+        level: u32,
+    },
+
+    // Lobbying
+    StartLobbying {
+        region: EntityId,
+        policy: String,
+        budget: Money,
+    },
+    CancelLobbying {
+        lobby_id: EntityId,
+    },
+
+    // Cooperative Infrastructure
+    ProposeCoOwnership {
+        node: EntityId,
+        target_corp: EntityId,
+        share_pct: f64,
+    },
+    RespondCoOwnership {
+        proposal: EntityId,
+        accept: bool,
+    },
+    ProposeBuyout {
+        node: EntityId,
+        target_corp: EntityId,
+        price: Money,
+    },
+    VoteUpgrade {
+        node: EntityId,
+        approve: bool,
+    },
+
     // Game control
     SetSpeed(GameSpeed),
     TogglePause,

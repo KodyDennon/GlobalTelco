@@ -23,6 +23,20 @@ pub enum ClientMessage {
     Ping { timestamp: u64 },
     /// Chat message
     Chat { message: String },
+    /// Upload a cloud save
+    UploadSave {
+        slot: i32,
+        name: String,
+        save_data: Vec<u8>,
+        tick: Tick,
+        config_json: String,
+    },
+    /// Request list of cloud saves
+    RequestSaves,
+    /// Download a cloud save by slot
+    DownloadSave { slot: i32 },
+    /// Delete a cloud save
+    DeleteSave { slot: i32 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +99,17 @@ pub enum ServerMessage {
     },
     /// World list response
     WorldList { worlds: Vec<WorldInfo> },
+    /// Cloud save uploaded acknowledgement
+    SaveUploaded { slot: i32, success: bool },
+    /// List of cloud saves
+    SaveList { saves: Vec<CloudSaveInfo> },
+    /// Cloud save data download
+    SaveData { slot: i32, save_data: Vec<u8> },
+    /// AI proxy summary after reconnection
+    ProxySummary {
+        ticks_elapsed: u64,
+        actions: Vec<ProxyAction>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,6 +157,21 @@ pub enum PlayerConnectionStatus {
     Connected,
     Disconnected,
     AiProxy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudSaveInfo {
+    pub slot: i32,
+    pub name: String,
+    pub tick: Tick,
+    pub size_bytes: i64,
+    pub created_at: u64, // unix timestamp
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProxyAction {
+    pub tick: Tick,
+    pub description: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

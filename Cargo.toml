@@ -26,3 +26,6 @@ noise = "0.9"
 uuid = { version = "1", features = ["v4", "serde", "js"] }
 rmp-serde = "1"
 chrono = { version = "0.4", features = ["serde"] }
+bincode = "1"
+zstd = "0.13"
+crc32fast = "1"

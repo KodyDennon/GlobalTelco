@@ -5,6 +5,7 @@ use gt_common::types::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::*;
+use crate::components::covert_ops::MissionType;
 use crate::events::EventQueue;
 use crate::systems;
 
@@ -41,6 +42,14 @@ pub struct GameWorld {
     pub contracts: HashMap<EntityId, Contract>,
     pub debt_instruments: HashMap<EntityId, DebtInstrument>,
     pub tech_research: HashMap<EntityId, TechResearch>,
+
+    // Advanced gameplay (Phase 10)
+    pub auctions: HashMap<EntityId, Auction>,
+    pub acquisition_proposals: HashMap<EntityId, AcquisitionProposal>,
+    pub covert_ops: HashMap<EntityId, CovertOps>,
+    pub lobbying_campaigns: HashMap<EntityId, LobbyingCampaign>,
+    pub achievements: HashMap<EntityId, AchievementTracker>,
+    pub victory_state: Option<VictoryConditions>,
 
     // Mappings for fast lookup
     pub cell_to_parcel: HashMap<usize, EntityId>,
@@ -92,6 +101,12 @@ impl GameWorld {
             contracts: HashMap::new(),
             debt_instruments: HashMap::new(),
             tech_research: HashMap::new(),
+            auctions: HashMap::new(),
+            acquisition_proposals: HashMap::new(),
+            covert_ops: HashMap::new(),
+            lobbying_campaigns: HashMap::new(),
+            achievements: HashMap::new(),
+            victory_state: None,
             cell_to_parcel: HashMap::new(),
             cell_to_region: HashMap::new(),
             cell_to_city: HashMap::new(),
@@ -520,6 +535,57 @@ impl GameWorld {
         serde_json::from_str(data).map_err(|e| format!("Load failed: {}", e))
     }
 
+    /// Serialize to binary format (bincode + zstd compression).
+    /// Format: [version: u8] [crc32: 4 bytes LE] [zstd-compressed bincode data]
+    pub fn save_game_binary(&self) -> Result<Vec<u8>, String> {
+        let bincode_data =
+            bincode::serialize(self).map_err(|e| format!("Bincode serialize failed: {}", e))?;
+        let compressed = zstd::encode_all(bincode_data.as_slice(), 3)
+            .map_err(|e| format!("Zstd compress failed: {}", e))?;
+        let checksum = crc32fast::hash(&compressed);
+        let mut result = Vec::with_capacity(1 + 4 + compressed.len());
+        result.push(2u8); // version byte (v2 = with CRC32)
+        result.extend_from_slice(&checksum.to_le_bytes());
+        result.extend_from_slice(&compressed);
+        Ok(result)
+    }
+
+    /// Deserialize from binary format (bincode + zstd).
+    /// Supports v1 (no checksum) and v2 (with CRC32 checksum).
+    pub fn load_game_binary(data: &[u8]) -> Result<Self, String> {
+        if data.is_empty() {
+            return Err("Empty save data".to_string());
+        }
+        let version = data[0];
+        let payload = match version {
+            1 => {
+                // Legacy v1: no checksum, payload starts at byte 1
+                &data[1..]
+            }
+            2 => {
+                // v2: [version: 1] [crc32: 4] [payload: rest]
+                if data.len() < 6 {
+                    return Err("Save data too short for v2 format".to_string());
+                }
+                let stored_crc = u32::from_le_bytes([data[1], data[2], data[3], data[4]]);
+                let payload = &data[5..];
+                let computed_crc = crc32fast::hash(payload);
+                if stored_crc != computed_crc {
+                    return Err(format!(
+                        "Save file corrupted: CRC32 mismatch (expected {:08x}, got {:08x})",
+                        stored_crc, computed_crc
+                    ));
+                }
+                payload
+            }
+            _ => return Err(format!("Unsupported save version: {}", version)),
+        };
+        let decompressed = zstd::decode_all(payload)
+            .map_err(|e| format!("Zstd decompress failed: {}", e))?;
+        bincode::deserialize(&decompressed)
+            .map_err(|e| format!("Bincode deserialize failed: {}", e))
+    }
+
     pub fn allocate_entity(&mut self) -> EntityId {
         let id = self.next_entity_id;
         self.next_entity_id += 1;
@@ -649,6 +715,84 @@ impl GameWorld {
             Command::EmergencyRepair { entity } => {
                 self.cmd_repair_node(entity, true);
             }
+            Command::CreateSubsidiary { parent, name } => {
+                self.cmd_create_subsidiary(parent, &name);
+            }
+            Command::PurchaseInsurance { node } => {
+                self.cmd_purchase_insurance(node);
+            }
+            Command::CancelInsurance { node } => {
+                if let Some(n) = self.infra_nodes.get_mut(&node) {
+                    n.insured = false;
+                }
+            }
+            // Bankruptcy & Auctions
+            Command::DeclareBankruptcy { entity } => {
+                self.cmd_declare_bankruptcy(entity);
+            }
+            Command::RequestBailout { entity } => {
+                self.cmd_request_bailout(entity);
+            }
+            Command::AcceptBailout { entity } => {
+                self.cmd_accept_bailout(entity);
+            }
+            Command::PlaceBid { auction, amount } => {
+                self.cmd_place_bid(auction, amount);
+            }
+
+            // Mergers & Acquisitions
+            Command::ProposeAcquisition { target, offer } => {
+                self.cmd_propose_acquisition(target, offer);
+            }
+            Command::RespondToAcquisition { proposal, accept } => {
+                self.cmd_respond_to_acquisition(proposal, accept);
+            }
+
+            // Espionage & Sabotage
+            Command::LaunchEspionage { target, region } => {
+                self.cmd_launch_espionage(target, region);
+            }
+            Command::LaunchSabotage { target, node } => {
+                self.cmd_launch_sabotage(target, node);
+            }
+            Command::UpgradeSecurity { level } => {
+                self.cmd_upgrade_security(level);
+            }
+
+            // Lobbying
+            Command::StartLobbying {
+                region,
+                policy,
+                budget,
+            } => {
+                self.cmd_start_lobbying(region, &policy, budget);
+            }
+            Command::CancelLobbying { lobby_id } => {
+                self.lobbying_campaigns.remove(&lobby_id);
+            }
+
+            // Cooperative Infrastructure
+            Command::ProposeCoOwnership {
+                node,
+                target_corp,
+                share_pct,
+            } => {
+                self.cmd_propose_co_ownership(node, target_corp, share_pct);
+            }
+            Command::RespondCoOwnership { proposal, accept } => {
+                self.cmd_respond_co_ownership(proposal, accept);
+            }
+            Command::ProposeBuyout {
+                node,
+                target_corp,
+                price,
+            } => {
+                self.cmd_propose_buyout(node, target_corp, price);
+            }
+            Command::VoteUpgrade { node, approve } => {
+                self.cmd_vote_upgrade(node, approve);
+            }
+
             Command::AssignTeam { .. } | Command::SaveGame { .. } | Command::LoadGame { .. } => {
                 // Handled externally
             }
@@ -951,6 +1095,102 @@ impl GameWorld {
         }
     }
 
+    fn cmd_create_subsidiary(&mut self, parent: EntityId, name: &str) {
+        // Parent must be a corporation
+        if !self.corporations.contains_key(&parent) {
+            return;
+        }
+
+        // Cost to establish a subsidiary
+        let establishment_cost: Money = 1_000_000;
+        if let Some(fin) = self.financials.get(&parent) {
+            if fin.cash < establishment_cost {
+                return;
+            }
+        } else {
+            return;
+        }
+
+        // Deduct cost
+        if let Some(fin) = self.financials.get_mut(&parent) {
+            fin.cash -= establishment_cost;
+        }
+
+        // Create subsidiary entity
+        let sub_id = self.allocate_entity();
+        let mut sub_corp = Corporation::new(name, false);
+        sub_corp.credit_rating = self
+            .corporations
+            .get(&parent)
+            .map(|c| c.credit_rating)
+            .unwrap_or(CreditRating::BBB);
+
+        self.corporations.insert(sub_id, sub_corp);
+        self.financials.insert(
+            sub_id,
+            Financial {
+                cash: 500_000, // Seed capital
+                revenue_per_tick: 0,
+                cost_per_tick: 0,
+                debt: 0,
+            },
+        );
+        self.workforces.insert(sub_id, Workforce::default());
+        self.policies.insert(sub_id, Policy::default());
+
+        // Register as subsidiary of parent
+        if let Some(parent_corp) = self.corporations.get_mut(&parent) {
+            parent_corp.subsidiaries.push(sub_id);
+        }
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::SubsidiaryCreated {
+                parent,
+                subsidiary: sub_id,
+                name: name.to_string(),
+            },
+        );
+    }
+
+    fn cmd_purchase_insurance(&mut self, node: EntityId) {
+        let (owner, premium) = match self.infra_nodes.get(&node) {
+            Some(n) => {
+                if n.insured {
+                    return; // Already insured
+                }
+                (n.owner, n.insurance_premium)
+            }
+            None => return,
+        };
+
+        // Check funds for premium
+        if let Some(fin) = self.financials.get(&owner) {
+            if fin.cash < premium {
+                return;
+            }
+        } else {
+            return;
+        }
+
+        // Deduct first premium payment and mark as insured
+        if let Some(fin) = self.financials.get_mut(&owner) {
+            fin.cash -= premium;
+            fin.cost_per_tick += premium; // Ongoing premium
+        }
+        if let Some(n) = self.infra_nodes.get_mut(&node) {
+            n.insured = true;
+        }
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::InsurancePurchased {
+                entity: node,
+                premium,
+            },
+        );
+    }
+
     fn cmd_take_loan(&mut self, corporation: EntityId, amount: Money) {
         if amount <= 0 {
             return;
@@ -1069,6 +1309,579 @@ impl GameWorld {
                 tech: tech.to_string(),
             },
         );
+    }
+
+    // === Phase 10.1: Bankruptcy & Auctions ===
+
+    fn cmd_declare_bankruptcy(&mut self, entity: EntityId) {
+        if !self.corporations.contains_key(&entity) {
+            return;
+        }
+
+        // Gather all assets owned by the bankrupt corporation
+        let assets: Vec<EntityId> = self
+            .corp_infra_nodes
+            .get(&entity)
+            .cloned()
+            .unwrap_or_default();
+
+        if assets.is_empty() {
+            // Nothing to auction, just emit event
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::BankruptcyDeclared {
+                    corporation: entity,
+                },
+            );
+            return;
+        }
+
+        // Create auction for all assets
+        let auction_id = self.allocate_entity();
+        let auction = Auction::new(entity, assets.clone(), self.tick, 50);
+        self.auctions.insert(auction_id, auction);
+
+        // Zero out the corporation's finances
+        if let Some(fin) = self.financials.get_mut(&entity) {
+            fin.cash = 0;
+            fin.revenue_per_tick = 0;
+            fin.cost_per_tick = 0;
+            fin.debt = 0;
+        }
+
+        // Remove all debt instruments
+        let debts_to_remove: Vec<EntityId> = self
+            .debt_instruments
+            .iter()
+            .filter(|(_, d)| d.holder == entity)
+            .map(|(&id, _)| id)
+            .collect();
+        for id in debts_to_remove {
+            self.debt_instruments.remove(&id);
+        }
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::BankruptcyDeclared {
+                corporation: entity,
+            },
+        );
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::AuctionStarted {
+                auction: auction_id,
+                seller: entity,
+                asset_count: assets.len() as u32,
+            },
+        );
+    }
+
+    fn cmd_request_bailout(&mut self, entity: EntityId) {
+        // Bailout: get a high-interest emergency loan
+        let cost_per_tick = self
+            .financials
+            .get(&entity)
+            .map(|f| f.cost_per_tick)
+            .unwrap_or(0);
+        let bailout_amount = cost_per_tick * 180; // 6 months of costs
+        if bailout_amount <= 0 {
+            return;
+        }
+
+        let interest_rate = 0.30; // 30% — punitive
+        let debt = DebtInstrument::new(entity, bailout_amount, interest_rate, 365);
+        let payment = debt.payment_per_tick;
+        let loan_id = self.allocate_entity();
+        self.debt_instruments.insert(loan_id, debt);
+
+        if let Some(fin) = self.financials.get_mut(&entity) {
+            fin.cash += bailout_amount;
+            fin.debt += bailout_amount;
+            fin.cost_per_tick += payment;
+        }
+
+        // Downgrade credit rating
+        if let Some(corp) = self.corporations.get_mut(&entity) {
+            corp.credit_rating = CreditRating::CCC;
+        }
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::BailoutTaken {
+                corporation: entity,
+                amount: bailout_amount,
+                interest_rate,
+            },
+        );
+    }
+
+    fn cmd_accept_bailout(&mut self, entity: EntityId) {
+        // Same as request — this is the confirmation path
+        self.cmd_request_bailout(entity);
+    }
+
+    fn cmd_place_bid(&mut self, auction_id: EntityId, amount: Money) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+
+        // Check player has funds
+        if let Some(fin) = self.financials.get(&corp_id) {
+            if fin.cash < amount {
+                return;
+            }
+        }
+
+        if let Some(auction) = self.auctions.get_mut(&auction_id) {
+            if auction.status != AuctionStatus::Open {
+                return;
+            }
+            auction.place_bid(corp_id, amount);
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::AuctionBidPlaced {
+                    auction: auction_id,
+                    bidder: corp_id,
+                    amount,
+                },
+            );
+        }
+    }
+
+    // === Phase 10.2: Mergers & Acquisitions ===
+
+    fn cmd_propose_acquisition(&mut self, target: EntityId, offer: Money) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+
+        if !self.corporations.contains_key(&target) || target == corp_id {
+            return;
+        }
+
+        // Check player has funds
+        if let Some(fin) = self.financials.get(&corp_id) {
+            if fin.cash < offer {
+                return;
+            }
+        }
+
+        let proposal_id = self.allocate_entity();
+        let proposal = AcquisitionProposal::new(corp_id, target, offer, self.tick);
+        self.acquisition_proposals.insert(proposal_id, proposal);
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::AcquisitionProposed {
+                acquirer: corp_id,
+                target,
+                offer,
+            },
+        );
+    }
+
+    fn cmd_respond_to_acquisition(&mut self, proposal_id: EntityId, accept: bool) {
+        let proposal = match self.acquisition_proposals.get_mut(&proposal_id) {
+            Some(p) => p,
+            None => return,
+        };
+
+        if proposal.status != AcquisitionStatus::Pending {
+            return;
+        }
+
+        if accept {
+            proposal.status = AcquisitionStatus::Accepted;
+            let acquirer = proposal.acquirer;
+            let target = proposal.target;
+            let offer = proposal.offer;
+
+            // Transfer payment
+            if let Some(fin) = self.financials.get_mut(&acquirer) {
+                fin.cash -= offer;
+            }
+
+            // Transfer all assets from target to acquirer
+            self.transfer_corporation_assets(target, acquirer);
+
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::AcquisitionAccepted { acquirer, target },
+            );
+        } else {
+            proposal.status = AcquisitionStatus::Rejected;
+            let acquirer = proposal.acquirer;
+            let target = proposal.target;
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::AcquisitionRejected { acquirer, target },
+            );
+        }
+    }
+
+    /// Transfer all assets from one corporation to another.
+    pub fn transfer_corporation_assets(&mut self, from: EntityId, to: EntityId) {
+        // Transfer infrastructure nodes
+        let nodes = self
+            .corp_infra_nodes
+            .remove(&from)
+            .unwrap_or_default();
+        for &node_id in &nodes {
+            if let Some(node) = self.infra_nodes.get_mut(&node_id) {
+                node.owner = to;
+            }
+            if let Some(own) = self.ownerships.get_mut(&node_id) {
+                own.owner = to;
+            }
+        }
+        self.corp_infra_nodes
+            .entry(to)
+            .or_default()
+            .extend(nodes);
+
+        // Transfer edge ownership
+        for edge in self.infra_edges.values_mut() {
+            if edge.owner == from {
+                edge.owner = to;
+            }
+        }
+
+        // Transfer contracts
+        for contract in self.contracts.values_mut() {
+            if contract.from == from {
+                contract.from = to;
+            }
+            if contract.to == from {
+                contract.to = to;
+            }
+        }
+
+        // Merge financials
+        let from_fin = self.financials.remove(&from).unwrap_or(Financial {
+            cash: 0,
+            revenue_per_tick: 0,
+            cost_per_tick: 0,
+            debt: 0,
+        });
+        if let Some(to_fin) = self.financials.get_mut(&to) {
+            to_fin.cash += from_fin.cash;
+            to_fin.debt += from_fin.debt;
+        }
+
+        // Transfer workforce
+        if let Some(from_wf) = self.workforces.remove(&from) {
+            if let Some(to_wf) = self.workforces.get_mut(&to) {
+                to_wf.employee_count += from_wf.employee_count;
+            }
+        }
+
+        // Transfer debt instruments
+        for debt in self.debt_instruments.values_mut() {
+            if debt.holder == from {
+                debt.holder = to;
+            }
+        }
+
+        // Remove the absorbed corporation
+        self.corporations.remove(&from);
+        self.ai_states.remove(&from);
+        self.policies.remove(&from);
+        self.covert_ops.remove(&from);
+        self.achievements.remove(&from);
+    }
+
+    // === Phase 10.3: Espionage & Sabotage ===
+
+    fn cmd_launch_espionage(&mut self, target: EntityId, region: EntityId) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+
+        // Base cost depends on target's security level
+        let target_security = self
+            .covert_ops
+            .get(&target)
+            .map(|c| c.security_level)
+            .unwrap_or(0);
+        let cost = 100_000 + target_security as Money * 100_000;
+
+        if let Some(fin) = self.financials.get(&corp_id) {
+            if fin.cash < cost {
+                return;
+            }
+        }
+        if let Some(fin) = self.financials.get_mut(&corp_id) {
+            fin.cash -= cost;
+        }
+
+        let attacker_security = self
+            .covert_ops
+            .get(&corp_id)
+            .map(|c| c.security_level)
+            .unwrap_or(0);
+        let success_chance =
+            0.8 - target_security as f64 * 0.1 + attacker_security as f64 * 0.05;
+
+        let mission = Mission {
+            mission_type: MissionType::Espionage,
+            target,
+            region,
+            start_tick: self.tick,
+            duration: 20,
+            cost,
+            success_chance: success_chance.clamp(0.1, 0.95),
+            completed: false,
+        };
+
+        self.covert_ops
+            .entry(corp_id)
+            .or_insert_with(CovertOps::new)
+            .active_missions
+            .push(mission);
+    }
+
+    fn cmd_launch_sabotage(&mut self, target: EntityId, node: EntityId) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+
+        let target_security = self
+            .covert_ops
+            .get(&target)
+            .map(|c| c.security_level)
+            .unwrap_or(0);
+        let cost = 200_000 + target_security as Money * 200_000;
+
+        if let Some(fin) = self.financials.get(&corp_id) {
+            if fin.cash < cost {
+                return;
+            }
+        }
+        if let Some(fin) = self.financials.get_mut(&corp_id) {
+            fin.cash -= cost;
+        }
+
+        let attacker_security = self
+            .covert_ops
+            .get(&corp_id)
+            .map(|c| c.security_level)
+            .unwrap_or(0);
+        let detection_chance =
+            0.2 - attacker_security as f64 * 0.05 + target_security as f64 * 0.1;
+
+        let region = self
+            .positions
+            .get(&node)
+            .and_then(|p| p.region_id)
+            .unwrap_or(0);
+
+        let mission = Mission {
+            mission_type: MissionType::Sabotage,
+            target,
+            region,
+            start_tick: self.tick,
+            duration: 15,
+            cost,
+            success_chance: (1.0 - detection_chance).clamp(0.1, 0.95),
+            completed: false,
+        };
+
+        self.covert_ops
+            .entry(corp_id)
+            .or_insert_with(CovertOps::new)
+            .active_missions
+            .push(mission);
+    }
+
+    fn cmd_upgrade_security(&mut self, level: u32) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+
+        let cost = level as Money * 500_000;
+        if let Some(fin) = self.financials.get(&corp_id) {
+            if fin.cash < cost {
+                return;
+            }
+        }
+        if let Some(fin) = self.financials.get_mut(&corp_id) {
+            fin.cash -= cost;
+        }
+
+        let ops = self
+            .covert_ops
+            .entry(corp_id)
+            .or_insert_with(CovertOps::new);
+        ops.security_level = level;
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::SecurityUpgraded {
+                corporation: corp_id,
+                level,
+            },
+        );
+    }
+
+    // === Phase 10.4: Lobbying ===
+
+    fn cmd_start_lobbying(&mut self, region: EntityId, policy: &str, budget: Money) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+
+        if !self.regions.contains_key(&region) {
+            return;
+        }
+
+        if let Some(fin) = self.financials.get(&corp_id) {
+            if fin.cash < budget {
+                return;
+            }
+        }
+
+        let lobby_policy = match policy {
+            "ReduceTax" => LobbyPolicy::ReduceTax,
+            "RelaxZoning" => LobbyPolicy::RelaxZoning,
+            "FastTrackPermits" => LobbyPolicy::FastTrackPermits,
+            "IncreasedCompetitorBurden" => LobbyPolicy::IncreasedCompetitorBurden,
+            "SubsidyRequest" => LobbyPolicy::SubsidyRequest,
+            _ => return,
+        };
+
+        let campaign = LobbyingCampaign::new(corp_id, region, lobby_policy, budget, self.tick);
+        let campaign_id = self.allocate_entity();
+        self.lobbying_campaigns.insert(campaign_id, campaign);
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::LobbyingStarted {
+                corporation: corp_id,
+                region,
+                policy: policy.to_string(),
+            },
+        );
+    }
+
+    // === Phase 10.5: Cooperative Infrastructure ===
+
+    fn cmd_propose_co_ownership(
+        &mut self,
+        node: EntityId,
+        target_corp: EntityId,
+        share_pct: f64,
+    ) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+
+        // Verify player owns the node
+        let owner = match self.infra_nodes.get(&node) {
+            Some(n) => n.owner,
+            None => return,
+        };
+        if owner != corp_id {
+            return;
+        }
+
+        // Verify target exists and share is valid
+        if !self.corporations.contains_key(&target_corp) || share_pct <= 0.0 || share_pct >= 1.0 {
+            return;
+        }
+
+        // Add co-owner to ownership component
+        if let Some(ownership) = self.ownerships.get_mut(&node) {
+            // Check if already a co-owner
+            if ownership.co_owners.iter().any(|(id, _)| *id == target_corp) {
+                return;
+            }
+            ownership.co_owners.push((target_corp, share_pct));
+        }
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::CoOwnershipEstablished {
+                node,
+                partner: target_corp,
+                share_pct,
+            },
+        );
+    }
+
+    fn cmd_respond_co_ownership(&mut self, _proposal: EntityId, _accept: bool) {
+        // AI responds to co-ownership proposals — handled in AI system
+    }
+
+    fn cmd_propose_buyout(
+        &mut self,
+        node: EntityId,
+        target_corp: EntityId,
+        price: Money,
+    ) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+
+        // Check the target corp is a co-owner of this node
+        let is_co_owner = self
+            .ownerships
+            .get(&node)
+            .map(|o| o.co_owners.iter().any(|(id, _)| *id == target_corp))
+            .unwrap_or(false);
+        if !is_co_owner {
+            return;
+        }
+
+        if let Some(fin) = self.financials.get(&corp_id) {
+            if fin.cash < price {
+                return;
+            }
+        }
+
+        // Execute buyout
+        if let Some(fin) = self.financials.get_mut(&corp_id) {
+            fin.cash -= price;
+        }
+        if let Some(fin) = self.financials.get_mut(&target_corp) {
+            fin.cash += price;
+        }
+        if let Some(ownership) = self.ownerships.get_mut(&node) {
+            ownership.co_owners.retain(|(id, _)| *id != target_corp);
+        }
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::BuyoutCompleted {
+                node,
+                buyer: corp_id,
+                seller: target_corp,
+                price,
+            },
+        );
+    }
+
+    fn cmd_vote_upgrade(&mut self, node: EntityId, _approve: bool) {
+        // For player voting on co-owned upgrade — simplified: just upgrade if player approves
+        if _approve {
+            self.cmd_upgrade_node(node);
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::UpgradeVotePassed { node },
+            );
+        } else {
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::UpgradeVoteRejected { node },
+            );
+        }
     }
 }
 
@@ -1201,6 +2014,68 @@ mod tests {
         assert_eq!(world.financials[&corp_id].cash, initial_cash + 1_000_000);
         assert!(world.financials[&corp_id].debt > 0);
         assert!(!world.debt_instruments.is_empty());
+    }
+
+    #[test]
+    fn test_save_load_binary_roundtrip() {
+        let config = WorldConfig {
+            map_size: MapSize::Small,
+            ai_corporations: 1,
+            ..WorldConfig::default()
+        };
+        let mut world = GameWorld::new(config);
+        for _ in 0..10 {
+            world.tick();
+        }
+
+        let binary = world.save_game_binary().expect("save should succeed");
+        let loaded = GameWorld::load_game_binary(&binary).expect("load should succeed");
+
+        assert_eq!(world.current_tick(), loaded.current_tick());
+        assert_eq!(world.regions.len(), loaded.regions.len());
+        assert_eq!(world.corporations.len(), loaded.corporations.len());
+    }
+
+    #[test]
+    fn test_save_binary_corruption_detected() {
+        let config = WorldConfig {
+            map_size: MapSize::Small,
+            ai_corporations: 1,
+            ..WorldConfig::default()
+        };
+        let world = GameWorld::new(config);
+        let mut binary = world.save_game_binary().expect("save should succeed");
+
+        // Verify it loads fine unmodified
+        assert!(GameWorld::load_game_binary(&binary).is_ok());
+
+        // Corrupt a byte in the payload (after version + crc)
+        if binary.len() > 10 {
+            binary[10] ^= 0xFF;
+        }
+
+        let result = GameWorld::load_game_binary(&binary);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("CRC32 mismatch") || err.contains("decompress"),
+            "Expected corruption error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_save_binary_empty_data() {
+        let result = GameWorld::load_game_binary(&[]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Empty save data"));
+    }
+
+    #[test]
+    fn test_save_binary_unsupported_version() {
+        let result = GameWorld::load_game_binary(&[99, 0, 0, 0, 0]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unsupported save version"));
     }
 
     #[test]

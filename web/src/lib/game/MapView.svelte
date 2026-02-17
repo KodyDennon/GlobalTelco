@@ -7,7 +7,9 @@
 		selectedEntityType,
 		buildMode,
 		buildMenuParcel,
-		buildEdgeSource
+		buildEdgeSource,
+		activeOverlay,
+		tooltipData
 	} from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
 
@@ -68,16 +70,37 @@
 				window.addEventListener('entity-selected', handleEntitySelected as EventListener);
 				window.addEventListener('parcel-clicked', handleParcelClicked as EventListener);
 
+				// Subscribe to overlay changes
+				const overlaySub = activeOverlay.subscribe((overlay) => {
+					renderer?.setOverlay(overlay);
+				});
+
+				// Mouse move for tooltips
+				container.addEventListener('mousemove', handleMouseMove);
+				container.addEventListener('mouseleave', handleMouseLeave);
+
 				return () => {
 					clearInterval(interval);
+					overlaySub();
 					window.removeEventListener('entity-selected', handleEntitySelected as EventListener);
 					window.removeEventListener('parcel-clicked', handleParcelClicked as EventListener);
+					container.removeEventListener('mousemove', handleMouseMove);
+					container.removeEventListener('mouseleave', handleMouseLeave);
 				};
 			}
 		});
 
 		return () => unsub();
 	});
+
+	function handleMouseMove(e: MouseEvent) {
+		// Simple tooltip on hover — could be extended with raycasting for entity info
+		tooltipData.set(null); // Clear by default; entity hover sets it via raycaster
+	}
+
+	function handleMouseLeave() {
+		tooltipData.set(null);
+	}
 
 	onDestroy(() => {
 		if (frameId !== null) cancelAnimationFrame(frameId);

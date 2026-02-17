@@ -26,3 +26,6 @@ export const notificationCategories = persistentStore<Record<string, boolean>>('
 	research: true,
 	market: true
 });
+export const colorblindMode = persistentStore<'none' | 'protanopia' | 'deuteranopia' | 'tritanopia'>('gt_colorblind', 'none');
+export const uiScale = persistentStore<number>('gt_ui_scale', 1);
+export const showPerfMonitor = persistentStore<boolean>('gt_perf_monitor', false);

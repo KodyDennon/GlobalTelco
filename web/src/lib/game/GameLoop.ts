@@ -11,6 +11,9 @@ import {
 } from '$lib/stores/gameState';
 import { saveToSlot, loadFromSlot, getNextAutoSaveSlot, QUICK_SAVE_SLOT } from '$lib/saves/SaveManager';
 import { get } from 'svelte/store';
+import { audioManager } from '$lib/audio/AudioManager';
+import { buildMode, activePanel, buildEdgeSource, buildMenuParcel } from '$lib/stores/uiState';
+import { writable } from 'svelte/store';
 
 let running = false;
 let animFrameId: number | null = null;
@@ -20,6 +23,10 @@ let currentSpeed = 1; // ticks per second
 let lastAutoSaveTick = 0;
 const AUTO_SAVE_INTERVAL = 50; // ticks between auto-saves
 let gameConfig: object | undefined;
+
+// Performance profiling stores
+export const simTickTime = writable<number>(0);
+export const showPerfMonitor = writable<boolean>(false);
 
 function getTickInterval(): number {
 	switch (currentSpeed) {
@@ -50,7 +57,10 @@ function loop(timestamp: number) {
 
 		while (tickAccumulator >= interval) {
 			tickAccumulator -= interval;
+			const t0 = performance.now();
 			bridge.tick();
+			const t1 = performance.now();
+			simTickTime.set(Math.round((t1 - t0) * 100) / 100);
 		}
 	}
 
@@ -70,6 +80,14 @@ function updateStores() {
 		if (info.tick % 10 === 0) {
 			recordSnapshot(info.tick, corpData.revenue_per_tick, corpData.cost_per_tick, corpData.cash);
 		}
+
+		// Update ambient music intensity based on game state
+		if (corpData.cash !== undefined) {
+			const profitRatio = corpData.profit_per_tick / Math.max(1, corpData.revenue_per_tick || 1);
+			const cashHealth = Math.min(1, corpData.cash / 1_000_000);
+			const intensity = Math.max(0, Math.min(1, 0.5 - profitRatio * 0.3 - cashHealth * 0.2));
+			audioManager.setIntensity(intensity);
+		}
 	}
 
 	// Update less frequently (every 10 frames roughly)
@@ -83,6 +101,9 @@ function updateStores() {
 	const notifs = bridge.getNotifications();
 	if (notifs.length > 0) {
 		notifications.update((n) => [...notifs, ...n].slice(0, 50));
+		for (const notif of notifs) {
+			audioManager.playEventSound(notif.event);
+		}
 	}
 
 	// Auto-save check
@@ -98,8 +119,12 @@ async function performAutoSave(tick: number) {
 		const corp = get(playerCorp);
 		const slot = getNextAutoSaveSlot();
 		await saveToSlot(slot, slot, data, tick, corp?.name ?? 'Unknown', 'Normal', 'Internet');
-	} catch {
-		// Silent auto-save failure — don't disrupt gameplay
+	} catch (e) {
+		console.warn('[auto-save] Failed:', e);
+		notifications.update((n) => [
+			{ tick, event: 'AutoSaveFailed' },
+			...n
+		].slice(0, 50));
 	}
 }
 
@@ -108,6 +133,19 @@ export function start() {
 	running = true;
 	lastTickTime = performance.now();
 	tickAccumulator = 0;
+
+	// Register bridge error handler — pause game on WASM failure
+	bridge.setErrorHandler((error, context) => {
+		console.error(`WASM error in ${context}: ${error}`);
+		if (context === 'tick') {
+			setSpeed(0); // Pause on tick failures
+			notifications.update((n) => [
+				{ tick: 0, event: `WASMError: ${error}` },
+				...n
+			].slice(0, 50));
+		}
+	});
+
 	animFrameId = requestAnimationFrame(loop);
 	setupKeyboardShortcuts();
 }
@@ -119,6 +157,7 @@ export function stop() {
 		animFrameId = null;
 	}
 	teardownKeyboardShortcuts();
+	audioManager.dispose();
 }
 
 export function setSpeed(speed: number) {
@@ -147,6 +186,7 @@ export function togglePause() {
 export async function initGame(config?: object) {
 	await bridge.initWasm();
 	bridge.newGame(config as any);
+	await audioManager.init();
 	initialized.set(true);
 	updateStores();
 }
@@ -206,6 +246,61 @@ function handleKeyDown(e: KeyboardEvent) {
 		case ' ':
 			e.preventDefault();
 			togglePause();
+			break;
+		case 'b':
+		case 'B':
+			e.preventDefault();
+			buildMode.update((m) => {
+				if (m === 'node') {
+					buildMenuParcel.set(null);
+					return null;
+				}
+				buildEdgeSource.set(null);
+				return 'node';
+			});
+			break;
+		case 'e':
+		case 'E':
+			e.preventDefault();
+			buildMode.update((m) => {
+				if (m === 'edge') {
+					buildEdgeSource.set(null);
+					return null;
+				}
+				buildMenuParcel.set(null);
+				return 'edge';
+			});
+			break;
+		case '1':
+			e.preventDefault();
+			setSpeed(1);
+			break;
+		case '2':
+			e.preventDefault();
+			setSpeed(2);
+			break;
+		case '3':
+			e.preventDefault();
+			setSpeed(4);
+			break;
+		case '4':
+			e.preventDefault();
+			setSpeed(8);
+			break;
+		case 'Escape':
+			e.preventDefault();
+			// Close panel or cancel build mode
+			if (get(buildMode)) {
+				buildMode.set(null);
+				buildMenuParcel.set(null);
+				buildEdgeSource.set(null);
+			} else if (get(activePanel) !== 'none') {
+				activePanel.set('none');
+			}
+			break;
+		case 'F3':
+			e.preventDefault();
+			showPerfMonitor.update((v) => !v);
 			break;
 	}
 }

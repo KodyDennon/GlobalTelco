@@ -1,25 +1,29 @@
 <script lang="ts">
 	import { setSpeed, togglePause } from './GameLoop';
 	import { worldInfo } from '$lib/stores/gameState';
+	import { tr } from '$lib/i18n/index';
 
 	let currentSpeed = $derived($worldInfo.speed);
 
 	const speeds = [
-		{ label: '||', value: 0, key: 'Paused' },
-		{ label: '1x', value: 1, key: 'Normal' },
-		{ label: '2x', value: 2, key: 'Fast' },
-		{ label: '4x', value: 4, key: 'VeryFast' },
-		{ label: '8x', value: 8, key: 'Ultra' }
+		{ labelKey: 'speed.label_paused', value: 0, key: 'Paused', ariaKey: 'speed.paused' },
+		{ labelKey: 'speed.label_1x', value: 1, key: 'Normal', ariaKey: 'speed.normal' },
+		{ labelKey: 'speed.label_2x', value: 2, key: 'Fast', ariaKey: 'speed.fast' },
+		{ labelKey: 'speed.label_4x', value: 4, key: 'VeryFast', ariaKey: 'speed.very_fast' },
+		{ labelKey: 'speed.label_8x', value: 8, key: 'Ultra', ariaKey: 'speed.ultra' }
 	];
 </script>
 
-<div class="speed-controls">
+<div class="speed-controls" role="radiogroup" aria-label={$tr('speed.normal')}>
 	{#each speeds as s}
 		<button
 			class:active={currentSpeed === s.key}
 			onclick={() => setSpeed(s.value)}
+			role="radio"
+			aria-checked={currentSpeed === s.key}
+			aria-label={$tr(s.ariaKey)}
 		>
-			{s.label}
+			{$tr(s.labelKey)}
 		</button>
 	{/each}
 </div>
@@ -39,7 +43,7 @@
 		color: #9ca3af;
 		padding: 4px 10px;
 		font-size: 12px;
-		font-family: 'SF Mono', 'Fira Code', monospace;
+		font-family: var(--font-mono);
 		cursor: pointer;
 		border-radius: 3px;
 		transition: all 0.15s;

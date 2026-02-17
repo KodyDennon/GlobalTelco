@@ -13,6 +13,8 @@ pub struct InfraNode {
     pub maintenance_cost: Money,
     pub cell_index: usize,
     pub owner: EntityId,
+    pub insured: bool,
+    pub insurance_premium: Money,
 }
 
 impl InfraNode {
@@ -46,6 +48,8 @@ impl InfraNode {
             maintenance_cost: maintenance,
             cell_index,
             owner,
+            insured: false,
+            insurance_premium: cost / 50, // 2% of construction cost per tick cycle
         }
     }
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { buildMenuParcel, buildMode, buildEdgeSource } from '$lib/stores/uiState';
 	import { formatMoney } from '$lib/stores/gameState';
+	import { tr } from '$lib/i18n/index';
 	import * as bridge from '$lib/wasm/bridge';
 	import type { BuildOption } from '$lib/wasm/types';
 
@@ -30,10 +31,10 @@
 </script>
 
 {#if $buildMenuParcel}
-	<div class="build-menu">
+	<div class="build-menu" role="menu" aria-label={$tr('game.build_infra')}>
 		<div class="build-header">
-			<span>Build Infrastructure</span>
-			<button class="close-btn" onclick={close}>x</button>
+			<span>{$tr('game.build_infra')}</span>
+			<button class="close-btn" onclick={close} aria-label={$tr('common.close')}>x</button>
 		</div>
 		<div class="build-list">
 			{#each options as opt}
@@ -42,6 +43,7 @@
 					class:disabled={!opt.affordable}
 					onclick={() => build(opt)}
 					disabled={!opt.affordable}
+					role="menuitem"
 				>
 					<div class="opt-info">
 						<span class="opt-name">{opt.label}</span>

@@ -1,5 +1,6 @@
 mod auth;
 mod config;
+mod db;
 mod routes;
 mod state;
 mod tick;
@@ -40,8 +41,31 @@ async fn main() {
         }
     );
 
+    // Connect to PostgreSQL if DATABASE_URL is set
+    #[cfg(feature = "postgres")]
+    let database = if let Some(ref url) = config.database_url {
+        match db::Database::connect(url).await {
+            Ok(db) => {
+                info!("Connected to PostgreSQL");
+                if let Err(e) = db.run_migrations().await {
+                    tracing::error!("Failed to run migrations: {e}");
+                }
+                Some(db)
+            }
+            Err(e) => {
+                tracing::error!("Failed to connect to PostgreSQL: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    #[cfg(not(feature = "postgres"))]
+    let database: Option<db::Database> = None;
+
     // Create shared state
-    let state = Arc::new(AppState::new(config.auth.clone()));
+    let state = Arc::new(AppState::new(config.auth.clone(), database));
 
     // Create a default world for local testing
     let default_world_id = state
@@ -56,6 +80,9 @@ async fn main() {
 
     // Start tick loop for the default world
     if let Some(world) = state.get_world(&default_world_id).await {
+        #[cfg(feature = "postgres")]
+        tick::spawn_world_tick_loop(world, state.db.clone());
+        #[cfg(not(feature = "postgres"))]
         tick::spawn_world_tick_loop(world);
     }
 

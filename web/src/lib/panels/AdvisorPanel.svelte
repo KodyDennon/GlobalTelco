@@ -2,6 +2,7 @@
 	import { playerCorp, formatMoney, regions, cities } from '$lib/stores/gameState';
 	import { activePanel } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
+	import { tr, t } from '$lib/i18n/index';
 
 	interface Suggestion {
 		priority: 'critical' | 'warning' | 'info';
@@ -16,48 +17,49 @@
 		if (!corp) return;
 
 		const s: Suggestion[] = [];
+		const translate = $tr;
 
 		// Financial health
 		if (corp.cash < 0) {
-			s.push({ priority: 'critical', title: 'Negative Cash', detail: 'Take a loan or reduce expenses immediately.' });
+			s.push({ priority: 'critical', title: translate('advisor.negative_cash_title'), detail: translate('advisor.negative_cash_detail') });
 		} else if (corp.cash < 1_000_000) {
-			s.push({ priority: 'warning', title: 'Low Cash Reserves', detail: 'Consider reducing spending or taking a small loan.' });
+			s.push({ priority: 'warning', title: translate('advisor.low_cash_title'), detail: translate('advisor.low_cash_detail') });
 		}
 
 		if (corp.profit_per_tick < 0) {
-			s.push({ priority: 'warning', title: 'Operating at a Loss', detail: `Losing ${formatMoney(Math.abs(corp.profit_per_tick))}/tick. Build revenue-generating infrastructure.` });
+			s.push({ priority: 'warning', title: translate('advisor.operating_loss_title'), detail: translate('advisor.operating_loss_detail', { amount: formatMoney(Math.abs(corp.profit_per_tick)) }) });
 		}
 
 		// Infrastructure
 		if (corp.infrastructure_count === 0) {
-			s.push({ priority: 'critical', title: 'No Infrastructure', detail: 'Build your first cell tower to start generating revenue.' });
+			s.push({ priority: 'critical', title: translate('advisor.no_infra_title'), detail: translate('advisor.no_infra_detail') });
 		} else if (corp.infrastructure_count < 5) {
-			s.push({ priority: 'info', title: 'Expand Network', detail: 'Build more nodes and connect them to increase coverage and revenue.' });
+			s.push({ priority: 'info', title: translate('advisor.expand_title'), detail: translate('advisor.expand_detail') });
 		}
 
 		// Check damaged nodes
 		const damaged = bridge.getDamagedNodes(corp.id);
 		if (damaged.length > 0) {
-			s.push({ priority: 'warning', title: `${damaged.length} Damaged Node(s)`, detail: 'Repair damaged infrastructure to restore capacity.' });
+			s.push({ priority: 'warning', title: translate('advisor.damaged_title', { count: damaged.length }), detail: translate('advisor.damaged_detail') });
 		}
 
 		// Check unmet demand
 		const regs = $regions;
 		const highDemandRegions = regs.filter((r) => r.population > 100000);
 		if (highDemandRegions.length > 0 && corp.infrastructure_count < highDemandRegions.length * 2) {
-			s.push({ priority: 'info', title: 'Unmet Market Demand', detail: 'High-population regions need more infrastructure coverage.' });
+			s.push({ priority: 'info', title: translate('advisor.demand_title'), detail: translate('advisor.demand_detail') });
 		}
 
 		// Research
 		const research = bridge.getResearchState();
 		const activeResearch = research.find((r) => r.researcher === corp.id && !r.completed);
 		if (!activeResearch) {
-			s.push({ priority: 'info', title: 'No Active Research', detail: 'Start researching to gain competitive advantages.' });
+			s.push({ priority: 'info', title: translate('advisor.no_research_title'), detail: translate('advisor.no_research_detail') });
 		}
 
 		// Credit rating
 		if (corp.credit_rating === 'CCC' || corp.credit_rating === 'D') {
-			s.push({ priority: 'critical', title: 'Poor Credit Rating', detail: 'Reduce debt and increase revenue to improve your rating.' });
+			s.push({ priority: 'critical', title: translate('advisor.poor_credit_title'), detail: translate('advisor.poor_credit_detail') });
 		}
 
 		suggestions = s;
@@ -76,19 +78,19 @@
 	}
 </script>
 
-<div class="panel">
+<div class="panel" role="region" aria-label={$tr('panels.advisor')}>
 	<div class="panel-header">
-		<span class="title">Advisor</span>
+		<span class="title">{$tr('panels.advisor')}</span>
 		<button class="close" onclick={close}>x</button>
 	</div>
 
 	{#if suggestions.length === 0}
 		<div class="section">
-			<div class="all-good">Everything looks good! Keep expanding your network.</div>
+			<div class="all-good">{$tr('panels.all_good')}</div>
 		</div>
 	{:else}
 		<div class="section">
-			<h3>Suggestions ({suggestions.length})</h3>
+			<h3>{$tr('panels.suggestions', { count: suggestions.length })}</h3>
 			{#each suggestions as sug}
 				<div class="suggestion">
 					<div class="sug-header">

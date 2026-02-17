@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { notifications } from '$lib/stores/gameState';
+	import { tr } from '$lib/i18n/index';
 
 	let expanded = $state(false);
 
@@ -38,12 +39,12 @@
 </script>
 
 {#if hasNotifs}
-	<div class="feed" class:expanded>
-		<div class="feed-header" onclick={() => (expanded = !expanded)}>
-			<span class="feed-title">Events</span>
+	<div class="feed" class:expanded role="log" aria-live="polite">
+		<button class="feed-header" onclick={() => (expanded = !expanded)}>
+			<span class="feed-title">{$tr('game.events')}</span>
 			<span class="feed-count">{$notifications.length}</span>
 			<span class="toggle">{expanded ? 'v' : '^'}</span>
-		</div>
+		</button>
 		<div class="feed-list">
 			{#each recentNotifs as notif}
 				{@const cat = getCategory(notif.event)}
@@ -84,8 +85,12 @@
 		gap: 8px;
 		padding: 6px 10px;
 		cursor: pointer;
+		border: none;
 		border-bottom: 1px solid var(--border);
+		background: transparent;
+		width: 100%;
 		font-size: 11px;
+		color: inherit;
 	}
 
 	.feed-title {

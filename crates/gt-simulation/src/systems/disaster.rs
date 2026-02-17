@@ -74,6 +74,28 @@ pub fn run(world: &mut GameWorld) {
                 if let Some(cap) = world.capacities.get_mut(&node_id) {
                     cap.max_throughput *= 1.0 - severity * 0.2;
                 }
+
+                // Insurance payout: covers 60% of repair cost for insured nodes
+                let is_insured = world.infra_nodes.get(&node_id).map(|n| n.insured).unwrap_or(false);
+                if is_insured {
+                    let repair_cost = world.infra_nodes.get(&node_id)
+                        .map(|n| (n.construction_cost as f64 * damage * 0.2) as i64)
+                        .unwrap_or(0);
+                    let payout = (repair_cost as f64 * 0.6) as i64;
+                    let owner = world.infra_nodes.get(&node_id).map(|n| n.owner);
+                    if let Some(owner_id) = owner {
+                        if let Some(fin) = world.financials.get_mut(&owner_id) {
+                            fin.cash += payout;
+                        }
+                        world.event_queue.push(
+                            tick,
+                            gt_common::events::GameEvent::InsurancePayout {
+                                entity: node_id,
+                                amount: payout,
+                            },
+                        );
+                    }
+                }
             }
 
             // Population displacement for affected cities

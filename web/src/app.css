@@ -51,7 +51,6 @@ body {
 	background: var(--bg-primary);
 	color: var(--text-primary);
 	font-family: var(--font-sans);
-	font-size: 14px;
 	line-height: 1.5;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
@@ -86,4 +85,67 @@ body {
 :focus-visible {
 	outline: 2px solid var(--blue);
 	outline-offset: 2px;
+}
+
+/* UI Scaling */
+html {
+	font-size: calc(14px * var(--ui-scale, 1));
+}
+
+body {
+	font-size: 1rem;
+}
+
+/* Colorblind Mode Overrides */
+[data-colorblind="protanopia"] {
+	--green: #2196F3;
+	--green-light: #64B5F6;
+	--green-bg: rgba(33, 150, 243, 0.2);
+	--green-border: rgba(33, 150, 243, 0.3);
+	--red: #FF9800;
+	--red-light: #FFB74D;
+	--red-bg: rgba(255, 152, 0, 0.2);
+}
+
+[data-colorblind="deuteranopia"] {
+	--green: #03A9F4;
+	--green-light: #4FC3F7;
+	--green-bg: rgba(3, 169, 244, 0.2);
+	--green-border: rgba(3, 169, 244, 0.3);
+	--red: #FF5722;
+	--red-light: #FF8A65;
+	--red-bg: rgba(255, 87, 34, 0.2);
+}
+
+[data-colorblind="tritanopia"] {
+	--blue: #E91E63;
+	--blue-light: #F06292;
+	--amber: #4CAF50;
+	--amber-bg: rgba(76, 175, 80, 0.2);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	*, *::before, *::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}
+
+/* High contrast */
+@media (prefers-contrast: more) {
+	:root {
+		--text-primary: #ffffff;
+		--text-secondary: #e5e7eb;
+		--text-muted: #d1d5db;
+		--text-dim: #9ca3af;
+		--border: rgba(255, 255, 255, 0.3);
+		--border-light: rgba(255, 255, 255, 0.2);
+		--green: #34d399;
+		--red: #f87171;
+		--amber: #fcd34d;
+		--blue: #93c5fd;
+	}
 }

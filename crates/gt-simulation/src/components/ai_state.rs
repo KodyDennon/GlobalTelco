@@ -7,6 +7,8 @@ pub struct AiState {
     pub strategy: AIStrategy,
     pub aggression: f64,
     pub risk_tolerance: f64,
+    /// When true, this is a proxy for a disconnected player — policy-only execution, no strategic changes
+    pub proxy_mode: bool,
 }
 
 impl AiState {
@@ -22,6 +24,7 @@ impl AiState {
             strategy: AIStrategy::Expand,
             aggression,
             risk_tolerance,
+            proxy_mode: false,
         }
     }
 }

@@ -20,6 +20,17 @@ const CORP_COLORS = [
 	0x10b981, 0x3b82f6, 0xf59e0b, 0xef4444, 0x8b5cf6, 0xec4899, 0x14b8a6, 0xf97316
 ];
 
+// Edge styling per type
+const EDGE_STYLES: Record<string, { color: number; opacity: number; dashSize?: number; gapSize?: number; lineWidth: number }> = {
+	FiberLocal: { color: 0x10b981, opacity: 0.5, dashSize: 0.8, gapSize: 0.4, lineWidth: 1 },
+	FiberRegional: { color: 0x3b82f6, opacity: 0.6, lineWidth: 1 },
+	FiberNational: { color: 0x6366f1, opacity: 0.7, lineWidth: 2 },
+	Copper: { color: 0xa16207, opacity: 0.4, lineWidth: 1 },
+	Microwave: { color: 0x06b6d4, opacity: 0.5, dashSize: 1.2, gapSize: 0.6, lineWidth: 1 },
+	Satellite: { color: 0xfbbf24, opacity: 0.4, dashSize: 2.0, gapSize: 1.0, lineWidth: 1 },
+	Submarine: { color: 0x2563eb, opacity: 0.6, dashSize: 1.5, gapSize: 0.5, lineWidth: 2 }
+};
+
 export class MapRenderer {
 	private scene: THREE.Scene;
 	private camera: THREE.OrthographicCamera;
@@ -30,6 +41,7 @@ export class MapRenderer {
 	private oceanGroup: THREE.Group; // Layer 1: Ocean base
 	private landGroup: THREE.Group; // Layer 2: Land masses
 	private borderGroup: THREE.Group; // Layer 3: Region borders
+	private cityGlowGroup: THREE.Group; // Layer 3.5: City glow lights
 	private cityGroup: THREE.Group; // Layer 4: Cities
 	private edgeGroup: THREE.Group; // Layer 5a: Infrastructure edges
 	private infraGroup: THREE.Group; // Layer 5b: Infrastructure nodes
@@ -52,6 +64,12 @@ export class MapRenderer {
 
 	// Cached data for ownership overlay
 	private corpColorMap: Map<number, number> = new Map();
+
+	// Overlay state
+	private activeOverlay: string = 'none';
+	private overlayGroup: THREE.Group; // Dedicated overlay layer
+	private cachedCells: GridCell[] = [];
+	private cachedRegions: Region[] = [];
 
 	constructor(container: HTMLElement) {
 		this.container = container;
@@ -82,17 +100,21 @@ export class MapRenderer {
 		this.oceanGroup = new THREE.Group();
 		this.landGroup = new THREE.Group();
 		this.borderGroup = new THREE.Group();
+		this.cityGlowGroup = new THREE.Group();
 		this.ownerGroup = new THREE.Group();
 		this.cityGroup = new THREE.Group();
 		this.edgeGroup = new THREE.Group();
 		this.infraGroup = new THREE.Group();
 		this.selectionGroup = new THREE.Group();
 		this.labelGroup = new THREE.Group();
+		this.overlayGroup = new THREE.Group();
 
 		this.scene.add(this.oceanGroup);
 		this.scene.add(this.landGroup);
 		this.scene.add(this.borderGroup);
+		this.scene.add(this.cityGlowGroup);
 		this.scene.add(this.ownerGroup);
+		this.scene.add(this.overlayGroup);
 		this.scene.add(this.edgeGroup);
 		this.scene.add(this.cityGroup);
 		this.scene.add(this.infraGroup);
@@ -112,6 +134,9 @@ export class MapRenderer {
 		const cells = bridge.getGridCells();
 		const citiesData = bridge.getCities();
 		const regions = bridge.getRegions();
+
+		this.cachedCells = cells;
+		this.cachedRegions = regions;
 
 		this.buildOcean();
 		this.buildLand(cells);
@@ -196,6 +221,7 @@ export class MapRenderer {
 
 	private buildCities(citiesData: City[]) {
 		this.cityGroup.clear();
+		this.cityGlowGroup.clear();
 
 		for (const city of citiesData) {
 			const size = Math.max(0.5, Math.log10(city.population) * 0.5);
@@ -206,6 +232,19 @@ export class MapRenderer {
 			mesh.userData = { type: 'city', id: city.id, name: city.name };
 			this.cityGroup.add(mesh);
 			this.entityMeshMap.set(city.id, mesh);
+
+			// City glow — warm orange glow proportional to population
+			const glowOpacity = 0.15 + Math.min(0.25, (city.population / 1_000_000) * 0.25);
+			const glowRadius = size * 3 + Math.log10(Math.max(city.population, 1)) * 0.8;
+			const glowGeo = new THREE.CircleGeometry(glowRadius, 16);
+			const glowMat = new THREE.MeshBasicMaterial({
+				color: 0xffa500,
+				opacity: glowOpacity,
+				transparent: true
+			});
+			const glow = new THREE.Mesh(glowGeo, glowMat);
+			glow.position.set(city.x, city.y, 0.8);
+			this.cityGlowGroup.add(glow);
 		}
 	}
 
@@ -284,28 +323,43 @@ export class MapRenderer {
 			const color = CORP_COLORS[i % CORP_COLORS.length];
 			const infra = bridge.getInfrastructureList(corp.id);
 
-			// Draw edges
+			// Draw edges with type-specific styling
 			for (const edge of infra.edges) {
+				const style = EDGE_STYLES[edge.edge_type] ?? { color, opacity: 0.6, lineWidth: 1 };
 				const points = [
 					new THREE.Vector3(edge.src_x, edge.src_y, 1.5),
 					new THREE.Vector3(edge.dst_x, edge.dst_y, 1.5)
 				];
 				const geo = new THREE.BufferGeometry().setFromPoints(points);
-				const mat = new THREE.LineBasicMaterial({
-					color,
-					opacity: 0.6,
-					transparent: true
-				});
-				const line = new THREE.Line(geo, mat);
-				this.edgeGroup.add(line);
+
+				if (style.dashSize) {
+					const mat = new THREE.LineDashedMaterial({
+						color: style.color,
+						opacity: style.opacity,
+						transparent: true,
+						dashSize: style.dashSize,
+						gapSize: style.gapSize ?? 0.5
+					});
+					const line = new THREE.Line(geo, mat);
+					line.computeLineDistances();
+					this.edgeGroup.add(line);
+				} else {
+					const mat = new THREE.LineBasicMaterial({
+						color: style.color,
+						opacity: style.opacity,
+						transparent: true
+					});
+					const line = new THREE.Line(geo, mat);
+					this.edgeGroup.add(line);
+				}
 			}
 
-			// Draw nodes
+			// Draw nodes with type-specific shapes
 			const positions: THREE.Vector3[] = [];
 			for (const node of infra.nodes) {
 				const size = node.under_construction ? 0.4 : 0.6;
-				const geo = new THREE.CircleGeometry(size, 8);
 				const nodeColor = node.under_construction ? 0x6b7280 : color;
+				const geo = this.getNodeGeometry(node.node_type, size);
 				const mat = new THREE.MeshBasicMaterial({ color: nodeColor });
 				const mesh = new THREE.Mesh(geo, mat);
 				mesh.position.set(node.x, node.y, 2);
@@ -313,6 +367,14 @@ export class MapRenderer {
 				this.infraGroup.add(mesh);
 				this.entityMeshMap.set(node.id, mesh);
 				positions.push(new THREE.Vector3(node.x, node.y, 0));
+
+				// Company badge — first letter of company name
+				if (!node.under_construction && corp.name) {
+					const badge = this.createTextSprite(corp.name[0], color, 0.3);
+					badge.position.set(node.x + 0.8, node.y + 0.8, 4);
+					badge.userData = { labelType: 'badge', minZoom: 3.0 };
+					this.infraGroup.add(badge);
+				}
 			}
 			if (positions.length > 0) {
 				corpPositions.set(corp.id, positions);
@@ -353,6 +415,56 @@ export class MapRenderer {
 				mesh.position.set(pos.x, pos.y, 0.3);
 				this.ownerGroup.add(mesh);
 			}
+		}
+	}
+
+	private getNodeGeometry(nodeType: string, size: number): THREE.BufferGeometry {
+		switch (nodeType) {
+			case 'CentralOffice':
+				// Square
+				return new THREE.PlaneGeometry(size * 1.6, size * 1.6);
+			case 'CellTower':
+				// Triangle
+				return new THREE.CircleGeometry(size, 3);
+			case 'DataCenter':
+				// Pentagon
+				return new THREE.CircleGeometry(size * 1.1, 5);
+			case 'ExchangePoint':
+				// Hexagon
+				return new THREE.CircleGeometry(size, 6);
+			case 'SatelliteGround': {
+				// Star (5-pointed via custom shape)
+				const shape = new THREE.Shape();
+				for (let j = 0; j < 5; j++) {
+					const outerAngle = (j * 2 * Math.PI) / 5 - Math.PI / 2;
+					const innerAngle = outerAngle + Math.PI / 5;
+					const ox = Math.cos(outerAngle) * size;
+					const oy = Math.sin(outerAngle) * size;
+					const ix = Math.cos(innerAngle) * size * 0.45;
+					const iy = Math.sin(innerAngle) * size * 0.45;
+					if (j === 0) shape.moveTo(ox, oy);
+					else shape.lineTo(ox, oy);
+					shape.lineTo(ix, iy);
+				}
+				shape.closePath();
+				return new THREE.ShapeGeometry(shape);
+			}
+			case 'SubmarineLanding': {
+				// Diamond (rotated square)
+				const s = size * 1.2;
+				const dShape = new THREE.Shape();
+				dShape.moveTo(0, s);
+				dShape.lineTo(s * 0.7, 0);
+				dShape.lineTo(0, -s);
+				dShape.lineTo(-s * 0.7, 0);
+				dShape.closePath();
+				return new THREE.ShapeGeometry(dShape);
+			}
+			case 'WirelessRelay':
+				// Small circle with more segments
+				return new THREE.CircleGeometry(size * 0.8, 12);
+			default:
+				return new THREE.CircleGeometry(size, 8);
 		}
 	}
 
@@ -512,6 +624,198 @@ export class MapRenderer {
 			this.updateCamera();
 		});
 		observer.observe(this.container);
+	}
+
+	setOverlay(overlay: string) {
+		this.activeOverlay = overlay;
+		this.overlayGroup.clear();
+
+		// Toggle ownership overlay visibility based on overlay type
+		this.ownerGroup.visible = overlay === 'none' || overlay === 'ownership';
+
+		if (overlay === 'none') return;
+
+		switch (overlay) {
+			case 'terrain':
+				this.renderTerrainOverlay();
+				break;
+			case 'ownership':
+				this.renderOwnershipOverlay();
+				break;
+			case 'demand':
+				this.renderDemandOverlay();
+				break;
+			case 'coverage':
+				this.renderCoverageOverlay();
+				break;
+			case 'disaster':
+				this.renderDisasterRiskOverlay();
+				break;
+			case 'congestion':
+				this.renderCongestionOverlay();
+				break;
+		}
+	}
+
+	private renderTerrainOverlay() {
+		// Enhance terrain visibility with stronger colors
+		const cellSize = 1.8;
+		const terrainOverlayColors: Record<string, number> = {
+			Urban: 0xfbbf24,
+			Suburban: 0x8bc34a,
+			Rural: 0x4caf50,
+			Mountainous: 0x9e9e9e,
+			Desert: 0xff9800,
+			Coastal: 0x00bcd4,
+			OceanShallow: 0x0288d1,
+			OceanDeep: 0x01579b,
+			Tundra: 0xb0bec5,
+			Frozen: 0xe3f2fd
+		};
+
+		for (const cell of this.cachedCells) {
+			const color = terrainOverlayColors[cell.terrain];
+			if (!color) continue;
+			const geo = new THREE.CircleGeometry(cellSize, 6);
+			const mat = new THREE.MeshBasicMaterial({
+				color,
+				opacity: 0.35,
+				transparent: true
+			});
+			const mesh = new THREE.Mesh(geo, mat);
+			mesh.position.set(cell.lon, cell.lat, 0.2);
+			this.overlayGroup.add(mesh);
+		}
+	}
+
+	private renderOwnershipOverlay() {
+		// Make ownership circles larger and more opaque
+		if (!bridge.isInitialized()) return;
+
+		const corps = bridge.getAllCorporations();
+		this.buildCorpColorMap(corps);
+
+		for (let i = 0; i < corps.length; i++) {
+			const corp = corps[i];
+			const color = CORP_COLORS[i % CORP_COLORS.length];
+			const infra = bridge.getInfrastructureList(corp.id);
+
+			for (const node of infra.nodes) {
+				const geo = new THREE.CircleGeometry(5.0, 16);
+				const mat = new THREE.MeshBasicMaterial({
+					color,
+					opacity: 0.15,
+					transparent: true
+				});
+				const mesh = new THREE.Mesh(geo, mat);
+				mesh.position.set(node.x, node.y, 0.25);
+				this.overlayGroup.add(mesh);
+			}
+		}
+	}
+
+	private renderDemandOverlay() {
+		// Color regions by population density (demand proxy)
+		for (const region of this.cachedRegions) {
+			const pop = region.population ?? 0;
+			// Normalize: low pop = blue, high pop = red
+			const intensity = Math.min(1.0, pop / 500000);
+			const r = Math.floor(intensity * 255);
+			const b = Math.floor((1 - intensity) * 255);
+			const color = (r << 16) | (50 << 8) | b;
+
+			const radius = Math.sqrt(region.cell_count) * 1.5;
+			const geo = new THREE.CircleGeometry(radius, 24);
+			const mat = new THREE.MeshBasicMaterial({
+				color,
+				opacity: 0.25,
+				transparent: true
+			});
+			const mesh = new THREE.Mesh(geo, mat);
+			mesh.position.set(region.center_lon, region.center_lat, 0.2);
+			this.overlayGroup.add(mesh);
+		}
+	}
+
+	private renderCoverageOverlay() {
+		// Show infrastructure coverage areas in green
+		if (!bridge.isInitialized()) return;
+
+		const corps = bridge.getAllCorporations();
+		for (const corp of corps) {
+			const infra = bridge.getInfrastructureList(corp.id);
+
+			for (const node of infra.nodes) {
+				if (node.under_construction) continue;
+				// Coverage radius based on node capacity
+				const radius = 4.0;
+				const geo = new THREE.CircleGeometry(radius, 20);
+				const mat = new THREE.MeshBasicMaterial({
+					color: 0x10b981,
+					opacity: 0.12,
+					transparent: true
+				});
+				const mesh = new THREE.Mesh(geo, mat);
+				mesh.position.set(node.x, node.y, 0.2);
+				this.overlayGroup.add(mesh);
+			}
+		}
+	}
+
+	private renderDisasterRiskOverlay() {
+		// Color regions by disaster risk: green (low) → yellow → red (high)
+		for (const region of this.cachedRegions) {
+			const risk = region.disaster_risk ?? 0;
+			const intensity = Math.min(1.0, risk * 5); // Scale up for visibility
+			const r = Math.floor(intensity * 255);
+			const g = Math.floor((1 - intensity) * 180);
+			const color = (r << 16) | (g << 8) | 0;
+
+			const radius = Math.sqrt(region.cell_count) * 1.5;
+			const geo = new THREE.CircleGeometry(radius, 24);
+			const mat = new THREE.MeshBasicMaterial({
+				color,
+				opacity: 0.3,
+				transparent: true
+			});
+			const mesh = new THREE.Mesh(geo, mat);
+			mesh.position.set(region.center_lon, region.center_lat, 0.2);
+			this.overlayGroup.add(mesh);
+		}
+	}
+
+	private renderCongestionOverlay() {
+		// Show node congestion: green (low utilization) → red (high utilization)
+		if (!bridge.isInitialized()) return;
+
+		const corps = bridge.getAllCorporations();
+		for (const corp of corps) {
+			const infra = bridge.getInfrastructureList(corp.id);
+
+			for (const node of infra.nodes) {
+				if (node.under_construction) continue;
+				const util = node.utilization;
+				const r = Math.floor(Math.min(1, util * 2) * 255);
+				const g = Math.floor(Math.max(0, 1 - util) * 200);
+				const color = (r << 16) | (g << 8) | 0;
+
+				const radius = 3.0 + util * 3.0; // Larger circles for more congested nodes
+				const geo = new THREE.CircleGeometry(radius, 16);
+				const mat = new THREE.MeshBasicMaterial({
+					color,
+					opacity: 0.25,
+					transparent: true
+				});
+				const mesh = new THREE.Mesh(geo, mat);
+				mesh.position.set(node.x, node.y, 0.2);
+				this.overlayGroup.add(mesh);
+			}
+		}
+	}
+
+	getRendererInfo(): { calls: number; triangles: number } {
+		const info = this.renderer.info.render;
+		return { calls: info.calls, triangles: info.triangles };
 	}
 
 	render() {

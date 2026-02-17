@@ -78,14 +78,119 @@ pub fn run(world: &mut GameWorld) {
             corp.credit_rating = new_rating;
         }
 
-        // Bankruptcy check
-        if new_rating == CreditRating::D && cash < -cost * 90 {
-            world.event_queue.push(
-                tick,
-                gt_common::events::GameEvent::Bankruptcy {
-                    corporation: corp_id,
-                },
-            );
+        // Enhanced insolvency detection
+        let is_insolvent = new_rating == CreditRating::D && cash < -cost * 90 && debt > cost * 90;
+        let is_player = world
+            .corporations
+            .get(&corp_id)
+            .map(|c| c.is_player)
+            .unwrap_or(false);
+
+        if is_insolvent {
+            if is_player {
+                // Player gets a warning and must choose bailout or bankruptcy via command
+                world.event_queue.push(
+                    tick,
+                    gt_common::events::GameEvent::InsolvencyWarning {
+                        corporation: corp_id,
+                    },
+                );
+            } else {
+                // AI auto-decides based on archetype
+                let archetype = world
+                    .ai_states
+                    .get(&corp_id)
+                    .map(|a| a.archetype);
+
+                let take_bailout = match archetype {
+                    Some(gt_common::types::AIArchetype::AggressiveExpander)
+                    | Some(gt_common::types::AIArchetype::TechInnovator) => true,
+                    Some(gt_common::types::AIArchetype::BudgetOperator)
+                    | Some(gt_common::types::AIArchetype::DefensiveConsolidator) => {
+                        debt < cost * 200 // Only bailout if debt isn't too extreme
+                    }
+                    None => false,
+                };
+
+                if take_bailout {
+                    // AI takes bailout
+                    let bailout_amount = cost * 180;
+                    let interest_rate = 0.30;
+                    let debt_inst =
+                        crate::components::DebtInstrument::new(corp_id, bailout_amount, interest_rate, 365);
+                    let payment = debt_inst.payment_per_tick;
+                    let loan_id = world.allocate_entity();
+                    world.debt_instruments.insert(loan_id, debt_inst);
+
+                    if let Some(fin) = world.financials.get_mut(&corp_id) {
+                        fin.cash += bailout_amount;
+                        fin.debt += bailout_amount;
+                        fin.cost_per_tick += payment;
+                    }
+                    if let Some(corp) = world.corporations.get_mut(&corp_id) {
+                        corp.credit_rating = CreditRating::CCC;
+                    }
+
+                    world.event_queue.push(
+                        tick,
+                        gt_common::events::GameEvent::BailoutTaken {
+                            corporation: corp_id,
+                            amount: bailout_amount,
+                            interest_rate,
+                        },
+                    );
+                } else {
+                    // AI declares bankruptcy
+                    world.event_queue.push(
+                        tick,
+                        gt_common::events::GameEvent::BankruptcyDeclared {
+                            corporation: corp_id,
+                        },
+                    );
+
+                    // Create auction for assets
+                    let assets: Vec<u64> = world
+                        .corp_infra_nodes
+                        .get(&corp_id)
+                        .cloned()
+                        .unwrap_or_default();
+
+                    if !assets.is_empty() {
+                        let auction_id = world.allocate_entity();
+                        let auction =
+                            crate::components::Auction::new(corp_id, assets.clone(), tick, 50);
+                        world.auctions.insert(auction_id, auction);
+
+                        world.event_queue.push(
+                            tick,
+                            gt_common::events::GameEvent::AuctionStarted {
+                                auction: auction_id,
+                                seller: corp_id,
+                                asset_count: assets.len() as u32,
+                            },
+                        );
+                    }
+
+                    // Zero out finances
+                    if let Some(fin) = world.financials.get_mut(&corp_id) {
+                        fin.cash = 0;
+                        fin.revenue_per_tick = 0;
+                        fin.cost_per_tick = 0;
+                        fin.debt = 0;
+                    }
+
+                    // Remove debts
+                    let debts: Vec<u64> = world
+                        .debt_instruments
+                        .iter()
+                        .filter(|(_, d)| d.holder == corp_id)
+                        .map(|(&id, _)| id)
+                        .collect();
+                    for id in debts {
+                        world.debt_instruments.remove(&id);
+                    }
+                }
+            }
         }
     }
 }

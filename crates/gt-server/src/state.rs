@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use serde::Serialize;
 use tokio::sync::{broadcast, Mutex, RwLock};
 use uuid::Uuid;
 
@@ -8,6 +9,10 @@ use gt_common::types::{EntityId, WorldConfig};
 use gt_simulation::world::GameWorld;
 
 use crate::auth::AuthConfig;
+use crate::db::Database;
+
+/// Shared database handle (wrapped in Arc for cheap cloning across tasks)
+pub type SharedDb = Option<Arc<Database>>;
 
 /// A player connected to the server
 #[derive(Debug, Clone)]
@@ -16,8 +21,18 @@ pub struct ConnectedPlayer {
     pub id: Uuid,
     pub username: String,
     pub is_guest: bool,
+    pub is_admin: bool,
     pub world_id: Option<Uuid>,
     pub corp_id: Option<EntityId>,
+}
+
+/// A single entry in the server audit log
+#[derive(Debug, Clone, Serialize)]
+pub struct AuditEntry {
+    pub tick: u64,
+    pub player_id: Uuid,
+    pub command_type: String,
+    pub timestamp: u64,
 }
 
 /// A running game world instance
@@ -77,20 +92,25 @@ pub struct AccountRecord {
 }
 
 /// Global server state shared across all handlers
+#[allow(dead_code)]
 pub struct AppState {
     pub auth_config: AuthConfig,
     pub worlds: RwLock<HashMap<Uuid, Arc<WorldInstance>>>,
     pub players: RwLock<HashMap<Uuid, ConnectedPlayer>>,
     pub accounts: RwLock<HashMap<String, AccountRecord>>, // username → account
+    pub audit_log: RwLock<Vec<AuditEntry>>,
+    pub db: SharedDb,
 }
 
 impl AppState {
-    pub fn new(auth_config: AuthConfig) -> Self {
+    pub fn new(auth_config: AuthConfig, db: Option<Database>) -> Self {
         Self {
             auth_config,
             worlds: RwLock::new(HashMap::new()),
             players: RwLock::new(HashMap::new()),
             accounts: RwLock::new(HashMap::new()),
+            audit_log: RwLock::new(Vec::new()),
+            db: db.map(Arc::new),
         }
     }
 
@@ -134,6 +154,32 @@ impl AppState {
         email: Option<String>,
         password_hash: String,
     ) -> Result<AccountRecord, String> {
+        // Try database first
+        #[cfg(feature = "postgres")]
+        if let Some(db) = self.db.as_ref() {
+            let id = db
+                .create_account(
+                    &username,
+                    email.as_deref(),
+                    &password_hash,
+                    false,
+                )
+                .await
+                .map_err(|e| format!("Database error: {e}"))?;
+
+            let record = AccountRecord {
+                id,
+                username: username.clone(),
+                email,
+                password_hash,
+                is_guest: false,
+            };
+            // Cache in memory too
+            self.accounts.write().await.insert(username, record.clone());
+            return Ok(record);
+        }
+
+        // Fallback to in-memory
         let mut accounts = self.accounts.write().await;
         if accounts.contains_key(&username) {
             return Err("Username already taken".to_string());
@@ -151,13 +197,52 @@ impl AppState {
 
     /// Look up an account by username
     pub async fn get_account(&self, username: &str) -> Option<AccountRecord> {
-        self.accounts.read().await.get(username).cloned()
+        // Check in-memory cache first
+        if let Some(record) = self.accounts.read().await.get(username).cloned() {
+            return Some(record);
+        }
+
+        // Try database
+        #[cfg(feature = "postgres")]
+        if let Some(db) = self.db.as_ref() {
+            if let Ok(Some(row)) = db.get_account_by_username(username).await {
+                let record = AccountRecord {
+                    id: row.id,
+                    username: row.username.clone(),
+                    email: row.email,
+                    password_hash: row.password_hash,
+                    is_guest: row.is_guest,
+                };
+                // Cache it
+                self.accounts.write().await.insert(row.username, record.clone());
+                return Some(record);
+            }
+        }
+
+        None
     }
 
     /// Register a guest account
     pub async fn register_guest(&self) -> AccountRecord {
         let id = Uuid::new_v4();
         let username = format!("Guest_{}", &id.to_string()[..8]);
+
+        // Try database first
+        #[cfg(feature = "postgres")]
+        if let Some(db) = self.db.as_ref() {
+            if let Ok(db_id) = db.create_account(&username, None, "", true).await {
+                let record = AccountRecord {
+                    id: db_id,
+                    username: username.clone(),
+                    email: None,
+                    password_hash: String::new(),
+                    is_guest: true,
+                };
+                self.accounts.write().await.insert(username, record.clone());
+                return record;
+            }
+        }
+
         let record = AccountRecord {
             id,
             username: username.clone(),
@@ -167,5 +252,31 @@ impl AppState {
         };
         self.accounts.write().await.insert(username, record.clone());
         record
+    }
+
+    /// Log a player command to the audit log
+    pub async fn log_command(&self, player_id: Uuid, command_type: String, tick: u64) {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let entry = AuditEntry {
+            tick,
+            player_id,
+            command_type,
+            timestamp,
+        };
+        self.audit_log.write().await.push(entry);
+    }
+
+    /// Return a clone of the entire audit log
+    pub async fn get_audit_log(&self) -> Vec<AuditEntry> {
+        self.audit_log.read().await.clone()
+    }
+
+    /// Kick a player by removing them from the connected players map.
+    /// Returns true if the player was found and removed.
+    pub async fn kick_player(&self, player_id: &Uuid) -> bool {
+        self.players.write().await.remove(player_id).is_some()
     }
 }

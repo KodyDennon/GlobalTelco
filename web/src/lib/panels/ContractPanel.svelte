@@ -3,6 +3,7 @@
 	import { activePanel } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
 	import type { ContractInfo } from '$lib/wasm/types';
+	import { tr } from '$lib/i18n/index';
 
 	let contracts: ContractInfo[] = $state([]);
 
@@ -37,29 +38,29 @@
 
 <div class="panel">
 	<div class="panel-header">
-		<span class="title">Contracts</span>
+		<span class="title">{$tr('panels.contracts')}</span>
 		<button class="close" onclick={close}>x</button>
 	</div>
 
 	<div class="section">
-		<h3>Summary</h3>
+		<h3>{$tr('panels.summary')}</h3>
 		<div class="stat-row">
-			<span class="muted">Active</span>
+			<span class="muted">{$tr('panels.active')}</span>
 			<span class="mono">{activeContracts.length}</span>
 		</div>
 		<div class="stat-row">
-			<span class="muted">Revenue from contracts</span>
+			<span class="muted">{$tr('panels.revenue_from_contracts')}</span>
 			<span class="mono green">{formatMoney(contractRevenue)}/tick</span>
 		</div>
 		<div class="stat-row">
-			<span class="muted">Contract expenses</span>
+			<span class="muted">{$tr('panels.contract_expenses')}</span>
 			<span class="mono red">{formatMoney(contractCost)}/tick</span>
 		</div>
 	</div>
 
 	{#if proposedContracts.length > 0}
 		<div class="section">
-			<h3>Pending Proposals ({proposedContracts.length})</h3>
+			<h3>{$tr('panels.pending_proposals', { count: proposedContracts.length })}</h3>
 			{#each proposedContracts as contract}
 				<div class="contract-card proposal">
 					<div class="contract-info">
@@ -71,12 +72,12 @@
 						</div>
 						<div class="contract-terms">
 							<span class="mono">{formatMoney(contract.price_per_tick)}/tick</span>
-							<span class="muted">Cap: {contract.capacity.toFixed(0)}</span>
+							<span class="muted">{$tr('panels.cap')}: {contract.capacity.toFixed(0)}</span>
 						</div>
 					</div>
 					<div class="contract-actions">
-						<button class="accept-btn" onclick={() => acceptContract(contract.id)}>Accept</button>
-						<button class="reject-btn" onclick={() => rejectContract(contract.id)}>Reject</button>
+						<button class="accept-btn" onclick={() => acceptContract(contract.id)}>{$tr('panels.accept')}</button>
+						<button class="reject-btn" onclick={() => rejectContract(contract.id)}>{$tr('panels.reject')}</button>
 					</div>
 				</div>
 			{/each}
@@ -84,7 +85,7 @@
 	{/if}
 
 	<div class="section">
-		<h3>Active Contracts ({activeContracts.length})</h3>
+		<h3>{$tr('panels.active_contracts', { count: activeContracts.length })}</h3>
 		{#each activeContracts as contract}
 			<div class="contract-card">
 				<div class="contract-info">
@@ -96,20 +97,20 @@
 					</div>
 					<div class="contract-terms">
 						<span class="mono">{formatMoney(contract.price_per_tick)}/tick</span>
-						<span class="muted">Ends tick {contract.end_tick}</span>
+						<span class="muted">{$tr('panels.ends_tick', { tick: contract.end_tick })}</span>
 					</div>
 				</div>
 				<div class="contract-badge">
 					{#if contract.from === ($playerCorp?.id ?? 0)}
-						<span class="badge income">Income</span>
+						<span class="badge income">{$tr('panels.income')}</span>
 					{:else}
-						<span class="badge expense">Expense</span>
+						<span class="badge expense">{$tr('panels.expense')}</span>
 					{/if}
 				</div>
 			</div>
 		{/each}
 		{#if activeContracts.length === 0}
-			<div class="empty">No active contracts</div>
+			<div class="empty">{$tr('panels.no_active_contracts')}</div>
 		{/if}
 	</div>
 </div>

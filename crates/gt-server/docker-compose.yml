@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: globaltelco
+      POSTGRES_USER: gt_server
+      POSTGRES_PASSWORD: gt_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gt_server -d globaltelco"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  gt-server:
+    build:
+      context: ../..
+      dockerfile: crates/gt-server/Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      GT_HOST: "0.0.0.0"
+      GT_PORT: "3001"
+      DATABASE_URL: "postgresql://gt_server:gt_dev_password@postgres:5432/globaltelco"
+      GT_JWT_SECRET: "change-this-in-production"
+      GT_DEFAULT_WORLD: "Default World"
+      GT_MAX_PLAYERS: "8"
+      RUST_LOG: "gt_server=info,tower_http=info"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:

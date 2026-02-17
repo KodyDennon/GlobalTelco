@@ -129,6 +129,15 @@ pub enum AIStrategy {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum LobbyPolicy {
+    ReduceTax,
+    RelaxZoning,
+    FastTrackPermits,
+    IncreasedCompetitorBurden,
+    SubsidyRequest,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Era {
     Telegraph,
     Telephone,

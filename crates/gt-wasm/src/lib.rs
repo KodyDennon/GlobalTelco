@@ -2,6 +2,11 @@ use gt_common::types::WorldConfig;
 use gt_simulation::world::GameWorld;
 use wasm_bindgen::prelude::*;
 
+#[wasm_bindgen(start)]
+pub fn init_panic_hook() {
+    console_error_panic_hook::set_once();
+}
+
 #[wasm_bindgen]
 pub struct WasmBridge {
     world: GameWorld,
@@ -549,6 +554,132 @@ impl WasmBridge {
             .collect();
 
         serde_json::to_string(&damaged).unwrap_or_default()
+    }
+
+    // === Phase 10 queries ===
+
+    pub fn get_auctions(&self) -> String {
+        let auctions: Vec<serde_json::Value> = self
+            .world
+            .auctions
+            .iter()
+            .map(|(&id, a)| {
+                let seller_name = self
+                    .world
+                    .corporations
+                    .get(&a.seller)
+                    .map(|c| c.name.as_str())
+                    .unwrap_or("Unknown");
+                let highest = a.highest_bid();
+                serde_json::json!({
+                    "id": id,
+                    "seller": a.seller,
+                    "seller_name": seller_name,
+                    "asset_count": a.assets.len(),
+                    "bid_count": a.bids.len(),
+                    "highest_bid": highest.map(|(_, amt)| amt).unwrap_or(0),
+                    "highest_bidder": highest.map(|(id, _)| id).unwrap_or(0),
+                    "start_tick": a.start_tick,
+                    "end_tick": a.end_tick,
+                    "status": format!("{:?}", a.status),
+                })
+            })
+            .collect();
+        serde_json::to_string(&auctions).unwrap_or_default()
+    }
+
+    pub fn get_acquisition_proposals(&self) -> String {
+        let proposals: Vec<serde_json::Value> = self
+            .world
+            .acquisition_proposals
+            .iter()
+            .map(|(&id, p)| {
+                let acquirer_name = self
+                    .world
+                    .corporations
+                    .get(&p.acquirer)
+                    .map(|c| c.name.as_str())
+                    .unwrap_or("Unknown");
+                let target_name = self
+                    .world
+                    .corporations
+                    .get(&p.target)
+                    .map(|c| c.name.as_str())
+                    .unwrap_or("Unknown");
+                serde_json::json!({
+                    "id": id,
+                    "acquirer": p.acquirer,
+                    "acquirer_name": acquirer_name,
+                    "target": p.target,
+                    "target_name": target_name,
+                    "offer": p.offer,
+                    "status": format!("{:?}", p.status),
+                    "tick": p.tick,
+                })
+            })
+            .collect();
+        serde_json::to_string(&proposals).unwrap_or_default()
+    }
+
+    pub fn get_covert_ops(&self, corp_id: u64) -> String {
+        let ops = self.world.covert_ops.get(&corp_id);
+        let data = serde_json::json!({
+            "security_level": ops.map(|o| o.security_level).unwrap_or(0),
+            "active_missions": ops.map(|o| o.active_missions.len()).unwrap_or(0),
+            "detection_count": ops.map(|o| o.detection_history.len()).unwrap_or(0),
+        });
+        serde_json::to_string(&data).unwrap_or_default()
+    }
+
+    pub fn get_lobbying_campaigns(&self, corp_id: u64) -> String {
+        let campaigns: Vec<serde_json::Value> = self
+            .world
+            .lobbying_campaigns
+            .iter()
+            .filter(|(_, c)| c.corporation == corp_id)
+            .map(|(&id, c)| {
+                let region_name = self
+                    .world
+                    .regions
+                    .get(&c.region)
+                    .map(|r| r.name.as_str())
+                    .unwrap_or("Unknown");
+                serde_json::json!({
+                    "id": id,
+                    "region": c.region,
+                    "region_name": region_name,
+                    "policy": format!("{:?}", c.policy),
+                    "budget_spent": c.budget_spent,
+                    "budget_total": c.budget_total,
+                    "influence": c.influence,
+                    "threshold": c.influence_threshold(),
+                    "active": c.active,
+                })
+            })
+            .collect();
+        serde_json::to_string(&campaigns).unwrap_or_default()
+    }
+
+    pub fn get_achievements(&self, corp_id: u64) -> String {
+        let tracker = self.world.achievements.get(&corp_id);
+        let data = serde_json::json!({
+            "unlocked": tracker.map(|t| t.unlocked.iter().cloned().collect::<Vec<_>>()).unwrap_or_default(),
+            "progress": tracker.map(|t| t.progress.clone()).unwrap_or_default(),
+        });
+        serde_json::to_string(&data).unwrap_or_default()
+    }
+
+    pub fn get_victory_state(&self) -> String {
+        let state = self.world.victory_state.as_ref();
+        let data = serde_json::json!({
+            "domination_score": state.map(|s| s.domination_score).unwrap_or(0.0),
+            "tech_score": state.map(|s| s.tech_score).unwrap_or(0.0),
+            "wealth_score": state.map(|s| s.wealth_score).unwrap_or(0.0),
+            "infrastructure_score": state.map(|s| s.infrastructure_score).unwrap_or(0.0),
+            "total_score": state.map(|s| s.total_score).unwrap_or(0.0),
+            "victory_type": state.and_then(|s| s.victory_type.clone()),
+        });
+        serde_json::to_string(&data).unwrap_or_default()
     }
 
     pub fn get_grid_cells(&self) -> String {
