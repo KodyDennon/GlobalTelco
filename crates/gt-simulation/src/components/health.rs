@@ -8,7 +8,10 @@ pub struct Health {
 
 impl Health {
     pub fn new() -> Self {
-        Self { condition: 1.0, maintenance_cost_per_tick: 0 }
+        Self {
+            condition: 1.0,
+            maintenance_cost_per_tick: 0,
+        }
     }
 
     pub fn degrade(&mut self, amount: f64) {

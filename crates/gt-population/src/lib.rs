@@ -1,3 +1,7 @@
+pub mod demand;
 pub mod demographics;
+pub mod migration;
 
-pub use demographics::PopulationState;
+pub use demand::DemandCalculator;
+pub use demographics::{GrowthResult, PopulationState};
+pub use migration::{CityScore, MigrationEngine};

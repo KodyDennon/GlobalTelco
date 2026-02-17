@@ -9,6 +9,10 @@ pub struct Position {
 
 impl Position {
     pub fn new(x: f64, y: f64) -> Self {
-        Self { x, y, region_id: None }
+        Self {
+            x,
+            y,
+            region_id: None,
+        }
     }
 }

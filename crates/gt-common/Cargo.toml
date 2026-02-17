@@ -5,5 +5,9 @@ edition.workspace = true
 
 [dependencies]
 serde = { workspace = true }
+serde_json = { workspace = true }
 rand = { workspace = true }
 thiserror = { workspace = true }
+uuid = { workspace = true }
+rmp-serde = { workspace = true }
+chrono = { workspace = true }

@@ -37,9 +37,12 @@ mod tests {
         let mut queue = EventQueue::new();
         assert!(queue.is_empty());
 
-        queue.push(1, GameEvent::MarketShiftOccurred {
-            description: "test".to_string(),
-        });
+        queue.push(
+            1,
+            GameEvent::MarketShiftOccurred {
+                description: "test".to_string(),
+            },
+        );
         assert_eq!(queue.len(), 1);
 
         let events = queue.drain();

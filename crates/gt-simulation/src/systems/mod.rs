@@ -1,18 +1,18 @@
-pub mod construction;
-pub mod maintenance;
-pub mod population;
-pub mod demand;
-pub mod routing;
-pub mod utilization;
-pub mod revenue;
-pub mod cost;
-pub mod finance;
-pub mod contract;
 pub mod ai;
+pub mod construction;
+pub mod contract;
+pub mod cost;
+pub mod demand;
 pub mod disaster;
+pub mod finance;
+pub mod maintenance;
+pub mod market;
+pub mod population;
 pub mod regulation;
 pub mod research;
-pub mod market;
+pub mod revenue;
+pub mod routing;
+pub mod utilization;
 
 use crate::world::GameWorld;
 

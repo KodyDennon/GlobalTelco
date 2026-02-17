@@ -9,6 +9,10 @@ pub struct Population {
 
 impl Population {
     pub fn new(count: u64) -> Self {
-        Self { count, growth_rate: 0.01, income_level: 1.0 }
+        Self {
+            count,
+            growth_rate: 0.01,
+            income_level: 1.0,
+        }
     }
 }

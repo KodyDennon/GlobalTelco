@@ -1,17 +1,81 @@
-use gt_simulation::world::GameWorld;
-use gt_common::types::WorldConfig;
+mod auth;
+mod config;
+mod routes;
+mod state;
+mod tick;
+mod ws;
+
+use std::sync::Arc;
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::trace::TraceLayer;
+use tracing::info;
+use tracing_subscriber::EnvFilter;
+
+use config::ServerConfig;
+use state::AppState;
 
 #[tokio::main]
 async fn main() {
-    println!("GlobalTelco server starting...");
+    // Initialize tracing
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("gt_server=info,tower_http=info")),
+        )
+        .init();
 
-    let world = GameWorld::new(WorldConfig::default());
-    println!("World initialized with config: {:?}", world.config());
+    info!("GlobalTelco server starting...");
 
-    let app = axum::Router::new()
-        .route("/health", axum::routing::get(|| async { "ok" }));
+    // Load configuration from environment
+    let config = ServerConfig::from_env();
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3001").await.unwrap();
-    println!("Listening on http://0.0.0.0:3001");
+    info!("Host: {}", config.host);
+    info!("Port: {}", config.port);
+    info!(
+        "Database: {}",
+        if config.database_url.is_some() {
+            "configured"
+        } else {
+            "in-memory (no DATABASE_URL set)"
+        }
+    );
+
+    // Create shared state
+    let state = Arc::new(AppState::new(config.auth.clone()));
+
+    // Create a default world for local testing
+    let default_world_id = state
+        .create_world(
+            config.default_world_name.clone(),
+            gt_common::types::WorldConfig::default(),
+            config.default_max_players,
+        )
+        .await;
+
+    info!("Created default world: {}", default_world_id);
+
+    // Start tick loop for the default world
+    if let Some(world) = state.get_world(&default_world_id).await {
+        tick::spawn_world_tick_loop(world);
+    }
+
+    // CORS for local development
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
+    // Build router
+    let app = routes::create_router(Arc::clone(&state))
+        .layer(cors)
+        .layer(TraceLayer::new_for_http());
+
+    let bind_addr = config.bind_addr();
+    let listener = tokio::net::TcpListener::bind(&bind_addr).await.unwrap();
+    info!("Listening on http://{}", bind_addr);
+    info!("WebSocket endpoint: ws://{}/ws", bind_addr);
+    info!("REST API: http://{}/api", bind_addr);
+    info!("Health check: http://{}/health", bind_addr);
+
     axum::serve(listener, app).await.unwrap();
 }

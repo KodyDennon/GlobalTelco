@@ -9,43 +9,45 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 *Goal: The Rust simulation compiles, creates a world, and ticks. No rendering yet — just the engine.*
 
 ### Workspace Setup
-- [ ] Initialize Cargo workspace with all 9 crates (gt-common, gt-simulation, gt-world, gt-economy, gt-infrastructure, gt-population, gt-ai, gt-wasm, gt-server)
-- [ ] Set up workspace-level dependencies (serde, bincode, rand, noise, wasm-bindgen)
-- [ ] Configure `cargo test` for all crates
-- [ ] Set up CI (GitHub Actions: build, test, clippy, fmt)
+- [x] Initialize Cargo workspace with all 9 crates (gt-common, gt-simulation, gt-world, gt-economy, gt-infrastructure, gt-population, gt-ai, gt-wasm, gt-server)
+- [x] Set up workspace-level dependencies (serde, bincode, rand, noise, wasm-bindgen)
+- [x] Configure `cargo test` for all crates
+- [x] Set up CI (GitHub Actions: build, test, clippy, fmt)
 
 ### gt-common — Shared Types
-- [ ] Core type definitions: EntityId, Tick, WorldConfig, TerrainType, NodeType, EdgeType, CreditRating, AIArchetype, AIStrategy
-- [ ] GameEvent enum (all event types)
-- [ ] Command enum (all player action types)
-- [ ] Serialization traits (serde Serialize/Deserialize on all types)
-- [ ] Configuration structs: DifficultyPreset, EraConfig
+- [x] Core type definitions: EntityId, Tick, WorldConfig, TerrainType, NodeType, EdgeType, CreditRating, AIArchetype, AIStrategy
+- [x] GameEvent enum (all event types)
+- [x] Command enum (all player action types)
+- [x] Serialization traits (serde Serialize/Deserialize on all types)
+- [x] Configuration structs: DifficultyPreset, EraConfig
 
 ### gt-simulation — ECS Engine
-- [ ] Entity allocator (monotonic u64 IDs, free list for recycling)
-- [ ] Component storage (struct-of-arrays per component type, indexed by EntityId)
-- [ ] GameWorld struct: owns all storage, tick counter, event queue, config
-- [ ] `GameWorld::tick()` — runs all systems in deterministic order
-- [ ] `GameWorld::process_command()` — validates and applies player commands
-- [ ] Event queue: append-only, drained each tick
-- [ ] All 15 system stubs (compile, run, but minimal logic initially)
+- [x] Entity allocator (monotonic u64 IDs, free list for recycling)
+- [x] Component storage (struct-of-arrays per component type, indexed by EntityId)
+- [x] GameWorld struct: owns all storage, tick counter, event queue, config
+- [x] `GameWorld::tick()` — runs all systems in deterministic order
+- [x] `GameWorld::process_command()` — validates and applies player commands
+- [x] Event queue: append-only, drained each tick
+- [x] All 15 systems fully implemented (construction, maintenance, population, demand, routing, utilization, revenue, cost, finance, contract, ai, disaster, regulation, research, market)
 
 ### gt-world — World Generation
-- [ ] 3D sphere-based fractal noise for terrain elevation
-- [ ] Icosahedral geodesic grid subdivision (configurable resolution)
-- [ ] Spatial hash for O(1) coordinate-to-cell lookup
-- [ ] Terrain classification from elevation (Urban, Suburban, Rural, Mountainous, Desert, Coastal, Ocean, Tundra, Frozen)
-- [ ] Land parcel entity creation with terrain, zoning, cost modifiers
-- [ ] K-means region clustering (land-aware seeding)
-- [ ] City placement from terrain and region data
-- [ ] Economic data seeding per region (GDP, population, demand)
-- [ ] Real Earth data loader (GeoJSON borders, city data, economic indicators from `data/` directory)
-- [ ] All deterministic from world seed
+- [x] 3D sphere-based fractal noise for terrain elevation
+- [x] Icosahedral geodesic grid subdivision (configurable resolution)
+- [x] Spatial hash for O(1) coordinate-to-cell lookup
+- [x] Terrain classification from elevation (Urban, Suburban, Rural, Mountainous, Desert, Coastal, Ocean, Tundra, Frozen)
+- [x] Land parcel entity creation with terrain, zoning, cost modifiers
+- [x] K-means region clustering (land-aware seeding)
+- [x] City placement from terrain and region data
+- [x] Economic data seeding per region (GDP, population, demand)
+- [x] Real Earth data loader (48 countries, 71 cities with real GDP/population data, embedded in `data/earth.json`)
+- [x] All deterministic from world seed
 
 ### Verification
-- [ ] `cargo build` succeeds for all crates
-- [ ] `cargo test` — create a GameWorld from config, generate a world, tick 100 times, verify entities exist and state changes
-- [ ] Determinism test: same seed → same world state after N ticks
+- [x] `cargo build` succeeds for all crates (0 errors, 0 warnings)
+- [x] `cargo test` — 34 tests pass: world gen, determinism, ECS, network graph, protocol, real earth
+- [x] Determinism test: same seed → same world state after N ticks
+- [x] `cargo clippy -- -D warnings` passes clean
+- [x] `cargo fmt --check` passes clean
 
 ---
 

@@ -1,0 +1,37 @@
+import { writable, derived } from 'svelte/store';
+import type { WorldInfo, CorporationData, Region, City, Notification, CorpSummary } from '$lib/wasm/types';
+
+export const initialized = writable(false);
+export const worldInfo = writable<WorldInfo>({
+	tick: 0,
+	speed: 'Paused',
+	entity_count: 0,
+	region_count: 0,
+	city_count: 0,
+	corporation_count: 0,
+	infra_node_count: 0,
+	infra_edge_count: 0,
+	player_corp_id: 0
+});
+export const playerCorp = writable<CorporationData | null>(null);
+export const regions = writable<Region[]>([]);
+export const cities = writable<City[]>([]);
+export const notifications = writable<Notification[]>([]);
+export const allCorporations = writable<CorpSummary[]>([]);
+
+export const tick = derived(worldInfo, ($info) => $info.tick);
+export const speed = derived(worldInfo, ($info) => $info.speed);
+export const playerCorpId = derived(worldInfo, ($info) => $info.player_corp_id);
+
+export function formatMoney(amount: number): string {
+	if (Math.abs(amount) >= 1_000_000_000) return `$${(amount / 1_000_000_000).toFixed(1)}B`;
+	if (Math.abs(amount) >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
+	if (Math.abs(amount) >= 1_000) return `$${(amount / 1_000).toFixed(1)}K`;
+	return `$${amount}`;
+}
+
+export function formatPopulation(pop: number): string {
+	if (pop >= 1_000_000) return `${(pop / 1_000_000).toFixed(1)}M`;
+	if (pop >= 1_000) return `${(pop / 1_000).toFixed(1)}K`;
+	return `${pop}`;
+}

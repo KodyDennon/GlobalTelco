@@ -180,12 +180,16 @@ pub enum MapSize {
 }
 
 impl MapSize {
+    /// Returns the number of icosahedral subdivision iterations.
+    /// Each iteration multiplies face count by 4.
+    /// Vertices ≈ 10 * 4^n + 2:
+    ///   4 → ~2,562 cells, 5 → ~10,242 cells, 6 → ~40,962 cells, 7 → ~163,842 cells
     pub fn grid_subdivisions(&self) -> u32 {
         match self {
-            MapSize::Small => 16,
-            MapSize::Medium => 32,
-            MapSize::Large => 48,
-            MapSize::Huge => 64,
+            MapSize::Small => 4,
+            MapSize::Medium => 5,
+            MapSize::Large => 6,
+            MapSize::Huge => 7,
         }
     }
 }

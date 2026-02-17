@@ -1,0 +1,89 @@
+/* GlobalTelco — Bloomberg Terminal Dark Theme */
+
+:root {
+	--bg-primary: #0a0e17;
+	--bg-panel: #111827;
+	--bg-surface: #1f2937;
+	--bg-hover: #374151;
+	--border: rgba(55, 65, 81, 0.5);
+	--border-light: rgba(75, 85, 99, 0.4);
+
+	--text-primary: #f3f4f6;
+	--text-secondary: #d1d5db;
+	--text-muted: #9ca3af;
+	--text-dim: #6b7280;
+	--text-faint: #4b5563;
+
+	--green: #10b981;
+	--green-light: #34d399;
+	--green-bg: rgba(16, 185, 129, 0.2);
+	--green-border: rgba(16, 185, 129, 0.3);
+	--red: #ef4444;
+	--red-light: #f87171;
+	--red-bg: rgba(239, 68, 68, 0.2);
+	--blue: #3b82f6;
+	--blue-light: #60a5fa;
+	--amber: #f59e0b;
+	--amber-bg: rgba(245, 158, 11, 0.2);
+
+	--font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+
+	--radius-sm: 4px;
+	--radius-md: 6px;
+	--radius-lg: 8px;
+	--radius-xl: 12px;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
+
+html,
+body {
+	height: 100%;
+	width: 100%;
+	overflow: hidden;
+	background: var(--bg-primary);
+	color: var(--text-primary);
+	font-family: var(--font-sans);
+	font-size: 14px;
+	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+	width: 6px;
+	height: 6px;
+}
+
+::-webkit-scrollbar-track {
+	background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--bg-hover);
+	border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--text-faint);
+}
+
+/* Selection */
+::selection {
+	background: rgba(59, 130, 246, 0.3);
+	color: var(--text-primary);
+}
+
+/* Focus */
+:focus-visible {
+	outline: 2px solid var(--blue);
+	outline-offset: 2px;
+}

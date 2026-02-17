@@ -12,5 +12,17 @@ gt-common = { path = "../gt-common" }
 gt-simulation = { path = "../gt-simulation" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+rmp-serde = { workspace = true }
 tokio = { version = "1", features = ["full"] }
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
+axum-extra = { version = "0.10", features = ["typed-header"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+jsonwebtoken = "9"
+argon2 = "0.5"
+dashmap = "6"
+futures = "0.3"
+tokio-stream = "0.1"

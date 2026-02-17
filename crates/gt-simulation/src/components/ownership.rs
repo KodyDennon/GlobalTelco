@@ -9,6 +9,9 @@ pub struct Ownership {
 
 impl Ownership {
     pub fn sole(owner: EntityId) -> Self {
-        Self { owner, co_owners: Vec::new() }
+        Self {
+            owner,
+            co_owners: Vec::new(),
+        }
     }
 }
