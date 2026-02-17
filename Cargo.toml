@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/gt-common",
+    "crates/gt-simulation",
+    "crates/gt-world",
+    "crates/gt-economy",
+    "crates/gt-infrastructure",
+    "crates/gt-population",
+    "crates/gt-ai",
+    "crates/gt-wasm",
+    "crates/gt-server",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rand = "0.8"
+thiserror = "2"

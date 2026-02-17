@@ -1,0 +1,14 @@
+[package]
+name = "gt-simulation"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+gt-common = { path = "../gt-common" }
+gt-world = { path = "../gt-world" }
+gt-economy = { path = "../gt-economy" }
+gt-infrastructure = { path = "../gt-infrastructure" }
+gt-population = { path = "../gt-population" }
+gt-ai = { path = "../gt-ai" }
+serde = { workspace = true }
+rand = { workspace = true }

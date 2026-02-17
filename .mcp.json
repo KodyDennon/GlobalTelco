@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "unrealMCP": {
+      "command": "/opt/homebrew/bin/uv",
+      "args": [
+        "--directory",
+        "/Users/kody/NuGit/GlobalTelco/Plugins/UnrealMCP/Python",
+        "run",
+        "unreal_mcp_server_advanced.py"
+      ]
+    }
+  }
+}

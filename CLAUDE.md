@@ -4,116 +4,178 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Global Telecom Infrastructure MMO — a systemic infrastructure civilization simulator (not a tycoon game). Players build, operate, compete, and expand telecom infrastructure in a persistent, authoritative 3D world with interlocking systems: engineering, corporate finance, geopolitics, macroeconomics, disaster modeling, and market competition.
+**GlobalTelco** — a 2D infrastructure empire builder. Mix of city builder, tycoon/business sim, and grand strategy. Players build and operate telecom infrastructure on a political map (Victoria 3 / Risk style), growing from a local ISP to a global telecom empire. Web-based with offline single-player and async persistent multiplayer.
 
 ## Technology Stack
 
-- **Engine:** Unreal Engine 5.7 (installed at `/Users/Shared/Epic Games/UE_5.7/`)
-- **Language:** C++ for all simulation logic, Blueprints for UI layout
-- **Server:** Dedicated authoritative simulation server (thin client architecture)
-- **Concurrency:** 250 concurrent players per world
-- **Simulation tick:** 3–5 second economic ticks; routing recalculation is event-driven only
+- **Simulation engine:** Rust (ECS architecture) — compiles to WASM for browser + native binary for servers
+- **Frontend:** Svelte (UI framework) + Three.js (2D map rendering) + D3.js (charts/data viz)
+- **Build/runtime:** Bun (bundler, package manager, test runner) + wasm-pack (Rust → WASM)
+- **Desktop app:** Tauri (Rust-based wrapper, uses system webview)
+- **Multiplayer servers:** Rust native binary (same sim code as WASM, compiled natively)
+- **API/WebSocket:** Rust (Axum) or Bun for lightweight services
+- **Database:** PostgreSQL (world state, accounts, cloud saves)
+- **Hosting:** Hetzner (game servers), Cloudflare Workers (auth, APIs), Vercel (frontend CDN)
+- **Real-time:** WebSocket for multiplayer state sync
+- **Deterministic:** Same inputs = same outputs. Critical for multiplayer sync.
+
+## Project Structure
+
+```
+globaltelco/
+├── crates/                    # Rust workspace
+│   ├── gt-common/             # Shared types, traits, serialization
+│   ├── gt-simulation/         # Core ECS engine, tick orchestrator
+│   ├── gt-world/              # World generation, geography, terrain
+│   ├── gt-economy/            # Corporations, finance, markets, contracts, research
+│   ├── gt-infrastructure/     # Network graph, nodes, edges, routing
+│   ├── gt-population/         # Demographics, migration, employment, demand
+│   ├── gt-ai/                 # AI corporation controllers, archetypes, strategy
+│   ├── gt-wasm/               # WASM bindings (wasm-bindgen bridge to JS)
+│   └── gt-server/             # Multiplayer server binary (WebSocket, auth, persistence)
+├── web/                       # Svelte frontend
+│   ├── src/
+│   │   ├── lib/
+│   │   │   ├── wasm/          # TypeScript WASM bridge (commands + queries)
+│   │   │   ├── game/          # Game screen (map renderer, HUD, speed controls, advisor)
+│   │   │   ├── panels/        # Management panels (dashboard, infra, workforce, research, contracts)
+│   │   │   ├── menu/          # Main menu, new game, load game, world browser, settings
+│   │   │   ├── charts/        # D3.js visualizations (finance, population, network, market share)
+│   │   │   └── ui/            # Reusable components (button, panel, table, tooltip, modal, slider)
+│   │   └── stores/            # Svelte stores (game state, UI state, settings)
+│   ├── static/                # Icons, fonts, map data (GeoJSON)
+│   └── package.json
+├── desktop/                   # Tauri desktop app wrapper
+├── data/                      # Open data sources (OSM, World Bank, UN)
+├── Docs/                      # Design specification documents
+└── Cargo.toml                 # Rust workspace root
+```
 
 ## Build Commands
 
 ```bash
-# Generate Xcode project files from .uproject
-"/Users/Shared/Epic Games/UE_5.7/Engine/Build/BatchFiles/Mac/GenerateProjectFiles.sh" \
-  /Users/kody/NuGit/GlobalTelco/GlobalTelco.uproject -game
+# --- Rust simulation engine ---
 
-# Build editor target (for development)
-"/Users/Shared/Epic Games/UE_5.7/Engine/Build/BatchFiles/RunUBT.sh" \
-  GlobalTelcoEditor Mac Development \
-  -project="/Users/kody/NuGit/GlobalTelco/GlobalTelco.uproject"
+# Build all crates (debug)
+cargo build
 
-# Build game target
-"/Users/Shared/Epic Games/UE_5.7/Engine/Build/BatchFiles/RunUBT.sh" \
-  GlobalTelco Mac Development \
-  -project="/Users/kody/NuGit/GlobalTelco/GlobalTelco.uproject"
+# Build all crates (release)
+cargo build --release
 
-# Build dedicated server target
-"/Users/Shared/Epic Games/UE_5.7/Engine/Build/BatchFiles/RunUBT.sh" \
-  GlobalTelcoServer Mac Development \
-  -project="/Users/kody/NuGit/GlobalTelco/GlobalTelco.uproject"
+# Run tests
+cargo test
 
-# Open in Unreal Editor
-"/Users/Shared/Epic Games/UE_5.7/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor" \
-  /Users/kody/NuGit/GlobalTelco/GlobalTelco.uproject
+# Build WASM module for browser
+wasm-pack build crates/gt-wasm --target web --out-dir ../../web/src/lib/wasm/pkg
+
+# Run multiplayer server
+cargo run --bin gt-server
+
+# --- Frontend ---
+
+# Install dependencies
+cd web && bun install
+
+# Dev server (hot reload)
+cd web && bun run dev
+
+# Production build
+cd web && bun run build
+
+# Run frontend tests
+cd web && bun test
+
+# --- Desktop app ---
+
+# Dev mode
+cd desktop && cargo tauri dev
+
+# Production build
+cd desktop && cargo tauri build
+
+# --- Full build pipeline ---
+
+# Build WASM, then build frontend
+wasm-pack build crates/gt-wasm --target web --out-dir ../../web/src/lib/wasm/pkg && cd web && bun run build
 ```
 
-## Module Architecture
-
-Six UE5 C++ modules with a strict dependency graph (no circular dependencies):
+## Crate Dependency Graph
 
 ```
-GlobalTelco.uproject
-├── Source/GlobalTelco/          — Main game module (GameMode, GameState, PlayerController)
-├── Source/GTCore/               — Deterministic simulation engine, event queue, tick system
-├── Source/GTInfrastructure/     — Network graph, nodes, edges, routing, disasters
-├── Source/GTEconomy/            — Corporations, regional economics, market dynamics
-├── Source/GTMultiplayer/        — Alliances, contracts, land parcels, governance
-├── Source/GTFrontend/           — UMG widgets, HUD, corporate dashboard
-├── Config/                      — DefaultEngine.ini, DefaultGame.ini, etc.
-├── Content/                     — UE assets (meshes, textures, blueprints)
-└── Docs/                        — Design specification documents
+gt-server → gt-simulation, gt-common
+gt-wasm → gt-simulation, gt-common
+gt-simulation → gt-world, gt-economy, gt-infrastructure, gt-population, gt-ai, gt-common
+gt-world → gt-common
+gt-economy → gt-common
+gt-infrastructure → gt-common
+gt-population → gt-common
+gt-ai → gt-common, gt-economy, gt-infrastructure
 ```
 
-**Dependency graph:**
+## ECS Architecture
+
+All game state is managed through an Entity Component System. Entities are IDs, components are data, systems process entities with matching component sets.
+
+**Core entity types:** InfrastructureNode, InfrastructureEdge, Corporation, Subsidiary, Employee/Team, Region, City, Contract, LandParcel, TechResearch, DebtInstrument
+
+**Systems run in deterministic order each tick:**
+1. construction → 2. maintenance → 3. population → 4. demand → 5. routing → 6. utilization → 7. revenue → 8. cost → 9. finance → 10. contract → 11. ai → 12. disaster → 13. regulation → 14. research → 15. market
+
+## Key Architecture Concepts
+
+**Political Map (2D):** Multi-layer zoom: World → Country → Region → City. Three.js in orthographic 2D mode. Layers: ocean, land, borders, cities, infrastructure, ownership overlay, selection, labels.
+
+**Hex-based Land Parcels:** Terrain classification, zoning, ownership, regulatory strictness, disaster risk, cost modifiers. Terrain types (urban, suburban, rural, mountainous, desert, coastal, ocean shallow/deep, tundra, frozen) apply multipliers.
+
+**Hierarchical Network Graph (5 levels):** Local → Regional → National → Continental → Global Backbone. Event-driven dirty-node invalidation, cluster-based routing, cached shortest-path trees. Aggregate bandwidth — no packet-level sim.
+
+**Modular Industry Abstraction:** Sim core is industry-agnostic (Node, Edge, Resource, Dependency, Throughput, Risk, Ownership, Jurisdiction). Telecom is first module; energy, water, transport are future modules.
+
+**Cooperative Ownership:** Infrastructure assets can be jointly owned with shared revenue and upgrade voting.
+
+**Tiered Management:** Small company = hands-on. Medium = teams and budgets. Large = policies, departments, regional managers, AI execution. Dwarf Fortress style scaling.
+
+**Era Progression:** Telegraph (~1850s) → Telephone (~1900s) → Early Digital (~1970s) → Internet (~1990s) → Modern (~2010s) → Near Future (~2030s). Player picks starting era.
+
+## WASM Bridge Pattern
+
 ```
-GlobalTelco → GTCore, GTInfrastructure, GTEconomy, GTMultiplayer, GTFrontend, AIModule, GameplayTasks
-GTInfrastructure → GTCore
-GTEconomy → GTCore
-GTMultiplayer → GTCore, OnlineSubsystem
-GTFrontend → GTCore, GTEconomy, GTMultiplayer, GTInfrastructure, UMG, Slate
+Svelte Component → bridge.ts (TypeScript) → gt-wasm (wasm-bindgen) → ECS World
+
+Commands (player → sim): build_node, build_edge, hire_employee, set_policy, take_loan, propose_contract, set_research, set_speed, toggle_pause, save_game, load_game
+
+Queries (sim → UI): get_visible_entities, get_corporation_data, get_region_data, get_infrastructure_list, get_workforce, get_contracts, get_research_state, get_notifications, get_advisor_suggestion
 ```
 
-**Build targets:**
-- `GlobalTelco.Target.cs` — Game client
-- `GlobalTelcoEditor.Target.cs` — Editor (development)
-- `GlobalTelcoServer.Target.cs` — Dedicated server (no GTFrontend)
+## AI Corporation System
 
-## Key Classes by Module
+- 4 archetypes: Aggressive Expander, Defensive Consolidator, Tech Innovator, Budget Operator
+- 4 strategy modes selected dynamically: Expand, Consolidate, Compete, Survive
+- AI actions: land acquisition, node/edge building, finance management, contract proposals
+- Dynamic market: AI companies spawn, grow, merge, go bankrupt naturally
 
-**GTCore** — Simulation engine foundation
-- `UGTSimulationSubsystem` — World subsystem driving the economic tick cycle; supports pause/resume and speed multiplier (1x, 2x, 4x)
-- `UGTEventQueue` — Centralized, thread-safe event queue for all state mutations
-- `FGTSimulationEvent` — Atomic event struct (type, tick, source/target entity, payload)
-- `EGTSimulationEventType` — Event categories (infrastructure, economic, disaster, player, political)
-- `UGTAIArchetypeRegistry` — Static registry of 4 built-in AI personality archetypes (Aggressive Expander, Defensive Consolidator, Tech Innovator, Budget Operator)
-- `FGTAIArchetypeData` — Data struct defining AI personality weights (expansion, consolidation, tech, aggression, risk, prudence)
+## Multiplayer Architecture
 
-**GTInfrastructure** — Network topology and routing
-- `UGTNetworkGraph` — World subsystem: 5-level hierarchical graph with Dijkstra routing
-- `AGTNetworkNode` — Replicated actor base for infrastructure nodes (towers, data centers, IXPs)
-- `UGTNetworkEdge` — Edge UObject connecting two nodes (fiber, microwave, subsea, satellite)
-- Dirty-node invalidation triggers cluster-based route recalculation
+- **Single-player:** WASM module IS the server. Full sim runs in browser. No network needed.
+- **Multiplayer:** Server-authoritative. Clients send commands via WebSocket, server validates and broadcasts state deltas.
+- **AI proxy:** When player disconnects, AI manages their corp using saved policies. No strategic changes — maintenance only.
+- **Persistent worlds:** 24/7 servers, multiple worlds with different settings/eras.
+- **Protocol:** MessagePack (binary) or JSON (debug). Commands, ticks, acks, events, snapshots.
 
-**GTEconomy** — Corporate finance and markets
-- `UGTCorporation` — Corporation UObject: balance sheet, income, debt, credit rating, shareholders; `bIsAI` + `ArchetypeIndex` fields for AI identification
-- `UGTCorporationManager` — World subsystem managing corporation lifecycle: create, destroy, lookup, tick processing for all corps
-- `UGTRegionalEconomy` — World subsystem: per-region population, GDP, demand, connectivity effects
+## Save System
 
-**GTMultiplayer** — Social and governance systems
-- `UGTAllianceManager` — World subsystem: alliances and contracts between corporations
-- `UGTLandParcelSystem` — World subsystem: hex-based parcel grid, ownership, zoning, leasing
-- `FGTContract` — Contract struct with pricing, capacity guarantees, breach penalties
+- **Single-player:** Binary ECS world serialization + zstd compression. Local save slots.
+- **Cloud saves:** Same format, stored as blob in PostgreSQL.
+- **Auto-save:** Periodic (every N ticks).
+- **Multiple save slots** for single-player.
 
-**GTFrontend** — UI layer
-- `UGTHUDWidget` — Base HUD widget (abstract, Blueprint-extensible)
-- `UGTDashboardWidget` — Corporate dashboard (abstract, Blueprint-extensible)
-- `UGTMainMenuWidget` — Main menu: New Game, Load Game, Quit (abstract, Blueprint-extensible)
-- `UGTNewGameWidget` — New game configuration: corp name, difficulty, AI count, disasters, world seed
-- `UGTSpeedControlWidget` — In-game simulation speed controls: Pause, 1x, 2x, 4x + quick save/load
+## Visual Design
 
-**GlobalTelco** — Game framework
-- `AGTGameMode` — Server-authoritative game mode for multiplayer, enforces 250-player cap
-- `AGTSinglePlayerGameMode` — Offline single-player game mode: world gen, AI corps, save/load, auto-save
-- `AGTGameState` — Replicated simulation tick and world time
-- `AGTPlayerController` — Per-player controller with corporation ID
-- `UGTGameInstance` — Game instance bridging menu to gameplay: holds pending world settings, player config, save slot
-- `AGTAICorporationController` — AI controller with programmatic behavior tree (no pawn): land acquisition, node/edge building, finance, contracts
-- `UGTSaveGame` — USaveGame subclass: complete world snapshot (parcels, corporations, economy, contracts)
-- `UGTSaveLoadSubsystem` — GameInstance subsystem: save, load, delete, enumerate save slots, auto-save
+- **Map:** Satellite-inspired dark base, terrain-colored land, political borders overlaid. Night-earth vibes with city lights.
+- **UI panels:** Solid dark panels, Bloomberg Terminal aesthetic. Navy/charcoal base, green=profit, red=loss, blue=neutral, amber=warning.
+- **Typography:** Clean sans-serif. Monospace for financial numbers.
+- **Player branding:** Company color + logo appears on map.
+- **Infrastructure icons:** Realistic miniatures, readable at all zoom levels.
 
 ## Design Documents
 
@@ -121,69 +183,26 @@ All located in `Docs/`:
 
 | File | Purpose |
 |------|---------|
-| `global_telecom_infrastructure_mmo_project_design_document.md` | Master design — world structure, infrastructure model, network graph, economics, competition, disasters |
-| `telecom_mmo_master_dev_charter.md` | Binding development rules — repo structure, coding standards, integration requirements |
-| `telecom_mmo_ai_dev_docs.md` | AI-agentic development specs overview |
+| `game_design_decisions.md` | **Definitive reference** — all gameplay, technical, and design decisions (19 sections) |
+| `technical_architecture.md` | Full technical architecture — ECS, crate structure, frontend, WASM bridge, multiplayer, data schema |
+| `global_telecom_infrastructure_mmo_project_design_document.md` | Original master design doc (world structure, infrastructure, economics, competition, disasters) |
+| `telecom_mmo_master_dev_charter.md` | Development rules — coding standards, integration requirements |
 | `telecom_mmo_infrastructure_simulation.md` | Infrastructure module spec |
 | `telecom_mmo_economic_corporate_simulation.md` | Economy module spec |
 | `telecom_mmo_multiplayer_governance_simulation.md` | Multiplayer module spec |
-| `game_design_decisions.md` | Concrete implementation decisions — MVP scope, build UX, economy settings, tech tree, multiplayer, hosting |
-| `offline_singleplayer_implementation_plan.md` | Offline single-player mode implementation plan — AI corps, save/load, speed controls, UI |
+| `telecom_mmo_ai_dev_docs.md` | AI development specs |
+| `offline_singleplayer_implementation_plan.md` | Single-player implementation plan |
+| `mvp_to_production_v1_plan.md` | Development phase plan |
 
-## Development Charter Rules (Mandatory)
+## Development Rules (Mandatory)
 
 - **No stubs or placeholders** — all features must be fully coded, integrated, and tested
-- **Single deterministic simulation engine** — all calculations must be deterministic and testable
-- **Module isolation via APIs** — modules communicate through defined APIs only; no direct cross-module manipulation
-- **Centralized event queue** — all state mutations flow through `UGTEventQueue`
+- **Single deterministic simulation engine** — all calculations deterministic and testable
+- **Crate isolation via APIs** — crates communicate through defined public APIs only; no direct cross-crate internal access
+- **Centralized event queue** — all state mutations flow through the event system
 - **End-to-end integration before merge** — no partial systems merged to main
 - **Branch strategy:** `main` (production-ready), `dev` (active development), feature branches merged via PRs
 - **Atomic commits** with descriptive messages and tests included
-
-## Core Architecture Concepts
-
-**Hierarchical Network Graph (5 levels):** Local -> Regional -> National -> Continental -> Global Backbone. Uses event-driven dirty-node invalidation, cluster-based recomputation, and cached shortest-path trees. Aggregate bandwidth modeling only — no packet-level simulation.
-
-**Hex-based Land Parcels:** Each parcel has terrain classification, zoning, ownership, regulatory strictness, disaster risk profile, and cost modifiers. Terrain types (urban, mountainous, desert, coastal, ocean) apply multipliers to cost, reliability, and maintenance.
-
-**Modular Industry Abstraction:** The simulation core is industry-agnostic, built around: Node, Edge, Resource, Dependency, Throughput, Risk, Ownership, Jurisdiction. Telecom is the first module; energy, water, and transportation are planned future modules.
-
-**Cooperative Ownership:** Infrastructure assets can be jointly owned by multiple players with shared revenue and upgrade voting.
-
-## Offline Single-Player Architecture
-
-The game supports a fully offline single-player mode with AI corporation competitors:
-
-**Game Flow:** Main Menu → New Game Settings → `UGTGameInstance` stores config → Level opens → `AGTSinglePlayerGameMode::InitGame()` generates world, creates player corp, spawns AI corps → Gameplay with auto-save.
-
-**AI Corporation System:**
-- `AGTAICorporationController` extends `AAIController` without a possessed pawn (pure decision-making agent)
-- Full UE5 Behavior Tree constructed programmatically in C++ (no .uasset files)
-- 4 strategy modes: Expand, Consolidate, Compete, Survive — selected dynamically based on financial health and archetype personality
-- BT tasks: land acquisition, node building, edge building, finance management, contract proposals
-- Revenue generation from owned nodes proportional to regional demand; maintenance costs scale with infrastructure
-
-**AI Archetypes (4 built-in):**
-1. Aggressive Expander — rapid growth, high debt tolerance, competitive pricing
-2. Defensive Consolidator — cautious, debt-averse, strong networks over large networks
-3. Tech Innovator — high-capacity infrastructure, R&D focused, balanced growth
-4. Budget Operator — minimal spending, no debt, value infrastructure only
-
-**Save/Load System:**
-- `UGTSaveGame` extends `USaveGame` — UE5 binary serialization (FMemoryArchive)
-- Saves: simulation tick, all parcels, all corporations (financial state, owned assets), regional economy, contracts/alliances
-- `UGTSaveLoadSubsystem` (GameInstance subsystem): save, load, delete, enumerate slots
-- Internal slot naming: `GT_<SlotName>.sav` in `Saved/SaveGames/`
-- Auto-save every 50 economic ticks to "AutoSave" slot
-- Save version field for forward-compatibility guards
-
-**Speed Controls:**
-- `UGTSimulationSubsystem::SetPaused()` / `SetSpeedMultiplier()` (1x, 2x, 4x)
-- Speed multiplier applied to DeltaTime before tick accumulation
-
-**DefaultEngine.ini:**
-- `GameInstanceClass=/Script/GlobalTelco.GTGameInstance`
-- `GlobalDefaultGameMode=/Script/GlobalTelco.GTSinglePlayerGameMode`
 
 ## Hosting Architecture
 
@@ -191,35 +210,24 @@ The game supports a fully offline single-player mode with AI corporation competi
 Players ──► Cloudflare Workers (auth, matchmaking, APIs, CDN)
                 │
                 ▼
-           Hetzner (UE5 dedicated server binary × 1-5 instances)
+           Hetzner (Rust game server binary × 1-5 instances)
                 │
                 ▼
-           Database (Cloudflare D1 or Hetzner managed PostgreSQL)
+           PostgreSQL (world state, accounts, cloud saves)
 ```
 
-**Game servers:** Hetzner (hetzner.com) — x86_64 Linux dedicated servers
-- Dev/testing: Hetzner Cloud CX22 (2 vCPU, 4GB RAM, ~€3.49/month)
-- Production: Hetzner Dedicated AX42 (Ryzen 7 7700, 64GB RAM, ~€57/month, runs 3-5 sim instances)
-- €20 signup credit covers ~5 months of dev usage
+- **Dev:** Hetzner Cloud CX22 (2 vCPU, 4GB RAM, ~€3.49/month)
+- **Prod:** Hetzner Dedicated AX42 (Ryzen 7 7700, 64GB RAM, ~€57/month, runs 3-5 sim instances)
+- **Service layer:** Cloudflare Workers (free tier: 100k req/day, paid $5/month: 10M req)
+- **Frontend CDN:** Vercel (Svelte app) + Cloudflare (static assets)
+- **No AWS, no Azure, no Oracle, no Unreal Engine.**
 
-**Service layer:** Cloudflare Workers — authentication, account persistence, market APIs, matchmaking
-- Free tier: 100k requests/day
-- Paid ($5/month): 10M requests, Durable Objects, D1 database
+## Performance Targets
 
-## Dedicated Server Build (Source Engine Required)
-
-The binary UE5 distribution from Epic Games Launcher **cannot build server targets**. Building a dedicated server requires a source-built engine:
-
-1. Link Epic Games account to GitHub at unrealengine.com
-2. Clone UE5 source: `git clone https://github.com/EpicGames/UnrealEngine.git -b 5.7`
-3. Run `Setup.sh` then `GenerateProjectFiles.sh`
-4. Build the engine: `make`
-5. Use the source-built engine to build the server target:
-   ```bash
-   # Cross-compile Linux x86_64 server from Mac
-   <source-engine-path>/Engine/Build/BatchFiles/RunUBT.sh \
-     GlobalTelcoServer Linux Development \
-     -project="/Users/kody/NuGit/GlobalTelco/GlobalTelco.uproject"
-   ```
-
-The current binary engine install at `/Users/Shared/Epic Games/UE_5.7/` works for editor and game client builds during development.
+- Simulation tick: < 50ms for 10,000+ entities
+- Map rendering: 60fps at all zoom levels
+- WASM module: < 5MB gzipped
+- Initial page load: < 3 seconds
+- WebSocket latency: < 100ms round-trip
+- Save file: < 50MB for mature world
+- Memory: < 500MB in browser

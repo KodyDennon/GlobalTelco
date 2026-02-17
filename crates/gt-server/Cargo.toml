@@ -1,0 +1,16 @@
+[package]
+name = "gt-server"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "gt-server"
+path = "src/main.rs"
+
+[dependencies]
+gt-common = { path = "../gt-common" }
+gt-simulation = { path = "../gt-simulation" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { version = "1", features = ["full"] }
+axum = "0.8"

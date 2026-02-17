@@ -6,7 +6,7 @@ Comprehensive Project Design & Systems Architecture Document
 
 # 1. OVERARCHING VISION
 
-A unified, persistent, authoritative global simulation where players build, operate, compete, cooperate, finance, sabotage, stabilize, and expand telecom infrastructure within a physically grounded 3D world.
+A unified, persistent, authoritative global simulation where players build, operate, compete, cooperate, finance, sabotage, stabilize, and expand telecom infrastructure within a 2D political map world.
 
 This is not a "tycoon game." It is a systemic infrastructure civilization simulator.
 
@@ -34,10 +34,10 @@ All systems must interlock and influence one another continuously.
 - No isolated regional shards inside a server
 
 ## 2.2 Physically Grounded World
-- Full 3D globe
-- World partition streaming
-- Physical land parcels
+- 2D political map (Victoria 3 / Risk style) with multi-layer zoom: World → Country → Region → City
+- Hex-based land parcels (geodesic grid)
 - Real geographic constraints abstracted but meaningful
+- Player choice: Real Earth (open data) or procedural world
 
 Geography influences:
 - Construction cost
@@ -295,23 +295,26 @@ Construction:
 
 # 12. MULTIPLAYER ARCHITECTURE
 
-- Dedicated authoritative simulation server
-- Deterministic simulation kernel (C++)
-- Rendering client separated from simulation logic
+- Dedicated authoritative simulation server (Rust native binary)
+- Deterministic simulation kernel (Rust ECS — same code compiles to WASM for browser SP and native for MP servers)
+- Rendering client separated from simulation logic (Svelte + Three.js frontend)
 - Clients are thin, server authoritative
 - 250 concurrent players per world
+- WebSocket communication (MessagePack binary or JSON debug)
+- Fully offline single-player via WASM in browser (same sim code, no network needed)
 
-Cloud services handle:
+Cloud services (Cloudflare Workers) handle:
 - Authentication
 - Logging
 - Market APIs
 - Account persistence
 
-Simulation server handles:
+Simulation server (Hetzner) handles:
 - Global graph
 - Economic tick
 - Routing computation
 - Disaster modeling
+- World persistence (PostgreSQL)
 
 ---
 

@@ -1,44 +1,52 @@
-# Unreal Engine generated directories
-Binaries/
-Intermediate/
-Saved/
-DerivedDataCache/
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock
 
-# IDE project files (regenerated from .uproject)
+# WASM build output
+web/src/lib/wasm/pkg/
+
+# Node / Bun
+node_modules/
+web/node_modules/
+web/.svelte-kit/
+web/build/
+*.tsbuildinfo
+
+# Tauri
+desktop/src-tauri/target/
+
+# IDE
+.vs/
+.vscode/
+.idea/
 *.xcworkspace
 *.xcodeproj
 *.sln
 *.suo
-*.vcxproj*
-.vs/
-.idea/
 
 # macOS
 .DS_Store
 *.dSYM
 
-# Build artifacts
-*.o
-*.d
-*.pch
-*.gch
+# Environment
+.env
+.env.*
+!.env.example
 
-# Compiled shaders
-*.ushaderbytecode
+# Logs
+*.log
 
-# Crashpad
-CrashReportClient/
+# Test coverage
+coverage/
+*.profraw
+*.profdata
 
-# Content cooking
-Cooked/
-Staging/
+# Database
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 
-# Third-party plugins (installed separately, too large for git)
-Plugins/CesiumForUnreal/
-Plugins/UnrealMCP/
-
-# UE Content assets (Blueprint subclasses, maps, textures — created in editor)
-Content/
-
-# Cesium cache
-cesium-request-cache.sqlite
+# OS files
+Thumbs.db
+desktop.ini

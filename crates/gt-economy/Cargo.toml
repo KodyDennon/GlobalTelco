@@ -1,0 +1,8 @@
+[package]
+name = "gt-economy"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+gt-common = { path = "../gt-common" }
+serde = { workspace = true }

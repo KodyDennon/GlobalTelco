@@ -1,18 +1,24 @@
-# Telecom MMO: Master Development Charter
+# GlobalTelco: Master Development Charter
 
 **Purpose:** Establish a single, high-impact charter that governs all development, ensures full implementation, enforces unified engine usage, and provides repository and coding standards for the entire project. This document serves as the authoritative guideline for any AI or human developer leading full-stack development.
 
 ---
 
 ## 1. Repository Architecture
-- **Monorepo Structure:** All code lives in a single repository with clearly separated modules:
-  - `/engine` — Core unified game engine, simulation logic, event handling
-  - `/infrastructure` — Nodes, edges, routing, disaster simulation
-  - `/economy` — Corporate and regional simulation logic, AI company behavior
-  - `/multiplayer` — Server authoritative logic, player management, alliances, conflicts
-  - `/frontend` — UI/UX, 2.5D and global 3D views, dashboards, player interaction
-  - `/tools` — Build scripts, deployment scripts, automated testing
-  - `/docs` — Design docs, API references, coding conventions
+- **Monorepo Structure:** All code lives in a single repository with clearly separated crates and directories:
+  - `crates/gt-common/` — Shared types, traits, serialization
+  - `crates/gt-simulation/` — Core ECS simulation engine, tick orchestrator, all systems
+  - `crates/gt-world/` — World generation, geography, terrain, real earth data
+  - `crates/gt-economy/` — Corporations, finance, markets, contracts, research
+  - `crates/gt-infrastructure/` — Network graph, nodes, edges, routing
+  - `crates/gt-population/` — Demographics, migration, employment, demand
+  - `crates/gt-ai/` — AI corporation controllers, archetypes, strategy
+  - `crates/gt-wasm/` — WASM bindings (wasm-bindgen bridge to JS frontend)
+  - `crates/gt-server/` — Multiplayer server binary (WebSocket, auth, persistence)
+  - `web/` — Svelte frontend (UI, Three.js map, D3.js charts)
+  - `desktop/` — Tauri desktop app wrapper
+  - `data/` — Open data sources (OSM, World Bank, UN)
+  - `Docs/` — Design documents and specifications
 - **Branch Strategy:**
   - `main` — Production-ready fully integrated builds
   - `dev` — Active development branch
@@ -22,46 +28,48 @@
 ---
 
 ## 2. Unified Engine Rules
-- **Single Simulation Engine:** All simulation logic runs on one deterministic engine to ensure consistency across modules.
-- **Module Interactions:** All modules (Infrastructure, Economy, Multiplayer) communicate through defined APIs; no direct cross-module manipulation.
-- **Deterministic Simulation:** All AI, disasters, routing, and economic calculations must be deterministic and testable.
-- **Event Queue:** Centralized event system handles network updates, disasters, player actions, AI decisions.
+- **Single Simulation Engine:** All simulation logic runs in Rust through one deterministic ECS engine. The same crate (`gt-simulation`) compiles to WASM for browser single-player and native binary for multiplayer servers.
+- **Crate Interactions:** All crates communicate through defined public APIs; no direct cross-crate internal access.
+- **Deterministic Simulation:** All AI, disasters, routing, and economic calculations must be deterministic and testable. Same inputs = same outputs. Critical for multiplayer sync.
+- **Event Queue:** Centralized event system handles infrastructure updates, disasters, player actions, AI decisions.
 
 ---
 
 ## 3. Coding Standards & Conventions
 - **Implementation Required:** No stub or placeholder code — all features must be fully coded, integrated, and tested.
-- **Language & Framework:** Unreal Engine preferred, with Blueprints for UI, C++ for core engine logic.
-- **Documentation:** All functions, classes, and modules must include full documentation and usage examples.
-- **Testing:** Unit tests for every module; integration tests for cross-module interactions.
-- **Naming Conventions:** Consistent, descriptive names; follow engine and company conventions.
+- **Language & Framework:** Rust for all simulation logic. TypeScript/Svelte for frontend UI. Three.js for map rendering. D3.js for data visualization.
+- **Rust Standards:** `cargo clippy` clean, `cargo fmt` formatted, all public APIs documented with `///` doc comments.
+- **TypeScript Standards:** Strict mode, proper typing, no `any` types.
+- **Testing:** Unit tests for every crate (`cargo test`); integration tests for cross-crate interactions; frontend tests via Bun.
+- **Naming Conventions:** Rust: snake_case for functions/variables, PascalCase for types. TypeScript: camelCase for functions/variables, PascalCase for types/components.
 
 ---
 
 ## 4. Full-Stack Responsibilities
-- **Backend:** Authoritative server, persistent world state, event handling, multi-player arbitration.
-- **Frontend:** 2.5D/3D visualization, interactive dashboards, negotiation, arbitration interfaces.
-- **AI Agents:** Deterministic decision-making for infrastructure, economics, alliances, and expansion.
-- **Persistence:** Full serialization/deserialization, save/load across servers, tick-based updates.
+- **Simulation Engine (Rust):** Deterministic ECS, world generation, economy, AI, infrastructure, population modeling.
+- **Frontend (Svelte/Three.js/D3.js):** 2D political map rendering, interactive dashboards, management panels, data visualization.
+- **WASM Bridge:** TypeScript ↔ Rust interop via wasm-bindgen. Commands (player actions) and Queries (state reads).
+- **Multiplayer Server (Rust):** Authoritative simulation, WebSocket communication, world persistence, AI proxy.
+- **AI Agents:** Deterministic decision-making for infrastructure, economics, alliances, and expansion. 4 archetype personalities.
+- **Persistence:** Binary ECS serialization (serde + bincode + zstd). Browser saves in IndexedDB. Cloud saves in PostgreSQL.
 
 ---
 
 ## 5. Rules for Complete Integration
 - **No Partial Systems:** Every feature must be integrated end-to-end before merging to main.
-- **Cross-Module Contracts:** Modules expose APIs; integration tests ensure contracts are respected.
+- **Cross-Crate Contracts:** Crates expose public APIs; integration tests ensure contracts are respected.
 - **Version Control:** Every change must include updated documentation, unit tests, and integration tests.
-- **Continuous Build:** Build must succeed on main; broken builds are blocked.
+- **Continuous Build:** `cargo build`, `cargo test`, `cargo clippy`, and `bun run build` must all succeed on main; broken builds are blocked.
 
 ---
 
 ## 6. Developer / AI Agent Obligations
 - Follow this charter strictly; all development must adhere to repository architecture and engine rules.
-- Ensure all modules are fully implemented, integrated, and tested.
-- Maintain deterministic simulation for consistency.
-- Document and enforce API contracts for module interactions.
-- Continuously validate persistence, multi-player consistency, and AI agent decision-making.
+- Ensure all crates and frontend components are fully implemented, integrated, and tested.
+- Maintain deterministic simulation for consistency across WASM and native builds.
+- Document and enforce API contracts for crate interactions.
+- Continuously validate persistence, multiplayer consistency, and AI agent decision-making.
 
 ---
 
-**Outcome:** This Master Development Charter is the binding rulebook for any AI or human leading full-stack development of the Telecom MMO project, ensuring complete implementation, deterministic simulation, full integration, and consistent standards across all systems.
-
+**Outcome:** This Master Development Charter is the binding rulebook for any AI or human leading full-stack development of the GlobalTelco project, ensuring complete implementation, deterministic simulation, full integration, and consistent standards across all systems.

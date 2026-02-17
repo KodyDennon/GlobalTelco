@@ -1,0 +1,11 @@
+[package]
+name = "gt-ai"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+gt-common = { path = "../gt-common" }
+gt-economy = { path = "../gt-economy" }
+gt-infrastructure = { path = "../gt-infrastructure" }
+serde = { workspace = true }
+rand = { workspace = true }
