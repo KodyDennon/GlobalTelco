@@ -15,5 +15,14 @@ function persistentStore<T>(key: string, initial: T) {
 
 export const musicVolume = persistentStore('gt_music_volume', 0.5);
 export const sfxVolume = persistentStore('gt_sfx_volume', 0.7);
-export const autoSaveInterval = persistentStore('gt_autosave', 300);
+export const autoSaveInterval = persistentStore('gt_autosave', 50);
 export const mapQuality = persistentStore<'low' | 'medium' | 'high'>('gt_map_quality', 'medium');
+export const showNotifications = persistentStore('gt_show_notifs', true);
+export const notificationCategories = persistentStore<Record<string, boolean>>('gt_notif_cats', {
+	disaster: true,
+	infrastructure: true,
+	finance: true,
+	contract: true,
+	research: true,
+	market: true
+});

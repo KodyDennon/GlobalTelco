@@ -2,11 +2,13 @@ use std::collections::HashMap;
 
 use gt_common::commands::Command;
 use gt_common::types::*;
+use serde::{Deserialize, Serialize};
 
 use crate::components::*;
 use crate::events::EventQueue;
 use crate::systems;
 
+#[derive(Serialize, Deserialize)]
 pub struct GameWorld {
     config: WorldConfig,
     tick: Tick,
@@ -104,6 +106,7 @@ impl GameWorld {
 
         world.generate_world();
         world.create_corporations();
+        world.seed_tech_tree();
 
         world
     }
@@ -221,6 +224,11 @@ impl GameWorld {
                     development: city.development,
                     telecom_demand,
                     infrastructure_satisfaction: 0.0,
+                    jobs_available: 0,
+                    employment_rate: 0.5 + city.development * 0.3,
+                    birth_rate: 0.012 + city.development * 0.003,
+                    death_rate: 0.008,
+                    migration_pressure: 0.0,
                 },
             );
             self.positions.insert(
@@ -461,7 +469,7 @@ impl GameWorld {
                 };
 
                 let edge =
-                    InfraEdge::new(EdgeType::FiberOptic, hub_id, spoke_id, length_km, corp_id);
+                    InfraEdge::new(EdgeType::FiberLocal, hub_id, spoke_id, length_km, corp_id);
                 let edge_maintenance = edge.maintenance_cost;
                 let edge_id = self.allocate_entity();
                 self.infra_edges.insert(edge_id, edge);
@@ -471,6 +479,14 @@ impl GameWorld {
                     fin.cost_per_tick += edge_maintenance;
                 }
             }
+        }
+    }
+
+    fn seed_tech_tree(&mut self) {
+        let techs = crate::components::tech_research::generate_tech_tree();
+        for tech in techs {
+            let id = self.allocate_entity();
+            self.tech_research.insert(id, tech);
         }
     }
 
@@ -492,6 +508,16 @@ impl GameWorld {
 
     pub fn entity_count(&self) -> usize {
         (self.next_entity_id - 1) as usize
+    }
+
+    /// Serialize the entire game world to a JSON string for saving.
+    pub fn save_game(&self) -> Result<String, String> {
+        serde_json::to_string(self).map_err(|e| format!("Save failed: {}", e))
+    }
+
+    /// Deserialize a game world from a JSON string.
+    pub fn load_game(data: &str) -> Result<Self, String> {
+        serde_json::from_str(data).map_err(|e| format!("Load failed: {}", e))
     }
 
     pub fn allocate_entity(&mut self) -> EntityId {
@@ -617,6 +643,12 @@ impl GameWorld {
                     p.set(policy, value);
                 }
             }
+            Command::RepairNode { entity } => {
+                self.cmd_repair_node(entity, false);
+            }
+            Command::EmergencyRepair { entity } => {
+                self.cmd_repair_node(entity, true);
+            }
             Command::AssignTeam { .. } | Command::SaveGame { .. } | Command::LoadGame { .. } => {
                 // Handled externally
             }
@@ -629,13 +661,13 @@ impl GameWorld {
             None => return,
         };
 
-        // Validate parcel exists and get cell index
-        let cell_index = match self.land_parcels.get(&parcel_id) {
-            Some(p) => p.cell_index,
+        // Validate parcel exists and get cell index + terrain
+        let (cell_index, terrain) = match self.land_parcels.get(&parcel_id) {
+            Some(p) => (p.cell_index, p.terrain),
             None => return,
         };
 
-        let node = InfraNode::new(node_type, cell_index, corp_id);
+        let node = InfraNode::new_on_terrain(node_type, cell_index, corp_id, terrain);
         let cost = node.construction_cost;
 
         // Check funds
@@ -846,6 +878,76 @@ impl GameWorld {
             if let Some(fin) = self.financials.get_mut(&corp_id) {
                 fin.cash += salvage;
             }
+        }
+    }
+
+    fn cmd_repair_node(&mut self, entity: EntityId, emergency: bool) {
+        let corp_id = match self.infra_nodes.get(&entity) {
+            Some(n) => n.owner,
+            None => return,
+        };
+
+        let current_health = match self.healths.get(&entity) {
+            Some(h) => h.condition,
+            None => return,
+        };
+
+        if current_health >= 0.95 {
+            return; // Already healthy
+        }
+
+        let base_cost = match self.infra_nodes.get(&entity) {
+            Some(n) => n.construction_cost,
+            None => return,
+        };
+
+        // Repair cost is proportional to damage; emergency is 3x more expensive
+        let damage = 1.0 - current_health;
+        let multiplier = if emergency { 0.6 } else { 0.2 };
+        let cost = (base_cost as f64 * damage * multiplier) as Money;
+
+        if let Some(fin) = self.financials.get(&corp_id) {
+            if fin.cash < cost {
+                return;
+            }
+        }
+
+        if let Some(fin) = self.financials.get_mut(&corp_id) {
+            fin.cash -= cost;
+        }
+
+        if emergency {
+            // Instant repair
+            if let Some(health) = self.healths.get_mut(&entity) {
+                health.condition = 1.0;
+            }
+            // Restore capacity
+            if let Some(node) = self.infra_nodes.get(&entity) {
+                let max_tp = node.max_throughput;
+                if let Some(cap) = self.capacities.get_mut(&entity) {
+                    cap.max_throughput = max_tp;
+                }
+            }
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::RepairCompleted { entity },
+            );
+        } else {
+            // Gradual repair: boost health significantly
+            if let Some(health) = self.healths.get_mut(&entity) {
+                health.condition = (health.condition + 0.5).min(1.0);
+            }
+            // Partially restore capacity
+            if let Some(node) = self.infra_nodes.get(&entity) {
+                let max_tp = node.max_throughput;
+                if let Some(cap) = self.capacities.get_mut(&entity) {
+                    cap.max_throughput = cap.max_throughput.max(max_tp * 0.8);
+                }
+            }
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::RepairStarted { entity, cost },
+            );
         }
     }
 

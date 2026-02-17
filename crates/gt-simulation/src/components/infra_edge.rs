@@ -1,4 +1,4 @@
-use gt_common::types::{EdgeType, EntityId, Money};
+use gt_common::types::{EdgeType, EntityId, Money, NetworkLevel};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,15 +24,17 @@ impl InfraEdge {
         owner: EntityId,
     ) -> Self {
         let (bandwidth, latency_per_km, cost_per_km, maint_per_km) = match edge_type {
-            EdgeType::FiberOptic => (100_000.0, 0.005, 50_000, 500),
+            EdgeType::FiberLocal => (10_000.0, 0.005, 20_000, 200),
+            EdgeType::FiberRegional => (50_000.0, 0.005, 40_000, 400),
+            EdgeType::FiberNational => (200_000.0, 0.005, 80_000, 800),
             EdgeType::Copper => (1_000.0, 0.02, 10_000, 200),
             EdgeType::Microwave => (5_000.0, 0.003, 20_000, 300),
-            EdgeType::Satellite => (2_000.0, 0.5, 0, 1_000), // No per-km cost, flat cost
+            EdgeType::Satellite => (2_000.0, 0.5, 0, 1_000),
             EdgeType::Submarine => (500_000.0, 0.005, 200_000, 2_000),
         };
 
         let construction_cost = if edge_type == EdgeType::Satellite {
-            5_000_000 // Flat cost for satellite links
+            5_000_000
         } else {
             (cost_per_km as f64 * length_km) as Money
         };
@@ -62,6 +64,17 @@ impl InfraEdge {
             0.0
         } else {
             self.current_load / self.bandwidth
+        }
+    }
+
+    /// Returns the network level this edge type typically operates at.
+    pub fn network_level(&self) -> NetworkLevel {
+        match self.edge_type {
+            EdgeType::FiberLocal | EdgeType::Copper => NetworkLevel::Local,
+            EdgeType::FiberRegional | EdgeType::Microwave => NetworkLevel::Regional,
+            EdgeType::FiberNational => NetworkLevel::National,
+            EdgeType::Satellite => NetworkLevel::Continental,
+            EdgeType::Submarine => NetworkLevel::GlobalBackbone,
         }
     }
 }

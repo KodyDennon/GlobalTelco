@@ -34,6 +34,36 @@ impl TerrainType {
         }
     }
 
+    pub fn maintenance_cost_multiplier(&self) -> f64 {
+        match self {
+            TerrainType::Urban => 1.5,
+            TerrainType::Suburban => 1.1,
+            TerrainType::Rural => 1.0,
+            TerrainType::Mountainous => 2.0,
+            TerrainType::Desert => 1.5,
+            TerrainType::Coastal => 1.3,
+            TerrainType::OceanShallow => 3.0,
+            TerrainType::OceanDeep => 5.0,
+            TerrainType::Tundra => 1.8,
+            TerrainType::Frozen => 2.5,
+        }
+    }
+
+    pub fn reliability_modifier(&self) -> f64 {
+        match self {
+            TerrainType::Urban => 1.0,
+            TerrainType::Suburban => 1.0,
+            TerrainType::Rural => 0.95,
+            TerrainType::Mountainous => 0.85,
+            TerrainType::Desert => 0.90,
+            TerrainType::Coastal => 0.88,
+            TerrainType::OceanShallow => 0.80,
+            TerrainType::OceanDeep => 0.75,
+            TerrainType::Tundra => 0.85,
+            TerrainType::Frozen => 0.80,
+        }
+    }
+
     pub fn is_land(&self) -> bool {
         !matches!(self, TerrainType::OceanShallow | TerrainType::OceanDeep)
     }
@@ -52,14 +82,16 @@ pub enum NodeType {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum EdgeType {
-    FiberOptic,
+    FiberLocal,
+    FiberRegional,
+    FiberNational,
     Copper,
     Microwave,
     Satellite,
     Submarine,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum NetworkLevel {
     Local,
     Regional,

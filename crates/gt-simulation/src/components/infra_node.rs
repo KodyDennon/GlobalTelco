@@ -57,6 +57,22 @@ impl InfraNode {
         }
     }
 
+    /// Create a node with terrain multipliers applied to cost, maintenance, and reliability.
+    pub fn new_on_terrain(
+        node_type: NodeType,
+        cell_index: usize,
+        owner: EntityId,
+        terrain: gt_common::types::TerrainType,
+    ) -> Self {
+        let mut node = Self::new(node_type, cell_index, owner);
+        node.construction_cost =
+            (node.construction_cost as f64 * terrain.construction_cost_multiplier()) as Money;
+        node.maintenance_cost =
+            (node.maintenance_cost as f64 * terrain.maintenance_cost_multiplier()) as Money;
+        node.reliability *= terrain.reliability_modifier();
+        node
+    }
+
     pub fn jobs_created(&self) -> u32 {
         match self.node_type {
             NodeType::CentralOffice => 20,

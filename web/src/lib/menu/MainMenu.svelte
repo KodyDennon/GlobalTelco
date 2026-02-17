@@ -1,5 +1,5 @@
 <script lang="ts">
-	let { onNewGame, onSettings }: { onNewGame: () => void; onSettings: () => void } = $props();
+	let { onNewGame, onLoadGame, onSettings }: { onNewGame: () => void; onLoadGame: () => void; onSettings: () => void } = $props();
 </script>
 
 <div class="main-menu">
@@ -9,7 +9,7 @@
 
 		<div class="menu-buttons">
 			<button class="menu-btn primary" onclick={onNewGame}>New Game</button>
-			<button class="menu-btn" disabled>Load Game</button>
+			<button class="menu-btn" onclick={onLoadGame}>Load Game</button>
 			<button class="menu-btn" onclick={onSettings}>Settings</button>
 		</div>
 	</div>

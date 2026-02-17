@@ -6,7 +6,7 @@ pub fn run(world: &mut GameWorld) {
         .cities
         .iter()
         .map(|(&id, city)| {
-            let demand = city.population as f64 * city.development * 0.001;
+            let demand = city.population as f64 * city.development * 0.05;
             (id, demand)
         })
         .collect();

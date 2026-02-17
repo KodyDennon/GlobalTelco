@@ -92,7 +92,7 @@ impl EraConfig {
                 ],
                 available_edge_types: vec![
                     "Copper",
-                    "FiberOptic",
+                    "FiberLocal", "FiberRegional", "FiberNational",
                     "Microwave",
                     "Satellite",
                     "Submarine",
@@ -113,7 +113,7 @@ impl EraConfig {
                 ],
                 available_edge_types: vec![
                     "Copper",
-                    "FiberOptic",
+                    "FiberLocal", "FiberRegional", "FiberNational",
                     "Microwave",
                     "Satellite",
                     "Submarine",
@@ -133,7 +133,7 @@ impl EraConfig {
                     "SubmarineLanding",
                     "WirelessRelay",
                 ],
-                available_edge_types: vec!["FiberOptic", "Microwave", "Satellite", "Submarine"],
+                available_edge_types: vec!["FiberLocal", "FiberRegional", "FiberNational", "Microwave", "Satellite", "Submarine"],
             },
         }
     }

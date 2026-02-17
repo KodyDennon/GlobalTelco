@@ -1,7 +1,8 @@
 use gt_common::events::GameEvent;
 use gt_common::types::Tick;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct EventQueue {
     events: Vec<(Tick, GameEvent)>,
 }

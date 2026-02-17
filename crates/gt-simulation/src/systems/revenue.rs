@@ -41,11 +41,11 @@ pub fn run(world: &mut GameWorld) {
                 .map(|n| {
                     // Revenue scales with throughput and node type
                     let rate = match n.node_type {
-                        gt_common::types::NodeType::DataCenter => 0.05,
-                        gt_common::types::NodeType::ExchangePoint => 0.03,
-                        gt_common::types::NodeType::SubmarineLanding => 0.08,
-                        gt_common::types::NodeType::SatelliteGround => 0.04,
-                        _ => 0.02,
+                        gt_common::types::NodeType::DataCenter => 5.0,
+                        gt_common::types::NodeType::ExchangePoint => 8.0,
+                        gt_common::types::NodeType::SubmarineLanding => 5.0,
+                        gt_common::types::NodeType::SatelliteGround => 40.0,
+                        _ => 25.0,
                     };
                     (n.max_throughput * rate) as i64
                 })

@@ -130,6 +130,11 @@ impl WasmBridge {
                     "development": c.development,
                     "telecom_demand": c.telecom_demand,
                     "infrastructure_satisfaction": c.infrastructure_satisfaction,
+                    "employment_rate": c.employment_rate,
+                    "jobs_available": c.jobs_available,
+                    "birth_rate": c.birth_rate,
+                    "death_rate": c.death_rate,
+                    "migration_pressure": c.migration_pressure,
                     "x": pos.map(|p| p.x).unwrap_or(0.0),
                     "y": pos.map(|p| p.y).unwrap_or(0.0),
                 })
@@ -325,6 +330,225 @@ impl WasmBridge {
             })
             .collect();
         serde_json::to_string(&corps).unwrap_or_default()
+    }
+
+    pub fn get_contracts(&self, corp_id: u64) -> String {
+        let contracts: Vec<serde_json::Value> = self
+            .world
+            .contracts
+            .iter()
+            .filter(|(_, c)| c.from == corp_id || c.to == corp_id)
+            .map(|(&id, c)| {
+                let from_name = self
+                    .world
+                    .corporations
+                    .get(&c.from)
+                    .map(|corp| corp.name.as_str())
+                    .unwrap_or("Unknown");
+                let to_name = self
+                    .world
+                    .corporations
+                    .get(&c.to)
+                    .map(|corp| corp.name.as_str())
+                    .unwrap_or("Unknown");
+                serde_json::json!({
+                    "id": id,
+                    "contract_type": format!("{:?}", c.contract_type),
+                    "from": c.from,
+                    "to": c.to,
+                    "from_name": from_name,
+                    "to_name": to_name,
+                    "capacity": c.capacity,
+                    "price_per_tick": c.price_per_tick,
+                    "start_tick": c.start_tick,
+                    "end_tick": c.end_tick,
+                    "status": format!("{:?}", c.status),
+                    "penalty": c.penalty,
+                })
+            })
+            .collect();
+        serde_json::to_string(&contracts).unwrap_or_default()
+    }
+
+    pub fn get_debt_instruments(&self, corp_id: u64) -> String {
+        let debts: Vec<serde_json::Value> = self
+            .world
+            .debt_instruments
+            .iter()
+            .filter(|(_, d)| d.holder == corp_id)
+            .map(|(&id, d)| {
+                serde_json::json!({
+                    "id": id,
+                    "principal": d.principal,
+                    "interest_rate": d.interest_rate,
+                    "remaining_ticks": d.remaining_ticks,
+                    "payment_per_tick": d.payment_per_tick,
+                    "is_paid_off": d.is_paid_off(),
+                })
+            })
+            .collect();
+        serde_json::to_string(&debts).unwrap_or_default()
+    }
+
+    pub fn get_research_state(&self) -> String {
+        let research: Vec<serde_json::Value> = self
+            .world
+            .tech_research
+            .iter()
+            .map(|(&id, r)| {
+                let researcher_name = r.researcher.and_then(|rid| {
+                    self.world.corporations.get(&rid).map(|c| c.name.clone())
+                });
+                let patent_owner_name = r.patent_owner.and_then(|oid| {
+                    self.world.corporations.get(&oid).map(|c| c.name.clone())
+                });
+                serde_json::json!({
+                    "id": id,
+                    "category": format!("{:?}", r.category),
+                    "category_name": r.category.display_name(),
+                    "name": r.name,
+                    "description": r.description,
+                    "progress": r.progress,
+                    "total_cost": r.total_cost,
+                    "progress_pct": r.progress_pct(),
+                    "researcher": r.researcher,
+                    "researcher_name": researcher_name,
+                    "completed": r.completed,
+                    "patent_status": format!("{:?}", r.patent_status),
+                    "patent_owner": r.patent_owner,
+                    "patent_owner_name": patent_owner_name,
+                    "license_price": r.license_price,
+                    "prerequisites": r.prerequisites,
+                    "throughput_bonus": r.throughput_bonus,
+                    "cost_reduction": r.cost_reduction,
+                    "reliability_bonus": r.reliability_bonus,
+                })
+            })
+            .collect();
+        serde_json::to_string(&research).unwrap_or_default()
+    }
+
+    pub fn get_buildable_nodes(&self, parcel_id: u64) -> String {
+        let parcel = self.world.land_parcels.get(&parcel_id);
+        let player_id = self.world.player_corp_id().unwrap_or(0);
+        let fin = self.world.financials.get(&player_id);
+        let cash = fin.map(|f| f.cash).unwrap_or(0);
+
+        let node_types = [
+            ("CellTower", "CellTower", "Local", 500_000i64, 50),
+            ("SmallCell", "SmallCell", "Local", 100_000, 20),
+            ("FiberNode", "FiberNode", "Regional", 2_000_000, 100),
+            ("DataCenter", "DataCenter", "National", 10_000_000, 200),
+            ("ExchangePoint", "ExchangePoint", "National", 5_000_000, 150),
+            ("SatelliteGround", "SatelliteGround", "Continental", 20_000_000, 300),
+            ("SubmarineLanding", "SubmarineLanding", "Global", 50_000_000, 500),
+        ];
+
+        let terrain_mult = parcel.map(|p| p.cost_modifier).unwrap_or(1.0);
+
+        let options: Vec<serde_json::Value> = node_types
+            .iter()
+            .map(|(label, node_type, level, base_cost, ticks)| {
+                let cost = (*base_cost as f64 * terrain_mult) as i64;
+                serde_json::json!({
+                    "label": label,
+                    "node_type": node_type,
+                    "network_level": level,
+                    "cost": cost,
+                    "build_ticks": ticks,
+                    "affordable": cash >= cost,
+                })
+            })
+            .collect();
+
+        serde_json::to_string(&options).unwrap_or_default()
+    }
+
+    pub fn get_buildable_edges(&self, source_id: u64) -> String {
+        let player_id = self.world.player_corp_id().unwrap_or(0);
+        let fin = self.world.financials.get(&player_id);
+        let cash = fin.map(|f| f.cash).unwrap_or(0);
+
+        // Find player-owned nodes that could be connected to source
+        let player_nodes = self
+            .world
+            .corp_infra_nodes
+            .get(&player_id)
+            .cloned()
+            .unwrap_or_default();
+
+        let targets: Vec<serde_json::Value> = player_nodes
+            .iter()
+            .filter(|&&nid| nid != source_id && !self.world.constructions.contains_key(&nid))
+            .filter_map(|&nid| {
+                let node = self.world.infra_nodes.get(&nid)?;
+                let pos = self.world.positions.get(&nid)?;
+                let src_pos = self.world.positions.get(&source_id)?;
+                let dx = pos.x - src_pos.x;
+                let dy = pos.y - src_pos.y;
+                let dist_km = (dx * dx + dy * dy).sqrt() * 111.0; // rough deg to km
+                let cost = (dist_km * 10_000.0) as i64;
+                Some(serde_json::json!({
+                    "target_id": nid,
+                    "target_type": format!("{:?}", node.node_type),
+                    "x": pos.x,
+                    "y": pos.y,
+                    "distance_km": dist_km,
+                    "cost": cost,
+                    "affordable": cash >= cost,
+                }))
+            })
+            .collect();
+
+        serde_json::to_string(&targets).unwrap_or_default()
+    }
+
+    pub fn save_game(&self) -> Result<String, JsValue> {
+        self.world
+            .save_game()
+            .map_err(|e| JsValue::from_str(&e))
+    }
+
+    pub fn load_game(data: &str) -> Result<WasmBridge, JsValue> {
+        let world =
+            GameWorld::load_game(data).map_err(|e| JsValue::from_str(&e))?;
+        Ok(Self { world })
+    }
+
+    pub fn get_damaged_nodes(&self, corp_id: u64) -> String {
+        let node_ids = self
+            .world
+            .corp_infra_nodes
+            .get(&corp_id)
+            .cloned()
+            .unwrap_or_default();
+
+        let damaged: Vec<serde_json::Value> = node_ids
+            .iter()
+            .filter_map(|&id| {
+                let node = self.world.infra_nodes.get(&id)?;
+                let health = self.world.healths.get(&id)?;
+                if health.condition >= 0.95 {
+                    return None;
+                }
+                let pos = self.world.positions.get(&id);
+                let base_cost = node.construction_cost;
+                let damage = 1.0 - health.condition;
+                let repair_cost = (base_cost as f64 * damage * 0.2) as i64;
+                let emergency_cost = (base_cost as f64 * damage * 0.6) as i64;
+                Some(serde_json::json!({
+                    "id": id,
+                    "node_type": format!("{:?}", node.node_type),
+                    "health": health.condition,
+                    "repair_cost": repair_cost,
+                    "emergency_cost": emergency_cost,
+                    "x": pos.map(|p| p.x).unwrap_or(0.0),
+                    "y": pos.map(|p| p.y).unwrap_or(0.0),
+                }))
+            })
+            .collect();
+
+        serde_json::to_string(&damaged).unwrap_or_default()
     }
 
     pub fn get_grid_cells(&self) -> String {

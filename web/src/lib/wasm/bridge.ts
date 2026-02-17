@@ -8,7 +8,13 @@ import type {
 	Parcel,
 	Notification,
 	GridCell,
-	CorpSummary
+	CorpSummary,
+	ContractInfo,
+	DebtInfo,
+	ResearchInfo,
+	BuildOption,
+	EdgeTarget,
+	DamagedNode
 } from './types';
 
 let wasmModule: any = null;
@@ -114,6 +120,46 @@ export function getAllCorporations(): CorpSummary[] {
 export function getGridCells(): GridCell[] {
 	const json = bridge?.get_grid_cells() ?? '[]';
 	return JSON.parse(json);
+}
+
+export function getContracts(corpId: number): ContractInfo[] {
+	const json = bridge?.get_contracts(BigInt(corpId)) ?? '[]';
+	return JSON.parse(json);
+}
+
+export function getDebtInstruments(corpId: number): DebtInfo[] {
+	const json = bridge?.get_debt_instruments(BigInt(corpId)) ?? '[]';
+	return JSON.parse(json);
+}
+
+export function getResearchState(): ResearchInfo[] {
+	const json = bridge?.get_research_state() ?? '[]';
+	return JSON.parse(json);
+}
+
+export function getBuildableNodes(parcelId: number): BuildOption[] {
+	const json = bridge?.get_buildable_nodes(BigInt(parcelId)) ?? '[]';
+	return JSON.parse(json);
+}
+
+export function getBuildableEdges(sourceId: number): EdgeTarget[] {
+	const json = bridge?.get_buildable_edges(BigInt(sourceId)) ?? '[]';
+	return JSON.parse(json);
+}
+
+export function getDamagedNodes(corpId: number): DamagedNode[] {
+	const json = bridge?.get_damaged_nodes(BigInt(corpId)) ?? '[]';
+	return JSON.parse(json);
+}
+
+export function saveGame(): string {
+	if (!bridge) throw new Error('No game to save');
+	return bridge.save_game();
+}
+
+export function loadGame(data: string): void {
+	if (!wasmModule) throw new Error('WASM not initialized');
+	bridge = wasmModule.WasmBridge.load_game(data);
 }
 
 export function isInitialized(): boolean {

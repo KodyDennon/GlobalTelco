@@ -1,5 +1,16 @@
 use crate::world::GameWorld;
 
+const DISASTER_TYPES: &[(&str, f64)] = &[
+    ("Earthquake", 0.15),
+    ("Hurricane", 0.15),
+    ("Flooding", 0.20),
+    ("Landslide", 0.10),
+    ("CyberAttack", 0.15),
+    ("PoliticalUnrest", 0.10),
+    ("RegulatoryChange", 0.10),
+    ("EquipmentFailure", 0.05),
+];
+
 pub fn run(world: &mut GameWorld) {
     let tick = world.current_tick();
 
@@ -23,21 +34,64 @@ pub fn run(world: &mut GameWorld) {
         if roll < 0.02 * disaster_risk {
             let severity = world.deterministic_random() * 0.5 + 0.1; // 0.1 to 0.6
 
+            // Pick disaster type based on weighted random
+            let type_roll = world.deterministic_random();
+            let mut cumulative = 0.0;
+            let mut disaster_name = "Earthquake";
+            for &(name, weight) in DISASTER_TYPES {
+                cumulative += weight;
+                if type_roll < cumulative {
+                    disaster_name = name;
+                    break;
+                }
+            }
+
             // Damage infrastructure in this region
-            let affected_nodes: Vec<u64> = world
+            let mut affected_nodes: Vec<u64> = world
                 .infra_nodes
                 .iter()
                 .filter(|(_, node)| cells.contains(&node.cell_index))
                 .map(|(&id, _)| id)
                 .collect();
+            affected_nodes.sort_unstable();
+
+            let affected_count = affected_nodes.len() as u32;
 
             for &node_id in &affected_nodes {
+                let damage = severity * 0.3;
                 if let Some(health) = world.healths.get_mut(&node_id) {
-                    health.degrade(severity * 0.3);
+                    health.degrade(damage);
+
+                    // If health drops below 0.2, mark as severely damaged
+                    if health.condition < 0.2 {
+                        // Reduce capacity drastically
+                        if let Some(cap) = world.capacities.get_mut(&node_id) {
+                            cap.max_throughput *= 0.1;
+                        }
+                    }
                 }
                 // Reduce capacity during disaster
                 if let Some(cap) = world.capacities.get_mut(&node_id) {
                     cap.max_throughput *= 1.0 - severity * 0.2;
+                }
+            }
+
+            // Population displacement for affected cities
+            let mut city_ids: Vec<u64> = world
+                .cities
+                .iter()
+                .filter(|(_, c)| cells.contains(&c.cell_index))
+                .map(|(&id, _)| id)
+                .collect();
+            city_ids.sort_unstable();
+
+            for &city_id in &city_ids {
+                if severity > 0.3 {
+                    if let Some(city) = world.cities.get_mut(&city_id) {
+                        let displaced = (city.population as f64 * severity * 0.05) as u64;
+                        city.population = city.population.saturating_sub(displaced);
+                        city.migration_pressure += severity * 0.2;
+                    }
                 }
             }
 
@@ -46,6 +100,8 @@ pub fn run(world: &mut GameWorld) {
                 gt_common::events::GameEvent::DisasterStruck {
                     region: region_id,
                     severity,
+                    disaster_type: disaster_name.to_string(),
+                    affected_nodes: affected_count,
                 },
             );
         }

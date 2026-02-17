@@ -19,6 +19,23 @@ export const cities = writable<City[]>([]);
 export const notifications = writable<Notification[]>([]);
 export const allCorporations = writable<CorpSummary[]>([]);
 
+// History tracking for charts
+export interface FinanceSnapshot {
+	tick: number;
+	revenue: number;
+	cost: number;
+	cash: number;
+}
+export const financeHistory = writable<FinanceSnapshot[]>([]);
+
+export function recordSnapshot(tick: number, revenue: number, cost: number, cash: number) {
+	financeHistory.update((h) => {
+		const entry = { tick, revenue, cost, cash };
+		const updated = [...h, entry];
+		return updated.length > 200 ? updated.slice(-200) : updated;
+	});
+}
+
 export const tick = derived(worldInfo, ($info) => $info.tick);
 export const speed = derived(worldInfo, ($info) => $info.speed);
 export const playerCorpId = derived(worldInfo, ($info) => $info.player_corp_id);

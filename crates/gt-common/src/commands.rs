@@ -19,6 +19,12 @@ pub enum Command {
     DecommissionNode {
         entity: EntityId,
     },
+    RepairNode {
+        entity: EntityId,
+    },
+    EmergencyRepair {
+        entity: EntityId,
+    },
 
     // Workforce
     HireEmployee {

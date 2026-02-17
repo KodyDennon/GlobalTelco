@@ -56,48 +56,48 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 *Goal: Corporations exist, own things, earn money, and AI makes decisions. Still no rendering.*
 
 ### gt-economy — Corporate Finance
-- [ ] Corporation entity with CorporationData component (name, cash, debt, credit rating, is_ai)
-- [ ] Create/destroy corporation functions
-- [ ] Balance sheet tracking (assets, liabilities, equity)
-- [ ] Income statement per tick (revenue, COGS, operating expenses, interest, net income)
-- [ ] Credit rating calculation (based on debt ratio, cash flow, history)
-- [ ] Debt instruments (individual loans with principal, rate, maturity)
+- [x] Corporation entity with CorporationData component (name, cash, debt, credit rating, is_ai)
+- [x] Create/destroy corporation functions
+- [x] Balance sheet tracking (assets, liabilities, equity)
+- [x] Income statement per tick (revenue, COGS, operating expenses, interest, net income)
+- [x] Credit rating calculation (based on debt ratio, cash flow, history)
+- [x] Debt instruments (individual loans with principal, rate, maturity)
 - [ ] Subsidiary system (child corporations with parent reference)
-- [ ] Contract system (peering, transit, SLA — terms, capacity, penalties, renewal)
+- [x] Contract system (peering, transit, SLA — terms, capacity, penalties, renewal)
 
 ### gt-infrastructure — Network Graph
-- [ ] Infrastructure node entities (6 types: tower, fiber hub, data center, IXP, subsea station, satellite station)
-- [ ] Infrastructure edge entities (6 types: fiber local/regional/national, microwave, subsea, satellite)
-- [ ] 5-level hierarchical network graph (Local → Regional → National → Continental → Global Backbone)
-- [ ] Dijkstra routing with cached shortest-path trees
-- [ ] Dirty-node invalidation (only recalculate affected clusters)
-- [ ] Node/edge attributes: capacity, latency, reliability, maintenance cost, health, construction state
-- [ ] Terrain multipliers on construction cost, maintenance cost, reliability
+- [x] Infrastructure node entities (6 types: tower, fiber hub, data center, IXP, subsea station, satellite station)
+- [x] Infrastructure edge entities (6 types: fiber local/regional/national, microwave, subsea, satellite)
+- [x] 5-level hierarchical network graph (Local → Regional → National → Continental → Global Backbone)
+- [x] Dijkstra routing with cached shortest-path trees
+- [x] Dirty-node invalidation (only recalculate affected clusters)
+- [x] Node/edge attributes: capacity, latency, reliability, maintenance cost, health, construction state
+- [x] Terrain multipliers on construction cost, maintenance cost, reliability
 
 ### gt-population — Demographics
-- [ ] City entities with population count, growth rate, employment, migration pressure
-- [ ] Birth/death rate modeling per tick
-- [ ] Migration system: population moves toward cities with better infrastructure/jobs
-- [ ] Employment tracking: infrastructure creates jobs, migration fills them
-- [ ] Demand calculation from population × economic development × infrastructure quality
+- [x] City entities with population count, growth rate, employment, migration pressure
+- [x] Birth/death rate modeling per tick
+- [x] Migration system: population moves toward cities with better infrastructure/jobs
+- [x] Employment tracking: infrastructure creates jobs, migration fills them
+- [x] Demand calculation from population × economic development × infrastructure quality
 
 ### gt-ai — AI Corporations
-- [ ] 4 archetype definitions with weight tuning
-- [ ] Strategy selection (Expand/Consolidate/Compete/Survive) based on financial health + archetype
-- [ ] AI actions: acquire land, build node, build edge, manage finances, propose contract
-- [ ] Parcel scoring algorithm (terrain, demand, proximity, cost, weighted by archetype)
+- [x] 4 archetype definitions with weight tuning
+- [x] Strategy selection (Expand/Consolidate/Compete/Survive) based on financial health + archetype
+- [x] AI actions: acquire land, build node, build edge, manage finances, propose contract
+- [x] Parcel scoring algorithm (terrain, demand, proximity, cost, weighted by archetype)
 - [ ] AI proxy for offline multiplayer (policy-only execution)
 
 ### System Implementation (gt-simulation)
-- [ ] Fully implement all 15 systems (not stubs):
+- [x] Fully implement all 15 systems (not stubs):
   - construction, maintenance, population, demand, routing, utilization, revenue, cost, finance, contract, ai, disaster, regulation, research, market
 
 ### Verification
-- [ ] Create a world with 1 player corp + 4 AI corps → tick 500 times → AI corps build infrastructure, earn revenue, some grow, some struggle
-- [ ] Revenue flows correctly: infrastructure → utilization → revenue → corporation cash
-- [ ] Maintenance costs deduct properly, infrastructure degrades without maintenance
-- [ ] AI strategy switches based on financial state (expand when rich, survive when poor)
-- [ ] Contracts form between AI corps
+- [x] Create a world with 1 player corp + 4 AI corps → tick 500 times → AI corps build infrastructure, earn revenue, some grow, some struggle
+- [x] Revenue flows correctly: infrastructure → utilization → revenue → corporation cash
+- [x] Maintenance costs deduct properly, infrastructure degrades without maintenance
+- [x] AI strategy switches based on financial state (expand when rich, survive when poor)
+- [x] Contracts form between AI corps
 
 ---
 
@@ -106,52 +106,52 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 *Goal: The game runs in a browser. Player sees a map, can interact, and the simulation runs in WASM.*
 
 ### gt-wasm — WASM Bindings
-- [ ] wasm-bindgen entry point
-- [ ] `new_game(config_json: &str) -> *mut GameWorld` — create and initialize world
-- [ ] `tick(world: *mut GameWorld, dt: f64)` — advance simulation
-- [ ] Command functions: `build_node()`, `build_edge()`, `hire_employee()`, `set_policy()`, `take_loan()`, `set_speed()`, `toggle_pause()`
-- [ ] Query functions: `get_visible_entities()`, `get_corporation_data()`, `get_region_data()`, `get_infrastructure_list()`, `get_notifications()`
-- [ ] `save_game()` → returns compressed bytes; `load_game(data)` → restores world
-- [ ] Build with `wasm-pack build --target web`
+- [x] wasm-bindgen entry point
+- [x] `new_game(config_json: &str) -> *mut GameWorld` — create and initialize world
+- [x] `tick(world: *mut GameWorld, dt: f64)` — advance simulation
+- [x] Command functions: `build_node()`, `build_edge()`, `hire_employee()`, `set_policy()`, `take_loan()`, `set_speed()`, `toggle_pause()`
+- [x] Query functions: `get_visible_entities()`, `get_corporation_data()`, `get_region_data()`, `get_infrastructure_list()`, `get_notifications()`
+- [x] `save_game()` → returns compressed bytes; `load_game(data)` → restores world
+- [x] Build with `wasm-pack build --target web`
 
 ### Svelte App Bootstrap
-- [ ] Initialize Svelte project with Bun (`bun create svelte`)
-- [ ] Configure TypeScript, dark theme CSS, font setup (sans-serif + monospace)
-- [ ] WASM loading and initialization (`web/src/lib/wasm/bridge.ts`)
-- [ ] TypeScript command/query wrappers (`commands.ts`, `queries.ts`)
-- [ ] Svelte stores: game state (from WASM queries), UI state (active panel, selection), settings
-- [ ] Game loop: `requestAnimationFrame` → tick WASM → query state → update stores → render
+- [x] Initialize Svelte project with Bun (`bun create svelte`)
+- [x] Configure TypeScript, dark theme CSS, font setup (sans-serif + monospace)
+- [x] WASM loading and initialization (`web/src/lib/wasm/bridge.ts`)
+- [x] TypeScript command/query wrappers (`commands.ts`, `queries.ts`)
+- [x] Svelte stores: game state (from WASM queries), UI state (active panel, selection), settings
+- [x] Game loop: `requestAnimationFrame` → tick WASM → query state → update stores → render
 
 ### Three.js Map Renderer
-- [ ] Three.js scene setup in `MapRenderer.svelte` (orthographic camera for 2D mode)
-- [ ] Layer 1: Ocean base (dark blue plane)
-- [ ] Layer 2: Land masses (terrain-colored polygons from GeoJSON or proc-gen data)
-- [ ] Layer 3: Political borders (line geometry for country/region borders)
-- [ ] Layer 4: City dots (scaled circles for population centers)
-- [ ] Layer 5: Infrastructure icons (sprites for nodes, line geometry for edges)
-- [ ] Layer 6: Ownership overlay (semi-transparent company-colored regions)
-- [ ] Layer 7: Selection highlight (glow on hovered/selected entities)
-- [ ] Layer 8: Labels (text sprites for city/region names at appropriate zoom)
-- [ ] Zoom level visibility control (World/Country/Region/City)
-- [ ] Pan and zoom with mouse/touch
-- [ ] Click-to-select entities (raycast to find nearest entity)
+- [x] Three.js scene setup in `MapRenderer.svelte` (orthographic camera for 2D mode)
+- [x] Layer 1: Ocean base (dark blue plane)
+- [x] Layer 2: Land masses (terrain-colored polygons from GeoJSON or proc-gen data)
+- [x] Layer 3: Political borders (line geometry for country/region borders)
+- [x] Layer 4: City dots (scaled circles for population centers)
+- [x] Layer 5: Infrastructure icons (sprites for nodes, line geometry for edges)
+- [x] Layer 6: Ownership overlay (semi-transparent company-colored regions)
+- [x] Layer 7: Selection highlight (glow on hovered/selected entities)
+- [x] Layer 8: Labels (text sprites for city/region names at appropriate zoom)
+- [x] Zoom level visibility control (World/Country/Region/City)
+- [x] Pan and zoom with mouse/touch
+- [x] Click-to-select entities (raycast to find nearest entity)
 
 ### Minimal UI Panels
-- [ ] `MainMenu.svelte` — New Game, Load Game, Settings, Quit
-- [ ] `NewGame.svelte` — Corp name, world type, era, difficulty, AI count, disaster severity, seed, Start button
-- [ ] `GameView.svelte` — Main game screen container (map + HUD + panels)
-- [ ] `HUD.svelte` — Top bar: corporation name, cash, tick counter, speed display
-- [ ] `SpeedControls.svelte` — Pause/Play/2x/4x/8x buttons + quick save/load
-- [ ] Basic panel system: click buttons to open/close side panels
+- [x] `MainMenu.svelte` — New Game, Load Game, Settings, Quit
+- [x] `NewGame.svelte` — Corp name, world type, era, difficulty, AI count, disaster severity, seed, Start button
+- [x] `GameView.svelte` — Main game screen container (map + HUD + panels)
+- [x] `HUD.svelte` — Top bar: corporation name, cash, tick counter, speed display
+- [x] `SpeedControls.svelte` — Pause/Play/2x/4x/8x buttons + quick save/load
+- [x] Basic panel system: click buttons to open/close side panels
 
 ### Verification
-- [ ] `bun run dev` → browser opens → main menu renders
-- [ ] New Game → world generates → map renders with terrain, borders, cities
-- [ ] Pan/zoom works smoothly at 60fps
-- [ ] Speed controls: pause/resume/2x/4x
-- [ ] Click a parcel → selection highlight appears
-- [ ] HUD shows live cash and tick counter updating
-- [ ] AI corps build infrastructure visible on map over time
+- [x] `bun run dev` → browser opens → main menu renders
+- [x] New Game → world generates → map renders with terrain, borders, cities
+- [x] Pan/zoom works smoothly at 60fps
+- [x] Speed controls: pause/resume/2x/4x
+- [x] Click a parcel → selection highlight appears
+- [x] HUD shows live cash and tick counter updating
+- [x] AI corps build infrastructure visible on map over time
 
 ---
 
@@ -160,38 +160,38 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 *Goal: The player can build infrastructure, manage finances, and make strategic decisions.*
 
 ### Build Interaction
-- [ ] Build mode toggle (keyboard shortcut or button)
-- [ ] Click parcel in build mode → show build menu (available node types with costs and construction time)
-- [ ] Select node type → place on parcel (starts construction, deducts cost)
-- [ ] Edge creation: select source node → select target node → choose edge type → confirm
-- [ ] Visual feedback: ghost/preview before confirming, construction-in-progress indicator
-- [ ] Validation: parcel ownership, zoning compatibility, sufficient funds, no duplicates
+- [x] Build mode toggle (keyboard shortcut or button)
+- [x] Click parcel in build mode → show build menu (available node types with costs and construction time)
+- [x] Select node type → place on parcel (starts construction, deducts cost)
+- [x] Edge creation: select source node → select target node → choose edge type → confirm
+- [x] Visual feedback: ghost/preview before confirming, construction-in-progress indicator
+- [x] Validation: parcel ownership, zoning compatibility, sufficient funds, no duplicates
 
 ### Management Panels
-- [ ] `DashboardPanel.svelte` — Financial overview: cash, revenue, expenses, net income, debt, credit rating (charts over time using D3)
-- [ ] `InfraPanel.svelte` — Owned infrastructure list: status, revenue contribution, maintenance cost, upgrade options
-- [ ] `WorkforcePanel.svelte` — Employee/team management (small company: individuals, large: teams/departments)
-- [ ] `ContractPanel.svelte` — Active contracts, pending proposals, propose new contracts
-- [ ] `RegionPanel.svelte` — Regional overview: demand, population, competitor presence, market share
-- [ ] `BuildMenu.svelte` — Context menu for build placement (node type selection)
+- [x] `DashboardPanel.svelte` — Financial overview: cash, revenue, expenses, net income, debt, credit rating (charts over time using D3)
+- [x] `InfraPanel.svelte` — Owned infrastructure list: status, revenue contribution, maintenance cost, upgrade options
+- [ ] `WorkforcePanel.svelte` — Employee/team management (deferred — workforce is auto-managed for now)
+- [x] `ContractPanel.svelte` — Active contracts, pending proposals, propose new contracts
+- [x] `RegionPanel.svelte` — Regional overview: demand, population, competitor presence, market share
+- [x] `BuildMenu.svelte` — Context menu for build placement (node type selection)
 
 ### Financial Actions
-- [ ] Take loan (choose amount, see interest rate based on credit rating)
-- [ ] Repay debt (select instrument to pay down)
-- [ ] Income statement breakdown (revenue by source, expenses by category)
-- [ ] Balance sheet view
+- [x] Take loan (choose amount, see interest rate based on credit rating)
+- [x] Repay debt (select instrument to pay down)
+- [x] Income statement breakdown (revenue by source, expenses by category)
+- [x] Balance sheet view
 
 ### D3.js Charts
-- [ ] `FinanceChart.svelte` — Revenue/expense line chart over time
-- [ ] `PopulationChart.svelte` — Population growth graph
-- [ ] `NetworkDiagram.svelte` — Network topology visualization
-- [ ] `MarketShare.svelte` — Market share pie/bar chart
+- [x] `FinanceChart.svelte` — Revenue/expense line chart over time
+- [ ] `PopulationChart.svelte` — Population growth graph (deferred)
+- [ ] `NetworkDiagram.svelte` — Network topology visualization (deferred)
+- [x] `MarketShare.svelte` — Market share pie/bar chart
 
 ### Verification
-- [ ] Build mode → click hex → build menu → place tower → construction timer → completes → operational → earning revenue
-- [ ] Select two nodes → lay fiber edge → traffic routes through → utilization visible
-- [ ] Finance panel → take loan → cash increases → interest accrues
-- [ ] D3 charts update live as game progresses
+- [x] Build mode → click hex → build menu → place tower → construction timer → completes → operational → earning revenue
+- [x] Select two nodes → lay fiber edge → traffic routes through → utilization visible
+- [x] Finance panel → take loan → cash increases → interest accrues
+- [x] D3 charts update live as game progresses
 
 ---
 

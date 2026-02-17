@@ -2,7 +2,14 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { MapRenderer } from './MapRenderer';
 	import { initialized } from '$lib/stores/gameState';
-	import { selectedEntityId, selectedEntityType } from '$lib/stores/uiState';
+	import {
+		selectedEntityId,
+		selectedEntityType,
+		buildMode,
+		buildMenuParcel,
+		buildEdgeSource
+	} from '$lib/stores/uiState';
+	import * as bridge from '$lib/wasm/bridge';
 
 	let container: HTMLElement;
 	let renderer: MapRenderer | null = null;
@@ -13,6 +20,39 @@
 		frameId = requestAnimationFrame(animate);
 	}
 
+	function handleEntitySelected(e: CustomEvent) {
+		const { id, type } = e.detail;
+		let currentBuildMode: string | null = null;
+		buildMode.subscribe((m) => (currentBuildMode = m))();
+
+		if (currentBuildMode === 'edge' && type === 'node') {
+			let source: number | null = null;
+			buildEdgeSource.subscribe((s) => (source = s))();
+
+			if (source === null) {
+				buildEdgeSource.set(id);
+			} else {
+				bridge.processCommand({
+					BuildEdge: { edge_type: 'Fiber', from: source, to: id }
+				});
+				buildEdgeSource.set(null);
+			}
+			return;
+		}
+
+		selectedEntityId.set(id);
+		selectedEntityType.set(type);
+	}
+
+	function handleParcelClicked(e: CustomEvent) {
+		let currentBuildMode: string | null = null;
+		buildMode.subscribe((m) => (currentBuildMode = m))();
+
+		if (currentBuildMode === 'node') {
+			buildMenuParcel.set(e.detail);
+		}
+	}
+
 	onMount(() => {
 		const unsub = initialized.subscribe((init) => {
 			if (init && container && !renderer) {
@@ -21,17 +61,18 @@
 				renderer.updateInfrastructure();
 				animate();
 
-				// Refresh infrastructure every 2 seconds
 				const interval = setInterval(() => {
 					renderer?.updateInfrastructure();
 				}, 2000);
 
-				window.addEventListener('entity-selected', ((e: CustomEvent) => {
-					selectedEntityId.set(e.detail.id);
-					selectedEntityType.set(e.detail.type);
-				}) as EventListener);
+				window.addEventListener('entity-selected', handleEntitySelected as EventListener);
+				window.addEventListener('parcel-clicked', handleParcelClicked as EventListener);
 
-				return () => clearInterval(interval);
+				return () => {
+					clearInterval(interval);
+					window.removeEventListener('entity-selected', handleEntitySelected as EventListener);
+					window.removeEventListener('parcel-clicked', handleParcelClicked as EventListener);
+				};
 			}
 		});
 

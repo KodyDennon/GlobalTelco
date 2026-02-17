@@ -81,6 +81,19 @@ pub enum GameEvent {
     DisasterStruck {
         region: EntityId,
         severity: f64,
+        disaster_type: String,
+        affected_nodes: u32,
+    },
+    InfrastructureDamaged {
+        entity: EntityId,
+        damage: f64,
+    },
+    RepairStarted {
+        entity: EntityId,
+        cost: Money,
+    },
+    RepairCompleted {
+        entity: EntityId,
     },
 
     // Regulation

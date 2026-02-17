@@ -142,6 +142,81 @@ export interface GridCell {
 	terrain: string;
 }
 
+export interface ContractInfo {
+	id: number;
+	contract_type: string;
+	from: number;
+	to: number;
+	from_name: string;
+	to_name: string;
+	capacity: number;
+	price_per_tick: number;
+	start_tick: number;
+	end_tick: number;
+	status: string;
+	penalty: number;
+}
+
+export interface DebtInfo {
+	id: number;
+	principal: number;
+	interest_rate: number;
+	remaining_ticks: number;
+	payment_per_tick: number;
+	is_paid_off: boolean;
+}
+
+export interface ResearchInfo {
+	id: number;
+	category: string;
+	category_name: string;
+	name: string;
+	description: string;
+	progress: number;
+	total_cost: number;
+	progress_pct: number;
+	researcher: number | null;
+	researcher_name: string | null;
+	completed: boolean;
+	patent_status: string;
+	patent_owner: number | null;
+	patent_owner_name: string | null;
+	license_price: number;
+	prerequisites: string[];
+	throughput_bonus: number;
+	cost_reduction: number;
+	reliability_bonus: number;
+}
+
+export interface BuildOption {
+	label: string;
+	node_type: string;
+	network_level: string;
+	cost: number;
+	build_ticks: number;
+	affordable: boolean;
+}
+
+export interface EdgeTarget {
+	target_id: number;
+	target_type: string;
+	x: number;
+	y: number;
+	distance_km: number;
+	cost: number;
+	affordable: boolean;
+}
+
+export interface DamagedNode {
+	id: number;
+	node_type: string;
+	health: number;
+	repair_cost: number;
+	emergency_cost: number;
+	x: number;
+	y: number;
+}
+
 export interface CorpSummary {
 	id: number;
 	name: string;

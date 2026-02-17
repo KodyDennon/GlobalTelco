@@ -37,5 +37,5 @@ pub use policy::Policy;
 pub use population::Population;
 pub use position::Position;
 pub use region::RegionComponent;
-pub use tech_research::{ResearchCategory, TechResearch};
+pub use tech_research::{PatentStatus, ResearchCategory, TechResearch};
 pub use workforce::Workforce;
