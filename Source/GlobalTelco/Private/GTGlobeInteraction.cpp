@@ -2,6 +2,7 @@
 #include "GTGeodesicGrid.h"
 #include "GTLandParcelSystem.h"
 #include "GTHexGridRenderer.h"
+#include "GTGeoCoordinates.h"
 #include "CesiumGeoreference.h"
 #include "Engine/World.h"
 
@@ -90,15 +91,19 @@ bool UGTGlobeInteraction::WorldPositionToLonLat(const FVector& WorldPos, double&
 		return false;
 	}
 
+	// Try Cesium georeference first (online mode).
 	ACesiumGeoreference* Georef = ACesiumGeoreference::GetDefaultGeoreference(World);
-	if (!Georef)
+	if (Georef)
 	{
-		return false;
+		const FVector LonLatHeight = Georef->TransformUnrealPositionToLongitudeLatitudeHeight(WorldPos);
+		OutLongitude = LonLatHeight.X;
+		OutLatitude = LonLatHeight.Y;
+		return true;
 	}
 
-	const FVector LonLatHeight = Georef->TransformUnrealPositionToLongitudeLatitudeHeight(WorldPos);
+	// Offline fallback: use pure-math coordinate conversion.
+	const FVector LonLatHeight = UGTGeoCoordinates::WorldToLonLatHeight(WorldPos);
 	OutLongitude = LonLatHeight.X;
 	OutLatitude = LonLatHeight.Y;
-
 	return true;
 }

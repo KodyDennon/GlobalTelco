@@ -12,6 +12,7 @@
 #include "GTEventQueue.h"
 #include "GTSimulationTypes.h"
 #include "GTInfrastructureTypes.h"
+#include "GTEconomyTypes.h"
 #include "GTMultiplayerTypes.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "AIController.h"
@@ -186,6 +187,12 @@ double UBTTask_GTAcquireLand::ScoreParcel(const FGTLandParcel& Parcel, UGTCorpor
 	case EGTTerrainType::Desert:
 		Score += 10.0 * Archetype.RiskTolerance;
 		break;
+	case EGTTerrainType::Tundra:
+		Score -= 10.0;
+		break;
+	case EGTTerrainType::Frozen:
+		Score -= 40.0; // Very expensive and hostile.
+		break;
 	default:
 		break;
 	}
@@ -251,6 +258,8 @@ EBTNodeResult::Type UBTTask_GTAcquireLand::ExecuteTask(UBehaviorTreeComponent& O
 		case EGTTerrainType::Coastal: return BaseCost * 2.0;
 		case EGTTerrainType::Mountainous: return BaseCost * 0.8;
 		case EGTTerrainType::Desert: return BaseCost * 0.4;
+		case EGTTerrainType::Tundra: return BaseCost * 0.3;
+		case EGTTerrainType::Frozen: return BaseCost * 0.2;
 		default: return BaseCost;
 		}
 	};
@@ -517,19 +526,32 @@ EBTNodeResult::Type UBTTask_GTBuildNode::ExecuteTask(UBehaviorTreeComponent& Own
 	// not requiring a physical actor in single-player mode.
 	// Create a minimal node entry in the network graph.
 
-	// For the graph, we register a node and track its attributes.
+	// Set up node attributes with construction timer.
 	FGTNodeAttributes NodeAttrs;
 	NodeAttrs.Capacity = ChosenCapacity;
 	NodeAttrs.LatencyMs = ChosenLatency;
 	NodeAttrs.Reliability = 0.98f;
 	NodeAttrs.MaintenanceCostPerTick = static_cast<float>(ChosenCost * 0.001); // 0.1% of cost per tick.
 	NodeAttrs.DisasterRiskMultiplier = TargetParcel.DisasterRisk;
+	NodeAttrs.ConstructionCost = static_cast<float>(ChosenCost);
+	NodeAttrs.bUnderConstruction = true;
 
-	// Register in graph (the graph manages node IDs).
-	// Since AGTNetworkNode is abstract, we can't spawn it directly.
-	// Instead, track the node data on the corporation and fire events.
-	// The network graph RegisterNode expects an actor — we'll skip actor spawning
-	// for AI-built nodes in single-player and track them via data.
+	// Construction time: base ticks scaled by terrain difficulty.
+	int32 ConstructionTicks = NodeAttrs.BaseConstructionTicks;
+	switch (TargetParcel.Terrain)
+	{
+	case EGTTerrainType::Mountainous: ConstructionTicks = static_cast<int32>(ConstructionTicks * 2.0f); break;
+	case EGTTerrainType::Desert: ConstructionTicks = static_cast<int32>(ConstructionTicks * 1.5f); break;
+	case EGTTerrainType::Coastal: ConstructionTicks = static_cast<int32>(ConstructionTicks * 1.3f); break;
+	case EGTTerrainType::Tundra: ConstructionTicks = static_cast<int32>(ConstructionTicks * 2.5f); break;
+	case EGTTerrainType::Frozen: ConstructionTicks = static_cast<int32>(ConstructionTicks * 3.0f); break;
+	default: break;
+	}
+	NodeAttrs.RemainingConstructionTicks = ConstructionTicks;
+
+	// Track the node data on the corporation. The network graph RegisterNode
+	// expects an actor, so AI-built nodes are tracked via data for now.
+	// When a concrete node subclass is available, this will register properly.
 
 	// Deduct cost.
 	Corp->BalanceSheet.CashOnHand -= ChosenCost;
@@ -705,7 +727,7 @@ EBTNodeResult::Type UBTTask_GTBuildEdge::ExecuteTask(UBehaviorTreeComponent& Own
 		return EBTNodeResult::Failed;
 	}
 
-	// Create the edge.
+	// Create the edge with construction timer.
 	FGTEdgeAttributes EdgeAttrs;
 	EdgeAttrs.Capacity = 500.0f;
 	EdgeAttrs.LatencyWeightMs = 3.0f;
@@ -713,6 +735,16 @@ EBTNodeResult::Type UBTTask_GTBuildEdge::ExecuteTask(UBehaviorTreeComponent& Own
 	EdgeAttrs.MaintenanceCostPerTick = static_cast<float>(BestEdgeCost * 0.0005);
 	EdgeAttrs.ConstructionTimeSeconds = 30.0f;
 	EdgeAttrs.TerrainRiskMultiplier = 1.0f;
+	EdgeAttrs.ConstructionCost = static_cast<float>(BestEdgeCost);
+	EdgeAttrs.bUnderConstruction = true;
+
+	// Construction time: base ticks scaled by terrain difficulty of endpoints.
+	int32 EdgeConstructionTicks = EdgeAttrs.BaseConstructionTicks;
+	const FGTLandParcel ParcelSrc = ParcelSystem->GetParcel(BestSource);
+	const FGTLandParcel ParcelDst = ParcelSystem->GetParcel(BestTarget);
+	const float AvgLaborCost = (ParcelSrc.LaborCostMultiplier + ParcelDst.LaborCostMultiplier) * 0.5f;
+	EdgeConstructionTicks = static_cast<int32>(EdgeConstructionTicks * AvgLaborCost);
+	EdgeAttrs.RemainingConstructionTicks = FMath::Max(EdgeConstructionTicks, 1);
 
 	// Deduct cost.
 	Corp->BalanceSheet.CashOnHand -= BestEdgeCost;
@@ -804,14 +836,36 @@ EBTNodeResult::Type UBTTask_GTManageFinances::ExecuteTask(UBehaviorTreeComponent
 	// Scenario 2: High cash reserves, outstanding debt → pay down debt.
 	if (CashRatio > Archetype.MinCashReserveRatio * 3.0 && Corp->TotalDebt > 0.0)
 	{
-		const double PaydownAmount = FMath::Min(Corp->TotalDebt, Cash * 0.3);
-		Corp->BalanceSheet.CashOnHand -= PaydownAmount;
-		Corp->TotalDebt -= PaydownAmount;
-		Corp->BalanceSheet.TotalLiabilities -= PaydownAmount;
+		double RemainingPaydown = FMath::Min(Corp->TotalDebt, Cash * 0.3);
+		double TotalPaid = 0.0;
+
+		// Pay down instruments starting from the highest interest rate.
+		Corp->DebtInstruments.Sort([](const FGTDebtInstrument& A, const FGTDebtInstrument& B)
+		{
+			return A.InterestRate > B.InterestRate;
+		});
+
+		for (int32 i = Corp->DebtInstruments.Num() - 1; i >= 0 && RemainingPaydown > 0.0; --i)
+		{
+			FGTDebtInstrument& Debt = Corp->DebtInstruments[i];
+			const double Payment = FMath::Min(Debt.Principal, RemainingPaydown);
+			Debt.Principal -= Payment;
+			RemainingPaydown -= Payment;
+			TotalPaid += Payment;
+
+			if (Debt.Principal <= 0.0)
+			{
+				Corp->DebtInstruments.RemoveAt(i);
+			}
+		}
+
+		Corp->BalanceSheet.CashOnHand -= TotalPaid;
+		Corp->TotalDebt -= TotalPaid;
+		Corp->BalanceSheet.TotalLiabilities -= TotalPaid;
 		Corp->RecalculateCreditRating();
 
 		UE_LOG(LogTemp, Verbose, TEXT("AI '%s' paid down $%.0f of debt"),
-			*Corp->CorporationName, PaydownAmount);
+			*Corp->CorporationName, TotalPaid);
 		bTookAction = true;
 	}
 

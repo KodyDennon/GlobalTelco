@@ -93,6 +93,36 @@ struct GTECONOMY_API FGTIncomeStatement
 };
 
 /**
+ * FGTDebtInstrument
+ *
+ * Individual debt instrument with its own interest rate and maturity.
+ */
+USTRUCT(BlueprintType)
+struct GTECONOMY_API FGTDebtInstrument
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Finance")
+	EGTFinancialInstrument InstrumentType = EGTFinancialInstrument::BankLoan;
+
+	/** Outstanding principal amount (USD). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Finance")
+	double Principal = 0.0;
+
+	/** Annual interest rate as a percentage (e.g., 5.0 = 5%). Applied per tick as (rate/100). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Finance")
+	float InterestRate = 5.0f;
+
+	/** Simulation tick when this debt matures. -1 = no maturity (perpetual). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Finance")
+	int64 MaturityTick = -1;
+
+	/** Tick when this instrument was issued. */
+	UPROPERTY(BlueprintReadOnly, Category = "Finance")
+	int64 IssuedTick = 0;
+};
+
+/**
  * FGTRegionalEconomyData
  *
  * Economic data for a geographic region. Regions track population,

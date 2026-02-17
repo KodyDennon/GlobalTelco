@@ -63,10 +63,11 @@ void UGTSimulationSubsystem::ProcessEconomicTick()
 	TArray<FGTSimulationEvent> Events;
 	EventQueue->DrainEvents(Events);
 
-	// Dispatch each event to listeners.
+	// Dispatch each event to listeners (both Blueprint and native C++ delegates).
 	for (const FGTSimulationEvent& Event : Events)
 	{
 		EventQueue->OnEventDispatched.Broadcast(Event);
+		EventQueue->OnEventDispatchedNative.Broadcast(Event);
 	}
 
 	// Enqueue an EconomicTick event so downstream systems know a tick occurred.
@@ -75,4 +76,5 @@ void UGTSimulationSubsystem::ProcessEconomicTick()
 	TickEvent.Tick = CurrentTick;
 	TickEvent.Timestamp = GetWorld()->GetTimeSeconds();
 	EventQueue->OnEventDispatched.Broadcast(TickEvent);
+	EventQueue->OnEventDispatchedNative.Broadcast(TickEvent);
 }

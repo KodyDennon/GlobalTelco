@@ -1,11 +1,8 @@
 #include "GTMainMenuWidget.h"
-#include "GTSaveLoadSubsystem.h"
 #include "Components/Button.h"
 #include "Components/VerticalBox.h"
 #include "Components/TextBlock.h"
-#include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
-#include "Engine/GameInstance.h"
 
 void UGTMainMenuWidget::NativeConstruct()
 {
@@ -26,7 +23,7 @@ void UGTMainMenuWidget::NativeConstruct()
 		QuitButton->OnClicked.AddDynamic(this, &UGTMainMenuWidget::HandleQuitClicked);
 	}
 
-	// Initially populate save slots.
+	// Request initial save slot data from GameInstance.
 	RefreshSaveSlotList();
 }
 
@@ -38,9 +35,6 @@ void UGTMainMenuWidget::HandleNewGameClicked()
 void UGTMainMenuWidget::HandleLoadGameClicked()
 {
 	RefreshSaveSlotList();
-
-	// If save slot list container is visible, the Blueprint layout
-	// should toggle it. We just refresh the data here.
 }
 
 void UGTMainMenuWidget::HandleQuitClicked()
@@ -55,23 +49,24 @@ void UGTMainMenuWidget::HandleQuitClicked()
 
 void UGTMainMenuWidget::RefreshSaveSlotList()
 {
-	UGameInstance* GI = GetGameInstance();
-	if (!GI)
-	{
-		return;
-	}
+	// Fire delegate — external code (GameInstance) should call SetSaveSlots() in response.
+	OnRefreshSaveSlotsRequested.Broadcast();
+}
 
-	UGTSaveLoadSubsystem* SaveLoad = GI->GetSubsystem<UGTSaveLoadSubsystem>();
-	if (!SaveLoad)
-	{
-		if (StatusText)
-		{
-			StatusText->SetText(FText::FromString(TEXT("Save system unavailable.")));
-		}
-		return;
-	}
+void UGTMainMenuWidget::DeleteSaveSlot(const FString& SlotName)
+{
+	// Fire delegate — external code (GameInstance) handles deletion and refreshes.
+	OnDeleteSaveSlotRequested.Broadcast(SlotName);
+}
 
-	CachedSaveSlots = SaveLoad->GetAllSaveSlots();
+void UGTMainMenuWidget::LoadSaveSlot(const FString& SlotName)
+{
+	OnLoadSlotSelected.Broadcast(SlotName);
+}
+
+void UGTMainMenuWidget::SetSaveSlots(const TArray<FGTSaveSlotInfo>& Slots)
+{
+	CachedSaveSlots = Slots;
 
 	if (StatusText)
 	{
@@ -86,29 +81,4 @@ void UGTMainMenuWidget::RefreshSaveSlotList()
 			));
 		}
 	}
-
-	// Clear and repopulate the save slot list container.
-	// Blueprint subclass should override and create entry widgets.
-	// Here we provide the data for Blueprints to consume.
-}
-
-void UGTMainMenuWidget::DeleteSaveSlot(const FString& SlotName)
-{
-	UGameInstance* GI = GetGameInstance();
-	if (!GI)
-	{
-		return;
-	}
-
-	UGTSaveLoadSubsystem* SaveLoad = GI->GetSubsystem<UGTSaveLoadSubsystem>();
-	if (SaveLoad)
-	{
-		SaveLoad->DeleteSave(SlotName);
-		RefreshSaveSlotList();
-	}
-}
-
-void UGTMainMenuWidget::LoadSaveSlot(const FString& SlotName)
-{
-	OnLoadSlotSelected.Broadcast(SlotName);
 }

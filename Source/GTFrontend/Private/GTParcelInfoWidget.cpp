@@ -23,6 +23,8 @@ FString UGTParcelInfoWidget::GetTerrainDisplayName(EGTTerrainType Terrain)
 	case EGTTerrainType::Coastal:      return TEXT("Coastal");
 	case EGTTerrainType::OceanShallow: return TEXT("Shallow Ocean");
 	case EGTTerrainType::OceanDeep:    return TEXT("Deep Ocean");
+	case EGTTerrainType::Tundra:       return TEXT("Tundra");
+	case EGTTerrainType::Frozen:       return TEXT("Frozen");
 	default:                           return TEXT("Unknown");
 	}
 }

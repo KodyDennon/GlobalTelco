@@ -35,6 +35,14 @@ struct GTCORE_API FGTGeodesicCell
 	/** Unit sphere position (X, Y, Z). */
 	UPROPERTY(BlueprintReadOnly, Category = "Geodesic")
 	FVector UnitSpherePosition = FVector::ZeroVector;
+
+	/** Normalized elevation (-1.0 deep ocean to 1.0 mountain peak). Set during world generation. */
+	UPROPERTY(BlueprintReadOnly, Category = "Geodesic")
+	float Elevation = 0.0f;
+
+	/** Whether this cell is land (true) or water (false). Set during world generation. */
+	UPROPERTY(BlueprintReadOnly, Category = "Geodesic")
+	bool bIsLand = true;
 };
 
 /**
@@ -88,6 +96,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Geodesic Grid")
 	TArray<int32> GetCellNeighbors(int32 CellIndex) const;
 
+	/** Set cell elevation and land flag. Called by world generator after terrain assignment. */
+	void SetCellTerrain(int32 CellIndex, float InElevation, bool bInIsLand);
+
 	/** Whether the grid has been generated. */
 	UFUNCTION(BlueprintPure, Category = "Geodesic Grid")
 	bool IsGridGenerated() const { return Cells.Num() > 0; }
@@ -99,7 +110,7 @@ private:
 	/** Generate vertex positions on the unit sphere via icosahedral subdivision. */
 	void SubdivideIcosahedron(int32 Frequency, TArray<FVector>& OutVertices);
 
-	/** Remove duplicate vertices within a tolerance. */
+	/** Remove duplicate vertices within a tolerance using spatial hashing. */
 	void DeduplicateVertices(TArray<FVector>& Vertices, double Tolerance);
 
 	/** Convert unit sphere position to longitude/latitude in degrees. */
@@ -108,14 +119,26 @@ private:
 	/** Convert longitude/latitude in degrees to unit sphere position. */
 	static FVector LonLatToCartesian(double Longitude, double Latitude);
 
-	/** Build neighbor adjacency from Delaunay-like proximity on sphere. */
+	/** Build neighbor adjacency using spatial hash for O(n) performance. */
 	void BuildNeighborAdjacency();
+
+	/** Build a spatial hash grid for fast nearest-cell queries. */
+	void BuildSpatialHash();
+
+	/** Convert unit sphere position to spatial hash bucket key. */
+	int64 SpatialHashKey(const FVector& Pos) const;
 
 	UPROPERTY()
 	TArray<FGTGeodesicCell> Cells;
 
 	/** Adjacency: CellIndex -> array of neighbor CellIndices. */
 	TMap<int32, TArray<int32>> Adjacency;
+
+	/** Spatial hash: bucket key -> array of cell indices in that bucket. */
+	TMap<int64, TArray<int32>> SpatialHash;
+
+	/** Spatial hash bucket size (in unit sphere coordinate space). */
+	float SpatialHashBucketSize = 0.05f;
 
 	/** Sentinel cell returned for invalid lookups. */
 	static const FGTGeodesicCell InvalidCell;

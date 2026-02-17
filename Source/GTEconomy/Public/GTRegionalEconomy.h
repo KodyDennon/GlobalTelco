@@ -33,6 +33,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Regional Economy")
 	FGTRegionalEconomyData GetRegionData(int32 RegionId) const;
 
+	/** Update region data in place. Returns false if RegionId not found. */
+	UFUNCTION(BlueprintCallable, Category = "Regional Economy")
+	bool UpdateRegionData(int32 RegionId, const FGTRegionalEconomyData& Data);
+
 	/** Update all regions for one economic tick. */
 	UFUNCTION(BlueprintCallable, Category = "Regional Economy")
 	void ProcessEconomicTick(float TickDeltaSeconds);

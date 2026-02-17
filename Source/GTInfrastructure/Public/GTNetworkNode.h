@@ -55,7 +55,7 @@ public:
 	void MarkDirty();
 
 	UFUNCTION(BlueprintPure, Category = "Network")
-	bool IsOperational() const { return Status == EGTInfrastructureStatus::Operational; }
+	bool IsOperational() const { return Status == EGTInfrastructureStatus::Operational && !Attributes.bUnderConstruction; }
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 };

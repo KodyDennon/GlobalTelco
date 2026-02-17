@@ -47,6 +47,26 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Network Graph")
 	void MarkNodeDirty(int32 NodeId);
 
+	/**
+	 * Advance construction timers on all under-construction nodes and edges.
+	 * When a timer reaches 0, transitions to Operational.
+	 * Appends completed IDs to the output arrays so the caller can fire events.
+	 * Call once per economic tick.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Network Graph")
+	void ProcessConstructionTick();
+
+	/** Version that reports which nodes/edges completed construction. */
+	void ProcessConstructionTick(TArray<int32>& OutCompletedNodeIds, TArray<int32>& OutCompletedEdgeIds);
+
+	/**
+	 * Calculate utilization for all operational nodes and edges.
+	 * Utilization = traffic demand routed through / total capacity.
+	 * Call once per economic tick after route recalculation.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Network Graph")
+	void CalculateUtilization();
+
 	/** Recalculate routes for all dirty clusters. Called by the simulation subsystem. */
 	UFUNCTION(BlueprintCallable, Category = "Network Graph")
 	void RecalculateDirtyRoutes();

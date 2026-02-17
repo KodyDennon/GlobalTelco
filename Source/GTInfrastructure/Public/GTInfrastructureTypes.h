@@ -67,6 +67,26 @@ struct GTINFRASTRUCTURE_API FGTNodeAttributes
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Infrastructure")
 	float DisasterRiskMultiplier = 1.0f;
+
+	/** True while the node is being built. Under-construction nodes don't generate revenue or route traffic. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Infrastructure")
+	bool bUnderConstruction = false;
+
+	/** Remaining simulation ticks until construction completes. Decremented each tick. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Infrastructure")
+	int32 RemainingConstructionTicks = 0;
+
+	/** Current utilization ratio 0.0-1.0. Traffic routed / Capacity. Updated by revenue calculator. */
+	UPROPERTY(BlueprintReadOnly, Category = "Infrastructure")
+	float CurrentUtilization = 0.0f;
+
+	/** Construction cost for building this node type (base cost before multipliers). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Infrastructure")
+	float ConstructionCost = 200000.0f;
+
+	/** Base construction time in ticks before terrain/world-settings multipliers. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Infrastructure")
+	int32 BaseConstructionTicks = 5;
 };
 
 /**
@@ -97,4 +117,24 @@ struct GTINFRASTRUCTURE_API FGTEdgeAttributes
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Infrastructure")
 	float TerrainRiskMultiplier = 1.0f;
+
+	/** True while the edge is being built. Under-construction edges don't route traffic. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Infrastructure")
+	bool bUnderConstruction = false;
+
+	/** Remaining simulation ticks until construction completes. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Infrastructure")
+	int32 RemainingConstructionTicks = 0;
+
+	/** Current utilization ratio 0.0-1.0. Traffic routed / Capacity. */
+	UPROPERTY(BlueprintReadOnly, Category = "Infrastructure")
+	float CurrentUtilization = 0.0f;
+
+	/** Construction cost for building this edge type (base cost before multipliers). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Infrastructure")
+	float ConstructionCost = 50000.0f;
+
+	/** Base construction time in ticks before terrain/world-settings multipliers. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Infrastructure")
+	int32 BaseConstructionTicks = 3;
 };

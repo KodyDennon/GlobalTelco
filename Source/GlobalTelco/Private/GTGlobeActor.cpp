@@ -102,9 +102,6 @@ void AGTGlobeActor::InitializeTerrainTileset()
 			ImageryOverlay->IonAccessToken = CesiumIonAccessToken;
 		}
 		ImageryOverlay->RegisterComponent();
-		ImageryOverlay->AttachToComponent(
-			TerrainTileset->GetRootComponent(),
-			FAttachmentTransformRules::KeepRelativeTransform);
 	}
 }
 

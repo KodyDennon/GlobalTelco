@@ -234,6 +234,8 @@ FLinearColor AGTHexGridRenderer::GetTerrainColor(EGTTerrainType Terrain)
 	case EGTTerrainType::Coastal:     return FLinearColor(0.4f, 0.7f, 0.9f, 0.6f);
 	case EGTTerrainType::OceanShallow:return FLinearColor(0.2f, 0.4f, 0.8f, 0.4f);
 	case EGTTerrainType::OceanDeep:   return FLinearColor(0.1f, 0.2f, 0.6f, 0.3f);
+	case EGTTerrainType::Tundra:      return FLinearColor(0.7f, 0.8f, 0.75f, 0.6f);
+	case EGTTerrainType::Frozen:      return FLinearColor(0.9f, 0.95f, 1.0f, 0.6f);
 	default:                          return FLinearColor(0.5f, 0.5f, 0.5f, 0.5f);
 	}
 }

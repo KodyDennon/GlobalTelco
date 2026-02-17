@@ -124,6 +124,9 @@ protected:
 	void HandlePanToggle(const struct FInputActionValue& Value);
 	void HandleSelect(const struct FInputActionValue& Value);
 
+	/** Create default input actions and mapping context if none are assigned. */
+	void CreateDefaultInputActions();
+
 	void UpdateCameraPosition(float DeltaTime);
 
 	/** Update camera using pure math (offline mode). */

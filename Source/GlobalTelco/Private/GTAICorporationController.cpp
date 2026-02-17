@@ -8,6 +8,7 @@
 #include "GTSimulationSubsystem.h"
 #include "GTEventQueue.h"
 #include "GTSimulationTypes.h"
+#include "GTEconomyTypes.h"
 #include "BehaviorTree/BehaviorTree.h"
 #include "BehaviorTree/BehaviorTreeComponent.h"
 #include "BehaviorTree/BlackboardComponent.h"
@@ -32,7 +33,7 @@ void AGTAICorporationController::EndPlay(const EEndPlayReason::Type EndPlayReaso
 	// Unsubscribe from events.
 	if (CachedSimSubsystem && CachedSimSubsystem->GetEventQueue() && EventDelegateHandle.IsValid())
 	{
-		CachedSimSubsystem->GetEventQueue()->OnEventDispatched.Remove(EventDelegateHandle);
+		CachedSimSubsystem->GetEventQueue()->OnEventDispatchedNative.Remove(EventDelegateHandle);
 		EventDelegateHandle.Reset();
 	}
 
@@ -50,7 +51,7 @@ void AGTAICorporationController::InitializeForCorporation(int32 InCorporationId,
 	// Subscribe to economic tick events.
 	if (CachedSimSubsystem && CachedSimSubsystem->GetEventQueue())
 	{
-		EventDelegateHandle = CachedSimSubsystem->GetEventQueue()->OnEventDispatched.AddUObject(
+		EventDelegateHandle = CachedSimSubsystem->GetEventQueue()->OnEventDispatchedNative.AddUObject(
 			this, &AGTAICorporationController::OnEconomicTick);
 	}
 
@@ -93,57 +94,9 @@ void AGTAICorporationController::OnEconomicTick(const FGTSimulationEvent& Event)
 		return;
 	}
 
-	// The BT service handles state updates. The BT itself is always running
-	// via the BehaviorTreeComponent tick. Economic tick events can be used
-	// for triggering revenue calculation on AI corporations.
-	UGTCorporation* Corp = GetCorporation();
-	if (!Corp)
-	{
-		return;
-	}
-
-	// Generate base revenue from owned infrastructure.
-	// Revenue = sum of node capacities * base rate per capacity unit.
-	const double BaseRatePerCapacityUnit = 10.0; // $10 per capacity unit per tick.
-	double TickRevenue = 0.0;
-
-	for (int32 NodeId : Corp->OwnedNodeIds)
-	{
-		// Each "node" generates revenue based on the regional demand it serves.
-		if (CachedParcelSystem)
-		{
-			const FGTLandParcel Parcel = CachedParcelSystem->GetParcel(NodeId);
-			if (Parcel.RegionId >= 0 && CachedRegionalEconomy)
-			{
-				const FGTRegionalEconomyData Region = CachedRegionalEconomy->GetRegionData(Parcel.RegionId);
-				// Revenue proportional to regional demand and connectivity.
-				TickRevenue += Region.CurrentDemand * BaseRatePerCapacityUnit * 0.01 /
-					FMath::Max(1.0, static_cast<double>(Corp->OwnedNodeIds.Num()));
-			}
-		}
-	}
-
-	// Apply connectivity bonus from edges.
-	TickRevenue *= (1.0 + Corp->OwnedEdgeIds.Num() * 0.1);
-
-	if (TickRevenue > 0.0)
-	{
-		Corp->AddRevenue(TickRevenue, EGTRevenueSource::BandwidthDelivery);
-	}
-
-	// Calculate maintenance costs.
-	double MaintenanceCost = 0.0;
-	MaintenanceCost += Corp->OwnedNodeIds.Num() * 5000.0;  // $5k per node per tick.
-	MaintenanceCost += Corp->OwnedEdgeIds.Num() * 2000.0;  // $2k per edge per tick.
-
-	Corp->LastTickIncome.MaintenanceCosts += MaintenanceCost;
-
-	// Interest on debt (simplified: 0.1% per tick).
-	if (Corp->TotalDebt > 0.0)
-	{
-		const double InterestExpense = Corp->TotalDebt * 0.001;
-		Corp->LastTickIncome.InterestExpense += InterestExpense;
-	}
+	// Revenue, maintenance, and interest are now handled centrally by
+	// UGTRevenueCalculator and UGTCorporation::ProcessEconomicTick.
+	// This handler is kept for AI-specific per-tick logic (e.g., event responses).
 }
 
 void AGTAICorporationController::ConstructAndRunBehaviorTree()
@@ -173,7 +126,6 @@ void AGTAICorporationController::ConstructAndRunBehaviorTree()
 
 		UBTDecorator_GTCheckStrategy* SurviveCheck = NewObject<UBTDecorator_GTCheckStrategy>(SurviveSeq);
 		SurviveCheck->RequiredStrategy = EGTAIStrategy::Survive;
-		SurviveSeq->Decorators.Add(SurviveCheck);
 
 		UBTTask_GTManageFinances* ManageFinances = NewObject<UBTTask_GTManageFinances>(SurviveSeq);
 
@@ -183,6 +135,7 @@ void AGTAICorporationController::ConstructAndRunBehaviorTree()
 
 		FBTCompositeChild Branch1;
 		Branch1.ChildComposite = SurviveSeq;
+		Branch1.Decorators.Add(SurviveCheck);
 		RootSelector->Children.Add(Branch1);
 	}
 
@@ -192,11 +145,9 @@ void AGTAICorporationController::ConstructAndRunBehaviorTree()
 
 		UBTDecorator_GTCheckStrategy* ExpandCheck = NewObject<UBTDecorator_GTCheckStrategy>(ExpandSeq);
 		ExpandCheck->RequiredStrategy = EGTAIStrategy::Expand;
-		ExpandSeq->Decorators.Add(ExpandCheck);
 
 		UBTDecorator_GTCheckCanAfford* AffordCheck = NewObject<UBTDecorator_GTCheckCanAfford>(ExpandSeq);
 		AffordCheck->MinimumCash = 200000.0;
-		ExpandSeq->Decorators.Add(AffordCheck);
 
 		UBTTask_GTAcquireLand* AcquireLand = NewObject<UBTTask_GTAcquireLand>(ExpandSeq);
 		UBTTask_GTBuildNode* BuildNode = NewObject<UBTTask_GTBuildNode>(ExpandSeq);
@@ -216,6 +167,8 @@ void AGTAICorporationController::ConstructAndRunBehaviorTree()
 
 		FBTCompositeChild Branch2;
 		Branch2.ChildComposite = ExpandSeq;
+		Branch2.Decorators.Add(ExpandCheck);
+		Branch2.Decorators.Add(AffordCheck);
 		RootSelector->Children.Add(Branch2);
 	}
 
@@ -225,7 +178,6 @@ void AGTAICorporationController::ConstructAndRunBehaviorTree()
 
 		UBTDecorator_GTCheckStrategy* ConsolidateCheck = NewObject<UBTDecorator_GTCheckStrategy>(ConsolidateSeq);
 		ConsolidateCheck->RequiredStrategy = EGTAIStrategy::Consolidate;
-		ConsolidateSeq->Decorators.Add(ConsolidateCheck);
 
 		UBTTask_GTBuildEdge* BuildEdge = NewObject<UBTTask_GTBuildEdge>(ConsolidateSeq);
 		UBTTask_GTProposeContract* ProposeContract = NewObject<UBTTask_GTProposeContract>(ConsolidateSeq);
@@ -245,6 +197,7 @@ void AGTAICorporationController::ConstructAndRunBehaviorTree()
 
 		FBTCompositeChild Branch3;
 		Branch3.ChildComposite = ConsolidateSeq;
+		Branch3.Decorators.Add(ConsolidateCheck);
 		RootSelector->Children.Add(Branch3);
 	}
 
@@ -254,7 +207,6 @@ void AGTAICorporationController::ConstructAndRunBehaviorTree()
 
 		UBTDecorator_GTCheckStrategy* CompeteCheck = NewObject<UBTDecorator_GTCheckStrategy>(CompeteSeq);
 		CompeteCheck->RequiredStrategy = EGTAIStrategy::Compete;
-		CompeteSeq->Decorators.Add(CompeteCheck);
 
 		UBTTask_GTAcquireLand* AcquireLand = NewObject<UBTTask_GTAcquireLand>(CompeteSeq);
 		UBTTask_GTBuildNode* BuildNode = NewObject<UBTTask_GTBuildNode>(CompeteSeq);
@@ -274,6 +226,7 @@ void AGTAICorporationController::ConstructAndRunBehaviorTree()
 
 		FBTCompositeChild Branch4;
 		Branch4.ChildComposite = CompeteSeq;
+		Branch4.Decorators.Add(CompeteCheck);
 		RootSelector->Children.Add(Branch4);
 	}
 

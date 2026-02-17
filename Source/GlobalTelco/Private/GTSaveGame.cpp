@@ -65,6 +65,7 @@ void UGTSaveGame::CaptureWorldState(UWorld* World, int32 InPlayerCorporationId, 
 			Saved.LastTickIncome = Corp->LastTickIncome;
 			Saved.CreditRating = Corp->CreditRating;
 			Saved.TotalDebt = Corp->TotalDebt;
+			Saved.DebtInstruments = Corp->DebtInstruments;
 			Saved.ShareholderEquity = Corp->ShareholderEquity;
 			Saved.OwnedNodeIds = Corp->OwnedNodeIds;
 			Saved.OwnedEdgeIds = Corp->OwnedEdgeIds;
@@ -140,6 +141,7 @@ void UGTSaveGame::RestoreWorldState(UWorld* World) const
 				Corp->LastTickIncome = Saved.LastTickIncome;
 				Corp->CreditRating = Saved.CreditRating;
 				Corp->TotalDebt = Saved.TotalDebt;
+				Corp->DebtInstruments = Saved.DebtInstruments;
 				Corp->ShareholderEquity = Saved.ShareholderEquity;
 				Corp->OwnedNodeIds = Saved.OwnedNodeIds;
 				Corp->OwnedEdgeIds = Saved.OwnedEdgeIds;
@@ -167,7 +169,15 @@ FGTSaveSlotInfo UGTSaveGame::GetSlotInfo(const FString& SlotName) const
 	Info.SlotName = SlotName;
 	Info.SaveDisplayName = SaveDisplayName;
 	Info.SaveTimestamp = SaveTimestamp;
-	Info.Difficulty = WorldSettings.Difficulty;
+	// Convert difficulty enum to string name for the slot info.
+	switch (WorldSettings.Difficulty)
+	{
+	case EGTDifficulty::Easy:    Info.DifficultyName = TEXT("Easy"); break;
+	case EGTDifficulty::Normal:  Info.DifficultyName = TEXT("Normal"); break;
+	case EGTDifficulty::Hard:    Info.DifficultyName = TEXT("Hard"); break;
+	case EGTDifficulty::Custom:  Info.DifficultyName = TEXT("Custom"); break;
+	default:                     Info.DifficultyName = TEXT("Normal"); break;
+	}
 	Info.SimulationTick = SimulationTick;
 	Info.PlayerCorporationName = PlayerCorporationName;
 	return Info;

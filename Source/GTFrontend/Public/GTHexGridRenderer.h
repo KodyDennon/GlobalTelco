@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "GTSimulationTypes.h"
+#include "GTLandParcelSystem.h"
 #include "GTHexGridRenderer.generated.h"
 
 class UInstancedStaticMeshComponent;

@@ -56,5 +56,5 @@ public:
 	float GetEffectiveCapacity() const;
 
 	UFUNCTION(BlueprintPure, Category = "Network")
-	bool IsOperational() const { return Status == EGTInfrastructureStatus::Operational; }
+	bool IsOperational() const { return Status == EGTInfrastructureStatus::Operational && !Attributes.bUnderConstruction; }
 };

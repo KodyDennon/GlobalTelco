@@ -7,7 +7,11 @@
 #include "CesiumGeoreference.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "InputAction.h"
 #include "InputActionValue.h"
+#include "InputMappingContext.h"
+#include "InputModifiers.h"
+#include "InputTriggers.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
@@ -50,6 +54,9 @@ void AGTGlobePawn::BeginPlay()
 			FlyToComponent = nullptr;
 		}
 	}
+
+	// Create input actions and mapping context programmatically if not set.
+	CreateDefaultInputActions();
 
 	// Add input mapping context.
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
@@ -276,4 +283,81 @@ void AGTGlobePawn::FlyTo(double Longitude, double Latitude, double Altitude)
 			FVector(Longitude, Latitude, Altitude),
 			0.0f, 0.0f, false);
 	}
+}
+
+void AGTGlobePawn::CreateDefaultInputActions()
+{
+	// Only create if no editor assets are assigned.
+	if (GlobeMappingContext)
+	{
+		return;
+	}
+
+	// Orbit: Mouse XY (2D axis) — right-click drag.
+	if (!OrbitAction)
+	{
+		OrbitAction = NewObject<UInputAction>(this, TEXT("IA_Orbit"));
+		OrbitAction->ValueType = EInputActionValueType::Axis2D;
+	}
+
+	// OrbitToggle: Right mouse button (bool).
+	if (!OrbitToggleAction)
+	{
+		OrbitToggleAction = NewObject<UInputAction>(this, TEXT("IA_OrbitToggle"));
+		OrbitToggleAction->ValueType = EInputActionValueType::Boolean;
+	}
+
+	// Zoom: Mouse wheel (1D axis).
+	if (!ZoomAction)
+	{
+		ZoomAction = NewObject<UInputAction>(this, TEXT("IA_Zoom"));
+		ZoomAction->ValueType = EInputActionValueType::Axis1D;
+	}
+
+	// Pan: Mouse XY (2D axis) — middle-click drag.
+	if (!PanAction)
+	{
+		PanAction = NewObject<UInputAction>(this, TEXT("IA_Pan"));
+		PanAction->ValueType = EInputActionValueType::Axis2D;
+	}
+
+	// PanToggle: Middle mouse button (bool).
+	if (!PanToggleAction)
+	{
+		PanToggleAction = NewObject<UInputAction>(this, TEXT("IA_PanToggle"));
+		PanToggleAction->ValueType = EInputActionValueType::Boolean;
+	}
+
+	// Select: Left mouse button (bool).
+	if (!SelectAction)
+	{
+		SelectAction = NewObject<UInputAction>(this, TEXT("IA_Select"));
+		SelectAction->ValueType = EInputActionValueType::Boolean;
+	}
+
+	// Create mapping context and bind keys.
+	GlobeMappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Globe"));
+
+	// Orbit: Mouse2D
+	{
+		FEnhancedActionKeyMapping& Mapping = GlobeMappingContext->MapKey(OrbitAction, EKeys::Mouse2D);
+		(void)Mapping;
+	}
+
+	// OrbitToggle: Right Mouse Button
+	GlobeMappingContext->MapKey(OrbitToggleAction, EKeys::RightMouseButton);
+
+	// Zoom: Mouse Wheel Axis
+	GlobeMappingContext->MapKey(ZoomAction, EKeys::MouseWheelAxis);
+
+	// Pan: Mouse2D (same input, different toggle)
+	GlobeMappingContext->MapKey(PanAction, EKeys::Mouse2D);
+
+	// PanToggle: Middle Mouse Button
+	GlobeMappingContext->MapKey(PanToggleAction, EKeys::MiddleMouseButton);
+
+	// Select: Left Mouse Button
+	GlobeMappingContext->MapKey(SelectAction, EKeys::LeftMouseButton);
+
+	UE_LOG(LogTemp, Log, TEXT("GTGlobePawn: Created default input actions and mapping context."));
 }

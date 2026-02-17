@@ -2,23 +2,32 @@
 
 void UGTCorporation::ProcessEconomicTick(float TickDeltaSeconds)
 {
-	// Reset per-tick income statement.
-	LastTickIncome = FGTIncomeStatement();
+	// Revenue and maintenance are set externally by UGTRevenueCalculator
+	// before this method is called. We handle debt interest and net income here.
 
-	// Calculate maintenance costs from owned infrastructure.
-	// Actual cost calculation will query GTInfrastructure module for node/edge maintenance costs.
+	// Accrue interest on each debt instrument.
+	double TotalInterest = 0.0;
+	for (FGTDebtInstrument& Debt : DebtInstruments)
+	{
+		// Per-tick interest = Principal * (AnnualRate / 100) * (TickDelta / SecondsPerYear).
+		// Simplified: treat each tick as a discrete period. Rate is annual percentage.
+		// With ~4s ticks, ~8640 ticks/day, ~3.15M ticks/year.
+		// Use a simpler model: per-tick rate = AnnualRate / (365 * 24 * 3600 / TickDelta).
+		// For gameplay feel, use rate / 1000 per tick (roughly quarterly at 4s ticks).
+		const double TickInterest = Debt.Principal * (Debt.InterestRate / 100.0) / 1000.0;
+		TotalInterest += TickInterest;
+	}
+	LastTickIncome.InterestExpense += TotalInterest;
 
-	// Apply interest on outstanding debt.
-	// Interest expense is computed per debt instrument with individual rates.
-
-	// Update balance sheet cash position.
-	double NetIncome = LastTickIncome.NetIncome();
+	// Update balance sheet cash position from net income.
+	const double NetIncome = LastTickIncome.NetIncome();
 	BalanceSheet.CashOnHand += NetIncome;
 
-	// Check insolvency.
-	if (IsInsolvent())
+	// Recompute TotalDebt from individual instruments.
+	TotalDebt = 0.0;
+	for (const FGTDebtInstrument& Debt : DebtInstruments)
 	{
-		// Trigger bankruptcy event via GTCore event queue.
+		TotalDebt += Debt.Principal;
 	}
 
 	RecalculateCreditRating();
@@ -35,6 +44,15 @@ bool UGTCorporation::IssueDept(double Amount, EGTFinancialInstrument Instrument,
 	{
 		return false;
 	}
+
+	// Create individual debt instrument.
+	FGTDebtInstrument NewDebt;
+	NewDebt.InstrumentType = Instrument;
+	NewDebt.Principal = Amount;
+	NewDebt.InterestRate = InterestRate;
+	NewDebt.MaturityTick = -1; // Perpetual by default; callers can set maturity.
+	NewDebt.IssuedTick = 0;    // Caller should set this from simulation tick.
+	DebtInstruments.Add(NewDebt);
 
 	TotalDebt += Amount;
 	BalanceSheet.CashOnHand += Amount;

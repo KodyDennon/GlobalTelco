@@ -3,6 +3,7 @@
 #include "GTGameState.h"
 #include "GTPlayerController.h"
 #include "GTGlobePawn.h"
+#include "GTGlobeInteraction.h"
 #include "GTWorldSettings.h"
 #include "GTWorldGenerator.h"
 #include "GTCorporationManager.h"
@@ -13,6 +14,13 @@
 #include "GTSaveLoadSubsystem.h"
 #include "GTSaveGame.h"
 #include "GTRegionalEconomy.h"
+#include "GTNetworkGraph.h"
+#include "GTRevenueCalculator.h"
+#include "GTSpeedControlWidget.h"
+#include "GTParcelInfoWidget.h"
+#include "GTLandParcelSystem.h"
+#include "Blueprint/UserWidget.h"
+#include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
 
 AGTSinglePlayerGameMode::AGTSinglePlayerGameMode()
@@ -128,7 +136,7 @@ void AGTSinglePlayerGameMode::InitGame(const FString& MapName, const FString& Op
 		UGTEventQueue* EQ = SimSubsystem->GetEventQueue();
 		if (EQ)
 		{
-			EQ->OnEventDispatched.AddUObject(
+			EQ->OnEventDispatchedNative.AddUObject(
 				this, &AGTSinglePlayerGameMode::OnEconomicTick);
 		}
 	}
@@ -138,8 +146,10 @@ void AGTSinglePlayerGameMode::StartPlay()
 {
 	Super::StartPlay();
 
+	APlayerController* PC = GetWorld()->GetFirstPlayerController();
+
 	// Assign corporation ID to the player controller.
-	if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
+	if (PC)
 	{
 		if (AGTPlayerController* GTPC = Cast<AGTPlayerController>(PC))
 		{
@@ -153,6 +163,12 @@ void AGTSinglePlayerGameMode::StartPlay()
 	{
 		GTGI->ActivePlayerCorporationId = PlayerCorporationId;
 		GTGI->ActivePlayerCorpName = PlayerCorporationName;
+	}
+
+	// Create in-game HUD widgets and wire delegates.
+	if (PC)
+	{
+		CreateHUDWidgets(PC);
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("GTSinglePlayer: Game started. %d AI corporations active."),
@@ -245,11 +261,65 @@ void AGTSinglePlayerGameMode::OnEconomicTick(const FGTSimulationEvent& Event)
 		return;
 	}
 
-	// Process all corporation ticks (revenue, expenses, etc.).
+	const float TickDelta = WorldSettings ? WorldSettings->TickIntervalSeconds : 4.0f;
+	const float MaintenanceMult = WorldSettings ? WorldSettings->MaintenanceCostMultiplier : 1.0f;
+	const float DemandMult = WorldSettings ? WorldSettings->DemandGrowthMultiplier : 1.0f;
+
+	// Step 1: Advance construction timers on nodes and edges.
+	UGTNetworkGraph* Graph = World->GetSubsystem<UGTNetworkGraph>();
+	if (Graph)
+	{
+		TArray<int32> CompletedNodes;
+		TArray<int32> CompletedEdges;
+		Graph->ProcessConstructionTick(CompletedNodes, CompletedEdges);
+		Graph->RecalculateDirtyRoutes();
+
+		// Fire InfrastructureBuilt events for completed constructions.
+		UGTSimulationSubsystem* SimSub = World->GetSubsystem<UGTSimulationSubsystem>();
+		UGTEventQueue* EQ = SimSub ? SimSub->GetEventQueue() : nullptr;
+		if (EQ)
+		{
+			for (int32 NodeId : CompletedNodes)
+			{
+				FGTSimulationEvent BuiltEvent;
+				BuiltEvent.EventType = EGTSimulationEventType::InfrastructureBuilt;
+				BuiltEvent.TargetEntityId = NodeId;
+				BuiltEvent.Payload.Add(FName("Type"), TEXT("Node"));
+				EQ->Enqueue(BuiltEvent);
+			}
+			for (int32 EdgeId : CompletedEdges)
+			{
+				FGTSimulationEvent BuiltEvent;
+				BuiltEvent.EventType = EGTSimulationEventType::InfrastructureBuilt;
+				BuiltEvent.TargetEntityId = EdgeId;
+				BuiltEvent.Payload.Add(FName("Type"), TEXT("Edge"));
+				EQ->Enqueue(BuiltEvent);
+			}
+		}
+
+		// Step 1b: Calculate utilization/congestion after routes settle.
+		Graph->CalculateUtilization();
+	}
+
+	// Step 2: Update regional economy (demand growth, connectivity effects).
+	UGTRegionalEconomy* Economy = World->GetSubsystem<UGTRegionalEconomy>();
+	if (Economy)
+	{
+		Economy->ProcessEconomicTick(TickDelta);
+	}
+
+	// Step 3: Calculate revenue and costs for all corporations.
+	UGTRevenueCalculator* RevenueCalc = World->GetSubsystem<UGTRevenueCalculator>();
+	if (RevenueCalc)
+	{
+		RevenueCalc->ProcessRevenueTick(MaintenanceMult, DemandMult);
+	}
+
+	// Step 4: Process corporation economic ticks (debt interest, net income, credit rating).
 	UGTCorporationManager* CorpManager = World->GetSubsystem<UGTCorporationManager>();
 	if (CorpManager)
 	{
-		CorpManager->ProcessAllCorporationTicks(WorldSettings ? WorldSettings->TickIntervalSeconds : 4.0f);
+		CorpManager->ProcessAllCorporationTicks(TickDelta);
 	}
 
 	// Auto-save check.
@@ -266,5 +336,111 @@ void AGTSinglePlayerGameMode::OnEconomicTick(const FGTSimulationEvent& Event)
 				SaveLoad->AutoSave(PlayerCorporationId, PlayerCorporationName);
 			}
 		}
+	}
+}
+
+void AGTSinglePlayerGameMode::CreateHUDWidgets(APlayerController* PC)
+{
+	if (!PC)
+	{
+		return;
+	}
+
+	// Set input mode to game and UI so player can interact with both.
+	PC->SetInputMode(FInputModeGameAndUI());
+	PC->bShowMouseCursor = true;
+
+	// Create speed control widget.
+	if (SpeedControlWidgetClass)
+	{
+		SpeedControlWidget = CreateWidget<UGTSpeedControlWidget>(PC, SpeedControlWidgetClass);
+		if (SpeedControlWidget)
+		{
+			SpeedControlWidget->OnQuickSaveRequested.AddDynamic(this, &AGTSinglePlayerGameMode::HandleQuickSave);
+			SpeedControlWidget->OnQuickLoadRequested.AddDynamic(this, &AGTSinglePlayerGameMode::HandleQuickLoad);
+			SpeedControlWidget->AddToViewport(10); // Above game world, below popups.
+		}
+	}
+
+	// Create parcel info widget (hidden initially, shown on hex selection).
+	if (ParcelInfoWidgetClass)
+	{
+		ParcelInfoWidget = CreateWidget<UGTParcelInfoWidget>(PC, ParcelInfoWidgetClass);
+		if (ParcelInfoWidget)
+		{
+			ParcelInfoWidget->AddToViewport(5);
+			ParcelInfoWidget->SetVisibility(ESlateVisibility::Collapsed);
+		}
+	}
+
+	// Wire hex selection → parcel info display via globe interaction on the player controller.
+	AGTPlayerController* GTPC = Cast<AGTPlayerController>(PC);
+	if (GTPC && GTPC->GlobeInteraction)
+	{
+		GTPC->GlobeInteraction->OnHexSelected.AddDynamic(this, &AGTSinglePlayerGameMode::HandleHexSelected);
+		GTPC->GlobeInteraction->OnSelectionCleared.AddDynamic(this, &AGTSinglePlayerGameMode::HandleSelectionCleared);
+	}
+}
+
+void AGTSinglePlayerGameMode::HandleQuickSave()
+{
+	UGTSaveLoadSubsystem* SaveLoad = GetGameInstance()->GetSubsystem<UGTSaveLoadSubsystem>();
+	if (SaveLoad)
+	{
+		SaveLoad->SaveGame(
+			TEXT("QuickSave"),
+			TEXT("Quick Save"),
+			PlayerCorporationId,
+			PlayerCorporationName
+		);
+		UE_LOG(LogTemp, Log, TEXT("GTSinglePlayer: Quick-saved."));
+	}
+}
+
+void AGTSinglePlayerGameMode::HandleQuickLoad()
+{
+	UGTGameInstance* GTGI = Cast<UGTGameInstance>(GetGameInstance());
+	UGTSaveLoadSubsystem* SaveLoad = GetGameInstance()->GetSubsystem<UGTSaveLoadSubsystem>();
+
+	if (GTGI && SaveLoad && SaveLoad->DoesSlotExist(TEXT("QuickSave")))
+	{
+		GTGI->PrepareLoadGame(TEXT("QuickSave"));
+		UGameplayStatics::OpenLevel(GetWorld(), TEXT("/Game/Maps/GameWorld"),
+			false, TEXT("?game=/Script/GlobalTelco.GTSinglePlayerGameMode"));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("GTSinglePlayer: No quick-save found."));
+	}
+}
+
+void AGTSinglePlayerGameMode::HandleHexSelected(int32 ParcelId)
+{
+	if (!ParcelInfoWidget)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	UGTLandParcelSystem* ParcelSystem = World->GetSubsystem<UGTLandParcelSystem>();
+	if (ParcelSystem && ParcelId >= 0)
+	{
+		const FGTLandParcel Parcel = ParcelSystem->GetParcel(ParcelId);
+		ParcelInfoWidget->ShowParcelInfo(Parcel);
+		ParcelInfoWidget->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	}
+}
+
+void AGTSinglePlayerGameMode::HandleSelectionCleared()
+{
+	if (ParcelInfoWidget)
+	{
+		ParcelInfoWidget->HideParcelInfo();
+		ParcelInfoWidget->SetVisibility(ESlateVisibility::Collapsed);
 	}
 }

@@ -76,7 +76,9 @@ enum class EGTTerrainType : uint8
 	Desert,
 	Coastal,
 	OceanShallow,
-	OceanDeep
+	OceanDeep,
+	Tundra,
+	Frozen
 };
 
 /** Hierarchy levels in the global network graph. */
@@ -88,4 +90,34 @@ enum class EGTNetworkLevel : uint8
 	National,
 	Continental,
 	Global
+};
+
+/**
+ * FGTSaveSlotInfo
+ *
+ * Metadata about a save slot for display in the load game UI.
+ * Defined in GTCore so both GTFrontend and GlobalTelco can use it.
+ */
+USTRUCT(BlueprintType)
+struct GTCORE_API FGTSaveSlotInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly)
+	FString SlotName;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString SaveDisplayName;
+
+	UPROPERTY(BlueprintReadOnly)
+	FDateTime SaveTimestamp;
+
+	UPROPERTY(BlueprintReadOnly)
+	int64 SimulationTick = 0;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString PlayerCorporationName;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString DifficultyName;
 };

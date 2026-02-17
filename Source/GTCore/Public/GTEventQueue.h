@@ -4,6 +4,10 @@
 #include "GTSimulationTypes.h"
 #include "GTEventQueue.generated.h"
 
+/** Native multicast delegate for C++ subscribers (non-dynamic for AddUObject support). */
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnSimulationEventNative, const FGTSimulationEvent& /*Event*/);
+
+/** Dynamic multicast delegate for Blueprint subscribers. */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSimulationEvent, const FGTSimulationEvent&, Event);
 
 /**
@@ -31,9 +35,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Simulation")
 	int32 GetPendingCount() const;
 
-	/** Fired for every event as it is dispatched during tick processing. */
+	/** Fired for every event as it is dispatched during tick processing (Blueprint). */
 	UPROPERTY(BlueprintAssignable, Category = "Simulation")
 	FOnSimulationEvent OnEventDispatched;
+
+	/** Native C++ delegate for event dispatch (supports AddUObject). */
+	FOnSimulationEventNative OnEventDispatchedNative;
 
 private:
 	FCriticalSection QueueLock;

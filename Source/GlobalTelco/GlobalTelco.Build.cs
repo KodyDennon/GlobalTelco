@@ -20,7 +20,10 @@ public class GlobalTelco : ModuleRules
 			"GTInfrastructure",
 			"GTEconomy",
 			"GTMultiplayer",
-			"GTFrontend"
+			"GTFrontend",
+			"UMG",
+			"Slate",
+			"SlateCore"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });

@@ -45,6 +45,10 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Finance")
 	double TotalDebt = 0.0;
 
+	/** Individual debt instruments with their own interest rates and maturities. */
+	UPROPERTY(BlueprintReadOnly, Category = "Finance")
+	TArray<FGTDebtInstrument> DebtInstruments;
+
 	/** Player IDs that own shares in this corporation. Key = PlayerId, Value = equity fraction 0-1. */
 	UPROPERTY(BlueprintReadOnly, Category = "Ownership")
 	TMap<int32, float> ShareholderEquity;

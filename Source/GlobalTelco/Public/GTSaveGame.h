@@ -48,6 +48,9 @@ struct FGTSavedCorporation
 	double TotalDebt = 0.0;
 
 	UPROPERTY()
+	TArray<FGTDebtInstrument> DebtInstruments;
+
+	UPROPERTY()
 	TMap<int32, float> ShareholderEquity;
 
 	UPROPERTY()
@@ -114,35 +117,6 @@ struct FGTSavedWorldSettings
 
 	UPROPERTY()
 	int32 RegionCount = 50;
-};
-
-/**
- * FGTSaveSlotInfo
- *
- * Metadata about a save slot for display in the load game UI.
- */
-USTRUCT(BlueprintType)
-struct FGTSaveSlotInfo
-{
-	GENERATED_BODY()
-
-	UPROPERTY(BlueprintReadOnly)
-	FString SlotName;
-
-	UPROPERTY(BlueprintReadOnly)
-	FString SaveDisplayName;
-
-	UPROPERTY(BlueprintReadOnly)
-	FDateTime SaveTimestamp;
-
-	UPROPERTY(BlueprintReadOnly)
-	EGTDifficulty Difficulty = EGTDifficulty::Normal;
-
-	UPROPERTY(BlueprintReadOnly)
-	int64 SimulationTick = 0;
-
-	UPROPERTY(BlueprintReadOnly)
-	FString PlayerCorporationName;
 };
 
 /**

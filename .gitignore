@@ -32,3 +32,13 @@ CrashReportClient/
 # Content cooking
 Cooked/
 Staging/
+
+# Third-party plugins (installed separately, too large for git)
+Plugins/CesiumForUnreal/
+Plugins/UnrealMCP/
+
+# UE Content assets (Blueprint subclasses, maps, textures — created in editor)
+Content/
+
+# Cesium cache
+cesium-request-cache.sqlite

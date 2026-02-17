@@ -7,6 +7,8 @@
 
 class UGTWorldSettings;
 class AGTAICorporationController;
+class UGTSpeedControlWidget;
+class UGTParcelInfoWidget;
 
 /**
  * AGTSinglePlayerGameMode
@@ -57,6 +59,14 @@ public:
 	UPROPERTY(BlueprintReadWrite, Category = "Single Player")
 	int32 AutoSaveTickInterval = 50;
 
+	/** Speed control widget class (Blueprint subclass). Set in editor. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<UGTSpeedControlWidget> SpeedControlWidgetClass;
+
+	/** Parcel info widget class (Blueprint subclass). Set in editor. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<UGTParcelInfoWidget> ParcelInfoWidgetClass;
+
 protected:
 	/** Spawn AI corporation controllers based on world settings. */
 	void SpawnAICorporations();
@@ -64,9 +74,35 @@ protected:
 	/** Handle economic tick events for auto-save and global processing. */
 	void OnEconomicTick(const FGTSimulationEvent& Event);
 
+	/** Create and wire in-game HUD widgets. */
+	void CreateHUDWidgets(APlayerController* PC);
+
+	/** Quick-save handler from speed control widget. */
+	UFUNCTION()
+	void HandleQuickSave();
+
+	/** Quick-load handler from speed control widget. */
+	UFUNCTION()
+	void HandleQuickLoad();
+
+	/** Handle hex selection to show parcel info. */
+	UFUNCTION()
+	void HandleHexSelected(int32 ParcelId);
+
+	/** Handle hex deselection to hide parcel info. */
+	UFUNCTION()
+	void HandleSelectionCleared();
+
 	/** Spawned AI controllers for cleanup. */
 	UPROPERTY()
 	TArray<TObjectPtr<AGTAICorporationController>> AIControllers;
+
+	/** Active HUD widgets. */
+	UPROPERTY()
+	TObjectPtr<UGTSpeedControlWidget> SpeedControlWidget;
+
+	UPROPERTY()
+	TObjectPtr<UGTParcelInfoWidget> ParcelInfoWidget;
 
 	/** Ticks since last auto-save. */
 	int32 TicksSinceAutoSave = 0;

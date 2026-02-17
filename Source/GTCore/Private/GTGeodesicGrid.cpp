@@ -11,6 +11,7 @@ void UGTGeodesicGrid::Deinitialize()
 {
 	Cells.Empty();
 	Adjacency.Empty();
+	SpatialHash.Empty();
 	Super::Deinitialize();
 }
 
@@ -18,8 +19,14 @@ void UGTGeodesicGrid::GenerateGrid(int32 Frequency)
 {
 	Cells.Empty();
 	Adjacency.Empty();
+	SpatialHash.Empty();
 
 	Frequency = FMath::Max(Frequency, 1);
+
+	// Adjust spatial hash bucket size based on frequency.
+	// At frequency F, average cell spacing is roughly 2/F on the unit sphere.
+	// We want buckets ~3x the cell spacing for good neighbor coverage.
+	SpatialHashBucketSize = FMath::Max(6.0f / static_cast<float>(Frequency), 0.01f);
 
 	TArray<FVector> Vertices;
 	SubdivideIcosahedron(Frequency, Vertices);
@@ -43,6 +50,7 @@ void UGTGeodesicGrid::GenerateGrid(int32 Frequency)
 		Cells.Add(Cell);
 	}
 
+	BuildSpatialHash();
 	BuildNeighborAdjacency();
 
 	UE_LOG(LogTemp, Log, TEXT("GTGeodesicGrid: Generated %d cells (Frequency=%d)"), Cells.Num(), Frequency);
@@ -55,6 +63,15 @@ const FGTGeodesicCell& UGTGeodesicGrid::GetCell(int32 CellIndex) const
 		return Cells[CellIndex];
 	}
 	return InvalidCell;
+}
+
+void UGTGeodesicGrid::SetCellTerrain(int32 CellIndex, float InElevation, bool bInIsLand)
+{
+	if (Cells.IsValidIndex(CellIndex))
+	{
+		Cells[CellIndex].Elevation = InElevation;
+		Cells[CellIndex].bIsLand = bInIsLand;
+	}
 }
 
 int32 UGTGeodesicGrid::FindNearestCell(double Longitude, double Latitude) const
@@ -70,17 +87,55 @@ int32 UGTGeodesicGrid::FindNearestCellFromUnitPosition(const FVector& UnitPos) c
 		return -1;
 	}
 
-	int32 BestIndex = 0;
+	// Use spatial hash for fast lookup: check the target bucket and its neighbors.
+	int32 BestIndex = -1;
 	double BestDot = -2.0;
 
-	// On a unit sphere, the closest point maximizes the dot product.
-	for (int32 i = 0; i < Cells.Num(); ++i)
+	const int32 BX = FMath::FloorToInt32(UnitPos.X / SpatialHashBucketSize);
+	const int32 BY = FMath::FloorToInt32(UnitPos.Y / SpatialHashBucketSize);
+	const int32 BZ = FMath::FloorToInt32(UnitPos.Z / SpatialHashBucketSize);
+
+	// Search the 3x3x3 neighborhood of buckets.
+	for (int32 DX = -1; DX <= 1; ++DX)
 	{
-		const double Dot = FVector::DotProduct(UnitPos, Cells[i].UnitSpherePosition);
-		if (Dot > BestDot)
+		for (int32 DY = -1; DY <= 1; ++DY)
 		{
-			BestDot = Dot;
-			BestIndex = i;
+			for (int32 DZ = -1; DZ <= 1; ++DZ)
+			{
+				const int64 Key = static_cast<int64>(BX + DX) * 73856093LL
+					^ static_cast<int64>(BY + DY) * 19349663LL
+					^ static_cast<int64>(BZ + DZ) * 83492791LL;
+
+				const TArray<int32>* Bucket = SpatialHash.Find(Key);
+				if (!Bucket)
+				{
+					continue;
+				}
+
+				for (int32 CellIdx : *Bucket)
+				{
+					const double Dot = FVector::DotProduct(UnitPos, Cells[CellIdx].UnitSpherePosition);
+					if (Dot > BestDot)
+					{
+						BestDot = Dot;
+						BestIndex = CellIdx;
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback to brute force if spatial hash missed (shouldn't happen with correct bucket size).
+	if (BestIndex < 0)
+	{
+		for (int32 i = 0; i < Cells.Num(); ++i)
+		{
+			const double Dot = FVector::DotProduct(UnitPos, Cells[i].UnitSpherePosition);
+			if (Dot > BestDot)
+			{
+				BestDot = Dot;
+				BestIndex = i;
+			}
 		}
 	}
 
@@ -91,6 +146,31 @@ TArray<int32> UGTGeodesicGrid::GetCellNeighbors(int32 CellIndex) const
 {
 	const TArray<int32>* Found = Adjacency.Find(CellIndex);
 	return Found ? *Found : TArray<int32>();
+}
+
+// --- Spatial Hash ---
+
+int64 UGTGeodesicGrid::SpatialHashKey(const FVector& Pos) const
+{
+	const int32 BX = FMath::FloorToInt32(Pos.X / SpatialHashBucketSize);
+	const int32 BY = FMath::FloorToInt32(Pos.Y / SpatialHashBucketSize);
+	const int32 BZ = FMath::FloorToInt32(Pos.Z / SpatialHashBucketSize);
+
+	return static_cast<int64>(BX) * 73856093LL
+		^ static_cast<int64>(BY) * 19349663LL
+		^ static_cast<int64>(BZ) * 83492791LL;
+}
+
+void UGTGeodesicGrid::BuildSpatialHash()
+{
+	SpatialHash.Empty();
+	SpatialHash.Reserve(Cells.Num());
+
+	for (int32 i = 0; i < Cells.Num(); ++i)
+	{
+		const int64 Key = SpatialHashKey(Cells[i].UnitSpherePosition);
+		SpatialHash.FindOrAdd(Key).Add(i);
+	}
 }
 
 // --- Icosahedral Subdivision ---
@@ -161,25 +241,66 @@ void UGTGeodesicGrid::SubdivideIcosahedron(int32 Frequency, TArray<FVector>& Out
 
 void UGTGeodesicGrid::DeduplicateVertices(TArray<FVector>& Vertices, double Tolerance)
 {
+	// Use spatial hashing for O(n) deduplication instead of O(n²) brute force.
 	TArray<FVector> Unique;
 	Unique.Reserve(Vertices.Num());
 
+	const float BucketSize = FMath::Max(static_cast<float>(Tolerance) * 10.0f, 0.0001f);
 	const double ToleranceSq = Tolerance * Tolerance;
+
+	TMap<int64, TArray<int32>> HashGrid;
+	HashGrid.Reserve(Vertices.Num());
+
+	auto HashKey = [BucketSize](const FVector& V) -> int64
+	{
+		const int32 BX = FMath::FloorToInt32(V.X / BucketSize);
+		const int32 BY = FMath::FloorToInt32(V.Y / BucketSize);
+		const int32 BZ = FMath::FloorToInt32(V.Z / BucketSize);
+		return static_cast<int64>(BX) * 73856093LL
+			^ static_cast<int64>(BY) * 19349663LL
+			^ static_cast<int64>(BZ) * 83492791LL;
+	};
 
 	for (const FVector& V : Vertices)
 	{
+		// Check neighboring buckets for duplicates.
+		const int32 BX = FMath::FloorToInt32(V.X / BucketSize);
+		const int32 BY = FMath::FloorToInt32(V.Y / BucketSize);
+		const int32 BZ = FMath::FloorToInt32(V.Z / BucketSize);
+
 		bool bFound = false;
-		for (const FVector& U : Unique)
+		for (int32 DX = -1; DX <= 1 && !bFound; ++DX)
 		{
-			if (FVector::DistSquared(V, U) < ToleranceSq)
+			for (int32 DY = -1; DY <= 1 && !bFound; ++DY)
 			{
-				bFound = true;
-				break;
+				for (int32 DZ = -1; DZ <= 1 && !bFound; ++DZ)
+				{
+					const int64 Key = static_cast<int64>(BX + DX) * 73856093LL
+						^ static_cast<int64>(BY + DY) * 19349663LL
+						^ static_cast<int64>(BZ + DZ) * 83492791LL;
+
+					const TArray<int32>* Bucket = HashGrid.Find(Key);
+					if (!Bucket)
+					{
+						continue;
+					}
+					for (int32 Idx : *Bucket)
+					{
+						if (FVector::DistSquared(V, Unique[Idx]) < ToleranceSq)
+						{
+							bFound = true;
+							break;
+						}
+					}
+				}
 			}
 		}
+
 		if (!bFound)
 		{
+			const int32 NewIdx = Unique.Num();
 			Unique.Add(V);
+			HashGrid.FindOrAdd(HashKey(V)).Add(NewIdx);
 		}
 	}
 
@@ -210,9 +331,8 @@ void UGTGeodesicGrid::BuildNeighborAdjacency()
 	Adjacency.Empty();
 	Adjacency.Reserve(Cells.Num());
 
-	// For each cell, find the closest N cells by dot product.
-	// On a geodesic grid, hexes have 6 neighbors and pentagons have 5.
-	// We find the 7 closest (including self) and take the top 6 non-self.
+	// Use the spatial hash for O(n) neighbor finding.
+	// For each cell, search nearby buckets for the closest 6 cells.
 	const int32 MaxNeighbors = 7;
 
 	for (int32 i = 0; i < Cells.Num(); ++i)
@@ -223,39 +343,62 @@ void UGTGeodesicGrid::BuildNeighborAdjacency()
 			double Dot;
 		};
 
-		// Keep a small sorted list of the best candidates.
 		TArray<FNeighborCandidate> Best;
 		Best.Reserve(MaxNeighbors + 1);
 
 		const FVector& Pos = Cells[i].UnitSpherePosition;
 
-		for (int32 j = 0; j < Cells.Num(); ++j)
+		// Search nearby buckets (2-ring to catch all neighbors).
+		const int32 BX = FMath::FloorToInt32(Pos.X / SpatialHashBucketSize);
+		const int32 BY = FMath::FloorToInt32(Pos.Y / SpatialHashBucketSize);
+		const int32 BZ = FMath::FloorToInt32(Pos.Z / SpatialHashBucketSize);
+
+		for (int32 DX = -2; DX <= 2; ++DX)
 		{
-			if (i == j)
+			for (int32 DY = -2; DY <= 2; ++DY)
 			{
-				continue;
-			}
-
-			const double Dot = FVector::DotProduct(Pos, Cells[j].UnitSpherePosition);
-
-			if (Best.Num() < MaxNeighbors)
-			{
-				Best.Add({j, Dot});
-				if (Best.Num() == MaxNeighbors)
+				for (int32 DZ = -2; DZ <= 2; ++DZ)
 				{
-					Best.Sort([](const FNeighborCandidate& A, const FNeighborCandidate& B)
+					const int64 Key = static_cast<int64>(BX + DX) * 73856093LL
+						^ static_cast<int64>(BY + DY) * 19349663LL
+						^ static_cast<int64>(BZ + DZ) * 83492791LL;
+
+					const TArray<int32>* Bucket = SpatialHash.Find(Key);
+					if (!Bucket)
 					{
-						return A.Dot > B.Dot;
-					});
+						continue;
+					}
+
+					for (int32 j : *Bucket)
+					{
+						if (i == j)
+						{
+							continue;
+						}
+
+						const double Dot = FVector::DotProduct(Pos, Cells[j].UnitSpherePosition);
+
+						if (Best.Num() < MaxNeighbors)
+						{
+							Best.Add({j, Dot});
+							if (Best.Num() == MaxNeighbors)
+							{
+								Best.Sort([](const FNeighborCandidate& A, const FNeighborCandidate& B)
+								{
+									return A.Dot > B.Dot;
+								});
+							}
+						}
+						else if (Dot > Best.Last().Dot)
+						{
+							Best.Last() = {j, Dot};
+							Best.Sort([](const FNeighborCandidate& A, const FNeighborCandidate& B)
+							{
+								return A.Dot > B.Dot;
+							});
+						}
+					}
 				}
-			}
-			else if (Dot > Best.Last().Dot)
-			{
-				Best.Last() = {j, Dot};
-				Best.Sort([](const FNeighborCandidate& A, const FNeighborCandidate& B)
-				{
-					return A.Dot > B.Dot;
-				});
 			}
 		}
 

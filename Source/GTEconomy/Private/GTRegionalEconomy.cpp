@@ -29,6 +29,18 @@ FGTRegionalEconomyData UGTRegionalEconomy::GetRegionData(int32 RegionId) const
 	return Found ? *Found : FGTRegionalEconomyData();
 }
 
+bool UGTRegionalEconomy::UpdateRegionData(int32 RegionId, const FGTRegionalEconomyData& Data)
+{
+	FGTRegionalEconomyData* Found = Regions.Find(RegionId);
+	if (!Found)
+	{
+		return false;
+	}
+	*Found = Data;
+	Found->RegionId = RegionId; // Preserve the ID.
+	return true;
+}
+
 void UGTRegionalEconomy::ProcessEconomicTick(float TickDeltaSeconds)
 {
 	for (auto& Pair : Regions)
