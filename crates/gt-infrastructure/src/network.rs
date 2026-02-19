@@ -212,6 +212,73 @@ impl NetworkGraph {
         self.cached_paths.get(&from)?.get(&to)
     }
 
+    /// Get all cached paths from all sources (for traffic flow computation).
+    pub fn get_all_cached_paths(&self) -> &HashMap<EntityId, HashMap<EntityId, Vec<EntityId>>> {
+        &self.cached_paths
+    }
+
+    /// Get the edge entity ID for a pair of nodes.
+    pub fn get_edge_id(&self, from: EntityId, to: EntityId) -> Option<EntityId> {
+        let key = if from < to { (from, to) } else { (to, from) };
+        self.edge_map.get(&key).copied()
+    }
+
+    /// Find an alternate path excluding specific nodes/edges with health below threshold.
+    /// Used for rerouting during cascading failures.
+    pub fn find_alternate_path(
+        &self,
+        from: EntityId,
+        to: EntityId,
+        exclude_nodes: &HashSet<EntityId>,
+        weight_fn: &dyn Fn(EntityId, EntityId) -> f64,
+    ) -> Option<Vec<EntityId>> {
+        if from == to {
+            return Some(vec![from]);
+        }
+
+        let mut dist: HashMap<EntityId, f64> = HashMap::new();
+        let mut prev: HashMap<EntityId, EntityId> = HashMap::new();
+        let mut heap: BinaryHeap<Reverse<(OrderedFloat, EntityId)>> = BinaryHeap::new();
+
+        dist.insert(from, 0.0);
+        heap.push(Reverse((OrderedFloat(0.0), from)));
+
+        while let Some(Reverse((OrderedFloat(cost), node))) = heap.pop() {
+            if node == to {
+                let mut path = vec![to];
+                let mut current = to;
+                while let Some(&p) = prev.get(&current) {
+                    path.push(p);
+                    current = p;
+                }
+                path.reverse();
+                return Some(path);
+            }
+
+            if cost > *dist.get(&node).unwrap_or(&f64::MAX) {
+                continue;
+            }
+
+            for &neighbor in self.neighbors(node) {
+                if exclude_nodes.contains(&neighbor) {
+                    continue;
+                }
+                let edge_weight = weight_fn(node, neighbor);
+                if edge_weight >= f64::MAX {
+                    continue; // Damaged edge
+                }
+                let new_dist = cost + edge_weight;
+                if new_dist < *dist.get(&neighbor).unwrap_or(&f64::MAX) {
+                    dist.insert(neighbor, new_dist);
+                    prev.insert(neighbor, node);
+                    heap.push(Reverse((OrderedFloat(new_dist), neighbor)));
+                }
+            }
+        }
+
+        None
+    }
+
     /// Get all nodes connected to the given node (reachable)
     pub fn connected_nodes(&self, start: EntityId) -> HashSet<EntityId> {
         let mut visited = HashSet::new();

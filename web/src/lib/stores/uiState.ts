@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store';
 
 export type PanelType = 'none' | 'info' | 'dashboard' | 'infrastructure' | 'research' | 'contracts' | 'region' | 'workforce' | 'advisor' | 'auctions' | 'mergers' | 'intel' | 'achievements';
-export type OverlayType = 'none' | 'terrain' | 'ownership' | 'demand' | 'disaster' | 'coverage' | 'congestion';
+export type OverlayType = 'none' | 'terrain' | 'ownership' | 'demand' | 'disaster' | 'coverage' | 'congestion' | 'traffic';
 
 export const activePanel = writable<PanelType>('none');
 export const selectedEntityId = writable<number | null>(null);

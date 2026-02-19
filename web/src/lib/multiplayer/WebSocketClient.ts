@@ -98,6 +98,13 @@ function handleServerMessage(msg: ServerMessage) {
 			const guest = auth.GuestSuccess as Record<string, unknown>;
 			playerId.set(guest.player_id as string);
 			playerUsername.set(guest.username as string);
+		} else if ('Failed' in auth) {
+			const failed = auth.Failed as Record<string, unknown>;
+			console.error('Authentication failed:', failed.reason);
+			playerId.set(null);
+			playerUsername.set(null);
+			accessToken.set(null);
+			refreshToken.set(null);
 		}
 	} else if ('WorldJoined' in msg) {
 		const joined = msg.WorldJoined as Record<string, unknown>;
@@ -168,6 +175,10 @@ export function login(username: string, password: string) {
 
 export function register(username: string, password: string, email: string) {
 	sendMessage({ Auth: { Register: { username, password, email } } });
+}
+
+export function loginWithToken(token: string) {
+	sendMessage({ Auth: { Token: { access_token: token } } });
 }
 
 export function loginAsGuest() {

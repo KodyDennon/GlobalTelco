@@ -35,6 +35,7 @@ impl InfraNode {
                 NetworkLevel::GlobalBackbone,
             ),
             NodeType::WirelessRelay => (300.0, 15.0, 100_000, 2_000, NetworkLevel::Local),
+            NodeType::BackboneRouter => (20000.0, 2.0, 3_000_000, 30_000, NetworkLevel::National),
         };
 
         Self {
@@ -86,6 +87,7 @@ impl InfraNode {
             NodeType::SatelliteGround => 30,
             NodeType::SubmarineLanding => 25,
             NodeType::WirelessRelay => 3,
+            NodeType::BackboneRouter => 10,
         }
     }
 }

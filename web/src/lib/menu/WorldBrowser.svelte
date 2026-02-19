@@ -1,10 +1,13 @@
 <script lang="ts">
-	import { connectionState, type MultiplayerWorldInfo } from '$lib/stores/multiplayerState';
-	import * as wsClient from '$lib/multiplayer/WebSocketClient';
+	import {
+		connectionState,
+		type MultiplayerWorldInfo,
+	} from "$lib/stores/multiplayerState";
+	import * as wsClient from "$lib/multiplayer/WebSocketClient";
 
 	let {
 		onBack,
-		onJoin
+		onJoin,
 	}: {
 		onBack: () => void;
 		onJoin: (worldId: string) => void;
@@ -12,18 +15,31 @@
 
 	let worlds = $state<MultiplayerWorldInfo[]>([]);
 	let loading = $state(true);
-	let serverAddress = $state('ws://localhost:3001/ws');
-	let loginUsername = $state('');
-	let loginPassword = $state('');
-	let authMode = $state<'login' | 'register' | 'guest'>('guest');
-	let authError = $state('');
+	let serverAddress = $state("ws://localhost:3001/ws");
+	let loginUsername = $state("");
+	let loginPassword = $state("");
+	let authMode = $state<"login" | "register" | "guest">("guest");
+	let authError = $state("");
 	let isAuthenticated = $state(false);
 
 	async function fetchWorlds() {
 		loading = true;
 		try {
-			const apiUrl = serverAddress.replace('ws://', 'http://').replace('wss://', 'https://').replace('/ws', '/api/worlds');
-			const res = await fetch(apiUrl);
+			const apiUrl = serverAddress
+				.replace("ws://", "http://")
+				.replace("wss://", "https://")
+				.replace("/ws", "/api/worlds");
+			const token =
+				typeof localStorage !== "undefined"
+					? localStorage.getItem("gt_access_token")
+					: null;
+
+			const headers: Record<string, string> = {};
+			if (token) {
+				headers["Authorization"] = `Bearer ${token}`;
+			}
+
+			const res = await fetch(apiUrl, { headers });
 			if (res.ok) {
 				worlds = await res.json();
 			}
@@ -34,18 +50,29 @@
 	}
 
 	function connectAndAuth() {
-		authError = '';
+		authError = "";
 		wsClient.connect(serverAddress);
 
 		// Wait for connection then authenticate
 		const unsub = connectionState.subscribe((state) => {
-			if (state === 'connected') {
-				if (authMode === 'guest') {
+			if (state === "connected") {
+				const storedToken =
+					typeof localStorage !== "undefined"
+						? localStorage.getItem("gt_access_token")
+						: null;
+
+				if (storedToken && authMode === "guest") {
+					wsClient.loginWithToken(storedToken);
+				} else if (authMode === "guest") {
 					wsClient.loginAsGuest();
-				} else if (authMode === 'login') {
+				} else if (authMode === "login") {
 					wsClient.login(loginUsername, loginPassword);
 				} else {
-					wsClient.register(loginUsername, loginPassword, loginUsername + '@example.com');
+					wsClient.register(
+						loginUsername,
+						loginPassword,
+						loginUsername + "@example.com",
+					);
 				}
 				isAuthenticated = true;
 				fetchWorlds();
@@ -70,23 +97,44 @@
 		<div class="auth-section">
 			<div class="form-group">
 				<label>Server Address</label>
-				<input type="text" bind:value={serverAddress} placeholder="ws://localhost:3001/ws" />
+				<input
+					type="text"
+					bind:value={serverAddress}
+					placeholder="ws://localhost:3001/ws"
+				/>
 			</div>
 
 			<div class="auth-tabs">
-				<button class:active={authMode === 'guest'} onclick={() => (authMode = 'guest')}>Guest</button>
-				<button class:active={authMode === 'login'} onclick={() => (authMode = 'login')}>Login</button>
-				<button class:active={authMode === 'register'} onclick={() => (authMode = 'register')}>Register</button>
+				<button
+					class:active={authMode === "guest"}
+					onclick={() => (authMode = "guest")}>Guest</button
+				>
+				<button
+					class:active={authMode === "login"}
+					onclick={() => (authMode = "login")}>Login</button
+				>
+				<button
+					class:active={authMode === "register"}
+					onclick={() => (authMode = "register")}>Register</button
+				>
 			</div>
 
-			{#if authMode !== 'guest'}
+			{#if authMode !== "guest"}
 				<div class="form-group">
 					<label>Username</label>
-					<input type="text" bind:value={loginUsername} placeholder="Username" />
+					<input
+						type="text"
+						bind:value={loginUsername}
+						placeholder="Username"
+					/>
 				</div>
 				<div class="form-group">
 					<label>Password</label>
-					<input type="password" bind:value={loginPassword} placeholder="Password" />
+					<input
+						type="password"
+						bind:value={loginPassword}
+						placeholder="Password"
+					/>
 				</div>
 			{/if}
 
@@ -94,7 +142,8 @@
 				<div class="error">{authError}</div>
 			{/if}
 
-			<button class="btn-connect" onclick={connectAndAuth}>Connect</button>
+			<button class="btn-connect" onclick={connectAndAuth}>Connect</button
+			>
 		</div>
 	{:else}
 		<div class="world-list">
@@ -108,7 +157,9 @@
 						<div class="world-info">
 							<h3>{world.name}</h3>
 							<div class="world-meta">
-								<span>Players: {world.player_count}/{world.max_players}</span>
+								<span
+									>Players: {world.player_count}/{world.max_players}</span
+								>
 								<span>Tick: {world.tick}</span>
 								<span>Era: {world.era}</span>
 							</div>
@@ -118,7 +169,9 @@
 							onclick={() => handleJoin(world.id)}
 							disabled={world.player_count >= world.max_players}
 						>
-							{world.player_count >= world.max_players ? 'Full' : 'Join'}
+							{world.player_count >= world.max_players
+								? "Full"
+								: "Join"}
 						</button>
 					</div>
 				{/each}
@@ -134,7 +187,12 @@
 		height: 100vh;
 		display: flex;
 		flex-direction: column;
-		background: linear-gradient(135deg, #0a0e17 0%, #111827 50%, #0a0e17 100%);
+		background: linear-gradient(
+			135deg,
+			#0a0e17 0%,
+			#111827 50%,
+			#0a0e17 100%
+		);
 		color: #f3f4f6;
 		font-family: system-ui, sans-serif;
 		padding: 40px;

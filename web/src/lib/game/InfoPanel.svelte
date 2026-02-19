@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { selectedEntityId, selectedEntityType, activePanel } from '$lib/stores/uiState';
-	import { cities, regions, playerCorp, formatMoney, formatPopulation } from '$lib/stores/gameState';
+	import { selectedEntityId, selectedEntityType } from '$lib/stores/uiState';
+	import { cities, formatMoney, formatPopulation } from '$lib/stores/gameState';
 	import * as bridge from '$lib/wasm/bridge';
 	import type { InfraNode } from '$lib/wasm/types';
 

@@ -22,7 +22,8 @@ import type {
 	CovertOpsInfo,
 	LobbyingInfo,
 	AchievementsInfo,
-	VictoryInfo
+	VictoryInfo,
+	TrafficFlows
 } from './types';
 
 let wasmModule: any = null;
@@ -362,6 +363,16 @@ export function getVictoryState(): VictoryInfo {
 	} catch (e) {
 		onBridgeError(e, 'getVictoryState');
 		return {} as VictoryInfo;
+	}
+}
+
+export function getTrafficFlows(): TrafficFlows {
+	try {
+		const json = bridge?.get_traffic_flows() ?? '{"edge_flows":[],"node_flows":[],"total_served":0,"total_dropped":0,"total_demand":0,"player_served":0,"player_dropped":0,"top_congested":[]}';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getTrafficFlows');
+		return { edge_flows: [], node_flows: [], total_served: 0, total_dropped: 0, total_demand: 0, player_served: 0, player_dropped: 0, top_congested: [] };
 	}
 }
 

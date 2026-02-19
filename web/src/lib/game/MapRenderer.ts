@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as bridge from '$lib/wasm/bridge';
-import type { GridCell, City, Region, CorpSummary, CellCoverage } from '$lib/wasm/types';
+import type { GridCell, City, Region, CorpSummary, CellCoverage, TrafficFlows } from '$lib/wasm/types';
 import type { IconName } from '$lib/assets/icons';
 import { preloadInfrastructureIcons, preloadCityIcons } from './SpriteFactory';
 import { GridPathfinder, needsTerrainRouting } from './GridPathfinder';
@@ -51,7 +51,8 @@ const NODE_TYPE_TO_ICON: Record<string, IconName> = {
 	ExchangePoint: 'exchange-point',
 	SatelliteGround: 'satellite-ground',
 	SubmarineLanding: 'submarine-landing',
-	WirelessRelay: 'wireless-relay'
+	WirelessRelay: 'wireless-relay',
+	BackboneRouter: 'exchange-point'
 };
 
 export class MapRenderer {
@@ -989,6 +990,9 @@ export class MapRenderer {
 			case 'congestion':
 				this.renderCongestionOverlay();
 				break;
+			case 'traffic':
+				this.renderTrafficOverlay();
+				break;
 		}
 	}
 
@@ -1173,6 +1177,88 @@ export class MapRenderer {
 				mesh.position.set(node.x, node.y, 0.2);
 				this.overlayGroup.add(mesh);
 			}
+		}
+	}
+
+	private renderTrafficOverlay() {
+		if (!bridge.isInitialized()) return;
+
+		const flows: TrafficFlows = bridge.getTrafficFlows();
+
+		// Draw edges colored by utilization: green (<50%) → yellow (50-80%) → red (>80%) → flashing red (>100%)
+		for (const ef of flows.edge_flows) {
+			if (ef.traffic <= 0 && ef.utilization <= 0) continue;
+
+			const util = ef.utilization;
+			let color: number;
+			let opacity: number;
+
+			if (util > 1.0) {
+				// Overloaded: bright red
+				color = 0xff2222;
+				opacity = 0.9;
+			} else if (util > 0.8) {
+				// High: red
+				const t = (util - 0.8) / 0.2;
+				const r = 255;
+				const g = Math.floor((1 - t) * 80);
+				color = (r << 16) | (g << 8) | 0;
+				opacity = 0.7;
+			} else if (util > 0.5) {
+				// Medium: yellow-orange
+				const t = (util - 0.5) / 0.3;
+				const r = Math.floor(200 + t * 55);
+				const g = Math.floor(200 - t * 120);
+				color = (r << 16) | (g << 8) | 0;
+				opacity = 0.5;
+			} else {
+				// Low: green
+				const t = util / 0.5;
+				const r = Math.floor(t * 100);
+				const g = Math.floor(150 + t * 50);
+				color = (r << 16) | (g << 8) | 0x20;
+				opacity = 0.4;
+			}
+
+			// Edge thickness proportional to traffic volume (clamped)
+			const thickness = this.baseCellSize * (0.01 + Math.min(util, 1.5) * 0.02);
+
+			const pts = [
+				new THREE.Vector3(ef.src_x, ef.src_y, 2.0),
+				new THREE.Vector3(ef.dst_x, ef.dst_y, 2.0)
+			];
+			const curve = new THREE.LineCurve3(pts[0], pts[1]);
+			const tubeGeo = new THREE.TubeGeometry(curve, 4, thickness, 4, false);
+			const mat = new THREE.MeshBasicMaterial({
+				color,
+				opacity,
+				transparent: true,
+				depthTest: false
+			});
+			const mesh = new THREE.Mesh(tubeGeo, mat);
+			this.overlayGroup.add(mesh);
+		}
+
+		// Draw nodes with utilization fill
+		for (const nf of flows.node_flows) {
+			if (nf.traffic <= 0) continue;
+
+			const util = nf.utilization;
+			const r = Math.floor(Math.min(1, util * 2) * 255);
+			const g = Math.floor(Math.max(0, 1 - util) * 200);
+			const color = (r << 16) | (g << 8) | 0;
+
+			const radius = this.baseCellSize * (0.1 + Math.min(util, 1.0) * 0.1);
+			const geo = new THREE.CircleGeometry(radius, 12);
+			const mat = new THREE.MeshBasicMaterial({
+				color,
+				opacity: 0.35,
+				transparent: true,
+				depthTest: false
+			});
+			const mesh = new THREE.Mesh(geo, mat);
+			mesh.position.set(nf.x, nf.y, 2.0);
+			this.overlayGroup.add(mesh);
 		}
 	}
 

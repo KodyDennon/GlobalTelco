@@ -4,7 +4,7 @@ use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
-use axum::routing::{delete, get, post};
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use uuid::Uuid;
@@ -16,6 +16,9 @@ use crate::state::AppState;
 use crate::tick;
 use crate::ws;
 
+use axum::extract::FromRequestParts;
+use axum::http::request::Parts;
+
 pub fn create_router(state: Arc<AppState>) -> Router {
     Router::new()
         // Health check
@@ -26,10 +29,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // World management
         .route("/api/worlds", get(list_worlds))
         .route("/api/worlds", post(create_world))
-        .route("/api/worlds/{world_id}", get(get_world))
+        .route("/api/worlds/:world_id", get(get_world))
         // Cloud saves
         .route("/api/saves", get(list_saves).post(upload_save))
-        .route("/api/saves/{slot}", get(download_save).delete(delete_save))
+        .route("/api/saves/:slot", get(download_save).delete(delete_save))
         // WebSocket endpoint
         .route("/ws", get(ws_upgrade))
         // Server info
@@ -41,6 +44,56 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/admin/audit", get(admin_audit_log))
         .with_state(state)
 }
+
+/// Extractor for authenticated user claims
+pub struct AuthClaims(pub Uuid);
+
+impl<S> FromRequestParts<S> for AuthClaims
+where
+    S: Send + Sync,
+    Arc<AppState>: FromRef<S>,
+{
+    type Rejection = (StatusCode, Json<serde_json::Value>);
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let app_state = Arc::<AppState>::from_ref(state);
+        
+        let auth_header = parts
+            .headers
+            .get(axum::http::header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .ok_or((
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({ "error": "Missing authorization header" })),
+            ))?;
+
+        if !auth_header.starts_with("Bearer ") {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({ "error": "Invalid authorization header" })),
+            ));
+        }
+
+        let token = &auth_header[7..];
+        let claims = auth::validate_token(&app_state.auth_config, token).map_err(|_| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({ "error": "Invalid or expired token" })),
+            )
+        })?;
+
+        let player_id = Uuid::parse_str(&claims.sub).map_err(|_| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({ "error": "Invalid player ID in token" })),
+            )
+        })?;
+
+        Ok(AuthClaims(player_id))
+    }
+}
+
+use axum::extract::FromRef;
 
 // ── Health ─────────────────────────────────────────────────────────────────
 
@@ -188,6 +241,7 @@ fn default_max_players() -> u32 {
 }
 
 async fn create_world(
+    _: AuthClaims,
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateWorldRequest>,
 ) -> impl IntoResponse {
@@ -241,6 +295,7 @@ async fn get_world(
 // ── Cloud Saves ───────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct SaveUploadRequest {
     slot: i32,
     name: String,
@@ -249,15 +304,15 @@ struct SaveUploadRequest {
     config_json: serde_json::Value,
 }
 
+#[allow(unused_variables)]
 async fn upload_save(
+    AuthClaims(account_id): AuthClaims,
     State(state): State<Arc<AppState>>,
     Json(body): Json<SaveUploadRequest>,
 ) -> impl IntoResponse {
     let _ = &body; // used below in postgres path
     #[cfg(feature = "postgres")]
     if let Some(db) = state.db.as_ref() {
-        // TODO: Extract account_id from JWT auth header in production
-        let account_id = Uuid::new_v4();
         match db
             .save_cloud(
                 account_id,
@@ -294,11 +349,14 @@ async fn upload_save(
     )
 }
 
-async fn list_saves(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+#[allow(unused_variables)]
+async fn list_saves(
+    AuthClaims(account_id): AuthClaims,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
     let _ = &state;
     #[cfg(feature = "postgres")]
     if let Some(db) = state.db.as_ref() {
-        let account_id = Uuid::new_v4(); // Placeholder
         match db.list_cloud_saves(account_id).await {
             Ok(saves) => {
                 let list: Vec<serde_json::Value> = saves
@@ -327,14 +385,15 @@ async fn list_saves(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     (StatusCode::OK, Json(serde_json::json!({ "saves": [] })))
 }
 
+#[allow(unused_variables)]
 async fn download_save(
+    AuthClaims(account_id): AuthClaims,
     State(state): State<Arc<AppState>>,
     Path(slot): Path<i32>,
 ) -> impl IntoResponse {
     let _ = (&state, slot);
     #[cfg(feature = "postgres")]
     if let Some(db) = state.db.as_ref() {
-        let account_id = Uuid::new_v4(); // Placeholder
         match db.load_cloud_save(account_id, slot).await {
             Ok(Some(data)) => {
                 return (StatusCode::OK, data).into_response();
@@ -363,14 +422,15 @@ async fn download_save(
         .into_response()
 }
 
+#[allow(unused_variables)]
 async fn delete_save(
+    AuthClaims(account_id): AuthClaims,
     State(state): State<Arc<AppState>>,
     Path(slot): Path<i32>,
 ) -> impl IntoResponse {
     let _ = (&state, slot);
     #[cfg(feature = "postgres")]
     if let Some(db) = state.db.as_ref() {
-        let account_id = Uuid::new_v4(); // Placeholder
         match db.delete_cloud_save(account_id, slot).await {
             Ok(true) => {
                 return (StatusCode::OK, Json(serde_json::json!({ "deleted": true })));

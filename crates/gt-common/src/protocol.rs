@@ -50,6 +50,9 @@ pub enum AuthRequest {
         password: String,
         email: String,
     },
+    Token {
+        access_token: String,
+    },
     TokenRefresh {
         refresh_token: String,
     },

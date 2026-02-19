@@ -69,6 +69,9 @@ pub struct GameWorld {
     #[serde(skip)]
     pub cell_coverage: HashMap<usize, crate::systems::coverage::CellCoverage>,
 
+    // Traffic flow data (computed by utilization system)
+    pub traffic_matrix: gt_common::types::TrafficMatrix,
+
     // Network graph state
     pub network: gt_infrastructure::NetworkGraph,
 
@@ -124,6 +127,7 @@ impl GameWorld {
             grid_cell_neighbors: Vec::new(),
             cell_spacing_km: 100.0,
             cell_coverage: HashMap::new(),
+            traffic_matrix: gt_common::types::TrafficMatrix::default(),
             network: gt_infrastructure::NetworkGraph::new(),
             rng_seed,
             tick_rng_counter: 0,
@@ -262,7 +266,7 @@ impl GameWorld {
             let id = self.allocate_entity();
             let real_region_id = region_id_map.get(&city.region_id).copied().unwrap_or(0);
 
-            let econ = gen_world.economics.cities.iter().find(|e| {
+            let _econ = gen_world.economics.cities.iter().find(|e| {
                 gen_world.cities.get(e.city_index).map(|c| c.cell_index) == Some(city.cell_index)
             });
             // Use sqrt(population) scaling for demand — matches the formula in the demand system tick.
@@ -1003,7 +1007,8 @@ impl GameWorld {
             | NodeType::WirelessRelay
             | NodeType::CentralOffice
             | NodeType::ExchangePoint
-            | NodeType::DataCenter => {
+            | NodeType::DataCenter
+            | NodeType::BackboneRouter => {
                 // Land-based nodes can't be placed in deep ocean
                 if matches!(terrain, TerrainType::OceanDeep | TerrainType::OceanShallow) {
                     self.event_queue.push(
@@ -1057,7 +1062,7 @@ impl GameWorld {
             NodeType::CellTower | NodeType::WirelessRelay => 10,
             NodeType::CentralOffice => 20,
             NodeType::ExchangePoint => 30,
-            NodeType::DataCenter => 50,
+            NodeType::DataCenter | NodeType::BackboneRouter => 50,
             NodeType::SatelliteGround => 40,
             NodeType::SubmarineLanding => 60,
         };
@@ -1114,6 +1119,27 @@ impl GameWorld {
         match self.infra_nodes.get(&to_node) {
             Some(n) if n.owner == corp_id => {}
             _ => return,
+        }
+
+        // Enforce tier compatibility: edge type must be valid for the node tiers
+        let from_type = self.infra_nodes.get(&from_node).map(|n| n.node_type);
+        let to_type = self.infra_nodes.get(&to_node).map(|n| n.node_type);
+        if let (Some(ft), Some(tt)) = (from_type, to_type) {
+            if !edge_type.can_connect(ft, tt) {
+                let from_tier = ft.tier();
+                let to_tier = tt.tier();
+                self.event_queue.push(
+                    self.tick,
+                    gt_common::events::GameEvent::GlobalNotification {
+                        message: format!(
+                            "Cannot connect {:?} (Tier {:?}) to {:?} (Tier {:?}) with {:?}. Check tier compatibility.",
+                            ft, from_tier, tt, to_tier, edge_type
+                        ),
+                        level: "error".to_string(),
+                    },
+                );
+                return;
+            }
         }
 
         // Calculate distance between nodes

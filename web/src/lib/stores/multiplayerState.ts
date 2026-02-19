@@ -25,15 +25,40 @@ export interface MultiplayerWorldInfo {
 	map_size: string;
 }
 
+const initialAccessToken = typeof localStorage !== 'undefined' ? localStorage.getItem('gt_access_token') : null;
+const initialRefreshToken = typeof localStorage !== 'undefined' ? localStorage.getItem('gt_refresh_token') : null;
+const initialPlayerUsername = typeof localStorage !== 'undefined' ? localStorage.getItem('gt_player_username') : null;
+const initialPlayerId = typeof localStorage !== 'undefined' ? localStorage.getItem('gt_player_id') : null;
+
 export const connectionState = writable<ConnectionState>('disconnected');
 export const worldId = writable<string | null>(null);
-export const playerId = writable<string | null>(null);
-export const playerUsername = writable<string | null>(null);
+export const playerId = writable<string | null>(initialPlayerId);
+export const playerUsername = writable<string | null>(initialPlayerUsername);
 export const corpId = writable<number | null>(null);
 export const chatMessages = writable<ChatMessage[]>([]);
 export const playerList = writable<PlayerInfo[]>([]);
-export const accessToken = writable<string | null>(null);
-export const refreshToken = writable<string | null>(null);
+export const accessToken = writable<string | null>(initialAccessToken);
+export const refreshToken = writable<string | null>(initialRefreshToken);
+
+// Persist tokens and user info to localStorage
+if (typeof localStorage !== 'undefined') {
+	accessToken.subscribe((value) => {
+		if (value) localStorage.setItem('gt_access_token', value);
+		else localStorage.removeItem('gt_access_token');
+	});
+	refreshToken.subscribe((value) => {
+		if (value) localStorage.setItem('gt_refresh_token', value);
+		else localStorage.removeItem('gt_refresh_token');
+	});
+	playerUsername.subscribe((value) => {
+		if (value) localStorage.setItem('gt_player_username', value);
+		else localStorage.removeItem('gt_player_username');
+	});
+	playerId.subscribe((value) => {
+		if (value) localStorage.setItem('gt_player_id', value);
+		else localStorage.removeItem('gt_player_id');
+	});
+}
 export const serverUrl = writable<string>('ws://localhost:3001/ws');
 export const proxySummary = writable<{ ticks_elapsed: number; actions: { tick: number; description: string }[] } | null>(null);
 

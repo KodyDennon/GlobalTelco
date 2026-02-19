@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use tokio::time::{interval, Duration};
-use tracing::{debug, warn};
+use tracing::debug;
+#[cfg(feature = "postgres")]
+use tracing::warn;
 
 use gt_common::protocol::{CorpDelta, ServerMessage};
 

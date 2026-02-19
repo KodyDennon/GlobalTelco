@@ -1,116 +1,76 @@
+//! Traffic Flow Engine — OD-matrix based utilization system.
+//!
+//! Replaces the old proximity-based utilization with actual traffic routing:
+//! 1. Cities generate traffic demand (OD matrix)
+//! 2. Traffic is routed through the network graph via cached shortest paths
+//! 3. Node/edge loads accumulate from actual traffic flowing through them
+//! 4. Congestion occurs when links exceed capacity; excess traffic is dropped
+
 use crate::world::GameWorld;
-use gt_common::types::NodeType;
+use gt_common::types::{EntityId, NetworkTier, NodeType, TrafficDemand, TrafficMatrix};
+use std::collections::HashMap;
+
+// ─── Public entry point ───────────────────────────────────────────────────────
 
 pub fn run(world: &mut GameWorld) {
-    // Phase 0: Reset capacities to base values before applying boosts
-    // This prevents cumulative drift from DataCenter boosts and maintenance reductions
-    reset_capacities_to_base(world);
-
-    // Phase 1: DataCenter boost — DataCenters increase effective capacity of connected nodes
-    apply_datacenter_boosts(world);
-
-    // Phase 2: Reset edge latency to base, then apply ExchangePoint reductions
+    reset_node_effective_throughput(world);
     reset_edge_latency(world);
     apply_exchange_point_latency(world);
-
-    // Phase 3: Calculate node utilization from per-cell coverage demand
-    // Each node's load comes from the cells it covers and the demand in those cells
-    calculate_node_loads(world);
-
-    // Phase 4: Calculate edge utilization from traffic between connected nodes
-    calculate_edge_loads(world);
+    recompute_traffic_matrix_if_needed(world);
+    accumulate_traffic_flows(world);
 }
 
-/// Reset capacity max_throughput to the base value from InfraNode each tick.
-/// This prevents cumulative drift from DataCenter boosts and maintenance reductions.
-fn reset_capacities_to_base(world: &mut GameWorld) {
-    let mut updates: Vec<(u64, f64)> = world
-        .infra_nodes
-        .iter()
-        .filter(|(id, _)| !world.constructions.contains_key(id))
-        .map(|(&id, node)| (id, node.max_throughput))
-        .collect();
-    updates.sort_unstable_by_key(|t| t.0);
+// ─── Capacity & Latency Reset ─────────────────────────────────────────────────
 
-    for (node_id, base_throughput) in updates {
-        if let Some(cap) = world.capacities.get_mut(&node_id) {
-            // Apply health degradation: severely damaged nodes have reduced capacity
-            let health = world.healths.get(&node_id).map(|h| h.condition).unwrap_or(1.0);
-            if health < 0.5 {
-                cap.max_throughput = base_throughput * health;
-            } else {
-                cap.max_throughput = base_throughput;
-            }
-        }
-    }
-}
-
-/// DataCenters boost the effective capacity of all nodes they're connected to via edges.
-/// A DataCenter acts as a capacity multiplier for its network cluster.
-fn apply_datacenter_boosts(world: &mut GameWorld) {
-    // Find all operational DataCenters and the nodes they connect to
-    // Sort by ID for deterministic iteration order
-    let mut datacenter_boosts: Vec<(u64, f64)> = world
-        .infra_nodes
-        .iter()
-        .filter(|(id, node)| {
-            node.node_type == NodeType::DataCenter && !world.constructions.contains_key(id)
-        })
-        .map(|(&id, node)| {
-            let health = world.healths.get(&id).map(|h| h.condition).unwrap_or(1.0);
-            // DataCenter boost scales with its throughput and health
-            // A healthy 50K throughput DC provides a 20% capacity boost
-            let boost_factor = (node.max_throughput / 50000.0).min(2.0) * 0.2 * health;
-            (id, boost_factor)
-        })
-        .collect();
-    datacenter_boosts.sort_unstable_by_key(|t| t.0);
-
-    for (dc_id, boost_factor) in &datacenter_boosts {
-        // Find all edges connecting to this DataCenter — sorted for determinism
-        let mut connected_nodes: Vec<u64> = world
-            .infra_edges
-            .values()
-            .filter_map(|edge| {
-                if edge.source == *dc_id {
-                    Some(edge.target)
-                } else if edge.target == *dc_id {
-                    Some(edge.source)
+fn reset_node_effective_throughput(world: &mut GameWorld) {
+    let updates: Vec<(u64, f64)> = {
+        let mut v: Vec<_> = world
+            .infra_nodes
+            .iter()
+            .filter(|(id, _)| !world.constructions.contains_key(id))
+            .map(|(&id, node)| {
+                let health = world.healths.get(&id).map(|h| h.condition).unwrap_or(1.0);
+                let effective = if health < 0.5 {
+                    node.max_throughput * health
                 } else {
-                    None
-                }
+                    node.max_throughput
+                };
+                (id, effective)
             })
             .collect();
-        connected_nodes.sort_unstable();
+        v.sort_unstable_by_key(|t| t.0);
+        v
+    };
 
-        // Boost capacity of connected nodes
-        for &node_id in &connected_nodes {
-            if let Some(cap) = world.capacities.get_mut(&node_id) {
-                // Apply boost additively (multiple DCs stack, but with diminishing returns)
-                let boost_amount = cap.max_throughput * boost_factor;
-                cap.max_throughput += boost_amount;
-            }
+    for (node_id, effective_throughput) in updates {
+        if let Some(cap) = world.capacities.get_mut(&node_id) {
+            cap.max_throughput = effective_throughput;
         }
     }
 }
 
-/// Reset edge latency to base values before ExchangePoint reductions.
 fn reset_edge_latency(world: &mut GameWorld) {
     use gt_common::types::EdgeType;
-    let mut updates: Vec<(u64, f64)> = world
-        .infra_edges
-        .iter()
-        .map(|(&id, edge)| {
-            let latency_per_km = match edge.edge_type {
-                EdgeType::FiberLocal | EdgeType::FiberRegional | EdgeType::FiberNational | EdgeType::Submarine => 0.005,
-                EdgeType::Copper => 0.02,
-                EdgeType::Microwave => 0.003,
-                EdgeType::Satellite => 0.5,
-            };
-            (id, latency_per_km * edge.length_km)
-        })
-        .collect();
-    updates.sort_unstable_by_key(|t| t.0);
+    let updates: Vec<(u64, f64)> = {
+        let mut v: Vec<_> = world
+            .infra_edges
+            .iter()
+            .map(|(&id, edge)| {
+                let latency_per_km = match edge.edge_type {
+                    EdgeType::FiberLocal
+                    | EdgeType::FiberRegional
+                    | EdgeType::FiberNational
+                    | EdgeType::Submarine => 0.005,
+                    EdgeType::Copper => 0.02,
+                    EdgeType::Microwave => 0.003,
+                    EdgeType::Satellite => 0.5,
+                };
+                (id, latency_per_km * edge.length_km)
+            })
+            .collect();
+        v.sort_unstable_by_key(|t| t.0);
+        v
+    };
     for (edge_id, base_latency) in updates {
         if let Some(edge) = world.infra_edges.get_mut(&edge_id) {
             edge.latency_ms = base_latency;
@@ -118,62 +78,60 @@ fn reset_edge_latency(world: &mut GameWorld) {
     }
 }
 
-/// ExchangePoints reduce latency on all edges connecting through them.
 fn apply_exchange_point_latency(world: &mut GameWorld) {
-    let mut exchange_points: Vec<(u64, f64)> = world
-        .infra_nodes
-        .iter()
-        .filter(|(id, node)| {
-            node.node_type == NodeType::ExchangePoint && !world.constructions.contains_key(id)
-        })
-        .map(|(&id, node)| {
-            let health = world.healths.get(&id).map(|h| h.condition).unwrap_or(1.0);
-            // ExchangePoint reduces latency by up to 30% based on throughput and health
-            let reduction = (node.max_throughput / 5000.0).min(1.0) * 0.3 * health;
-            (id, reduction)
-        })
-        .collect();
-    exchange_points.sort_unstable_by_key(|t| t.0);
+    let exchange_points: Vec<(u64, f64)> = {
+        let mut v: Vec<_> = world
+            .infra_nodes
+            .iter()
+            .filter(|(id, node)| {
+                node.node_type == NodeType::ExchangePoint
+                    && !world.constructions.contains_key(id)
+            })
+            .map(|(&id, node)| {
+                let health = world.healths.get(&id).map(|h| h.condition).unwrap_or(1.0);
+                let reduction = (node.max_throughput / 5000.0).min(1.0) * 0.3 * health;
+                (id, reduction)
+            })
+            .collect();
+        v.sort_unstable_by_key(|t| t.0);
+        v
+    };
 
-    // Collect edge updates sorted for deterministic application
-    let mut edge_latency_reductions: Vec<(u64, f64)> = Vec::new();
-
+    let mut reductions: Vec<(u64, f64)> = Vec::new();
     for (ep_id, reduction) in &exchange_points {
-        let mut edge_ids: Vec<u64> = world
+        let mut eids: Vec<u64> = world
             .infra_edges
             .iter()
             .filter(|(_, edge)| edge.source == *ep_id || edge.target == *ep_id)
             .map(|(&id, _)| id)
             .collect();
-        edge_ids.sort_unstable();
-        for edge_id in edge_ids {
-            edge_latency_reductions.push((edge_id, *reduction));
+        eids.sort_unstable();
+        for eid in eids {
+            reductions.push((eid, *reduction));
         }
     }
+    reductions.sort_unstable_by_key(|t| t.0);
 
-    // Sort by edge_id for deterministic application order
-    edge_latency_reductions.sort_unstable_by_key(|t| t.0);
-
-    for (edge_id, reduction) in edge_latency_reductions {
+    for (edge_id, reduction) in reductions {
         if let Some(edge) = world.infra_edges.get_mut(&edge_id) {
-            // Multiple ExchangePoints have diminishing returns
             edge.latency_ms *= 1.0 - reduction;
-            edge.latency_ms = edge.latency_ms.max(0.1); // Floor at 0.1ms
+            edge.latency_ms = edge.latency_ms.max(0.1);
         }
     }
 }
 
-/// Calculate node load based on per-cell coverage demand.
-/// Each node's load comes from the population demand in cells it covers,
-/// weighted by how much of each cell's coverage this node provides.
-fn calculate_node_loads(world: &mut GameWorld) {
-    // Build a map: node_id -> total demand served
-    // We derive this from cell_coverage and city demand data
-    let mut node_demand: std::collections::HashMap<u64, f64> = std::collections::HashMap::new();
+// ─── OD Traffic Matrix ────────────────────────────────────────────────────────
 
-    // For each city, distribute its demand across covering nodes proportionally
-    // SORT by city ID for deterministic floating-point accumulation
-    let mut city_data: Vec<(u64, f64, Vec<usize>)> = world
+fn recompute_traffic_matrix_if_needed(world: &mut GameWorld) {
+    let tick = world.current_tick();
+    let needs_recompute = world.traffic_matrix.od_pairs.is_empty()
+        || tick.saturating_sub(world.traffic_matrix.last_computed_tick) >= 50;
+
+    if !needs_recompute {
+        return;
+    }
+
+    let mut city_demands: Vec<(EntityId, f64)> = world
         .cities
         .iter()
         .map(|(&id, city)| {
@@ -182,208 +140,415 @@ fn calculate_node_loads(world: &mut GameWorld) {
                 .get(&id)
                 .map(|d| d.current_demand)
                 .unwrap_or(city.telecom_demand);
-            (id, demand, city.cells.clone())
+            (id, demand)
         })
         .collect();
-    city_data.sort_unstable_by_key(|t| t.0);
+    city_demands.sort_unstable_by_key(|t| t.0);
 
-    // Pre-collect operational nodes sorted by ID for deterministic inner iteration
-    let cell_spacing = world.cell_spacing_km;
-    let mut sorted_node_data: Vec<(u64, usize, f64, f64, f64, NodeType)> = world
+    let total_demand: f64 = city_demands.iter().map(|(_, d)| d).sum();
+    if total_demand <= 0.0 {
+        world.traffic_matrix = TrafficMatrix {
+            last_computed_tick: tick,
+            ..TrafficMatrix::default()
+        };
+        return;
+    }
+
+    let mut od_pairs: Vec<TrafficDemand> = Vec::new();
+    let mut external_traffic: Vec<(EntityId, f64)> = Vec::new();
+
+    for i in 0..city_demands.len() {
+        let (src_id, src_demand) = city_demands[i];
+        external_traffic.push((src_id, src_demand * 0.4));
+
+        for j in (i + 1)..city_demands.len() {
+            let (dst_id, dst_demand) = city_demands[j];
+            let traffic = src_demand * dst_demand / total_demand;
+            if traffic > 0.1 {
+                od_pairs.push(TrafficDemand {
+                    source_city: src_id,
+                    dest_city: dst_id,
+                    demand: traffic,
+                });
+            }
+        }
+    }
+
+    world.traffic_matrix = TrafficMatrix {
+        od_pairs,
+        external_traffic,
+        total_demand,
+        last_computed_tick: tick,
+        node_traffic: HashMap::new(),
+        edge_traffic: HashMap::new(),
+        total_served: 0.0,
+        total_dropped: 0.0,
+        corp_traffic_served: HashMap::new(),
+        corp_traffic_dropped: HashMap::new(),
+    };
+}
+
+// ─── Traffic Flow Accumulation ────────────────────────────────────────────────
+
+fn accumulate_traffic_flows(world: &mut GameWorld) {
+    // Reset loads
+    reset_all_loads(world);
+
+    // Build lookup structures
+    let city_access = find_city_access_nodes(world);
+    let node_cap = collect_node_capacities(world);
+    let edge_cap = collect_edge_capacities(world);
+    let backbone_nodes = find_backbone_nodes(world);
+
+    let mut accum = TrafficAccumulator::new();
+
+    // Route inter-city OD traffic
+    let od_pairs = world.traffic_matrix.od_pairs.clone();
+    for od in &od_pairs {
+        route_od_pair(world, od, &city_access, &node_cap, &edge_cap, &mut accum);
+    }
+
+    // Route external (internet-bound) traffic
+    let external = world.traffic_matrix.external_traffic.clone();
+    for &(city_id, ext_demand) in &external {
+        route_external_traffic(
+            world, city_id, ext_demand, &city_access, &backbone_nodes,
+            &node_cap, &edge_cap, &mut accum,
+        );
+    }
+
+    // Apply accumulated loads to world state
+    apply_loads(world, &accum);
+}
+
+/// Accumulated traffic state during flow computation.
+struct TrafficAccumulator {
+    node_load: HashMap<u64, f64>,
+    edge_load: HashMap<u64, f64>,
+    total_served: f64,
+    total_dropped: f64,
+    corp_served: HashMap<u64, f64>,
+    corp_dropped: HashMap<u64, f64>,
+}
+
+impl TrafficAccumulator {
+    fn new() -> Self {
+        Self {
+            node_load: HashMap::new(),
+            edge_load: HashMap::new(),
+            total_served: 0.0,
+            total_dropped: 0.0,
+            corp_served: HashMap::new(),
+            corp_dropped: HashMap::new(),
+        }
+    }
+
+    fn record_served(&mut self, amount: f64, owner: u64) {
+        self.total_served += amount;
+        *self.corp_served.entry(owner).or_insert(0.0) += amount;
+    }
+
+    fn record_dropped(&mut self, amount: f64, owner: Option<u64>) {
+        self.total_dropped += amount;
+        if let Some(o) = owner {
+            *self.corp_dropped.entry(o).or_insert(0.0) += amount;
+        }
+    }
+}
+
+fn reset_all_loads(world: &mut GameWorld) {
+    for cap in world.capacities.values_mut() {
+        cap.current_load = 0.0;
+    }
+    for edge in world.infra_edges.values_mut() {
+        edge.current_load = 0.0;
+    }
+}
+
+fn collect_node_capacities(world: &GameWorld) -> HashMap<u64, f64> {
+    world
         .infra_nodes
         .iter()
         .filter(|(id, _)| !world.constructions.contains_key(id))
-        .map(|(&node_id, node)| {
-            let health = world.healths.get(&node_id).map(|h| h.condition).unwrap_or(1.0);
-            (node_id, node.cell_index, node.max_throughput, health, 0.0, node.node_type)
+        .map(|(&id, _)| {
+            let cap = world.capacities.get(&id).map(|c| c.max_throughput).unwrap_or(0.0);
+            (id, cap)
         })
-        .collect();
-    sorted_node_data.sort_unstable_by_key(|t| t.0);
+        .collect()
+}
 
-    for (_city_id, demand, cells) in &city_data {
-        if cells.is_empty() || *demand <= 0.0 {
-            continue;
+fn collect_edge_capacities(world: &GameWorld) -> HashMap<u64, f64> {
+    world
+        .infra_edges
+        .iter()
+        .map(|(&id, edge)| (id, edge.effective_bandwidth()))
+        .collect()
+}
+
+// ─── City → Access Node Mapping ───────────────────────────────────────────────
+
+/// For each city, find the nearest operational node within coverage range.
+/// Returns map: city_id → (node_id, owner_corp_id).
+fn find_city_access_nodes(world: &GameWorld) -> HashMap<EntityId, (EntityId, EntityId)> {
+    let mut result: HashMap<EntityId, (EntityId, EntityId)> = HashMap::new();
+
+    let mut node_data: Vec<(u64, usize, NodeType, u64)> = world
+        .infra_nodes
+        .iter()
+        .filter(|(id, _)| !world.constructions.contains_key(id))
+        .map(|(&id, node)| (id, node.cell_index, node.node_type, node.owner))
+        .collect();
+    node_data.sort_unstable_by_key(|t| t.0);
+
+    let cell_spacing = world.cell_spacing_km;
+
+    for (&city_id, city) in &world.cities {
+        let city_pos = match world.grid_cell_positions.get(city.cell_index) {
+            Some(p) => *p,
+            None => continue,
+        };
+
+        let mut best: Option<(u64, u64, f64)> = None;
+
+        for &(nid, cell_index, node_type, owner) in &node_data {
+            let node_pos = match world.grid_cell_positions.get(cell_index) {
+                Some(p) => *p,
+                None => continue,
+            };
+
+            let radius_km = scaled_coverage_radius(node_type, cell_spacing);
+            let dist = haversine_km(city_pos.0, city_pos.1, node_pos.0, node_pos.1);
+            if dist > radius_km {
+                continue;
+            }
+
+            // Prefer access-tier nodes (lower tier penalty)
+            let tier_penalty = node_type.tier().value() as f64 * 10.0;
+            let effective_dist = dist + tier_penalty;
+
+            if best.is_none() || effective_dist < best.unwrap().2 {
+                best = Some((nid, owner, effective_dist));
+            }
         }
 
-        let demand_per_cell = demand / cells.len() as f64;
-
-        for &ci in cells {
-            let coverage = world.cell_coverage.get(&ci);
-            if coverage.is_none() {
-                continue;
-            }
-
-            // Find all nodes covering this cell and distribute demand proportionally
-            // by each node's signal contribution
-            let total_signal = coverage.map(|c| c.signal_strength).unwrap_or(0.0);
-            if total_signal <= 0.0 {
-                continue;
-            }
-
-            let cell_pos = world.grid_cell_positions.get(ci);
-            if cell_pos.is_none() {
-                continue;
-            }
-            let &(clat, clon) = cell_pos.unwrap();
-
-            // Iterate sorted nodes for deterministic demand distribution
-            for &(node_id, cell_index, max_throughput, health, _, node_type) in &sorted_node_data {
-                let node_pos = world.grid_cell_positions.get(cell_index);
-
-                if let Some(&(nlat, nlon)) = node_pos {
-                    // Scale radius to grid resolution (same as coverage system)
-                    let base_radius = node_type.coverage_radius_km();
-                    let min_cells = match node_type {
-                        NodeType::CellTower => 2.5,
-                        NodeType::WirelessRelay => 1.5,
-                        NodeType::CentralOffice => 1.5,
-                        NodeType::SatelliteGround => 6.0,
-                        NodeType::DataCenter => 1.0,
-                        NodeType::ExchangePoint => 1.0,
-                        NodeType::SubmarineLanding => 0.5,
-                    };
-                    let radius_km = base_radius.max(cell_spacing * min_cells);
-                    let dist_km = haversine_km(nlat, nlon, clat, clon);
-
-                    if dist_km <= radius_km && radius_km > 0.0 {
-                        let distance_ratio = dist_km / radius_km;
-                        let attenuation = (1.0 - distance_ratio).powi(2);
-                        let node_signal = max_throughput * node_type.coverage_capacity_fraction() * health * attenuation;
-
-                        if node_signal > 0.01 {
-                            // This node's share of the cell's demand
-                            let share = node_signal / total_signal;
-                            let allocated_demand = demand_per_cell * share;
-                            *node_demand.entry(node_id).or_insert(0.0) += allocated_demand;
-                        }
-                    }
-                }
-            }
+        if let Some((nid, owner, _)) = best {
+            result.insert(city_id, (nid, owner));
         }
     }
 
-    // Apply calculated demand as load to each node
-    let mut node_ids: Vec<u64> = world.infra_nodes.keys().copied().collect();
-    node_ids.sort_unstable();
+    result
+}
 
-    for &node_id in &node_ids {
-        if world.constructions.contains_key(&node_id) {
-            continue;
+fn find_backbone_nodes(world: &GameWorld) -> Vec<u64> {
+    let mut nodes: Vec<u64> = world
+        .infra_nodes
+        .iter()
+        .filter(|(id, _)| !world.constructions.contains_key(id))
+        .filter(|(_, node)| {
+            matches!(
+                node.node_type.tier(),
+                NetworkTier::Backbone | NetworkTier::Global | NetworkTier::Core
+            )
+        })
+        .map(|(&id, _)| id)
+        .collect();
+    nodes.sort_unstable();
+    nodes
+}
+
+// ─── Traffic Routing ──────────────────────────────────────────────────────────
+
+fn route_od_pair(
+    world: &GameWorld,
+    od: &TrafficDemand,
+    city_access: &HashMap<EntityId, (EntityId, EntityId)>,
+    node_cap: &HashMap<u64, f64>,
+    edge_cap: &HashMap<u64, f64>,
+    accum: &mut TrafficAccumulator,
+) {
+    let (src_node, src_owner) = match city_access.get(&od.source_city) {
+        Some(&v) => v,
+        None => {
+            accum.record_dropped(od.demand, None);
+            return;
         }
-
-        let demand = node_demand.get(&node_id).copied().unwrap_or(0.0);
-
-        // Also add transit traffic for backbone/high-level nodes
-        let transit_load = calculate_transit_load(world, node_id);
-        let total_load = demand + transit_load;
-
-        if let Some(cap) = world.capacities.get_mut(&node_id) {
-            // Smooth load changes: blend 80% new, 20% old for stability
-            cap.current_load = cap.current_load * 0.2 + total_load * 0.8;
-            // Allow slight overload (up to 120%)
-            cap.current_load = cap.current_load.min(cap.max_throughput * 1.2);
+    };
+    let (dst_node, _) = match city_access.get(&od.dest_city) {
+        Some(&v) => v,
+        None => {
+            accum.record_dropped(od.demand, Some(src_owner));
+            return;
         }
+    };
 
-        // Sync to InfraNode
-        if let Some(node) = world.infra_nodes.get_mut(&node_id) {
-            if let Some(cap) = world.capacities.get(&node_id) {
-                node.current_load = cap.current_load;
+    if src_node == dst_node {
+        *accum.node_load.entry(src_node).or_insert(0.0) += od.demand;
+        accum.record_served(od.demand, src_owner);
+        return;
+    }
+
+    let path = world
+        .network
+        .get_cached_path(src_node, dst_node)
+        .or_else(|| world.network.get_cached_path(dst_node, src_node))
+        .cloned();
+
+    match path {
+        Some(ref p) if p.len() >= 2 => {
+            let served = push_traffic_on_path(
+                p, od.demand, node_cap, edge_cap,
+                &mut accum.node_load, &mut accum.edge_load, &world.network,
+            );
+            accum.record_served(served, src_owner);
+            if served < od.demand {
+                accum.record_dropped(od.demand - served, Some(src_owner));
             }
+        }
+        _ => {
+            accum.record_dropped(od.demand, Some(src_owner));
         }
     }
 }
 
-/// Calculate transit traffic for backbone-level nodes.
-/// Higher-level nodes (ExchangePoints, DataCenters, SubmarineLandings) carry
-/// inter-region traffic proportional to connected edge bandwidth and utilization.
-fn calculate_transit_load(world: &GameWorld, node_id: u64) -> f64 {
-    let node = match world.infra_nodes.get(&node_id) {
-        Some(n) => n,
-        None => return 0.0,
+fn route_external_traffic(
+    world: &GameWorld,
+    city_id: EntityId,
+    demand: f64,
+    city_access: &HashMap<EntityId, (EntityId, EntityId)>,
+    backbone_nodes: &[u64],
+    node_cap: &HashMap<u64, f64>,
+    edge_cap: &HashMap<u64, f64>,
+    accum: &mut TrafficAccumulator,
+) {
+    let (access_node, owner) = match city_access.get(&city_id) {
+        Some(&v) => v,
+        None => {
+            accum.record_dropped(demand, None);
+            return;
+        }
     };
 
-    // Only higher-level nodes handle significant transit
-    let transit_factor = match node.node_type {
-        NodeType::SubmarineLanding => 0.4,
-        NodeType::DataCenter => 0.3,
-        NodeType::ExchangePoint => 0.5,
-        NodeType::SatelliteGround => 0.2,
-        NodeType::CentralOffice => 0.1,
-        NodeType::CellTower | NodeType::WirelessRelay => 0.0,
-    };
+    // Find shortest path to any backbone node
+    let mut best_path: Option<Vec<u64>> = None;
+    for &bb in backbone_nodes {
+        if let Some(path) = world.network.get_cached_path(access_node, bb) {
+            if best_path.is_none() || path.len() < best_path.as_ref().unwrap().len() {
+                best_path = Some(path.clone());
+            }
+        }
+    }
 
-    if transit_factor <= 0.0 {
+    match best_path {
+        Some(ref p) if p.len() >= 2 => {
+            let served = push_traffic_on_path(
+                p, demand, node_cap, edge_cap,
+                &mut accum.node_load, &mut accum.edge_load, &world.network,
+            );
+            accum.record_served(served, owner);
+            if served < demand {
+                accum.record_dropped(demand - served, Some(owner));
+            }
+        }
+        Some(_) => {
+            // Access node is a backbone node
+            *accum.node_load.entry(access_node).or_insert(0.0) += demand;
+            accum.record_served(demand, owner);
+        }
+        None => {
+            accum.record_dropped(demand, Some(owner));
+        }
+    }
+}
+
+/// Push traffic along a path, respecting capacity. Returns traffic actually served.
+fn push_traffic_on_path(
+    path: &[u64],
+    demand: f64,
+    node_cap: &HashMap<u64, f64>,
+    edge_cap: &HashMap<u64, f64>,
+    node_load: &mut HashMap<u64, f64>,
+    edge_load: &mut HashMap<u64, f64>,
+    network: &gt_infrastructure::NetworkGraph,
+) -> f64 {
+    // Find bottleneck
+    let mut min_remaining = demand;
+
+    for &nid in path {
+        let cap = node_cap.get(&nid).copied().unwrap_or(0.0);
+        let current = node_load.get(&nid).copied().unwrap_or(0.0);
+        let remaining = (cap * 1.2 - current).max(0.0);
+        min_remaining = min_remaining.min(remaining);
+    }
+
+    for i in 0..path.len() - 1 {
+        if let Some(eid) = network.get_edge_id(path[i], path[i + 1]) {
+            let cap = edge_cap.get(&eid).copied().unwrap_or(0.0);
+            let current = edge_load.get(&eid).copied().unwrap_or(0.0);
+            let remaining = (cap * 1.2 - current).max(0.0);
+            min_remaining = min_remaining.min(remaining);
+        }
+    }
+
+    let served = min_remaining.min(demand).max(0.0);
+    if served <= 0.0 {
         return 0.0;
     }
 
-    // Sum up traffic flowing through connected edges
-    // Collect and sort by edge ID for deterministic summation
-    let mut edge_traffic: Vec<(u64, f64)> = world
-        .infra_edges
-        .iter()
-        .filter(|(_, edge)| edge.source == node_id || edge.target == node_id)
-        .map(|(&eid, edge)| {
-            // Traffic on edge = average utilization of endpoints × bandwidth
-            let other_id = if edge.source == node_id {
-                edge.target
-            } else {
-                edge.source
-            };
-            let other_util = world
-                .capacities
-                .get(&other_id)
-                .map(|c| c.utilization())
-                .unwrap_or(0.0);
-            (eid, edge.bandwidth * other_util * 0.1) // 10% of edge traffic is transit
-        })
-        .collect();
-    edge_traffic.sort_unstable_by_key(|t| t.0);
-    let connected_edge_traffic: f64 = edge_traffic.iter().map(|t| t.1).sum();
-
-    connected_edge_traffic * transit_factor
-}
-
-/// Calculate edge utilization from the load on connected nodes.
-/// Edges carry traffic between their endpoint nodes.
-fn calculate_edge_loads(world: &mut GameWorld) {
-    let mut edge_updates: Vec<(u64, f64)> = world
-        .infra_edges
-        .iter()
-        .map(|(&id, edge)| {
-            let src_util = world
-                .capacities
-                .get(&edge.source)
-                .map(|c| c.utilization())
-                .unwrap_or(0.0);
-            let dst_util = world
-                .capacities
-                .get(&edge.target)
-                .map(|c| c.utilization())
-                .unwrap_or(0.0);
-
-            // Edge traffic is proportional to the average load of its endpoints
-            // Higher-bandwidth edges carry proportionally more traffic
-            let avg_util = (src_util + dst_util) / 2.0;
-
-            // Also consider: traffic flows toward higher-utilized nodes (demand pull)
-            let demand_pull = (src_util - dst_util).abs() * 0.2;
-            let effective_util = (avg_util + demand_pull).min(1.0);
-
-            let edge_load = effective_util * edge.bandwidth;
-            (id, edge_load)
-        })
-        .collect();
-    edge_updates.sort_unstable_by_key(|t| t.0);
-
-    for (edge_id, load) in edge_updates {
-        if let Some(edge) = world.infra_edges.get_mut(&edge_id) {
-            // Smooth edge load changes
-            edge.current_load = edge.current_load * 0.2 + load * 0.8;
+    // Apply load
+    for &nid in path {
+        *node_load.entry(nid).or_insert(0.0) += served;
+    }
+    for i in 0..path.len() - 1 {
+        if let Some(eid) = network.get_edge_id(path[i], path[i + 1]) {
+            *edge_load.entry(eid).or_insert(0.0) += served;
         }
     }
+
+    served
 }
 
-/// Haversine distance between two lat/lon points in km.
+// ─── Apply Results ────────────────────────────────────────────────────────────
+
+fn apply_loads(world: &mut GameWorld, accum: &TrafficAccumulator) {
+    for (&nid, &load) in &accum.node_load {
+        if let Some(cap) = world.capacities.get_mut(&nid) {
+            cap.current_load = load;
+        }
+        if let Some(node) = world.infra_nodes.get_mut(&nid) {
+            node.current_load = world.capacities.get(&nid).map(|c| c.current_load).unwrap_or(0.0);
+        }
+    }
+
+    for (&eid, &load) in &accum.edge_load {
+        if let Some(edge) = world.infra_edges.get_mut(&eid) {
+            edge.current_load = load;
+        }
+    }
+
+    world.traffic_matrix.node_traffic = accum.node_load.clone();
+    world.traffic_matrix.edge_traffic = accum.edge_load.clone();
+    world.traffic_matrix.total_served = accum.total_served;
+    world.traffic_matrix.total_dropped = accum.total_dropped;
+    world.traffic_matrix.corp_traffic_served = accum.corp_served.clone();
+    world.traffic_matrix.corp_traffic_dropped = accum.corp_dropped.clone();
+}
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+
+fn scaled_coverage_radius(node_type: NodeType, cell_spacing: f64) -> f64 {
+    let base_radius = node_type.coverage_radius_km();
+    let min_cells = match node_type {
+        NodeType::CellTower => 2.5,
+        NodeType::WirelessRelay => 1.5,
+        NodeType::CentralOffice => 1.5,
+        NodeType::SatelliteGround => 6.0,
+        NodeType::DataCenter | NodeType::BackboneRouter => 1.0,
+        NodeType::ExchangePoint => 1.0,
+        NodeType::SubmarineLanding => 0.5,
+    };
+    base_radius.max(cell_spacing * min_cells)
+}
+
 fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
     let dlat = (lat1 - lat2).to_radians();
     let dlon = (lon1 - lon2).to_radians();

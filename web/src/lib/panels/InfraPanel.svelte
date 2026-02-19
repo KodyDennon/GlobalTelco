@@ -2,16 +2,18 @@
 	import { playerCorp, formatMoney } from '$lib/stores/gameState';
 	import { activePanel, selectedEntityId, selectedEntityType, buildMode, buildEdgeSource } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
-	import type { InfraNode, InfraEdge, InfrastructureList } from '$lib/wasm/types';
+	import type { InfraNode, InfraEdge, InfrastructureList, TrafficFlows } from '$lib/wasm/types';
 	import NetworkDiagram from '$lib/charts/NetworkDiagram.svelte';
 	import { tr } from '$lib/i18n/index';
 
 	let infra: InfrastructureList = $state({ nodes: [], edges: [] });
+	let traffic: TrafficFlows = $state({ edge_flows: [], node_flows: [], total_served: 0, total_dropped: 0, total_demand: 0, player_served: 0, player_dropped: 0, top_congested: [] });
 
 	$effect(() => {
 		const corp = $playerCorp;
 		if (corp) {
 			infra = bridge.getInfrastructureList(corp.id);
+			traffic = bridge.getTrafficFlows();
 		}
 	});
 
@@ -73,6 +75,39 @@
 			<span>{$tr('panels.maintenance')}: <span class="mono red">{formatMoney(totalMaintenance)}/tick</span></span>
 		</div>
 	</div>
+
+	<div class="section">
+		<h3>TRAFFIC SUMMARY</h3>
+		<div class="summary-row">
+			<span>Serving <span class="mono green">{traffic.player_served.toFixed(0)}</span> / <span class="mono">{(traffic.player_served + traffic.player_dropped).toFixed(0)}</span> demand</span>
+		</div>
+		{#if traffic.player_served + traffic.player_dropped > 0}
+			<div class="summary-row">
+				<span>Service rate: <span class="mono" class:green={traffic.player_served / (traffic.player_served + traffic.player_dropped) > 0.8} class:warn={traffic.player_served / (traffic.player_served + traffic.player_dropped) <= 0.8}>
+					{((traffic.player_served / (traffic.player_served + traffic.player_dropped)) * 100).toFixed(1)}%
+				</span></span>
+			</div>
+		{/if}
+		{#if traffic.player_dropped > 0}
+			<div class="summary-row">
+				<span>Dropped: <span class="mono red">{traffic.player_dropped.toFixed(0)} units</span></span>
+			</div>
+		{/if}
+	</div>
+
+	{#if traffic.top_congested.length > 0}
+		<div class="section">
+			<h3>CONGESTION POINTS</h3>
+			{#each traffic.top_congested as ce}
+				<div class="edge-row">
+					<span class="edge-type">{ce.edge_type}</span>
+					<span class="mono" class:warn={ce.utilization > 0.8} class:red={ce.utilization > 1.0}>
+						{(ce.utilization * 100).toFixed(0)}% util
+					</span>
+				</div>
+			{/each}
+		</div>
+	{/if}
 
 	<div class="section">
 		<h3>{$tr('panels.network_topology')}</h3>
@@ -228,6 +263,10 @@
 
 	.red {
 		color: var(--red);
+	}
+
+	.green {
+		color: var(--green);
 	}
 
 	.muted {

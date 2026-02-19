@@ -15,8 +15,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     is_banned   BOOLEAN NOT NULL DEFAULT FALSE
 );
 
-CREATE INDEX idx_accounts_username ON accounts(username);
-CREATE INDEX idx_accounts_email ON accounts(email);
+CREATE INDEX IF NOT EXISTS idx_accounts_username ON accounts(username);
+CREATE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email);
 
 -- ── Game Worlds ───────────────────────────────────────────────────────────
 
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS game_worlds (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_game_worlds_status ON game_worlds(status);
+CREATE INDEX IF NOT EXISTS idx_game_worlds_status ON game_worlds(status);
 
 -- ── Player Sessions ───────────────────────────────────────────────────────
 
@@ -49,8 +49,8 @@ CREATE TABLE IF NOT EXISTS player_sessions (
     UNIQUE(account_id, world_id)
 );
 
-CREATE INDEX idx_player_sessions_world ON player_sessions(world_id);
-CREATE INDEX idx_player_sessions_account ON player_sessions(account_id);
+CREATE INDEX IF NOT EXISTS idx_player_sessions_world ON player_sessions(world_id);
+CREATE INDEX IF NOT EXISTS idx_player_sessions_account ON player_sessions(account_id);
 
 -- ── Cloud Saves ───────────────────────────────────────────────────────────
 
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS cloud_saves (
     UNIQUE(account_id, slot)
 );
 
-CREATE INDEX idx_cloud_saves_account ON cloud_saves(account_id);
+CREATE INDEX IF NOT EXISTS idx_cloud_saves_account ON cloud_saves(account_id);
 
 -- ── World Snapshots (periodic server-side backups) ────────────────────────
 
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS world_snapshots (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_world_snapshots_world_tick ON world_snapshots(world_id, tick DESC);
+CREATE INDEX IF NOT EXISTS idx_world_snapshots_world_tick ON world_snapshots(world_id, tick DESC);
 
 -- ── Event Log (for replay and debugging) ──────────────────────────────────
 
@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS event_log (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_event_log_world_tick ON event_log(world_id, tick DESC);
+CREATE INDEX IF NOT EXISTS idx_event_log_world_tick ON event_log(world_id, tick DESC);
 
 -- ── Leaderboard ───────────────────────────────────────────────────────────
 
@@ -111,5 +111,5 @@ CREATE TABLE IF NOT EXISTS leaderboard (
     UNIQUE(account_id, world_id)
 );
 
-CREATE INDEX idx_leaderboard_score ON leaderboard(score DESC);
-CREATE INDEX idx_leaderboard_world ON leaderboard(world_id, score DESC);
+CREATE INDEX IF NOT EXISTS idx_leaderboard_score ON leaderboard(score DESC);
+CREATE INDEX IF NOT EXISTS idx_leaderboard_world ON leaderboard(world_id, score DESC);

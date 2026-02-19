@@ -6,6 +6,7 @@
 
 #[cfg(feature = "postgres")]
 use sqlx::PgPool;
+#[cfg(feature = "postgres")]
 use uuid::Uuid;
 
 #[cfg(feature = "postgres")]
@@ -14,6 +15,7 @@ pub struct Database {
 }
 
 #[cfg(feature = "postgres")]
+#[allow(dead_code)]
 impl Database {
     pub async fn connect(url: &str) -> Result<Self, sqlx::Error> {
         let pool = PgPool::connect(url).await?;
@@ -361,6 +363,7 @@ pub struct AccountRow {
 
 #[cfg(feature = "postgres")]
 #[derive(sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct WorldRow {
     pub id: Uuid,
     pub name: String,
@@ -372,6 +375,7 @@ pub struct WorldRow {
 
 #[cfg(feature = "postgres")]
 #[derive(sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct SnapshotRow {
     pub tick: i64,
     pub state_data: Vec<u8>,
@@ -379,6 +383,7 @@ pub struct SnapshotRow {
 
 #[cfg(feature = "postgres")]
 #[derive(sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct CloudSaveRow {
     pub id: Uuid,
     pub slot: i32,
@@ -390,6 +395,7 @@ pub struct CloudSaveRow {
 
 #[cfg(feature = "postgres")]
 #[derive(sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct LeaderboardRow {
     pub account_id: Uuid,
     pub corp_name: String,
@@ -403,10 +409,3 @@ pub struct LeaderboardRow {
 /// Stub when postgres feature is not enabled
 #[cfg(not(feature = "postgres"))]
 pub struct Database;
-
-#[cfg(not(feature = "postgres"))]
-impl Database {
-    pub fn unavailable() -> Self {
-        Database
-    }
-}

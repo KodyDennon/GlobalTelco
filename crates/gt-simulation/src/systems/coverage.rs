@@ -43,7 +43,10 @@ pub fn run(world: &mut GameWorld) {
         gt_common::types::NodeType::ExchangePoint,
         gt_common::types::NodeType::DataCenter,
         gt_common::types::NodeType::SubmarineLanding,
-    ].into_iter().collect();
+        gt_common::types::NodeType::BackboneRouter,
+    ]
+    .into_iter()
+    .collect();
 
     // Find all operational backbone nodes
     let mut backhauled_nodes: HashSet<u64> = HashSet::new();
@@ -51,7 +54,9 @@ pub fn run(world: &mut GameWorld) {
         if world.constructions.contains_key(&id) {
             continue;
         }
-        if backbone_types.contains(&node.node_type) || node.node_type == gt_common::types::NodeType::SatelliteGround {
+        if backbone_types.contains(&node.node_type)
+            || node.node_type == gt_common::types::NodeType::SatelliteGround
+        {
             // Backbone nodes and satellite ground stations are always backhauled
             backhauled_nodes.insert(id);
         }
@@ -66,12 +71,16 @@ pub fn run(world: &mut GameWorld) {
             let dst_ok = backhauled_nodes.contains(&edge.target);
             if src_ok && !dst_ok {
                 // Check target is operational
-                if world.infra_nodes.contains_key(&edge.target) && !world.constructions.contains_key(&edge.target) {
+                if world.infra_nodes.contains_key(&edge.target)
+                    && !world.constructions.contains_key(&edge.target)
+                {
                     backhauled_nodes.insert(edge.target);
                     changed = true;
                 }
             } else if dst_ok && !src_ok {
-                if world.infra_nodes.contains_key(&edge.source) && !world.constructions.contains_key(&edge.source) {
+                if world.infra_nodes.contains_key(&edge.source)
+                    && !world.constructions.contains_key(&edge.source)
+                {
                     backhauled_nodes.insert(edge.source);
                     changed = true;
                 }
@@ -82,13 +91,16 @@ pub fn run(world: &mut GameWorld) {
     // Calculate per-node backhaul bandwidth: the max bandwidth of edges connected to each node.
     // A node's effective coverage is min(its own throughput, its backhaul bandwidth).
     // Backbone nodes (CO, EP, DC) aren't limited — they ARE the backbone.
-    let mut node_backhaul_bw: std::collections::HashMap<u64, f64> = std::collections::HashMap::new();
+    let mut node_backhaul_bw: std::collections::HashMap<u64, f64> =
+        std::collections::HashMap::new();
     for edge in world.infra_edges.values() {
         let bw = edge.bandwidth;
-        node_backhaul_bw.entry(edge.source)
+        node_backhaul_bw
+            .entry(edge.source)
             .and_modify(|existing| *existing = existing.max(bw))
             .or_insert(bw);
-        node_backhaul_bw.entry(edge.target)
+        node_backhaul_bw
+            .entry(edge.target)
             .and_modify(|existing| *existing = existing.max(bw))
             .or_insert(bw);
     }
@@ -101,11 +113,7 @@ pub fn run(world: &mut GameWorld) {
         .filter(|(id, _)| !world.constructions.contains_key(id))
         .filter(|(id, _)| backhauled_nodes.contains(id))
         .map(|(&id, node)| {
-            let health = world
-                .healths
-                .get(&id)
-                .map(|h| h.condition)
-                .unwrap_or(1.0);
+            let health = world.healths.get(&id).map(|h| h.condition).unwrap_or(1.0);
             let raw_throughput = world
                 .capacities
                 .get(&id)
@@ -119,7 +127,14 @@ pub fn run(world: &mut GameWorld) {
                 let backhaul = node_backhaul_bw.get(&id).copied().unwrap_or(0.0);
                 raw_throughput.min(backhaul.max(raw_throughput * 0.1)) // At least 10% base capacity
             };
-            (id, node.cell_index, node.node_type, effective_throughput, node.owner, health)
+            (
+                id,
+                node.cell_index,
+                node.node_type,
+                effective_throughput,
+                node.owner,
+                health,
+            )
         })
         .collect();
     nodes.sort_unstable_by_key(|t| t.0);
@@ -149,7 +164,9 @@ pub fn run(world: &mut GameWorld) {
             gt_common::types::NodeType::WirelessRelay => 1.5,
             gt_common::types::NodeType::CentralOffice => 1.5,
             gt_common::types::NodeType::SatelliteGround => 6.0,
-            gt_common::types::NodeType::DataCenter => 1.0,
+            gt_common::types::NodeType::DataCenter | gt_common::types::NodeType::BackboneRouter => {
+                1.0
+            }
             gt_common::types::NodeType::ExchangePoint => 1.0,
             gt_common::types::NodeType::SubmarineLanding => 0.5,
         };
@@ -190,7 +207,9 @@ pub fn run(world: &mut GameWorld) {
 
             // Apply terrain modifier for wireless coverage
             let terrain_mod = if node_type.is_wireless() {
-                world.land_parcels.values()
+                world
+                    .land_parcels
+                    .values()
                     .find(|p| p.cell_index == cell_idx)
                     .map(|p| terrain_coverage_modifier(p.terrain))
                     .unwrap_or(1.0)
@@ -201,7 +220,10 @@ pub fn run(world: &mut GameWorld) {
             let final_signal = signal * terrain_mod;
             let final_bandwidth = coverage_capacity * attenuation * terrain_mod;
 
-            let entry = world.cell_coverage.entry(cell_idx).or_insert_with(CellCoverage::default);
+            let entry = world
+                .cell_coverage
+                .entry(cell_idx)
+                .or_insert_with(CellCoverage::default);
             entry.signal_strength += final_signal;
             entry.bandwidth += final_bandwidth;
             entry.node_count += 1;
@@ -220,7 +242,10 @@ pub fn run(world: &mut GameWorld) {
     let mut sorted_edge_ids: Vec<u64> = world.infra_edges.keys().copied().collect();
     sorted_edge_ids.sort_unstable();
     for edge_id in sorted_edge_ids {
-        let edge = match world.infra_edges.get(&edge_id) { Some(e) => e, None => continue };
+        let edge = match world.infra_edges.get(&edge_id) {
+            Some(e) => e,
+            None => continue,
+        };
         // Only edges between backhauled nodes contribute
         if !backhauled_nodes.contains(&edge.source) || !backhauled_nodes.contains(&edge.target) {
             continue;
@@ -236,7 +261,10 @@ pub fn run(world: &mut GameWorld) {
 
         // Add coverage at both endpoint cells
         for &ci in &[src_ci, dst_ci] {
-            let entry = world.cell_coverage.entry(ci).or_insert_with(CellCoverage::default);
+            let entry = world
+                .cell_coverage
+                .entry(ci)
+                .or_insert_with(CellCoverage::default);
             entry.bandwidth += backbone_bw;
             entry.signal_strength += backbone_bw * 0.5;
             if entry.dominant_owner.is_none() {
@@ -257,15 +285,19 @@ pub fn run(world: &mut GameWorld) {
                 let mid_lat = slat + (dlat - slat) * t;
                 let mid_lon = slon + (dlon - slon) * t;
                 // Find nearest cell to this interpolated point
-                let nearest = world.grid_cell_positions.iter().enumerate()
-                    .min_by(|(_, &(a_lat, a_lon)), (_, &(b_lat, b_lon))| {
+                let nearest = world.grid_cell_positions.iter().enumerate().min_by(
+                    |(_, &(a_lat, a_lon)), (_, &(b_lat, b_lon))| {
                         let da = (a_lat - mid_lat).powi(2) + (a_lon - mid_lon).powi(2);
                         let db = (b_lat - mid_lat).powi(2) + (b_lon - mid_lon).powi(2);
                         da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
-                    });
+                    },
+                );
                 if let Some((ci, _)) = nearest {
                     if ci != src_ci && ci != dst_ci {
-                        let entry = world.cell_coverage.entry(ci).or_insert_with(CellCoverage::default);
+                        let entry = world
+                            .cell_coverage
+                            .entry(ci)
+                            .or_insert_with(CellCoverage::default);
                         entry.bandwidth += corridor_bw;
                         entry.signal_strength += corridor_bw * 0.3;
                         if entry.dominant_owner.is_none() {
@@ -293,14 +325,14 @@ fn terrain_coverage_modifier(terrain: gt_common::types::TerrainType) -> f64 {
     use gt_common::types::TerrainType;
     match terrain {
         TerrainType::Urban => 0.7,        // buildings attenuate
-        TerrainType::Suburban => 0.85,     // some attenuation
-        TerrainType::Rural => 1.0,         // clear, best propagation
-        TerrainType::Mountainous => 0.4,   // mountains block signal
-        TerrainType::Desert => 0.95,       // flat, minor dust
-        TerrainType::Coastal => 0.9,       // good propagation
-        TerrainType::OceanShallow => 0.3,  // poor over water
-        TerrainType::OceanDeep => 0.2,     // very poor
-        TerrainType::Tundra => 0.85,       // flat, cold
-        TerrainType::Frozen => 0.6,        // ice interference
+        TerrainType::Suburban => 0.85,    // some attenuation
+        TerrainType::Rural => 1.0,        // clear, best propagation
+        TerrainType::Mountainous => 0.4,  // mountains block signal
+        TerrainType::Desert => 0.95,      // flat, minor dust
+        TerrainType::Coastal => 0.9,      // good propagation
+        TerrainType::OceanShallow => 0.3, // poor over water
+        TerrainType::OceanDeep => 0.2,    // very poor
+        TerrainType::Tundra => 0.85,      // flat, cold
+        TerrainType::Frozen => 0.6,       // ice interference
     }
 }

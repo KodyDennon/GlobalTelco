@@ -790,6 +790,111 @@ impl WasmBridge {
         serde_json::to_string(&result).unwrap_or_default()
     }
 
+    /// Get traffic flow data for the traffic overlay and infrastructure panel.
+    pub fn get_traffic_flows(&self) -> String {
+        let tm = &self.world.traffic_matrix;
+
+        // Per-edge traffic with utilization coloring
+        let edge_flows: Vec<serde_json::Value> = self
+            .world
+            .infra_edges
+            .iter()
+            .map(|(&id, e)| {
+                let traffic = tm.edge_traffic.get(&id).copied().unwrap_or(0.0);
+                let utilization = if e.bandwidth > 0.0 {
+                    traffic / e.bandwidth
+                } else {
+                    0.0
+                };
+                let src_pos = self.world.positions.get(&e.source);
+                let dst_pos = self.world.positions.get(&e.target);
+                serde_json::json!({
+                    "id": id,
+                    "traffic": traffic,
+                    "bandwidth": e.bandwidth,
+                    "utilization": utilization,
+                    "health": e.health,
+                    "edge_type": format!("{:?}", e.edge_type),
+                    "owner": e.owner,
+                    "src_x": src_pos.map(|p| p.x).unwrap_or(0.0),
+                    "src_y": src_pos.map(|p| p.y).unwrap_or(0.0),
+                    "dst_x": dst_pos.map(|p| p.x).unwrap_or(0.0),
+                    "dst_y": dst_pos.map(|p| p.y).unwrap_or(0.0),
+                })
+            })
+            .collect();
+
+        // Per-node traffic
+        let node_flows: Vec<serde_json::Value> = self
+            .world
+            .infra_nodes
+            .iter()
+            .filter_map(|(&id, node)| {
+                let traffic = tm.node_traffic.get(&id).copied().unwrap_or(0.0);
+                let pos = self.world.positions.get(&id)?;
+                let utilization = if node.max_throughput > 0.0 {
+                    traffic / node.max_throughput
+                } else {
+                    0.0
+                };
+                Some(serde_json::json!({
+                    "id": id,
+                    "traffic": traffic,
+                    "max_throughput": node.max_throughput,
+                    "utilization": utilization,
+                    "node_type": format!("{:?}", node.node_type),
+                    "owner": node.owner,
+                    "x": pos.x,
+                    "y": pos.y,
+                }))
+            })
+            .collect();
+
+        // Summary stats
+        let player_id = self.world.player_corp_id().unwrap_or(0);
+        let player_served = tm.corp_traffic_served.get(&player_id).copied().unwrap_or(0.0);
+        let player_dropped = tm.corp_traffic_dropped.get(&player_id).copied().unwrap_or(0.0);
+
+        // Top congested edges (sorted by utilization, top 5)
+        let mut congested: Vec<(u64, f64)> = self
+            .world
+            .infra_edges
+            .iter()
+            .map(|(&id, e)| {
+                let traffic = tm.edge_traffic.get(&id).copied().unwrap_or(0.0);
+                let util = if e.bandwidth > 0.0 { traffic / e.bandwidth } else { 0.0 };
+                (id, util)
+            })
+            .collect();
+        congested.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let top_congested: Vec<serde_json::Value> = congested
+            .iter()
+            .take(5)
+            .filter(|(_, util)| *util > 0.0)
+            .map(|(id, util)| {
+                let edge = self.world.infra_edges.get(id);
+                serde_json::json!({
+                    "id": id,
+                    "utilization": util,
+                    "edge_type": edge.map(|e| format!("{:?}", e.edge_type)).unwrap_or_default(),
+                    "owner": edge.map(|e| e.owner).unwrap_or(0),
+                })
+            })
+            .collect();
+
+        let result = serde_json::json!({
+            "edge_flows": edge_flows,
+            "node_flows": node_flows,
+            "total_served": tm.total_served,
+            "total_dropped": tm.total_dropped,
+            "total_demand": tm.total_served + tm.total_dropped,
+            "player_served": player_served,
+            "player_dropped": player_dropped,
+            "top_congested": top_congested,
+        });
+        serde_json::to_string(&result).unwrap_or_default()
+    }
+
     pub fn get_grid_cells(&self) -> String {
         let cells: Vec<serde_json::Value> = self
             .world

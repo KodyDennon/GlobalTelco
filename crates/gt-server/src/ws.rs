@@ -243,6 +243,7 @@ pub async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     let _ = forward_sender.await;
 }
 
+#[allow(unused_variables)]
 async fn handle_client_message(
     msg: ClientMessage,
     state: &Arc<AppState>,
@@ -777,7 +778,48 @@ async fn handle_auth(
                 Err(e) => ServerMessage::AuthResult(AuthResponse::Failed { reason: e }),
             }
         }
+        AuthRequest::Token { access_token } => {
+            match auth::validate_token(&state.auth_config, &access_token) {
+                Ok(claims) => {
+                    let player_id = match Uuid::parse_str(&claims.sub) {
+                        Ok(id) => id,
+                        Err(_) => {
+                            return ServerMessage::AuthResult(AuthResponse::Failed {
+                                reason: "Invalid player ID in token".to_string(),
+                            });
+                        }
+                    };
 
+                    let connected = ConnectedPlayer {
+                        id: player_id,
+                        username: claims.username.clone(),
+                        is_guest: claims.is_guest,
+                        is_admin: false,
+                        world_id: None,
+                        corp_id: None,
+                    };
+
+                    state
+                        .players
+                        .write()
+                        .await
+                        .insert(player_id, connected.clone());
+                    *player = Some(connected);
+
+                    info!("Player {} resumed session via token", claims.username);
+
+                    ServerMessage::AuthResult(AuthResponse::Success {
+                        player_id,
+                        username: claims.username,
+                        access_token,
+                        refresh_token: String::new(),
+                    })
+                }
+                Err(e) => ServerMessage::AuthResult(AuthResponse::Failed {
+                    reason: format!("Invalid token: {e}"),
+                }),
+            }
+        }
         AuthRequest::TokenRefresh { refresh_token } => {
             match auth::validate_token(&state.auth_config, &refresh_token) {
                 Ok(claims) => {

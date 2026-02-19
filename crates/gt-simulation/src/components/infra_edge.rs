@@ -13,6 +13,7 @@ pub struct InfraEdge {
     pub construction_cost: Money,
     pub maintenance_cost: Money,
     pub owner: EntityId,
+    pub health: f64,
 }
 
 impl InfraEdge {
@@ -56,6 +57,7 @@ impl InfraEdge {
             construction_cost,
             maintenance_cost,
             owner,
+            health: 1.0,
         }
     }
 
@@ -64,6 +66,18 @@ impl InfraEdge {
             0.0
         } else {
             self.current_load / self.bandwidth
+        }
+    }
+
+    /// Effective bandwidth accounting for health degradation.
+    /// Below 0.5 health, bandwidth is proportionally reduced.
+    pub fn effective_bandwidth(&self) -> f64 {
+        if self.health < 0.3 {
+            0.0 // Effectively destroyed
+        } else if self.health < 0.5 {
+            self.bandwidth * self.health
+        } else {
+            self.bandwidth
         }
     }
 

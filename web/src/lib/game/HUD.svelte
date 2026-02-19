@@ -107,6 +107,7 @@
 			<button class="overlay-btn" class:active={currentOverlay === 'coverage'} onclick={() => toggleOverlay('coverage')} title={$tr('hud.coverage_overlay')} aria-pressed={currentOverlay === 'coverage'}>C</button>
 			<button class="overlay-btn disaster" class:active={currentOverlay === 'disaster'} onclick={() => toggleOverlay('disaster')} title={$tr('hud.disaster_overlay')} aria-pressed={currentOverlay === 'disaster'}>!</button>
 			<button class="overlay-btn" class:active={currentOverlay === 'congestion'} onclick={() => toggleOverlay('congestion')} title={$tr('hud.congestion_overlay')} aria-pressed={currentOverlay === 'congestion'}>~</button>
+			<button class="overlay-btn traffic" class:active={currentOverlay === 'traffic'} onclick={() => toggleOverlay('traffic')} title="Traffic Flow Overlay" aria-pressed={currentOverlay === 'traffic'}>F</button>
 		</div>
 	</div>
 
@@ -270,6 +271,15 @@
 	.overlay-btn.disaster.active {
 		background: rgba(239, 68, 68, 0.2);
 		color: var(--red);
+	}
+
+	.overlay-btn.traffic {
+		color: var(--green);
+	}
+
+	.overlay-btn.traffic.active {
+		background: rgba(16, 185, 129, 0.2);
+		color: var(--green);
 	}
 
 	.mp-status {

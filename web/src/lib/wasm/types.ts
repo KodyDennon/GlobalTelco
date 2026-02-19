@@ -345,3 +345,47 @@ export interface VictoryInfo {
 	total_score: number;
 	victory_type: string | null;
 }
+
+// Traffic flow types
+export interface EdgeFlow {
+	id: number;
+	traffic: number;
+	bandwidth: number;
+	utilization: number;
+	health: number;
+	edge_type: string;
+	owner: number;
+	src_x: number;
+	src_y: number;
+	dst_x: number;
+	dst_y: number;
+}
+
+export interface NodeFlow {
+	id: number;
+	traffic: number;
+	max_throughput: number;
+	utilization: number;
+	node_type: string;
+	owner: number;
+	x: number;
+	y: number;
+}
+
+export interface CongestedEdge {
+	id: number;
+	utilization: number;
+	edge_type: string;
+	owner: number;
+}
+
+export interface TrafficFlows {
+	edge_flows: EdgeFlow[];
+	node_flows: NodeFlow[];
+	total_served: number;
+	total_dropped: number;
+	total_demand: number;
+	player_served: number;
+	player_dropped: number;
+	top_congested: CongestedEdge[];
+}
