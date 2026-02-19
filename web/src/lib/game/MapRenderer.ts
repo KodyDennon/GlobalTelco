@@ -292,6 +292,20 @@ export class MapRenderer {
 		}
 	}
 
+	private normalizePolygon(pts: [number, number][]): [number, number][] {
+		if (pts.length < 2) return pts;
+		const result: [number, number][] = [pts[0]];
+		for (let i = 1; i < pts.length; i++) {
+			let lon = pts[i][0];
+			const prevLon = result[i - 1][0];
+			// Normalize lon to be within 180 of prevLon
+			while (lon - prevLon > 180) lon -= 360;
+			while (lon - prevLon < -180) lon += 360;
+			result.push([lon, pts[i][1]]);
+		}
+		return result;
+	}
+
 	private buildProcgenPolygons() {
 		const regions = bridge.getRegions();
 		for (let i = 0; i < regions.length; i++) {
@@ -299,52 +313,26 @@ export class MapRenderer {
 			if (!r.boundary_polygon || r.boundary_polygon.length < 3) continue;
 
 			const color = POLITICAL_COLORS[i % POLITICAL_COLORS.length];
-			// Split region polygons if they cross the anti-meridian
-			const splitPolys = this.splitPolygon(r.boundary_polygon.map(p => [p[1], p[0]]));
+			const pts = this.normalizePolygon(r.boundary_polygon.map(p => [p[1], p[0]]));
 
-			for (const polyPoints of splitPolys) {
-				const shape = new THREE.Shape();
-				const first = this.latLonToMercator(polyPoints[0][1], polyPoints[0][0]);
-				shape.moveTo(first.x, first.y);
+			const shape = new THREE.Shape();
+			const first = this.latLonToMercator(pts[0][1], pts[0][0]);
+			shape.moveTo(first.x, first.y);
+			for (let j = 1; j < pts.length; j++) {
+				const pt = this.latLonToMercator(pts[j][1], pts[j][0]);
+				shape.lineTo(pt.x, pt.y);
+			}
 
-				for (let j = 1; j < polyPoints.length; j++) {
-					const pt = this.latLonToMercator(polyPoints[j][1], polyPoints[j][0]);
-					shape.lineTo(pt.x, pt.y);
-				}
+			const geo = new THREE.ShapeGeometry(shape);
+			const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
 
-				const geo = new THREE.ShapeGeometry(shape);
-				const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+			// Triple render for wrap-around
+			for (const offset of [-360, 0, 360]) {
 				const mesh = new THREE.Mesh(geo, mat);
-				mesh.position.z = -2;
+				mesh.position.set(offset, 0, -2);
 				this.landGroup.add(mesh);
 			}
 		}
-	}
-
-	/** Split a polygon (lon, lat) at the anti-meridian (+/- 180) to prevent spiderwebs */
-	private splitPolygon(pts: [number, number][]): [number, number][][] {
-		if (pts.length < 3) return [pts];
-		const result: [number, number][][] = [];
-		let current: [number, number][] = [];
-
-		for (let i = 0; i < pts.length; i++) {
-			const p1 = pts[i];
-			const nextIdx = (i + 1) % pts.length;
-			const p2 = pts[nextIdx];
-
-			current.push(p1);
-
-			// Detect anti-meridian jump (> 180 deg delta)
-			if (Math.abs(p1[0] - p2[0]) > 180) {
-				if (current.length >= 3) result.push(current);
-				current = [];
-			}
-		}
-		if (current.length >= 3) result.push(current);
-
-		// If everything jump-free, returned as single poly
-		if (result.length === 0 && current.length >= 3) return [current];
-		return result;
 	}
 
 	private renderGeoJsonFeature(feature: any, color: number) {
@@ -352,50 +340,49 @@ export class MapRenderer {
 			? [feature.geometry.coordinates]
 			: feature.geometry.coordinates;
 
+		const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+		const borderMat = new THREE.LineBasicMaterial({ color: 0x000000, opacity: 0.4, transparent: true });
+
 		for (const poly of geometries) {
-			const outerRing = poly[0] as [number, number][];
-			const splitPolys = this.splitPolygon(outerRing);
+			const outerRing = this.normalizePolygon(poly[0] as [number, number][]);
+			const shape = new THREE.Shape();
+			const first = this.latLonToMercator(outerRing[0][1], outerRing[0][0]);
+			shape.moveTo(first.x, first.y);
 
-			for (const polyPoints of splitPolys) {
-				const shape = new THREE.Shape();
-				const first = this.latLonToMercator(polyPoints[0][1], polyPoints[0][0]);
-				shape.moveTo(first.x, first.y);
+			for (let i = 1; i < outerRing.length; i++) {
+				const pt = this.latLonToMercator(outerRing[i][1], outerRing[i][0]);
+				shape.lineTo(pt.x, pt.y);
+			}
 
-				for (let i = 1; i < polyPoints.length; i++) {
-					const pt = this.latLonToMercator(polyPoints[i][1], polyPoints[i][0]);
-					shape.lineTo(pt.x, pt.y);
+			// Holes
+			for (let h = 1; h < poly.length; h++) {
+				const holeRing = this.normalizePolygon(poly[h] as [number, number][]);
+				const holePath = new THREE.Path();
+				const hFirst = this.latLonToMercator(holeRing[0][1], holeRing[0][0]);
+				holePath.moveTo(hFirst.x, hFirst.y);
+				for (let i = 1; i < holeRing.length; i++) {
+					const hPt = this.latLonToMercator(holeRing[i][1], holeRing[i][0]);
+					holePath.lineTo(hPt.x, hPt.y);
 				}
+				shape.holes.push(holePath);
+			}
 
-				// Holes (naive: only add to the largest split part or first one that works)
-				if (polyPoints.length > 5) { // Simple heuristic
-					for (let h = 1; h < poly.length; h++) {
-						const holePath = new THREE.Path();
-						const holeRing = poly[h];
-						const hFirst = this.latLonToMercator(holeRing[0][1], holeRing[0][0]);
-						holePath.moveTo(hFirst.x, hFirst.y);
-						for (let i = 1; i < holeRing.length; i++) {
-							const hPt = this.latLonToMercator(holeRing[i][1], holeRing[i][0]);
-							holePath.lineTo(hPt.x, hPt.y);
-						}
-						shape.holes.push(holePath);
-					}
-				}
+			const geo = new THREE.ShapeGeometry(shape);
+			const borderGeo = new THREE.BufferGeometry().setFromPoints(
+				outerRing.map(p => {
+					const pos = this.latLonToMercator(p[1], p[0]);
+					return new THREE.Vector3(pos.x, pos.y, 0.1);
+				})
+			);
 
-				const geo = new THREE.ShapeGeometry(shape);
-				const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+			for (const offset of [-360, 0, 360]) {
 				const mesh = new THREE.Mesh(geo, mat);
-				mesh.position.z = -2;
+				mesh.position.set(offset, 0, -2);
 				this.landGroup.add(mesh);
 
-				// Add crisp black border for the feature
-				const borderPts: THREE.Vector3[] = [];
-				for (const p of polyPoints) {
-					const pos = this.latLonToMercator(p[1], p[0]);
-					borderPts.push(new THREE.Vector3(pos.x, pos.y, 0.1));
-				}
-				const borderGeo = new THREE.BufferGeometry().setFromPoints(borderPts);
-				const borderMat = new THREE.LineBasicMaterial({ color: 0x000000, opacity: 0.4, transparent: true });
-				this.borderGroup.add(new THREE.Line(borderGeo, borderMat));
+				const border = new THREE.Line(borderGeo, borderMat);
+				border.position.set(offset, 0, 0);
+				this.borderGroup.add(border);
 			}
 		}
 	}
@@ -450,39 +437,29 @@ export class MapRenderer {
 
 	private buildRegionBorders(regions: Region[], cities: City[]) {
 		this.borderGroup.clear();
-
 		const lineMat = new THREE.LineBasicMaterial({
-			color: 0x000000, // Black crisp borders for political map
-			opacity: 0.3,
+			color: 0x000000,
+			opacity: 0.4,
 			transparent: true
 		});
 
-		const isRealEarth = bridge.isRealEarth();
-
-		if (isRealEarth) {
-			// Real earth borders are handled in renderGeoJsonFeature 
-			// BUT we can fetch them again or just draw them during feature rendering.
-			// Actually, let's use a darker shade of the land color for borders?
-			// User said "bright political map with distinct country colors". Black borders look professional.
-		} else {
+		if (!bridge.isRealEarth()) {
 			for (const region of regions) {
 				if (!region.boundary_polygon || region.boundary_polygon.length < 3) continue;
+				const pts = this.normalizePolygon(region.boundary_polygon.map(p => [p[1], p[0]]));
+				const threePts = pts.map(p => {
+					const pos = this.latLonToMercator(p[1], p[0]);
+					return new THREE.Vector3(pos.x, pos.y, 0.1);
+				});
+				// Close loop
+				const first = this.latLonToMercator(pts[0][1], pts[0][0]);
+				threePts.push(new THREE.Vector3(first.x, first.y, 0.1));
 
-				const splitPolys = this.splitPolygon(region.boundary_polygon.map(p => [p[1], p[0]]));
-				for (const polyPoints of splitPolys) {
-					const pts: THREE.Vector3[] = [];
-					for (const [lon, lat] of polyPoints) {
-						const pos = this.latLonToMercator(lat, lon);
-						pts.push(new THREE.Vector3(pos.x, pos.y, 0.1));
-					}
-					// Only close the loop if it's the full original polygon (no splits)
-					if (splitPolys.length === 1 && region.boundary_polygon.length > 0) {
-						const first = this.latLonToMercator(region.boundary_polygon[0][0], region.boundary_polygon[0][1]);
-						pts.push(new THREE.Vector3(first.x, first.y, 0.1));
-					}
-
-					const geo = new THREE.BufferGeometry().setFromPoints(pts);
-					this.borderGroup.add(new THREE.Line(geo, lineMat));
+				const geo = new THREE.BufferGeometry().setFromPoints(threePts);
+				for (const offset of [-360, 0, 360]) {
+					const line = new THREE.Line(geo, lineMat);
+					line.position.set(offset, 0, 0);
+					this.borderGroup.add(line);
 				}
 			}
 		}
@@ -737,54 +714,29 @@ export class MapRenderer {
 					color, opacity: 0.7, radiusFactor: 0.008, segments: 4
 				};
 
-				let waypointsList: THREE.Vector3[][];
+				let rawWaypoints: [number, number][];
 				if (needsTerrainRouting(edge.edge_type) && edge.src_cell !== undefined && edge.dst_cell !== undefined) {
-					const pathPts = this.pathfinder.findPath(edge.src_cell, edge.dst_cell, edge.edge_type);
-					if (pathPts.length >= 2) {
-						// Split path if it crosses the anti-meridian
-						const segments: THREE.Vector3[][] = [[]];
-						for (let i = 0; i < pathPts.length; i++) {
-							const [lon, lat] = pathPts[i];
-							const p = this.latLonToMercator(lat, lon);
-							const currentSeg = segments[segments.length - 1];
-
-							if (currentSeg.length > 0) {
-								const prev = pathPts[i - 1];
-								if (Math.abs(lon - prev[0]) > 180) {
-									segments.push([]);
-								}
-							}
-							segments[segments.length - 1].push(new THREE.Vector3(p.x, p.y, 1.5));
-						}
-						waypointsList = segments.filter(s => s.length >= 2);
-
-						// Re-snap ends to precise node positions
-						if (waypointsList.length > 0) {
-							const srcP = this.latLonToMercator(edge.src_y, edge.src_x);
-							const dstP = this.latLonToMercator(edge.dst_y, edge.dst_x);
-							const firstSeg = waypointsList[0];
-							const lastSeg = waypointsList[waypointsList.length - 1];
-							firstSeg[0].set(srcP.x, srcP.y, 1.5);
-							lastSeg[lastSeg.length - 1].set(dstP.x, dstP.y, 1.5);
-						}
-					} else {
-						const srcP = this.latLonToMercator(edge.src_y, edge.src_x);
-						const dstP = this.latLonToMercator(edge.dst_y, edge.dst_x);
-						waypointsList = [[
-							new THREE.Vector3(srcP.x, srcP.y, 1.5),
-							new THREE.Vector3(dstP.x, dstP.y, 1.5)
-						]];
+					rawWaypoints = this.pathfinder.findPath(edge.src_cell, edge.dst_cell, edge.edge_type);
+					if (rawWaypoints.length < 2) {
+						rawWaypoints = [[edge.src_x, edge.src_y], [edge.dst_x, edge.dst_y]];
 					}
 				} else {
-					const srcP = this.latLonToMercator(edge.src_y, edge.src_x);
-					const dstP = this.latLonToMercator(edge.dst_y, edge.dst_x);
-					waypointsList = [[
-						new THREE.Vector3(srcP.x, srcP.y, 1.5),
-						new THREE.Vector3(dstP.x, dstP.y, 1.5)
-					]];
+					rawWaypoints = [[edge.src_x, edge.src_y], [edge.dst_x, edge.dst_y]];
 				}
 
-				for (const waypoints of waypointsList) {
+				// Normalize waypoints to be contiguous in coordinate space
+				const pts = this.normalizePolygon(rawWaypoints);
+				const waypoints = pts.map(p => {
+					const pos = this.latLonToMercator(p[1], p[0]);
+					return new THREE.Vector3(pos.x, pos.y, 1.5);
+				});
+				// Snap ends
+				const srcP = this.latLonToMercator(edge.src_y, edge.src_x);
+				const dstP = this.latLonToMercator(edge.dst_y, edge.dst_x);
+				waypoints[0].set(srcP.x, srcP.y, 1.5);
+				waypoints[waypoints.length - 1].set(dstP.x, dstP.y, 1.5);
+
+				for (const offset of [-360, 0, 360]) {
 					if (style.dashed) {
 						const geo = new THREE.BufferGeometry().setFromPoints(waypoints);
 						const mat = new THREE.LineDashedMaterial({
@@ -795,6 +747,7 @@ export class MapRenderer {
 							gapSize: style.gapSize ?? 0.5
 						});
 						const line = new THREE.Line(geo, mat);
+						line.position.set(offset, 0, 0);
 						line.computeLineDistances();
 						line.userData = { type: 'edge', id: edge.id, edge_type: edge.edge_type, corpId: corp.id };
 						this.edgeGroup.add(line);
@@ -812,6 +765,7 @@ export class MapRenderer {
 							depthTest: false
 						});
 						const mesh = new THREE.Mesh(tubeGeo, mat);
+						mesh.position.set(offset, 0, 0);
 						mesh.userData = { type: 'edge', id: edge.id, edge_type: edge.edge_type, corpId: corp.id };
 						this.edgeGroup.add(mesh);
 					}
@@ -834,43 +788,50 @@ export class MapRenderer {
 
 				const offsetDist = cs * 0.12;
 				const angle = (stackIdx * Math.PI * 2) / 3 + Math.PI / 6;
-				const ox = pos.x + Math.cos(angle) * offsetDist * (stackIdx > 0 ? 1 : 0.3);
-				const oy = pos.y + Math.sin(angle) * offsetDist * (stackIdx > 0 ? 1 : 0.3);
+				const baseOx = pos.x + Math.cos(angle) * offsetDist * (stackIdx > 0 ? 1 : 0.3);
+				const baseOy = pos.y + Math.sin(angle) * offsetDist * (stackIdx > 0 ? 1 : 0.3);
 
-				let obj: THREE.Object3D;
-				if (texture && !node.under_construction) {
-					const mat = new THREE.SpriteMaterial({
-						map: texture,
-						transparent: true,
-						depthTest: false,
-						color
-					});
-					const sprite = new THREE.Sprite(mat);
-					sprite.scale.set(iconSize, iconSize, 1);
-					sprite.position.set(ox, oy, 2);
-					sprite.userData = { type: 'node', id: node.id, node_type: node.node_type };
-					this.infraGroup.add(sprite);
-					obj = sprite;
-				} else {
-					const size = node.under_construction ? cs * 0.04 : cs * 0.06;
-					const nodeColor = node.under_construction ? 0x6b7280 : color;
-					const geo = this.getNodeGeometry(node.node_type, size);
-					const mat = new THREE.MeshBasicMaterial({ color: nodeColor });
-					const mesh = new THREE.Mesh(geo, mat);
-					mesh.position.set(ox, oy, 2);
-					mesh.userData = { type: 'node', id: node.id, node_type: node.node_type };
-					this.infraGroup.add(mesh);
-					obj = mesh;
-				}
-				this.entityMeshMap.set(node.id, obj);
-				positions.push(new THREE.Vector3(ox, oy, 0));
+				for (const offset of [-360, 0, 360]) {
+					const ox = baseOx + offset;
+					const oy = baseOy;
 
-				if (!node.under_construction && corp.name) {
-					const badgeSize = cs * 0.025;
-					const badge = this.createTextSprite(corp.name[0], color, badgeSize);
-					badge.position.set(ox + iconSize * 0.4, oy + iconSize * 0.4, 4);
-					badge.userData = { labelType: 'badge', minZoom: 4.0 };
-					this.infraGroup.add(badge);
+					let obj: THREE.Object3D;
+					if (texture && !node.under_construction) {
+						const mat = new THREE.SpriteMaterial({
+							map: texture,
+							transparent: true,
+							depthTest: false,
+							color
+						});
+						const sprite = new THREE.Sprite(mat);
+						sprite.scale.set(iconSize, iconSize, 1);
+						sprite.position.set(ox, oy, 2);
+						sprite.userData = { type: 'node', id: node.id, node_type: node.node_type };
+						this.infraGroup.add(sprite);
+						obj = sprite;
+					} else {
+						const size = node.under_construction ? cs * 0.04 : cs * 0.06;
+						const nodeColor = node.under_construction ? 0x6b7280 : color;
+						const geo = this.getNodeGeometry(node.node_type, size);
+						const mat = new THREE.MeshBasicMaterial({ color: nodeColor });
+						const mesh = new THREE.Mesh(geo, mat);
+						mesh.position.set(ox, oy, 2);
+						mesh.userData = { type: 'node', id: node.id, node_type: node.node_type };
+						this.infraGroup.add(mesh);
+						obj = mesh;
+					}
+					if (offset === 0) {
+						this.entityMeshMap.set(node.id, obj);
+					}
+					positions.push(new THREE.Vector3(ox, oy, 0));
+
+					if (!node.under_construction && corp.name) {
+						const badgeSize = cs * 0.025;
+						const badge = this.createTextSprite(corp.name[0], color, badgeSize);
+						badge.position.set(ox + iconSize * 0.4, oy + iconSize * 0.4, 4);
+						badge.userData = { labelType: 'badge', minZoom: 4.0 };
+						this.infraGroup.add(badge);
+					}
 				}
 			}
 			if (positions.length > 0) {

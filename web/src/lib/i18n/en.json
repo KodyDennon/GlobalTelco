@@ -16,6 +16,8 @@
 		"difficulty": "Difficulty",
 		"ai_corporations": "AI Corporations",
 		"world_seed": "World Seed",
+		"use_real_earth": "Use Real Earth Map",
+		"real_earth": "Real Earth",
 		"loading_saves": "Loading saves...",
 		"no_saves": "No saved games found",
 		"delete": "Delete",
@@ -169,7 +171,6 @@
 		"confirm_loan": "Confirm Loan",
 		"repay": "Repay",
 		"competitors": "Competitors",
-
 		"infrastructure": "Infrastructure",
 		"summary": "Summary",
 		"maintenance": "Maint",
@@ -179,7 +180,6 @@
 		"operational_nodes": "Operational Nodes ({count})",
 		"utilization": "Util",
 		"connections": "Connections ({count})",
-
 		"contracts": "Contracts",
 		"active": "Active",
 		"revenue_from_contracts": "Revenue from contracts",
@@ -193,12 +193,10 @@
 		"income": "Income",
 		"expense": "Expense",
 		"no_active_contracts": "No active contracts",
-
 		"research": "Research & Technology",
 		"active_research": "Active Research",
 		"done": "Done",
 		"completed_research": "Your Completed ({count})",
-
 		"regions": "Regions & Markets",
 		"global_overview": "Global Overview",
 		"total_population": "Total Population",
@@ -209,7 +207,6 @@
 		"development": "Dev",
 		"tax": "Tax",
 		"risk": "Risk",
-
 		"workforce": "Workforce Management",
 		"overview": "Overview",
 		"staffing": "Staffing",
@@ -224,11 +221,9 @@
 		"workload": "Workload (staff/infra ratio)",
 		"hire": "+ Hire",
 		"fire": "- Fire",
-
 		"advisor": "Advisor",
 		"all_good": "Everything looks good! Keep expanding your network.",
 		"suggestions": "Suggestions ({count})",
-
 		"auctions": "Auctions",
 		"no_auctions": "No active auctions",
 		"assets": "Assets",
@@ -237,7 +232,6 @@
 		"ends": "Ends",
 		"bid_amount": "Bid amount",
 		"place_bid": "Place Bid",
-
 		"mergers": "Mergers & Acquisitions",
 		"propose_acquisition": "Propose Acquisition",
 		"select_target": "Select target...",
@@ -246,7 +240,6 @@
 		"incoming_proposals": "Incoming Proposals",
 		"your_proposals": "Your Proposals",
 		"offers": "offers",
-
 		"intel": "Intelligence & Lobbying",
 		"security": "Security",
 		"security_level": "Level",
@@ -268,7 +261,6 @@
 		"policy_fast_track": "Fast-Track Permits",
 		"policy_burden_competitors": "Burden Competitors",
 		"policy_subsidy": "Request Subsidy",
-
 		"achievements": "Achievements & Victory",
 		"victory_progress": "Victory Progress",
 		"domination": "Domination",
@@ -276,7 +268,6 @@
 		"wealth": "Wealth",
 		"total_score": "Total Score",
 		"achievements_section": "Achievements",
-
 		"info_population": "Population",
 		"info_development": "Development",
 		"info_telecom_demand": "Telecom Demand",

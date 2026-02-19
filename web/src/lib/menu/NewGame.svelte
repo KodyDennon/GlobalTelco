@@ -1,14 +1,18 @@
 <script lang="ts">
-	import { tr } from '$lib/i18n/index';
+	import { tr } from "$lib/i18n/index";
 
-	let { onStart, onBack }: { onStart: (config: object) => void; onBack: () => void } = $props();
+	let {
+		onStart,
+		onBack,
+	}: { onStart: (config: object) => void; onBack: () => void } = $props();
 
-	let corpName = $state('Player Corp');
-	let mapSize = $state('Small');
-	let era = $state('Internet');
-	let difficulty = $state('Normal');
+	let corpName = $state("Player Corp");
+	let mapSize = $state("Small");
+	let era = $state("Internet");
+	let difficulty = $state("Normal");
 	let aiCount = $state(4);
 	let seed = $state(Math.floor(Math.random() * 999999));
+	let realEarth = $state(false);
 
 	function handleStart() {
 		onStart({
@@ -17,66 +21,84 @@
 			difficulty,
 			map_size: mapSize,
 			ai_corporations: aiCount,
-			use_real_earth: false,
-			corp_name: corpName || 'Player Corp'
+			use_real_earth: realEarth,
+			corp_name: corpName || "Player Corp",
 		});
 	}
 </script>
 
 <div class="new-game">
 	<div class="form-container">
-		<h2>{$tr('menu.new_game')}</h2>
+		<h2>{$tr("menu.new_game")}</h2>
 
 		<div class="form-group">
-			<label for="corp-name">{$tr('menu.corporation_name')}</label>
+			<label for="corp-name">{$tr("menu.corporation_name")}</label>
 			<input id="corp-name" type="text" bind:value={corpName} />
 		</div>
 
 		<div class="form-group">
-			<label for="map-size">{$tr('menu.map_size')}</label>
+			<label for="map-size">{$tr("menu.map_size")}</label>
 			<select id="map-size" bind:value={mapSize}>
-				<option value="Small">{$tr('menu.size_small')}</option>
-				<option value="Medium">{$tr('menu.size_medium')}</option>
-				<option value="Large">{$tr('menu.size_large')}</option>
-				<option value="Huge">{$tr('menu.size_huge')}</option>
+				<option value="Small">{$tr("menu.size_small")}</option>
+				<option value="Medium">{$tr("menu.size_medium")}</option>
+				<option value="Large">{$tr("menu.size_large")}</option>
+				<option value="Huge">{$tr("menu.size_huge")}</option>
 			</select>
 		</div>
 
 		<div class="form-group">
-			<label for="era">{$tr('menu.starting_era')}</label>
+			<label for="era">{$tr("menu.starting_era")}</label>
 			<select id="era" bind:value={era}>
-				<option value="Telegraph">{$tr('menu.era_telegraph')}</option>
-				<option value="Telephone">{$tr('menu.era_telephone')}</option>
-				<option value="EarlyDigital">{$tr('menu.era_early_digital')}</option>
-				<option value="Internet">{$tr('menu.era_internet')}</option>
-				<option value="Modern">{$tr('menu.era_modern')}</option>
-				<option value="NearFuture">{$tr('menu.era_near_future')}</option>
+				<option value="Telegraph">{$tr("menu.era_telegraph")}</option>
+				<option value="Telephone">{$tr("menu.era_telephone")}</option>
+				<option value="EarlyDigital"
+					>{$tr("menu.era_early_digital")}</option
+				>
+				<option value="Internet">{$tr("menu.era_internet")}</option>
+				<option value="Modern">{$tr("menu.era_modern")}</option>
+				<option value="NearFuture">{$tr("menu.era_near_future")}</option
+				>
 			</select>
 		</div>
 
 		<div class="form-group">
-			<label for="difficulty">{$tr('menu.difficulty')}</label>
+			<label for="difficulty">{$tr("menu.difficulty")}</label>
 			<select id="difficulty" bind:value={difficulty}>
-				<option value="Easy">{$tr('menu.difficulty_easy')}</option>
-				<option value="Normal">{$tr('menu.difficulty_normal')}</option>
-				<option value="Hard">{$tr('menu.difficulty_hard')}</option>
-				<option value="Expert">{$tr('menu.difficulty_expert')}</option>
+				<option value="Easy">{$tr("menu.difficulty_easy")}</option>
+				<option value="Normal">{$tr("menu.difficulty_normal")}</option>
+				<option value="Hard">{$tr("menu.difficulty_hard")}</option>
+				<option value="Expert">{$tr("menu.difficulty_expert")}</option>
 			</select>
 		</div>
 
 		<div class="form-group">
-			<label for="ai-count">{$tr('menu.ai_corporations')}</label>
-			<input id="ai-count" type="number" min="0" max="8" bind:value={aiCount} />
+			<label for="ai-count">{$tr("menu.ai_corporations")}</label>
+			<input
+				id="ai-count"
+				type="number"
+				min="0"
+				max="8"
+				bind:value={aiCount}
+			/>
 		</div>
 
 		<div class="form-group">
-			<label for="seed">{$tr('menu.world_seed')}</label>
+			<label for="seed">{$tr("menu.world_seed")}</label>
 			<input id="seed" type="number" bind:value={seed} />
 		</div>
 
+		<div class="form-group flex-row">
+			<label for="real-earth">{$tr("menu.use_real_earth")}</label>
+			<input id="real-earth" type="checkbox" bind:checked={realEarth} />
+		</div>
+
 		<div class="form-actions">
-			<button class="btn secondary" onclick={onBack}>{$tr('menu.back')}</button>
-			<button class="btn primary" onclick={handleStart}>{$tr('menu.start_game')}</button>
+			<button class="btn secondary" onclick={onBack}
+				>{$tr("menu.back")}</button
+			>
+			<button class="btn primary" onclick={handleStart}
+				>{$tr("menu.start_game")}</button
+			>
 		</div>
 	</div>
 </div>
@@ -88,7 +110,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: #0a0e17;
+		background: #06101f;
 		font-family: system-ui, sans-serif;
 		color: #f3f4f6;
 	}
@@ -118,7 +140,8 @@
 		margin-bottom: 4px;
 	}
 
-	input, select {
+	input,
+	select {
 		width: 100%;
 		padding: 10px 12px;
 		background: rgba(31, 41, 55, 0.8);
@@ -130,9 +153,23 @@
 		box-sizing: border-box;
 	}
 
-	input:focus, select:focus {
+	input:focus,
+	select:focus {
 		outline: none;
 		border-color: rgba(16, 185, 129, 0.5);
+	}
+
+	.flex-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	input[type="checkbox"] {
+		width: 20px;
+		height: 20px;
+		cursor: pointer;
 	}
 
 	.form-actions {

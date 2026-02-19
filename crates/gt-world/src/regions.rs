@@ -190,36 +190,49 @@ pub fn compute_region_boundaries(
             continue;
         }
 
-        // Sort boundary points by angle from centroid
-        let cx = region.center_lon;
-        let cy = region.center_lat;
-        boundary_points.sort_by(|a, b| {
-            let mut dx = a.1 - cx;
-            if dx > 180.0 {
-                dx -= 360.0;
-            }
-            if dx < -180.0 {
-                dx += 360.0;
-            }
-            let dy = a.0 - cy;
-            let angle_a = dy.atan2(dx);
+        // Greedy trace of boundary points to maintain adjacency
+        let mut ordered_points: Vec<(f64, f64)> = Vec::with_capacity(boundary_points.len());
+        if !boundary_points.is_empty() {
+            let mut current_idx = 0;
+            let mut visited = vec![false; boundary_points.len()];
 
-            let mut dx_b = b.1 - cx;
-            if dx_b > 180.0 {
-                dx_b -= 360.0;
-            }
-            if dx_b < -180.0 {
-                dx_b += 360.0;
-            }
-            let dy_b = b.0 - cy;
-            let angle_b = dy_b.atan2(dx_b);
+            for _ in 0..boundary_points.len() {
+                visited[current_idx] = true;
+                let p1 = boundary_points[current_idx];
+                ordered_points.push(p1);
 
-            angle_a
-                .partial_cmp(&angle_b)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+                let mut best_dist = f64::MAX;
+                let mut next_idx = None;
 
-        region.boundary_polygon = boundary_points;
+                for (j, &p2) in boundary_points.iter().enumerate() {
+                    if visited[j] {
+                        continue;
+                    }
+                    // Simple squared Euclidean distance for sorting (lat/lon close enough for local sorting)
+                    let mut dx = p2.1 - p1.1;
+                    if dx > 180.0 {
+                        dx -= 360.0;
+                    }
+                    if dx < -180.0 {
+                        dx += 360.0;
+                    }
+                    let dy = p2.0 - p1.0;
+                    let dist_sq = dx * dx + dy * dy;
+                    if dist_sq < best_dist {
+                        best_dist = dist_sq;
+                        next_idx = Some(j);
+                    }
+                }
+
+                if let Some(idx) = next_idx {
+                    current_idx = idx;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        region.boundary_polygon = ordered_points;
     }
 }
 
