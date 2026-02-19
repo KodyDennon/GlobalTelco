@@ -117,7 +117,8 @@ pub fn run(world: &mut GameWorld) {
             _ => 0.3,
         };
 
-        // Update city infrastructure satisfaction based on actual capacity vs demand
+        // Apply competition bonus to existing satisfaction (calculated by demand system)
+        // Don't recalculate satisfaction — just add the competition bonus
         let city_ids: Vec<u64> = world
             .regions
             .get(&region_id)
@@ -125,32 +126,10 @@ pub fn run(world: &mut GameWorld) {
             .unwrap_or_default();
 
         for &city_id in &city_ids {
-            let city_cell = match world.cities.get(&city_id) {
-                Some(c) => c.cell_index,
-                None => continue,
-            };
-
-            let city_capacity: f64 = world
-                .infra_nodes
-                .values()
-                .filter(|n| n.cell_index == city_cell)
-                .map(|n| n.max_throughput)
-                .sum();
-
-            let city_demand = world
-                .cities
-                .get(&city_id)
-                .map(|c| c.telecom_demand)
-                .unwrap_or(0.0);
-
-            let base_satisfaction = if city_demand > 0.0 {
-                (city_capacity / city_demand).min(1.0)
-            } else {
-                0.0
-            };
-
             if let Some(city) = world.cities.get_mut(&city_id) {
-                city.infrastructure_satisfaction = (base_satisfaction + competition_bonus).min(1.0);
+                // Add competition bonus on top of existing satisfaction from demand system
+                city.infrastructure_satisfaction =
+                    (city.infrastructure_satisfaction + competition_bonus).min(1.0);
             }
         }
     }

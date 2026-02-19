@@ -5,8 +5,8 @@ use gt_common::types::*;
 pub fn run(world: &mut GameWorld) {
     let tick = world.current_tick();
 
-    // Only run AI every 10 ticks to reduce computation
-    if !tick.is_multiple_of(10) {
+    // Run AI every 5 ticks (and always on tick 1 so AI acts immediately)
+    if tick > 1 && tick % 5 != 0 {
         return;
     }
 
@@ -126,26 +126,47 @@ fn ai_expand(world: &mut GameWorld, corp_id: EntityId, ai: &AiState, fin: &Finan
         .filter_map(|&nid| world.infra_nodes.get(&nid).map(|n| n.cell_index))
         .collect();
 
-    // Find a city with high demand but no corp infrastructure
-    // Collect and sort to ensure deterministic tie-breaking
-    let mut candidate_cities: Vec<(EntityId, usize, f64)> = world
-        .cities
-        .iter()
-        .filter(|(_, city)| !corp_cells.contains(&city.cell_index) && city.telecom_demand > 100.0)
-        .map(|(&id, city)| (id, city.cell_index, city.telecom_demand))
-        .collect();
-    candidate_cities.sort_unstable_by(|a, b| {
-        b.2.partial_cmp(&a.2)
+    // Coverage-aware expansion: find city cells with high population but no/low coverage
+    // Score = population_in_cell × (1 - coverage_satisfaction) for cells we don't cover
+    let mut candidate_cells: Vec<(usize, f64, EntityId)> = Vec::new();
+    for (&city_id, city) in &world.cities {
+        for &ci in &city.cells {
+            if corp_cells.contains(&ci) {
+                continue; // Already have a node here
+            }
+            // Check if we're the dominant owner — skip cells we already dominate
+            let our_coverage = world.cell_coverage.get(&ci)
+                .map(|c| c.dominant_owner == Some(corp_id))
+                .unwrap_or(false);
+            if our_coverage {
+                continue;
+            }
+
+            let cell_pop = city.population as f64 / city.cells.len().max(1) as f64;
+            let existing_coverage = world.cell_coverage.get(&ci)
+                .map(|c| (c.bandwidth / (cell_pop * 0.05).max(1.0)).clamp(0.0, 1.0))
+                .unwrap_or(0.0);
+
+            // Higher score = better expansion target
+            let score = cell_pop * (1.0 - existing_coverage);
+            if score > 50.0 {
+                candidate_cells.push((ci, score, city_id));
+            }
+        }
+    }
+    candidate_cells.sort_unstable_by(|a, b| {
+        b.1.partial_cmp(&a.1)
             .unwrap_or(std::cmp::Ordering::Equal)
             .then(a.0.cmp(&b.0))
     });
-    let target_city = candidate_cities.first().map(|&(id, cell, _)| (id, cell));
 
-    if let Some((_city_id, cell_index)) = target_city {
-        // Acquire the land parcel first
+    // Pick node type based on corp size and situation
+    let node_count = corp_nodes.len();
+    let node_type = pick_expansion_node_type(ai, node_count, tick, corp_id);
+
+    if let Some(&(cell_index, _score, _city_id)) = candidate_cells.first() {
         ai_acquire_parcel(world, corp_id, cell_index);
 
-        // Build a central office with terrain-aware costs
         let terrain = world
             .cell_to_parcel
             .get(&cell_index)
@@ -153,8 +174,16 @@ fn ai_expand(world: &mut GameWorld, corp_id: EntityId, ai: &AiState, fin: &Finan
             .map(|p| p.terrain)
             .unwrap_or(TerrainType::Rural);
 
-        let node = InfraNode::new_on_terrain(NodeType::CentralOffice, cell_index, corp_id, terrain);
+        let node = InfraNode::new_on_terrain(node_type, cell_index, corp_id, terrain);
         let cost = node.construction_cost;
+        let build_time = match node_type {
+            NodeType::CellTower | NodeType::WirelessRelay => 10,
+            NodeType::CentralOffice => 20,
+            NodeType::ExchangePoint => 30,
+            NodeType::DataCenter => 50,
+            NodeType::SatelliteGround => 40,
+            NodeType::SubmarineLanding => 60,
+        };
 
         if fin.cash > cost * 2 {
             let node_id = world.allocate_entity();
@@ -163,7 +192,7 @@ fn ai_expand(world: &mut GameWorld, corp_id: EntityId, ai: &AiState, fin: &Finan
             world.infra_nodes.insert(node_id, node);
             world
                 .constructions
-                .insert(node_id, Construction::new(tick, 20));
+                .insert(node_id, Construction::new(tick, build_time));
             world.ownerships.insert(node_id, Ownership::sole(corp_id));
             world.healths.insert(node_id, Health::new());
             world.capacities.insert(node_id, Capacity::new(0.0));
@@ -200,9 +229,12 @@ fn ai_expand(world: &mut GameWorld, corp_id: EntityId, ai: &AiState, fin: &Finan
                 },
             );
 
-            // Also build an edge connecting to nearest existing node
-            if let Some(&nearest) = corp_nodes.first() {
-                build_ai_edge(world, corp_id, nearest, node_id, tick);
+            // Connect to nearest existing node
+            if !corp_nodes.is_empty() {
+                let nearest = find_nearest_node(world, &corp_nodes, cell_index);
+                if let Some(nearest_id) = nearest {
+                    build_ai_edge(world, corp_id, nearest_id, node_id, tick);
+                }
             }
         }
     }
@@ -221,6 +253,81 @@ fn ai_expand(world: &mut GameWorld, corp_id: EntityId, ai: &AiState, fin: &Finan
             world.tech_research.insert(research_id, research);
         }
     }
+}
+
+/// Pick node type for AI expansion based on archetype, network size, and situational factors.
+fn pick_expansion_node_type(ai: &AiState, node_count: usize, tick: Tick, corp_id: EntityId) -> NodeType {
+    // Use tick + corp_id for deterministic variety
+    let variety_seed = ((tick.wrapping_mul(corp_id) >> 3) % 100) as usize;
+
+    match ai.archetype {
+        AIArchetype::AggressiveExpander => {
+            // Aggressors build lots of cell towers for fast coverage, with occasional offices
+            if node_count > 8 && variety_seed < 20 {
+                NodeType::ExchangePoint
+            } else if variety_seed < 30 {
+                NodeType::CentralOffice
+            } else {
+                NodeType::CellTower
+            }
+        }
+        AIArchetype::DefensiveConsolidator => {
+            // Defenders build solid infrastructure: offices and data centers
+            if node_count > 5 && variety_seed < 25 {
+                NodeType::DataCenter
+            } else if variety_seed < 40 {
+                NodeType::CellTower
+            } else {
+                NodeType::CentralOffice
+            }
+        }
+        AIArchetype::TechInnovator => {
+            // Tech innovators build advanced infrastructure
+            if node_count > 6 && variety_seed < 20 {
+                NodeType::DataCenter
+            } else if variety_seed < 35 {
+                NodeType::SatelliteGround
+            } else if variety_seed < 60 {
+                NodeType::CellTower
+            } else {
+                NodeType::CentralOffice
+            }
+        }
+        AIArchetype::BudgetOperator => {
+            // Budget operators stick to cheap cell towers and wireless relays
+            if variety_seed < 25 {
+                NodeType::WirelessRelay
+            } else if variety_seed < 70 {
+                NodeType::CellTower
+            } else {
+                NodeType::CentralOffice
+            }
+        }
+    }
+}
+
+/// Find the nearest existing node to a given cell index.
+fn find_nearest_node(world: &GameWorld, node_ids: &[EntityId], target_cell: usize) -> Option<EntityId> {
+    let target_pos = world.grid_cell_positions.get(target_cell)?;
+
+    let mut best: Option<(EntityId, f64)> = None;
+    for &nid in node_ids {
+        let node = match world.infra_nodes.get(&nid) {
+            Some(n) => n,
+            None => continue,
+        };
+        let node_pos = match world.grid_cell_positions.get(node.cell_index) {
+            Some(p) => p,
+            None => continue,
+        };
+        let dlat = target_pos.0 - node_pos.0;
+        let dlon = target_pos.1 - node_pos.1;
+        let dist = dlat * dlat + dlon * dlon;
+        if best.is_none() || dist < best.unwrap().1 {
+            best = Some((nid, dist));
+        }
+    }
+    best.map(|(id, _)| id)
 }
 
 fn ai_consolidate(world: &mut GameWorld, corp_id: EntityId, _ai: &AiState, _tick: Tick) {
@@ -275,34 +382,53 @@ fn ai_compete(
     fin: &Financial,
     tick: Tick,
 ) {
-    let corp_cells: std::collections::HashSet<usize> = world
+    let corp_nodes = world
         .corp_infra_nodes
         .get(&corp_id)
-        .unwrap_or(&Vec::new())
-        .iter()
-        .filter_map(|&nid| world.infra_nodes.get(&nid).map(|n| n.cell_index))
-        .collect();
+        .cloned()
+        .unwrap_or_default();
 
-    let mut compete_candidates: Vec<(EntityId, usize, f64)> = world
-        .cities
-        .iter()
-        .filter(|(_, city)| {
-            corp_cells.contains(&city.cell_index) && city.infrastructure_satisfaction < 0.5
-        })
-        .map(|(&id, city)| (id, city.cell_index, city.telecom_demand))
-        .collect();
-    compete_candidates.sort_unstable_by(|a, b| {
-        b.2.partial_cmp(&a.2)
+    // Find city cells where a competitor is dominant but we could steal market share
+    // Target cells where another corp dominates but satisfaction is low (opportunity!)
+    let mut compete_targets: Vec<(usize, f64)> = Vec::new();
+    for (_, city) in &world.cities {
+        if city.infrastructure_satisfaction > 0.7 {
+            continue; // Well-served city, skip
+        }
+        for &ci in &city.cells {
+            let coverage = world.cell_coverage.get(&ci);
+            let is_competitor_dominant = coverage
+                .and_then(|c| c.dominant_owner)
+                .map(|owner| owner != corp_id)
+                .unwrap_or(false);
+            let low_quality = coverage
+                .map(|c| c.signal_strength < 50.0)
+                .unwrap_or(true);
+
+            if is_competitor_dominant || low_quality {
+                let cell_pop = city.population as f64 / city.cells.len().max(1) as f64;
+                let score = cell_pop * (1.0 - city.infrastructure_satisfaction);
+                if score > 20.0 {
+                    compete_targets.push((ci, score));
+                }
+            }
+        }
+    }
+
+    compete_targets.sort_unstable_by(|a, b| {
+        b.1.partial_cmp(&a.1)
             .unwrap_or(std::cmp::Ordering::Equal)
             .then(a.0.cmp(&b.0))
     });
-    let target = compete_candidates.first().map(|&(_, cell, _)| cell);
 
-    if let Some(cell_index) = target {
+    if let Some(&(cell_index, _)) = compete_targets.first() {
+        // Build a cell tower to compete for coverage
         let node = InfraNode::new(NodeType::CellTower, cell_index, corp_id);
         let cost = node.construction_cost;
 
         if fin.cash > cost * 3 {
+            ai_acquire_parcel(world, corp_id, cell_index);
+
             let node_id = world.allocate_entity();
             let maintenance = node.maintenance_cost;
 
@@ -345,6 +471,14 @@ fn ai_compete(
                     tick,
                 },
             );
+
+            // Connect to nearest existing node
+            if !corp_nodes.is_empty() {
+                let nearest = find_nearest_node(world, &corp_nodes, cell_index);
+                if let Some(nearest_id) = nearest {
+                    build_ai_edge(world, corp_id, nearest_id, node_id, tick);
+                }
+            }
         }
     }
 }
@@ -1011,6 +1145,37 @@ fn build_ai_edge(
     };
 
     let fiber_type = pick_fiber_type(world, from, to);
+
+    // Enforce max distance (same rules as player edges, scaled to grid resolution)
+    let max_distance_km = match fiber_type {
+        EdgeType::Copper => world.cell_spacing_km * 1.5,
+        EdgeType::FiberLocal => world.cell_spacing_km * 3.0,
+        EdgeType::FiberRegional => world.cell_spacing_km * 8.0,
+        EdgeType::FiberNational => world.cell_spacing_km * 20.0,
+        EdgeType::Microwave => world.cell_spacing_km * 4.0,
+        EdgeType::Satellite => f64::INFINITY,
+        EdgeType::Submarine => world.cell_spacing_km * 30.0,
+    };
+    if length_km > max_distance_km {
+        return;
+    }
+
+    // Terrain check: fiber/copper can't cross deep ocean
+    let from_terrain = world.infra_nodes.get(&from)
+        .and_then(|n| world.land_parcels.values().find(|p| p.cell_index == n.cell_index))
+        .map(|p| p.terrain);
+    let to_terrain = world.infra_nodes.get(&to)
+        .and_then(|n| world.land_parcels.values().find(|p| p.cell_index == n.cell_index))
+        .map(|p| p.terrain);
+    match fiber_type {
+        EdgeType::Copper | EdgeType::FiberLocal | EdgeType::FiberRegional | EdgeType::FiberNational => {
+            if matches!(from_terrain, Some(TerrainType::OceanDeep)) || matches!(to_terrain, Some(TerrainType::OceanDeep)) {
+                return;
+            }
+        }
+        _ => {}
+    }
+
     let edge = InfraEdge::new(fiber_type, from, to, length_km, corp_id);
     let cost = edge.construction_cost;
     let maintenance = edge.maintenance_cost;

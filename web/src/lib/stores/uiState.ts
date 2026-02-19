@@ -14,3 +14,4 @@ export const zoomLevel = writable<number>(1);
 export const viewport = writable({ minX: -180, minY: -90, maxX: 180, maxY: 90 });
 export const activeOverlay = writable<OverlayType>('none');
 export const tooltipData = writable<{ x: number; y: number; content: string } | null>(null);
+export const selectedEdgeType = writable<string>('FiberLocal');

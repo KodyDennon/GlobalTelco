@@ -4,6 +4,7 @@ pub mod auction;
 pub mod construction;
 pub mod contract;
 pub mod cost;
+pub mod coverage;
 pub mod covert_ops;
 pub mod demand;
 pub mod disaster;
@@ -24,7 +25,8 @@ pub fn run_all_systems(world: &mut GameWorld) {
     construction::run(world);
     maintenance::run(world);
     population::run(world);
-    demand::run(world);
+    coverage::run(world);       // Calculate per-cell coverage from infrastructure
+    demand::run(world);         // Uses coverage data for satisfaction
     routing::run(world);
     utilization::run(world);
     revenue::run(world);

@@ -22,18 +22,7 @@ pub fn run(world: &mut GameWorld) {
             }
             // Add to network
             world.network.add_node(entity);
-
-            // Generate revenue based on local demand
-            let cell_idx = node.cell_index;
-            let owner = node.owner;
-            if let Some(region_id) = world.cell_to_region.get(&cell_idx).copied() {
-                if let Some(demand) = world.demands.get(&region_id) {
-                    let revenue = (demand.base_demand * 0.01 * throughput / 1000.0) as i64;
-                    if let Some(fin) = world.financials.get_mut(&owner) {
-                        fin.revenue_per_tick += revenue.max(1);
-                    }
-                }
-            }
+            // Revenue is calculated by the revenue system each tick — no bonus here
         }
 
         world.event_queue.push(

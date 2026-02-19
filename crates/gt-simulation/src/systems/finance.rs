@@ -14,11 +14,11 @@ pub fn run(world: &mut GameWorld) {
             let payment = debt.process_payment();
             if payment > 0 {
                 let holder = debt.holder;
+                // Principal portion of payment reduces outstanding debt
+                let interest_portion = (debt.principal as f64 * debt.interest_rate / 365.0) as i64;
+                let principal_portion = (payment - interest_portion).max(0);
                 if let Some(fin) = world.financials.get_mut(&holder) {
-                    fin.debt = (fin.debt
-                        - (payment - (debt.principal as f64 * debt.interest_rate / 365.0) as i64)
-                            .max(0))
-                    .max(0);
+                    fin.debt = (fin.debt - principal_portion).max(0);
                 }
             }
             if debt.is_paid_off() {

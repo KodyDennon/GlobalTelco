@@ -5,7 +5,10 @@ use serde::{Deserialize, Serialize};
 pub struct CityComponent {
     pub name: String,
     pub region_id: EntityId,
-    pub cell_index: usize,
+    pub cell_index: usize, // Center cell
+    /// All cells this city occupies. Includes center cell.
+    /// Population is distributed across these cells, densest at center.
+    pub cells: Vec<usize>,
     pub population: u64,
     pub growth_rate: f64,
     pub development: f64,

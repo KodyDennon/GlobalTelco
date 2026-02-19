@@ -61,18 +61,8 @@ pub fn run(world: &mut GameWorld) {
                 let damage = severity * 0.3;
                 if let Some(health) = world.healths.get_mut(&node_id) {
                     health.degrade(damage);
-
-                    // If health drops below 0.2, mark as severely damaged
-                    if health.condition < 0.2 {
-                        // Reduce capacity drastically
-                        if let Some(cap) = world.capacities.get_mut(&node_id) {
-                            cap.max_throughput *= 0.1;
-                        }
-                    }
-                }
-                // Reduce capacity during disaster
-                if let Some(cap) = world.capacities.get_mut(&node_id) {
-                    cap.max_throughput *= 1.0 - severity * 0.2;
+                    // Capacity reduction is handled by utilization::reset_capacities_to_base
+                    // which applies health-based throughput scaling each tick
                 }
 
                 // Insurance payout: covers 60% of repair cost for insured nodes

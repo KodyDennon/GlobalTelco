@@ -4,6 +4,7 @@
 	import * as bridge from '$lib/wasm/bridge';
 	import type { DebtInfo } from '$lib/wasm/types';
 	import FinanceChart from '$lib/charts/FinanceChart.svelte';
+	import MarketShareChart from '$lib/charts/MarketShareChart.svelte';
 	import { tr } from '$lib/i18n/index';
 
 	let debts: DebtInfo[] = $state([]);
@@ -129,6 +130,11 @@
 				<button class="small-btn" onclick={() => repayLoan(debt.id)}>{$tr('panels.repay')}</button>
 			</div>
 		{/each}
+	</div>
+
+	<div class="section">
+		<h3>{$tr('panels.market_share')}</h3>
+		<MarketShareChart />
 	</div>
 
 	<div class="section">

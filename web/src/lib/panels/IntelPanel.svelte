@@ -171,26 +171,26 @@
 </div>
 
 <style>
-	.panel { padding: 16px; color: #e5e7eb; }
-	h2 { font-size: 16px; margin: 0 0 12px; color: #60a5fa; }
-	h3 { font-size: 13px; color: #9ca3af; margin: 12px 0 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+	.panel { padding: 16px; color: var(--text-secondary); }
+	h2 { font-size: 16px; margin: 0 0 12px; color: var(--blue-light); }
+	h3 { font-size: 13px; color: var(--text-muted); margin: 12px 0 8px; text-transform: uppercase; letter-spacing: 0.05em; }
 	section { margin-bottom: 16px; }
 	.security-row { display: flex; align-items: center; gap: 12px; font-size: 13px; flex-wrap: wrap; }
-	.security-row button { background: #2563eb; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+	.security-row button { background: var(--blue); color: white; border: none; padding: 4px 10px; border-radius: var(--radius-sm); cursor: pointer; font-size: 12px; }
 	.form-row { display: flex; gap: 8px; }
-	.form-row select { flex: 1; background: #1f2937; border: 1px solid #374151; color: #e5e7eb; padding: 6px; border-radius: 4px; font-size: 13px; }
-	.form-row button, .lobby-form button { background: #dc2626; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+	.form-row select { flex: 1; background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-secondary); padding: 6px; border-radius: var(--radius-sm); font-size: 13px; }
+	.form-row button, .lobby-form button { background: var(--red); color: white; border: none; padding: 6px 12px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; }
 	.form-row button:disabled, .lobby-form button:disabled, .security-row button:disabled { opacity: 0.5; cursor: not-allowed; }
 	.lobby-form { display: flex; flex-direction: column; gap: 8px; }
-	.lobby-form select, .lobby-form input { background: #1f2937; border: 1px solid #374151; color: #e5e7eb; padding: 6px; border-radius: 4px; font-size: 13px; }
-	.lobby-form button { background: #7c3aed; }
-	.campaign-card { background: rgba(31, 41, 55, 0.8); border: 1px solid #374151; border-radius: 6px; padding: 10px; margin-bottom: 6px; }
+	.lobby-form select, .lobby-form input { background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-secondary); padding: 6px; border-radius: var(--radius-sm); font-size: 13px; }
+	.lobby-form button { background: var(--purple); }
+	.campaign-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px; margin-bottom: 6px; }
 	.campaign-card.inactive { opacity: 0.5; }
 	.campaign-info { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; }
 	.region { font-weight: 600; }
-	.policy { color: #a78bfa; font-size: 12px; }
-	.progress-bar { height: 4px; background: #374151; border-radius: 2px; margin-bottom: 6px; }
-	.fill { height: 100%; background: #8b5cf6; border-radius: 2px; transition: width 0.3s; }
-	.campaign-stats { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #9ca3af; }
-	.cancel { background: #7f1d1d !important; color: #fca5a5; border: none; padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 11px; }
+	.policy { color: var(--purple-light); font-size: 12px; }
+	.progress-bar { height: 4px; background: var(--bg-hover); border-radius: 2px; margin-bottom: 6px; }
+	.fill { height: 100%; background: var(--purple); border-radius: 2px; transition: width 0.3s; }
+	.campaign-stats { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-muted); }
+	.cancel { background: var(--red-bg); color: var(--red-light); border: none; padding: 2px 8px; border-radius: var(--radius-sm); cursor: pointer; font-size: 11px; }
 </style>

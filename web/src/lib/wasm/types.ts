@@ -45,11 +45,18 @@ export interface City {
 	name: string;
 	region_id: number;
 	cell_index: number;
+	cells: number[];
+	cell_positions: { index: number; lat: number; lon: number }[];
 	population: number;
 	growth_rate: number;
 	development: number;
 	telecom_demand: number;
 	infrastructure_satisfaction: number;
+	employment_rate: number;
+	jobs_available: number;
+	birth_rate: number;
+	death_rate: number;
+	migration_pressure: number;
 	x: number;
 	y: number;
 }
@@ -86,6 +93,8 @@ export interface InfraEdge {
 	src_y: number;
 	dst_x: number;
 	dst_y: number;
+	src_cell: number;
+	dst_cell: number;
 }
 
 export interface InfrastructureList {
@@ -140,6 +149,59 @@ export interface GridCell {
 	lat: number;
 	lon: number;
 	terrain: string;
+	neighbors: number[];
+}
+
+export interface CellCoverage {
+	cell_index: number;
+	lat: number;
+	lon: number;
+	signal_strength: number;
+	bandwidth: number;
+	node_count: number;
+	best_signal: number;
+	dominant_owner: number | null;
+}
+
+export interface AllInfraNode {
+	id: number;
+	node_type: string;
+	network_level: string;
+	max_throughput: number;
+	current_load: number;
+	latency_ms: number;
+	reliability: number;
+	cell_index: number;
+	owner: number;
+	owner_name: string;
+	x: number;
+	y: number;
+	health: number;
+	utilization: number;
+	under_construction: boolean;
+}
+
+export interface AllInfraEdge {
+	id: number;
+	edge_type: string;
+	source: number;
+	target: number;
+	bandwidth: number;
+	current_load: number;
+	latency_ms: number;
+	length_km: number;
+	utilization: number;
+	owner: number;
+	owner_name: string;
+	src_x: number;
+	src_y: number;
+	dst_x: number;
+	dst_y: number;
+}
+
+export interface AllInfrastructure {
+	nodes: AllInfraNode[];
+	edges: AllInfraEdge[];
 }
 
 export interface ContractInfo {

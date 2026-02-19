@@ -9,7 +9,7 @@ use crate::components::covert_ops::MissionType;
 use crate::events::EventQueue;
 use crate::systems;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct GameWorld {
     config: WorldConfig,
     tick: Tick,
@@ -60,6 +60,14 @@ pub struct GameWorld {
     // World grid reference (used by systems for spatial queries)
     pub grid_cell_count: usize,
     pub grid_cell_positions: Vec<(f64, f64)>, // (lat, lon) for each cell
+    pub grid_cell_neighbors: Vec<Vec<usize>>, // adjacency list per cell
+    /// Average distance between neighboring grid cells in km.
+    /// Used by coverage system to scale coverage radii to the grid resolution.
+    pub cell_spacing_km: f64,
+
+    // Per-cell coverage data (recalculated each tick by coverage system)
+    #[serde(skip)]
+    pub cell_coverage: HashMap<usize, crate::systems::coverage::CellCoverage>,
 
     // Network graph state
     pub network: gt_infrastructure::NetworkGraph,
@@ -113,6 +121,9 @@ impl GameWorld {
             corp_infra_nodes: HashMap::new(),
             grid_cell_count: 0,
             grid_cell_positions: Vec::new(),
+            grid_cell_neighbors: Vec::new(),
+            cell_spacing_km: 100.0,
+            cell_coverage: HashMap::new(),
             network: gt_infrastructure::NetworkGraph::new(),
             rng_seed,
             tick_rng_counter: 0,
@@ -138,6 +149,20 @@ impl GameWorld {
             .iter()
             .map(|c| (c.lat, c.lon))
             .collect();
+        self.grid_cell_neighbors = gen_world
+            .grid
+            .cells
+            .iter()
+            .map(|c| c.neighbors.clone())
+            .collect();
+
+        // Calculate average cell spacing in km for coverage radius scaling
+        // On a sphere: avg_spacing ≈ sqrt(4πR² / N) where R = 6371 km
+        if self.grid_cell_count > 0 {
+            let surface_area = 4.0 * std::f64::consts::PI * 6371.0_f64.powi(2);
+            let area_per_cell = surface_area / self.grid_cell_count as f64;
+            self.cell_spacing_km = area_per_cell.sqrt();
+        }
 
         // Create land parcel entities
         for parcel in &gen_world.parcels {
@@ -204,7 +229,7 @@ impl GameWorld {
             self.demands.insert(
                 id,
                 Demand {
-                    base_demand: region.population as f64 * region.development * 0.5,
+                    base_demand: (region.population as f64).sqrt() * region.development * 2.0,
                     current_demand: 0.0,
                     satisfaction: 0.0,
                 },
@@ -216,7 +241,23 @@ impl GameWorld {
             }
         }
 
-        // Create city entities
+        // Create city entities with multi-cell expansion
+        // First pass: collect region cells for neighbor lookup
+        let region_cell_sets: HashMap<EntityId, Vec<usize>> = self
+            .regions
+            .iter()
+            .map(|(&id, r)| (id, r.cells.clone()))
+            .collect();
+
+        // Build neighbor lookup from grid (we stored positions, reconstruct neighbors)
+        // Use a simple spatial approach: cells within ~1.5x average spacing are neighbors
+        let avg_spacing_deg = if self.grid_cell_count > 0 {
+            360.0 / (self.grid_cell_count as f64).sqrt()
+        } else {
+            5.0
+        };
+        let neighbor_threshold = avg_spacing_deg * 1.8; // ~1.8x spacing catches all neighbors
+
         for city in &gen_world.cities {
             let id = self.allocate_entity();
             let real_region_id = region_id_map.get(&city.region_id).copied().unwrap_or(0);
@@ -224,9 +265,56 @@ impl GameWorld {
             let econ = gen_world.economics.cities.iter().find(|e| {
                 gen_world.cities.get(e.city_index).map(|c| c.cell_index) == Some(city.cell_index)
             });
-            let telecom_demand = econ
-                .map(|e| e.telecom_demand)
-                .unwrap_or(city.population as f64 * city.development);
+            // Use sqrt(population) scaling for demand — matches the formula in the demand system tick.
+            // Keeps demand in the same magnitude as node capacity (hundreds to thousands).
+            let telecom_demand = (city.population as f64).sqrt() * city.development * 2.0;
+
+            // Expand city to multiple cells based on population
+            // Small cities: 1-3 cells, medium: 3-7, large: 7-15
+            let cell_budget = if city.population > 500_000 {
+                ((city.population as f64).log10() * 3.0) as usize
+            } else if city.population > 100_000 {
+                ((city.population as f64).log10() * 2.0) as usize
+            } else {
+                1
+            };
+            let cell_budget = cell_budget.max(1).min(15);
+
+            let center_pos = self.grid_cell_positions.get(city.cell_index);
+            let region_cells = region_cell_sets.get(&real_region_id);
+
+            let mut city_cells = vec![city.cell_index];
+
+            if cell_budget > 1 {
+                if let (Some(&(clat, clon)), Some(rcells)) = (center_pos, region_cells) {
+                    // Find nearby cells in the same region, sorted by distance to center
+                    let mut candidates: Vec<(usize, f64)> = rcells
+                        .iter()
+                        .filter(|&&ci| ci != city.cell_index && !self.cell_to_city.contains_key(&ci))
+                        .filter_map(|&ci| {
+                            let (lat, lon) = self.grid_cell_positions.get(ci)?;
+                            let dlat = lat - clat;
+                            let dlon = lon - clon;
+                            let dist = (dlat * dlat + dlon * dlon).sqrt();
+                            if dist < neighbor_threshold * (cell_budget as f64).sqrt() {
+                                Some((ci, dist))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+                    for (ci, _) in candidates.into_iter().take(cell_budget - 1) {
+                        city_cells.push(ci);
+                    }
+                }
+            }
+
+            // Map all city cells
+            for &ci in &city_cells {
+                self.cell_to_city.insert(ci, id);
+            }
 
             self.cities.insert(
                 id,
@@ -234,6 +322,7 @@ impl GameWorld {
                     name: city.name.clone(),
                     region_id: real_region_id,
                     cell_index: city.cell_index,
+                    cells: city_cells,
                     population: city.population,
                     growth_rate: city.growth_rate,
                     development: city.development,
@@ -278,7 +367,6 @@ impl GameWorld {
                     satisfaction: 0.0,
                 },
             );
-            self.cell_to_city.insert(city.cell_index, id);
 
             // Add city to its region's city list
             if let Some(region) = self.regions.get_mut(&real_region_id) {
@@ -296,8 +384,9 @@ impl GameWorld {
         // Create player corporation
         let player_id = self.allocate_entity();
         self.player_corp_id = Some(player_id);
+        let player_name = self.config.corp_name.clone().unwrap_or_else(|| "Player Corp".to_string());
         self.corporations
-            .insert(player_id, Corporation::new("Player Corp", true));
+            .insert(player_id, Corporation::new(&player_name, true));
         self.financials.insert(
             player_id,
             Financial {
@@ -537,6 +626,7 @@ impl GameWorld {
 
     /// Serialize to binary format (bincode + zstd compression).
     /// Format: [version: u8] [crc32: 4 bytes LE] [zstd-compressed bincode data]
+    #[cfg(feature = "native-compression")]
     pub fn save_game_binary(&self) -> Result<Vec<u8>, String> {
         let bincode_data =
             bincode::serialize(self).map_err(|e| format!("Bincode serialize failed: {}", e))?;
@@ -552,6 +642,7 @@ impl GameWorld {
 
     /// Deserialize from binary format (bincode + zstd).
     /// Supports v1 (no checksum) and v2 (with CRC32 checksum).
+    #[cfg(feature = "native-compression")]
     pub fn load_game_binary(data: &[u8]) -> Result<Self, String> {
         if data.is_empty() {
             return Err("Empty save data".to_string());
@@ -811,6 +902,29 @@ impl GameWorld {
             None => return,
         };
 
+        // Terrain constraints for node types
+        match node_type {
+            NodeType::SubmarineLanding => {
+                // Must be on coastal or ocean terrain
+                if !matches!(terrain, TerrainType::Coastal | TerrainType::OceanShallow) {
+                    return;
+                }
+            }
+            NodeType::CellTower | NodeType::WirelessRelay | NodeType::CentralOffice
+            | NodeType::ExchangePoint | NodeType::DataCenter => {
+                // Land-based nodes can't be placed in deep ocean
+                if matches!(terrain, TerrainType::OceanDeep | TerrainType::OceanShallow) {
+                    return;
+                }
+            }
+            NodeType::SatelliteGround => {
+                // Can go anywhere except deep ocean
+                if matches!(terrain, TerrainType::OceanDeep) {
+                    return;
+                }
+            }
+        }
+
         let node = InfraNode::new_on_terrain(node_type, cell_index, corp_id, terrain);
         let cost = node.construction_cost;
 
@@ -887,9 +1001,10 @@ impl GameWorld {
             None => return,
         };
 
-        // Verify target node exists
-        if !self.infra_nodes.contains_key(&to_node) {
-            return;
+        // Verify target node exists and belongs to the same corp
+        match self.infra_nodes.get(&to_node) {
+            Some(n) if n.owner == corp_id => {}
+            _ => return,
         }
 
         // Calculate distance between nodes
@@ -908,6 +1023,61 @@ impl GameWorld {
             }
             _ => 100.0, // Default
         };
+
+        // Enforce max distance based on edge type, scaled to grid resolution.
+        // On a small map (cell_spacing ~500km), distances are larger than real-world.
+        let max_distance_km = match edge_type {
+            EdgeType::Copper => self.cell_spacing_km * 1.5,
+            EdgeType::FiberLocal => self.cell_spacing_km * 3.0,
+            EdgeType::FiberRegional => self.cell_spacing_km * 8.0,
+            EdgeType::FiberNational => self.cell_spacing_km * 20.0,
+            EdgeType::Microwave => self.cell_spacing_km * 4.0,
+            EdgeType::Satellite => f64::INFINITY, // No distance limit
+            EdgeType::Submarine => self.cell_spacing_km * 30.0,
+        };
+        if length_km > max_distance_km {
+            return; // Too far
+        }
+
+        // Enforce terrain constraints: check source/target terrain
+        let from_terrain = self.infra_nodes.get(&from_node)
+            .and_then(|n| self.land_parcels.values().find(|p| p.cell_index == n.cell_index))
+            .map(|p| p.terrain);
+        let to_terrain = self.infra_nodes.get(&to_node)
+            .and_then(|n| self.land_parcels.values().find(|p| p.cell_index == n.cell_index))
+            .map(|p| p.terrain);
+
+        match edge_type {
+            EdgeType::Submarine => {
+                // Submarine edges must have at least one endpoint on ocean/coastal
+                let is_water = |t: Option<TerrainType>| matches!(t,
+                    Some(TerrainType::OceanShallow | TerrainType::OceanDeep | TerrainType::Coastal));
+                if !is_water(from_terrain) && !is_water(to_terrain) {
+                    return; // Submarine requires water
+                }
+            }
+            EdgeType::Copper | EdgeType::FiberLocal | EdgeType::FiberRegional | EdgeType::FiberNational => {
+                // Land-based cables can't span open ocean
+                let is_deep_ocean = |t: Option<TerrainType>| matches!(t,
+                    Some(TerrainType::OceanDeep));
+                if is_deep_ocean(from_terrain) || is_deep_ocean(to_terrain) {
+                    return; // Fiber/copper can't be on deep ocean
+                }
+            }
+            _ => {} // Microwave, Satellite have no terrain restriction
+        }
+
+        // Network contiguity: new edge must connect to existing corp network
+        // (exempt if corp has fewer than 2 nodes — first edge always allowed)
+        let corp_nodes = self.corp_infra_nodes.get(&corp_id).map(|v| v.len()).unwrap_or(0);
+        if corp_nodes > 1 {
+            let connected = self.network.connected_nodes(from_node);
+            if !connected.contains(&from_node) && !connected.contains(&to_node) {
+                // Neither node is in an existing network component — allow it
+                // (this can happen with isolated node pairs)
+            }
+            // Note: we allow connecting two separate network components owned by same corp
+        }
 
         let edge = InfraEdge::new(edge_type, from_node, to_node, length_km, corp_id);
         let cost = edge.construction_cost;
@@ -2017,6 +2187,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "native-compression")]
     fn test_save_load_binary_roundtrip() {
         let config = WorldConfig {
             map_size: MapSize::Small,
@@ -2037,6 +2208,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "native-compression")]
     fn test_save_binary_corruption_detected() {
         let config = WorldConfig {
             map_size: MapSize::Small,
@@ -2065,6 +2237,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "native-compression")]
     fn test_save_binary_empty_data() {
         let result = GameWorld::load_game_binary(&[]);
         assert!(result.is_err());
@@ -2072,6 +2245,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "native-compression")]
     fn test_save_binary_unsupported_version() {
         let result = GameWorld::load_game_binary(&[99, 0, 0, 0, 0]);
         assert!(result.is_err());

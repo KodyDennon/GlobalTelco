@@ -76,22 +76,22 @@
 </div>
 
 <style>
-	.panel { padding: 16px; color: #e5e7eb; }
-	h2 { font-size: 16px; margin: 0 0 12px; color: #60a5fa; }
-	.empty { color: #6b7280; font-size: 13px; }
-	.auction-card { background: rgba(31, 41, 55, 0.8); border: 1px solid #374151; border-radius: 6px; padding: 12px; margin-bottom: 8px; }
+	.panel { padding: 16px; color: var(--text-secondary); }
+	h2 { font-size: 16px; margin: 0 0 12px; color: var(--blue-light); }
+	.empty { color: var(--text-dim); font-size: 13px; }
+	.auction-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; margin-bottom: 8px; }
 	.auction-card.closed { opacity: 0.5; }
 	.auction-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
 	.seller { font-weight: 600; font-size: 14px; }
-	.status { font-size: 12px; padding: 2px 8px; border-radius: 4px; background: #374151; }
-	.status.open { background: #065f46; color: #34d399; }
+	.status { font-size: 12px; padding: 2px 8px; border-radius: var(--radius-sm); background: var(--bg-hover); }
+	.status.open { background: var(--green-bg); color: var(--green-light); }
 	.auction-details { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 8px; }
 	.detail { display: flex; justify-content: space-between; font-size: 12px; }
-	.label { color: #9ca3af; }
-	.value { color: #e5e7eb; font-family: monospace; }
+	.label { color: var(--text-muted); }
+	.value { color: var(--text-secondary); font-family: var(--font-mono); }
 	.bid-section { display: flex; gap: 8px; }
-	.bid-section input { flex: 1; background: #1f2937; border: 1px solid #374151; color: #e5e7eb; padding: 6px 8px; border-radius: 4px; font-size: 13px; }
-	.bid-section button { background: #2563eb; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+	.bid-section input { flex: 1; background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-secondary); padding: 6px 8px; border-radius: var(--radius-sm); font-size: 13px; }
+	.bid-section button { background: var(--blue); color: white; border: none; padding: 6px 12px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; }
 	.bid-section button:disabled { opacity: 0.5; cursor: not-allowed; }
-	.bid-section button:hover:not(:disabled) { background: #1d4ed8; }
+	.bid-section button:hover:not(:disabled) { opacity: 0.85; }
 </style>

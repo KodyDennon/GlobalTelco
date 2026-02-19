@@ -80,6 +80,39 @@ pub enum NodeType {
     WirelessRelay,
 }
 
+impl NodeType {
+    /// Coverage radius in km. Wireless nodes cover a wide area; wired nodes only their immediate cell.
+    pub fn coverage_radius_km(&self) -> f64 {
+        match self {
+            NodeType::CellTower => 15.0,
+            NodeType::WirelessRelay => 8.0,
+            NodeType::CentralOffice => 5.0,
+            NodeType::ExchangePoint => 2.0,
+            NodeType::DataCenter => 1.0,
+            NodeType::SatelliteGround => 200.0,
+            NodeType::SubmarineLanding => 0.5,
+        }
+    }
+
+    /// Whether this node provides wireless coverage to nearby cells without requiring edges.
+    pub fn is_wireless(&self) -> bool {
+        matches!(self, NodeType::CellTower | NodeType::WirelessRelay | NodeType::SatelliteGround)
+    }
+
+    /// Fraction of throughput that serves coverage area (vs backbone transit).
+    pub fn coverage_capacity_fraction(&self) -> f64 {
+        match self {
+            NodeType::CellTower => 0.8,
+            NodeType::WirelessRelay => 0.9,
+            NodeType::SatelliteGround => 0.6,
+            NodeType::CentralOffice => 0.5,
+            NodeType::ExchangePoint => 0.1,
+            NodeType::DataCenter => 0.05,
+            NodeType::SubmarineLanding => 0.02,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum EdgeType {
     FiberLocal,
@@ -189,6 +222,8 @@ pub struct WorldConfig {
     pub map_size: MapSize,
     pub ai_corporations: u32,
     pub use_real_earth: bool,
+    #[serde(default)]
+    pub corp_name: Option<String>,
 }
 
 impl Default for WorldConfig {
@@ -200,6 +235,7 @@ impl Default for WorldConfig {
             map_size: MapSize::Medium,
             ai_corporations: 4,
             use_real_earth: false,
+            corp_name: None,
         }
     }
 }

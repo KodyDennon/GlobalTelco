@@ -141,6 +141,31 @@ export async function preloadInfrastructureIcons(
 }
 
 /**
+ * Batch-create textures for all city tier icons.
+ */
+export async function preloadCityIcons(
+	color: string = '#ffffff',
+	size: number = 64
+): Promise<Map<IconName, THREE.CanvasTexture>> {
+	const cityNames: IconName[] = [
+		'hamlet',
+		'town',
+		'city',
+		'metropolis',
+		'megalopolis',
+	];
+
+	const results = new Map<IconName, THREE.CanvasTexture>();
+	const promises = cityNames.map(async (name) => {
+		const texture = await createIconTexture(name, { color, size });
+		results.set(name, texture);
+	});
+
+	await Promise.all(promises);
+	return results;
+}
+
+/**
  * Clear the texture cache. Call when changing themes or color schemes.
  */
 export function clearTextureCache(): void {

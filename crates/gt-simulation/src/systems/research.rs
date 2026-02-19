@@ -34,10 +34,21 @@ pub fn run(world: &mut GameWorld) {
             continue;
         }
 
+        // Clamp investment to available cash (never go negative from R&D)
+        let actual_investment = if let Some(fin) = world.financials.get(&researcher) {
+            investment.min(fin.cash.max(0))
+        } else {
+            0
+        };
+        if actual_investment <= 0 {
+            continue;
+        }
+
         // Deduct R&D cost
         if let Some(fin) = world.financials.get_mut(&researcher) {
-            fin.cash -= investment;
+            fin.cash -= actual_investment;
         }
+        let investment = actual_investment;
 
         // Advance research
         let just_completed = if let Some(research) = world.tech_research.get_mut(&research_id) {

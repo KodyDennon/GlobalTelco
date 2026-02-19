@@ -100,22 +100,22 @@
 </div>
 
 <style>
-	.panel { padding: 16px; color: #e5e7eb; }
-	h2 { font-size: 16px; margin: 0 0 12px; color: #60a5fa; }
-	h3 { font-size: 13px; color: #9ca3af; margin: 12px 0 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+	.panel { padding: 16px; color: var(--text-secondary); }
+	h2 { font-size: 16px; margin: 0 0 12px; color: var(--blue-light); }
+	h3 { font-size: 13px; color: var(--text-muted); margin: 12px 0 8px; text-transform: uppercase; letter-spacing: 0.05em; }
 	section { margin-bottom: 16px; }
 	.form { display: flex; flex-direction: column; gap: 8px; }
-	.form select, .form input { background: #1f2937; border: 1px solid #374151; color: #e5e7eb; padding: 8px; border-radius: 4px; font-size: 13px; }
-	.form button { background: #7c3aed; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+	.form select, .form input { background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-secondary); padding: 8px; border-radius: var(--radius-sm); font-size: 13px; }
+	.form button { background: var(--purple); color: white; border: none; padding: 8px 16px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; }
 	.form button:disabled { opacity: 0.5; cursor: not-allowed; }
-	.form button:hover:not(:disabled) { background: #6d28d9; }
-	.proposal-card { background: rgba(31, 41, 55, 0.8); border: 1px solid #374151; border-radius: 6px; padding: 10px 12px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+	.form button:hover:not(:disabled) { opacity: 0.85; }
+	.proposal-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 	.corp-name { font-weight: 600; font-size: 13px; }
-	.offer { font-family: monospace; color: #fbbf24; font-size: 13px; }
-	.status { font-size: 12px; padding: 2px 6px; border-radius: 3px; background: #374151; margin-left: auto; }
+	.offer { font-family: var(--font-mono); color: var(--amber); font-size: 13px; }
+	.status { font-size: 12px; padding: 2px 6px; border-radius: var(--radius-sm); background: var(--bg-hover); margin-left: auto; }
 	.actions { display: flex; gap: 6px; margin-left: auto; }
-	.accept { background: #065f46; color: #34d399; border: none; padding: 4px 10px; border-radius: 3px; cursor: pointer; font-size: 12px; }
-	.reject { background: #7f1d1d; color: #fca5a5; border: none; padding: 4px 10px; border-radius: 3px; cursor: pointer; font-size: 12px; }
-	.accept:hover { background: #047857; }
-	.reject:hover { background: #991b1b; }
+	.accept { background: var(--green-bg); color: var(--green-light); border: none; padding: 4px 10px; border-radius: var(--radius-sm); cursor: pointer; font-size: 12px; }
+	.reject { background: var(--red-bg); color: var(--red-light); border: none; padding: 4px 10px; border-radius: var(--radius-sm); cursor: pointer; font-size: 12px; }
+	.accept:hover { opacity: 0.85; }
+	.reject:hover { opacity: 0.85; }
 </style>

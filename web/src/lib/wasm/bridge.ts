@@ -8,6 +8,8 @@ import type {
 	Parcel,
 	Notification,
 	GridCell,
+	CellCoverage,
+	AllInfrastructure,
 	CorpSummary,
 	ContractInfo,
 	DebtInfo,
@@ -198,6 +200,26 @@ export function getAllCorporations(): CorpSummary[] {
 	} catch (e) {
 		onBridgeError(e, 'getAllCorporations');
 		return [];
+	}
+}
+
+export function getCellCoverage(): CellCoverage[] {
+	try {
+		const json = bridge?.get_cell_coverage() ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getCellCoverage');
+		return [];
+	}
+}
+
+export function getAllInfrastructure(): AllInfrastructure {
+	try {
+		const json = bridge?.get_all_infrastructure() ?? '{"nodes":[],"edges":[]}';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getAllInfrastructure');
+		return { nodes: [], edges: [] };
 	}
 }
 

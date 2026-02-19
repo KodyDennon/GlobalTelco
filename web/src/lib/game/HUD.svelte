@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { worldInfo, playerCorp, formatMoney } from '$lib/stores/gameState';
-	import { activePanel, buildMode, buildMenuParcel, buildEdgeSource, activeOverlay } from '$lib/stores/uiState';
+	import { activePanel, buildMode, buildMenuParcel, buildEdgeSource, activeOverlay, selectedEdgeType } from '$lib/stores/uiState';
 	import type { PanelType, OverlayType } from '$lib/stores/uiState';
 	import { isMultiplayer, connectionState, playerList } from '$lib/stores/multiplayerState';
 	import { tr } from '$lib/i18n/index';
 	import SpeedControls from './SpeedControls.svelte';
+	import Icon from '$lib/components/Icon.svelte';
 
 	function togglePanel(panel: PanelType) {
 		activePanel.update((p) => (p === panel ? 'none' : panel));
@@ -48,43 +49,54 @@
 			<button class="build-btn" class:active={currentBuild === 'edge'} onclick={() => toggleBuild('edge')} title={$tr('game.build_edge')} aria-pressed={currentBuild === 'edge'}>
 				{$tr('game.build_edge')}
 			</button>
+			{#if currentBuild === 'edge'}
+				<select class="edge-type-select" bind:value={$selectedEdgeType} aria-label="Edge type">
+					<option value="FiberLocal">Fiber Local</option>
+					<option value="FiberRegional">Fiber Regional</option>
+					<option value="FiberNational">Fiber National</option>
+					<option value="Copper">Copper</option>
+					<option value="Microwave">Microwave</option>
+					<option value="Satellite">Satellite</option>
+					<option value="Submarine">Submarine</option>
+				</select>
+			{/if}
 		</div>
 		<div class="divider"></div>
 		<SpeedControls />
 		<div class="divider"></div>
 		<div class="panel-buttons">
 			<button class="panel-btn" class:active={$activePanel === 'dashboard'} onclick={() => togglePanel('dashboard')} title={$tr('hud.dashboard')} aria-pressed={$activePanel === 'dashboard'}>
-				Fin
+				<Icon name="dashboard" size={16} />
 			</button>
 			<button class="panel-btn" class:active={$activePanel === 'infrastructure'} onclick={() => togglePanel('infrastructure')} title={$tr('hud.infrastructure')} aria-pressed={$activePanel === 'infrastructure'}>
-				Infra
+				<Icon name="infrastructure" size={16} />
 			</button>
 			<button class="panel-btn" class:active={$activePanel === 'contracts'} onclick={() => togglePanel('contracts')} title={$tr('hud.contracts')} aria-pressed={$activePanel === 'contracts'}>
-				Con
+				<Icon name="contract" size={16} />
 			</button>
 			<button class="panel-btn" class:active={$activePanel === 'research'} onclick={() => togglePanel('research')} title={$tr('hud.research')} aria-pressed={$activePanel === 'research'}>
-				R&D
+				<Icon name="research" size={16} />
 			</button>
 			<button class="panel-btn" class:active={$activePanel === 'region'} onclick={() => togglePanel('region')} title={$tr('panels.regions')} aria-pressed={$activePanel === 'region'}>
-				Reg
+				<Icon name="region" size={16} />
 			</button>
 			<button class="panel-btn" class:active={$activePanel === 'workforce'} onclick={() => togglePanel('workforce')} title={$tr('hud.workforce')} aria-pressed={$activePanel === 'workforce'}>
-				WF
+				<Icon name="workforce" size={16} />
 			</button>
 			<button class="panel-btn advisor" class:active={$activePanel === 'advisor'} onclick={() => togglePanel('advisor')} title={$tr('hud.advisor')} aria-pressed={$activePanel === 'advisor'}>
-				Adv
+				<Icon name="advisor" size={16} />
 			</button>
 			<button class="panel-btn" class:active={$activePanel === 'auctions'} onclick={() => togglePanel('auctions')} title={$tr('hud.auctions')} aria-pressed={$activePanel === 'auctions'}>
-				Auc
+				<Icon name="auction" size={16} />
 			</button>
 			<button class="panel-btn" class:active={$activePanel === 'mergers'} onclick={() => togglePanel('mergers')} title={$tr('hud.mergers')} aria-pressed={$activePanel === 'mergers'}>
-				M&A
+				<Icon name="merger" size={16} />
 			</button>
 			<button class="panel-btn" class:active={$activePanel === 'intel'} onclick={() => togglePanel('intel')} title={$tr('hud.intel')} aria-pressed={$activePanel === 'intel'}>
-				Int
+				<Icon name="intel" size={16} />
 			</button>
 			<button class="panel-btn" class:active={$activePanel === 'achievements'} onclick={() => togglePanel('achievements')} title={$tr('hud.achievements')} aria-pressed={$activePanel === 'achievements'}>
-				Ach
+				<Icon name="achievement" size={16} />
 			</button>
 		</div>
 		<div class="divider"></div>
@@ -213,6 +225,17 @@
 	.build-btn:hover, .panel-btn:hover, .overlay-btn:hover {
 		background: rgba(55, 65, 81, 0.5);
 		color: var(--text-primary);
+	}
+
+	.edge-type-select {
+		background: rgba(31, 41, 55, 0.9);
+		border: 1px solid var(--border);
+		color: var(--text-primary);
+		font-size: 11px;
+		font-family: var(--font-mono);
+		padding: 3px 6px;
+		border-radius: 3px;
+		cursor: pointer;
 	}
 
 	.build-btn.active {

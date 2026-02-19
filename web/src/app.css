@@ -25,6 +25,9 @@
 	--blue-light: #60a5fa;
 	--amber: #f59e0b;
 	--amber-bg: rgba(245, 158, 11, 0.2);
+	--purple: #8b5cf6;
+	--purple-light: #a78bfa;
+	--purple-bg: rgba(139, 92, 246, 0.2);
 
 	--font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
 	--font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;

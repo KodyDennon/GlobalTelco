@@ -2,6 +2,8 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { MapRenderer } from './MapRenderer';
 	import { initialized } from '$lib/stores/gameState';
+	import { mapQuality } from '$lib/stores/settings';
+	import { get } from 'svelte/store';
 	import {
 		selectedEntityId,
 		selectedEntityType,
@@ -9,7 +11,8 @@
 		buildMenuParcel,
 		buildEdgeSource,
 		activeOverlay,
-		tooltipData
+		tooltipData,
+		selectedEdgeType
 	} from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
 
@@ -34,8 +37,10 @@
 			if (source === null) {
 				buildEdgeSource.set(id);
 			} else {
+				let edgeType = 'FiberLocal';
+				selectedEdgeType.subscribe((t) => (edgeType = t))();
 				bridge.processCommand({
-					BuildEdge: { edge_type: 'Fiber', from: source, to: id }
+					BuildEdge: { edge_type: edgeType, from: source, to: id }
 				});
 				buildEdgeSource.set(null);
 			}
@@ -56,15 +61,16 @@
 	}
 
 	onMount(() => {
-		const unsub = initialized.subscribe((init) => {
+		const unsub = initialized.subscribe(async (init) => {
 			if (init && container && !renderer) {
-				renderer = new MapRenderer(container);
-				renderer.buildMap();
+				renderer = new MapRenderer(container, get(mapQuality));
+				await renderer.buildMap();
 				renderer.updateInfrastructure();
 				animate();
 
 				const interval = setInterval(() => {
 					renderer?.updateInfrastructure();
+					renderer?.updateCities();
 				}, 2000);
 
 				window.addEventListener('entity-selected', handleEntitySelected as EventListener);
@@ -75,6 +81,11 @@
 					renderer?.setOverlay(overlay);
 				});
 
+				// Subscribe to edge source for highlight
+				const edgeSrcSub = buildEdgeSource.subscribe((sourceId) => {
+					renderer?.highlightEdgeSource(sourceId);
+				});
+
 				// Mouse move for tooltips
 				container.addEventListener('mousemove', handleMouseMove);
 				container.addEventListener('mouseleave', handleMouseLeave);
@@ -82,6 +93,7 @@
 				return () => {
 					clearInterval(interval);
 					overlaySub();
+					edgeSrcSub();
 					window.removeEventListener('entity-selected', handleEntitySelected as EventListener);
 					window.removeEventListener('parcel-clicked', handleParcelClicked as EventListener);
 					container.removeEventListener('mousemove', handleMouseMove);

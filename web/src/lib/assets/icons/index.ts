@@ -7,6 +7,13 @@ import satelliteGround from './infrastructure/satellite-ground.svg?raw';
 import submarineLanding from './infrastructure/submarine-landing.svg?raw';
 import wirelessRelay from './infrastructure/wireless-relay.svg?raw';
 
+// City tier icons
+import hamlet from './cities/hamlet.svg?raw';
+import town from './cities/town.svg?raw';
+import city from './cities/city.svg?raw';
+import metropolis from './cities/metropolis.svg?raw';
+import megalopolis from './cities/megalopolis.svg?raw';
+
 // Edge type icons
 import fiberOptic from './edges/fiber-optic.svg?raw';
 import copper from './edges/copper.svg?raw';
@@ -27,6 +34,13 @@ import contract from './ui/contract.svg?raw';
 import settings from './ui/settings.svg?raw';
 import warning from './ui/warning.svg?raw';
 import dashboard from './ui/dashboard.svg?raw';
+import infrastructure from './ui/infrastructure.svg?raw';
+import region from './ui/region.svg?raw';
+import advisor from './ui/advisor.svg?raw';
+import auction from './ui/auction.svg?raw';
+import merger from './ui/merger.svg?raw';
+import intel from './ui/intel.svg?raw';
+import achievement from './ui/achievement.svg?raw';
 
 export const icons = {
 	// Infrastructure nodes — keyed to match Rust NodeType variants
@@ -37,6 +51,13 @@ export const icons = {
 	'satellite-ground': satelliteGround,
 	'submarine-landing': submarineLanding,
 	'wireless-relay': wirelessRelay,
+
+	// City tiers — keyed by population bracket
+	hamlet,
+	town,
+	city,
+	metropolis,
+	megalopolis,
 
 	// Edge types — keyed to match Rust EdgeType variants
 	'fiber-optic': fiberOptic,
@@ -58,6 +79,13 @@ export const icons = {
 	settings,
 	warning,
 	dashboard,
+	infrastructure,
+	region,
+	advisor,
+	auction,
+	merger,
+	intel,
+	achievement,
 } as const;
 
 export type IconName = keyof typeof icons;
@@ -71,6 +99,15 @@ export const infrastructureIcons: IconName[] = [
 	'satellite-ground',
 	'submarine-landing',
 	'wireless-relay',
+];
+
+/** All city tier icon names */
+export const cityIcons: IconName[] = [
+	'hamlet',
+	'town',
+	'city',
+	'metropolis',
+	'megalopolis',
 ];
 
 /** All edge type icon names */
@@ -96,4 +133,11 @@ export const uiIcons: IconName[] = [
 	'settings',
 	'warning',
 	'dashboard',
+	'infrastructure',
+	'region',
+	'advisor',
+	'auction',
+	'merger',
+	'intel',
+	'achievement',
 ];

@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="currentColor">
+  <!-- City: Mixed mid-rise buildings, office tower -->
+  <rect x="2" y="34" width="8" height="18" rx="1"/>
+  <rect x="11" y="24" width="8" height="28" rx="1"/>
+  <rect x="20" y="18" width="10" height="34" rx="1"/>
+  <rect x="24" y="12" width="2" height="6"/>
+  <rect x="31" y="28" width="8" height="24" rx="1"/>
+  <rect x="40" y="22" width="8" height="30" rx="1"/>
+  <rect x="49" y="30" width="8" height="22" rx="1"/>
+  <rect x="58" y="38" width="4" height="14" rx="1"/>
+  <!-- Windows grid -->
+  <rect x="4" y="38" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="4" y="42" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="13" y="28" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="13" y="33" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="13" y="38" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="13" y="43" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="16" y="28" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="16" y="33" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="22" y="22" width="2.5" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="22" y="28" width="2.5" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="22" y="34" width="2.5" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="22" y="40" width="2.5" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="26" y="22" width="2.5" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="26" y="28" width="2.5" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="26" y="34" width="2.5" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="42" y="26" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="42" y="32" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="42" y="38" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="45" y="26" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="51" y="34" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <rect x="51" y="40" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
+  <!-- Ground -->
+  <rect x="0" y="52" width="64" height="2" rx="1" opacity="0.3"/>
+</svg>

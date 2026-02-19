@@ -102,11 +102,15 @@ fn apply_migration(world: &mut GameWorld) {
         // Migration pressure: positive = gaining people, negative = losing
         let pressure = diff;
 
-        // Migration: 0.1% of population per tick, scaled by score difference
-        let migrants = (pop as f64 * 0.001 * diff) as i64;
+        // Migration: 0.02% of population per tick, clamped to prevent wild swings
+        // Max migration = 0.5% per tick regardless of score difference
+        let migration_rate = (diff * 0.0002).clamp(-0.005, 0.005);
+        let migrants = (pop as f64 * migration_rate) as i64;
 
         if let Some(city) = world.cities.get_mut(&city_id) {
-            city.population = (city.population as i64 + migrants).max(100) as u64;
+            // Never let a city drop below 5% of its starting population
+            let min_pop = (pop / 20).max(500);
+            city.population = (city.population as i64 + migrants).max(min_pop as i64) as u64;
             city.migration_pressure = pressure;
         }
     }

@@ -13,33 +13,30 @@ pub fn run(world: &mut GameWorld) {
         let has_budget = world
             .financials
             .get(&owner_id)
-            .map(|f| f.cash > 0)
+            .map(|f| f.cash > maintenance_cost)
             .unwrap_or(false);
 
         if let Some(health) = world.healths.get_mut(&node_id) {
             if has_budget {
-                // With budget: slow degradation, repair if damaged
+                // With budget: slow degradation, repair if damaged (repair costs extra)
                 health.degrade(0.0005);
                 if health.condition < 0.8 {
-                    // Repair: costs extra but restores condition
-                    health.condition = (health.condition + 0.002).min(1.0);
+                    // Repair costs 50% of maintenance cost per tick
+                    let repair_cost = maintenance_cost / 2;
+                    if let Some(fin) = world.financials.get_mut(&owner_id) {
+                        if fin.cash > repair_cost {
+                            fin.cash -= repair_cost;
+                            health.condition = (health.condition + 0.002).min(1.0);
+                        }
+                    }
                 }
             } else {
-                // No budget: faster degradation
+                // No budget: faster degradation, no repair
                 health.degrade(0.003);
             }
 
-            // Severely damaged infrastructure reduces throughput
-            if health.condition < 0.5 {
-                if let Some(node) = world.infra_nodes.get(&node_id) {
-                    let max_tp = node.max_throughput;
-                    if let Some(cap) = world.capacities.get_mut(&node_id) {
-                        cap.max_throughput = max_tp * health.condition;
-                    }
-                }
-            }
-
             // Track maintenance cost on the health component
+            // (Throughput reduction from health is handled by utilization::reset_capacities_to_base)
             health.maintenance_cost_per_tick = maintenance_cost;
         }
     }

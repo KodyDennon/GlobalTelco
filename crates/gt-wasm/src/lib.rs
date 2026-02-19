@@ -125,11 +125,18 @@ impl WasmBridge {
             .iter()
             .map(|(&id, c)| {
                 let pos = self.world.positions.get(&id);
+                // Include cell positions for multi-cell rendering
+                let cell_positions: Vec<serde_json::Value> = c.cells.iter().filter_map(|&ci| {
+                    let (lat, lon) = self.world.grid_cell_positions.get(ci)?;
+                    Some(serde_json::json!({"index": ci, "lat": lat, "lon": lon}))
+                }).collect();
                 serde_json::json!({
                     "id": id,
                     "name": c.name,
                     "region_id": c.region_id,
                     "cell_index": c.cell_index,
+                    "cells": c.cells,
+                    "cell_positions": cell_positions,
                     "population": c.population,
                     "growth_rate": c.growth_rate,
                     "development": c.development,
@@ -192,6 +199,8 @@ impl WasmBridge {
             .map(|(&id, e)| {
                 let src_pos = self.world.positions.get(&e.source);
                 let dst_pos = self.world.positions.get(&e.target);
+                let src_cell = self.world.infra_nodes.get(&e.source).map(|n| n.cell_index).unwrap_or(0);
+                let dst_cell = self.world.infra_nodes.get(&e.target).map(|n| n.cell_index).unwrap_or(0);
                 serde_json::json!({
                     "id": id,
                     "edge_type": format!("{:?}", e.edge_type),
@@ -206,6 +215,8 @@ impl WasmBridge {
                     "src_y": src_pos.map(|p| p.y).unwrap_or(0.0),
                     "dst_x": dst_pos.map(|p| p.x).unwrap_or(0.0),
                     "dst_y": dst_pos.map(|p| p.y).unwrap_or(0.0),
+                    "src_cell": src_cell,
+                    "dst_cell": dst_cell,
                 })
             })
             .collect();
@@ -682,6 +693,103 @@ impl WasmBridge {
         serde_json::to_string(&data).unwrap_or_default()
     }
 
+    /// Get per-cell coverage data for the coverage heatmap overlay.
+    /// Returns coverage for cells that have any signal.
+    pub fn get_cell_coverage(&self) -> String {
+        let coverage: Vec<serde_json::Value> = self
+            .world
+            .cell_coverage
+            .iter()
+            .filter_map(|(&cell_idx, cov)| {
+                let (lat, lon) = self.world.grid_cell_positions.get(cell_idx)?;
+                Some(serde_json::json!({
+                    "cell_index": cell_idx,
+                    "lat": lat,
+                    "lon": lon,
+                    "signal_strength": cov.signal_strength,
+                    "bandwidth": cov.bandwidth,
+                    "node_count": cov.node_count,
+                    "best_signal": cov.best_signal,
+                    "dominant_owner": cov.dominant_owner,
+                }))
+            })
+            .collect();
+        serde_json::to_string(&coverage).unwrap_or_default()
+    }
+
+    /// Get all infrastructure from all corporations (for rendering all nodes/edges on the map).
+    pub fn get_all_infrastructure(&self) -> String {
+        let nodes: Vec<serde_json::Value> = self
+            .world
+            .infra_nodes
+            .iter()
+            .filter_map(|(&id, node)| {
+                let pos = self.world.positions.get(&id)?;
+                let health = self.world.healths.get(&id);
+                let cap = self.world.capacities.get(&id);
+                let under_construction = self.world.constructions.contains_key(&id);
+                let owner_name = self.world.corporations.get(&node.owner)
+                    .map(|c| c.name.as_str()).unwrap_or("Unknown");
+                Some(serde_json::json!({
+                    "id": id,
+                    "node_type": format!("{:?}", node.node_type),
+                    "network_level": format!("{:?}", node.network_level),
+                    "max_throughput": node.max_throughput,
+                    "current_load": node.current_load,
+                    "latency_ms": node.latency_ms,
+                    "reliability": node.reliability,
+                    "cell_index": node.cell_index,
+                    "owner": node.owner,
+                    "owner_name": owner_name,
+                    "x": pos.x,
+                    "y": pos.y,
+                    "health": health.map(|h| h.condition).unwrap_or(1.0),
+                    "utilization": cap.map(|c| c.utilization()).unwrap_or(0.0),
+                    "under_construction": under_construction,
+                }))
+            })
+            .collect();
+
+        let edges: Vec<serde_json::Value> = self
+            .world
+            .infra_edges
+            .iter()
+            .map(|(&id, e)| {
+                let src_pos = self.world.positions.get(&e.source);
+                let dst_pos = self.world.positions.get(&e.target);
+                let owner_name = self.world.corporations.get(&e.owner)
+                    .map(|c| c.name.as_str()).unwrap_or("Unknown");
+                let src_cell = self.world.infra_nodes.get(&e.source).map(|n| n.cell_index).unwrap_or(0);
+                let dst_cell = self.world.infra_nodes.get(&e.target).map(|n| n.cell_index).unwrap_or(0);
+                serde_json::json!({
+                    "id": id,
+                    "edge_type": format!("{:?}", e.edge_type),
+                    "source": e.source,
+                    "target": e.target,
+                    "bandwidth": e.bandwidth,
+                    "current_load": e.current_load,
+                    "latency_ms": e.latency_ms,
+                    "length_km": e.length_km,
+                    "utilization": e.utilization(),
+                    "owner": e.owner,
+                    "owner_name": owner_name,
+                    "src_x": src_pos.map(|p| p.x).unwrap_or(0.0),
+                    "src_y": src_pos.map(|p| p.y).unwrap_or(0.0),
+                    "dst_x": dst_pos.map(|p| p.x).unwrap_or(0.0),
+                    "dst_y": dst_pos.map(|p| p.y).unwrap_or(0.0),
+                    "src_cell": src_cell,
+                    "dst_cell": dst_cell,
+                })
+            })
+            .collect();
+
+        let result = serde_json::json!({
+            "nodes": nodes,
+            "edges": edges,
+        });
+        serde_json::to_string(&result).unwrap_or_default()
+    }
+
     pub fn get_grid_cells(&self) -> String {
         let cells: Vec<serde_json::Value> = self
             .world
@@ -696,11 +804,15 @@ impl WasmBridge {
                     .find(|p| p.cell_index == i)
                     .map(|p| format!("{:?}", p.terrain))
                     .unwrap_or_else(|| "Ocean".to_string());
+                let neighbors = self.world.grid_cell_neighbors.get(i)
+                    .cloned()
+                    .unwrap_or_default();
                 serde_json::json!({
                     "index": i,
                     "lat": lat,
                     "lon": lon,
                     "terrain": terrain,
+                    "neighbors": neighbors,
                 })
             })
             .collect();

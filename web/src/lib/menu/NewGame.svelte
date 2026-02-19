@@ -17,7 +17,8 @@
 			difficulty,
 			map_size: mapSize,
 			ai_corporations: aiCount,
-			use_real_earth: false
+			use_real_earth: false,
+			corp_name: corpName || 'Player Corp'
 		});
 	}
 </script>

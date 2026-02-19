@@ -6,29 +6,6 @@
 	let achievements: AchievementsInfo = $state({ unlocked: [], progress: {} });
 	let victory: VictoryInfo = $state({ domination_score: 0, tech_score: 0, wealth_score: 0, infrastructure_score: 0, total_score: 0, victory_type: null });
 
-	const achievementKeys = [
-		'first_node',
-		'first_profit',
-		'growing_network',
-		'network_empire',
-		'millionaire',
-		'billionaire',
-		'global_reach',
-		'corporate_raider',
-		'regional_monopoly',
-		'aaa_rating',
-		'phoenix',
-		'debt_free',
-		'tech_pioneer',
-		'backbone_builder',
-		'ocean_cable',
-		'deal_maker',
-		'spy_master',
-		'political_player',
-		'partnership',
-		'storm_weatherer'
-	];
-
 	const achievementIdMap: Record<string, string> = {
 		'first_node': 'first_node',
 		'first_profit': 'first_profit',
@@ -148,26 +125,26 @@
 </div>
 
 <style>
-	.panel { padding: 16px; color: #e5e7eb; }
-	h2 { font-size: 16px; margin: 0 0 12px; color: #60a5fa; }
-	h3 { font-size: 13px; color: #9ca3af; margin: 12px 0 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+	.panel { padding: 16px; color: var(--text-secondary); }
+	h2 { font-size: 16px; margin: 0 0 12px; color: var(--blue-light); }
+	h3 { font-size: 13px; color: var(--text-muted); margin: 12px 0 8px; text-transform: uppercase; letter-spacing: 0.05em; }
 	section { margin-bottom: 16px; }
-	.victory-banner { background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; font-weight: 700; text-align: center; padding: 12px; border-radius: 6px; font-size: 18px; margin-bottom: 12px; }
+	.victory-banner { background: linear-gradient(135deg, var(--amber), #d97706); color: #000; font-weight: 700; text-align: center; padding: 12px; border-radius: var(--radius-md); font-size: 18px; margin-bottom: 12px; }
 	.score-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-	.score-label { width: 90px; font-size: 12px; color: #9ca3af; }
-	.score-bar { flex: 1; height: 8px; background: #374151; border-radius: 4px; overflow: hidden; }
-	.score-fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
-	.domination { background: #ef4444; }
-	.tech { background: #8b5cf6; }
-	.wealth { background: #f59e0b; }
-	.infra { background: #10b981; }
-	.score-pct { width: 40px; font-size: 12px; font-family: monospace; text-align: right; }
-	.total-score { text-align: center; font-size: 14px; margin-top: 8px; padding: 8px; background: rgba(31, 41, 55, 0.8); border-radius: 4px; }
+	.score-label { width: 90px; font-size: 12px; color: var(--text-muted); }
+	.score-bar { flex: 1; height: 8px; background: var(--bg-hover); border-radius: var(--radius-sm); overflow: hidden; }
+	.score-fill { height: 100%; border-radius: var(--radius-sm); transition: width 0.5s; }
+	.domination { background: var(--red); }
+	.tech { background: var(--purple); }
+	.wealth { background: var(--amber); }
+	.infra { background: var(--green); }
+	.score-pct { width: 40px; font-size: 12px; font-family: var(--font-mono); text-align: right; }
+	.total-score { text-align: center; font-size: 14px; margin-top: 8px; padding: 8px; background: var(--bg-surface); border-radius: var(--radius-sm); }
 	.achievement-grid { display: flex; flex-direction: column; gap: 4px; }
-	.achievement { display: flex; gap: 10px; padding: 8px; background: rgba(31, 41, 55, 0.5); border: 1px solid #374151; border-radius: 4px; opacity: 0.5; }
-	.achievement.unlocked { opacity: 1; border-color: #f59e0b; background: rgba(245, 158, 11, 0.1); }
-	.ach-icon { font-size: 18px; color: #6b7280; }
-	.achievement.unlocked .ach-icon { color: #f59e0b; }
+	.achievement { display: flex; gap: 10px; padding: 8px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-sm); opacity: 0.5; }
+	.achievement.unlocked { opacity: 1; border-color: var(--amber); background: var(--amber-bg); }
+	.ach-icon { font-size: 18px; color: var(--text-dim); }
+	.achievement.unlocked .ach-icon { color: var(--amber); }
 	.ach-name { font-size: 13px; font-weight: 600; }
-	.ach-desc { font-size: 11px; color: #9ca3af; }
+	.ach-desc { font-size: 11px; color: var(--text-muted); }
 </style>
