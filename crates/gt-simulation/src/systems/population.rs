@@ -394,15 +394,15 @@ fn generate_settlement_name(tick: u64, cell_index: usize) -> String {
         "moor", "worth", "thorpe", "bourne", "crest", "peak", "mouth", "ford", "ton", "ville",
     ];
 
-    let mut hash = (tick as usize).wrapping_mul(7919).wrapping_add(cell_index);
+    let mut hash: u64 = tick.wrapping_mul(7919).wrapping_add(cell_index as u64);
     hash = hash
-        .wrapping_mul(6364136223846793005)
-        .wrapping_add(1442695040888963407);
-    let p = prefixes[hash % prefixes.len()];
+        .wrapping_mul(6364136223846793005u64)
+        .wrapping_add(1442695040888963407u64);
+    let p = prefixes[(hash % prefixes.len() as u64) as usize];
     hash = hash
-        .wrapping_mul(6364136223846793005)
-        .wrapping_add(1442695040888963407);
-    let r = roots[hash % roots.len()];
+        .wrapping_mul(6364136223846793005u64)
+        .wrapping_add(1442695040888963407u64);
+    let r = roots[(hash % roots.len() as u64) as usize];
 
     let mut chars = r.chars();
     let capitalized = match chars.next() {
