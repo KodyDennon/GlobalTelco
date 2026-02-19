@@ -1,6 +1,6 @@
 {
-  "installCommand": "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --target wasm32-unknown-unknown && curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh && bun install",
-  "buildCommand": "export PATH=\"$HOME/.cargo/bin:$PATH\" && cd .. && wasm-pack build crates/gt-wasm --target web --out-dir ../../web/src/lib/wasm/pkg && cd web && bun run build",
+  "installCommand": "export RUSTUP_HOME=/rust CARGO_HOME=/rust && rustup target add wasm32-unknown-unknown && curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh && bun install",
+  "buildCommand": "export PATH=\"/rust/bin:$PATH\" && cd .. && wasm-pack build crates/gt-wasm --target web --out-dir ../../web/src/lib/wasm/pkg && cd web && bun run build",
   "headers": [
     {
       "source": "/(.*)\\.wasm",
