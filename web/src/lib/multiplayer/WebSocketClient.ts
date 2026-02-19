@@ -8,12 +8,17 @@ import {
 	corpId,
 	accessToken,
 	refreshToken,
-	serverUrl,
+	authError,
+	isAuthenticated,
+	serverInfo,
 	addChatMessage,
 	updatePlayerStatus,
-	proxySummary
+	proxySummary,
+	type MultiplayerWorldInfo,
+	type ServerInfo
 } from '$lib/stores/multiplayerState';
 import { worldInfo, notifications } from '$lib/stores/gameState';
+import { API_URL, WS_URL } from '$lib/config';
 
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -22,11 +27,10 @@ const MAX_RECONNECT_ATTEMPTS = 10;
 
 type ServerMessage = Record<string, unknown>;
 
-export function connect(url?: string) {
-	const wsUrl = url || get(serverUrl);
+export function connect() {
 	connectionState.set('connecting');
 	reconnectAttempts = 0;
-	createSocket(wsUrl);
+	createSocket(WS_URL);
 }
 
 export function disconnect() {
@@ -94,13 +98,20 @@ function handleServerMessage(msg: ServerMessage) {
 			playerUsername.set(success.username as string);
 			accessToken.set(success.access_token as string);
 			refreshToken.set(success.refresh_token as string);
+			isAuthenticated.set(true);
+			authError.set('');
 		} else if ('GuestSuccess' in auth) {
 			const guest = auth.GuestSuccess as Record<string, unknown>;
 			playerId.set(guest.player_id as string);
 			playerUsername.set(guest.username as string);
+			isAuthenticated.set(true);
+			authError.set('');
 		} else if ('Failed' in auth) {
 			const failed = auth.Failed as Record<string, unknown>;
-			console.error('Authentication failed:', failed.reason);
+			const reason = (failed.reason as string) || 'Authentication failed';
+			console.error('Authentication failed:', reason);
+			authError.set(reason);
+			isAuthenticated.set(false);
 			playerId.set(null);
 			playerUsername.set(null);
 			accessToken.set(null);
@@ -210,4 +221,36 @@ export function requestSaves() {
 export function ping() {
 	const timestamp = Date.now();
 	sendMessage({ Ping: { timestamp } });
+}
+
+export async function fetchServerInfo(): Promise<ServerInfo | null> {
+	try {
+		const res = await fetch(`${API_URL}/api/info`);
+		if (res.ok) {
+			const info: ServerInfo = await res.json();
+			serverInfo.set(info);
+			return info;
+		}
+	} catch {
+		// Server offline
+	}
+	serverInfo.set(null);
+	return null;
+}
+
+export async function fetchWorlds(): Promise<MultiplayerWorldInfo[]> {
+	try {
+		const token = get(accessToken);
+		const headers: Record<string, string> = {};
+		if (token) {
+			headers['Authorization'] = `Bearer ${token}`;
+		}
+		const res = await fetch(`${API_URL}/api/worlds`, { headers });
+		if (res.ok) {
+			return await res.json();
+		}
+	} catch {
+		// Server offline
+	}
+	return [];
 }

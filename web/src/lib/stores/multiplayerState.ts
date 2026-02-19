@@ -59,7 +59,16 @@ if (typeof localStorage !== 'undefined') {
 		else localStorage.removeItem('gt_player_id');
 	});
 }
-export const serverUrl = writable<string>('ws://localhost:3001/ws');
+export const authError = writable<string>('');
+export const isAuthenticated = writable<boolean>(false);
+
+export interface ServerInfo {
+	version: string;
+	active_worlds: number;
+	connected_players: number;
+}
+
+export const serverInfo = writable<ServerInfo | null>(null);
 export const proxySummary = writable<{ ticks_elapsed: number; actions: { tick: number; description: string }[] } | null>(null);
 
 export const isMultiplayer = derived(connectionState, ($state) => $state !== 'disconnected');
@@ -96,5 +105,8 @@ export function resetMultiplayerState() {
 	playerList.set([]);
 	accessToken.set(null);
 	refreshToken.set(null);
+	authError.set('');
+	isAuthenticated.set(false);
+	serverInfo.set(null);
 	proxySummary.set(null);
 }
