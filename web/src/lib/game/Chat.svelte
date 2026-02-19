@@ -30,10 +30,10 @@
 </script>
 
 <div class="chat-overlay" class:collapsed>
-	<div class="chat-header" onclick={() => (collapsed = !collapsed)}>
+	<button class="chat-header" type="button" onclick={() => (collapsed = !collapsed)}>
 		<span>{$tr('game.chat')}</span>
 		<span class="toggle">{collapsed ? '+' : '-'}</span>
-	</div>
+	</button>
 
 	{#if !collapsed}
 		<div class="chat-messages" bind:this={chatContainer} role="log" aria-live="polite">
@@ -83,12 +83,16 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
+		width: 100%;
 		padding: 8px 12px;
+		background: transparent;
+		border: none;
 		color: #d1d5db;
 		font-size: 13px;
 		font-weight: 600;
 		cursor: pointer;
 		border-bottom: 1px solid rgba(55, 65, 81, 0.3);
+		font-family: inherit;
 	}
 
 	.toggle {

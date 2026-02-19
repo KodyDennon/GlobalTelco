@@ -96,8 +96,9 @@
 	{#if !isAuthenticated}
 		<div class="auth-section">
 			<div class="form-group">
-				<label>Server Address</label>
+				<label for="server-address">Server Address</label>
 				<input
+					id="server-address"
 					type="text"
 					bind:value={serverAddress}
 					placeholder="ws://localhost:3001/ws"
@@ -121,16 +122,18 @@
 
 			{#if authMode !== "guest"}
 				<div class="form-group">
-					<label>Username</label>
+					<label for="login-username">Username</label>
 					<input
+						id="login-username"
 						type="text"
 						bind:value={loginUsername}
 						placeholder="Username"
 					/>
 				</div>
 				<div class="form-group">
-					<label>Password</label>
+					<label for="login-password">Password</label>
 					<input
+						id="login-password"
 						type="password"
 						bind:value={loginPassword}
 						placeholder="Password"

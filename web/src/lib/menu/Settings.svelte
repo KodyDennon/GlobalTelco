@@ -66,7 +66,7 @@
 
 		<h3>{$tr('settings.tutorial_section')}</h3>
 		<div class="setting">
-			<label>{$tr('settings.tutorial')}</label>
+			<span>{$tr('settings.tutorial')}</span>
 			<button class="btn-small" onclick={resetTutorial}>{$tr('settings.reset_tutorial')}</button>
 		</div>
 
