@@ -1,5 +1,5 @@
 {
-  "installCommand": "export RUSTUP_HOME=/rust CARGO_HOME=/rust && rustup target add wasm32-unknown-unknown && curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh && bun install",
+  "installCommand": "export RUSTUP_HOME=/rust CARGO_HOME=/rust && rustup target add wasm32-unknown-unknown && curl -L https://github.com/rustwasm/wasm-pack/releases/download/v0.14.0/wasm-pack-v0.14.0-x86_64-unknown-linux-musl.tar.gz -o /tmp/wasm-pack.tar.gz && tar xzf /tmp/wasm-pack.tar.gz -C /tmp && cp /tmp/wasm-pack-v0.14.0-x86_64-unknown-linux-musl/wasm-pack /rust/bin/wasm-pack && chmod +x /rust/bin/wasm-pack || curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh && bun install",
   "buildCommand": "export PATH=\"/rust/bin:$PATH\" && cd .. && wasm-pack build crates/gt-wasm --target web --out-dir ../../web/src/lib/wasm/pkg && cd web && bun run build",
   "headers": [
     {
