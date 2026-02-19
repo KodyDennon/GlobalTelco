@@ -1,33 +1,29 @@
-app = "globaltelco"
-primary_region = "sjc"
+app = 'globaltelco'
+primary_region = 'iad'
 
 [build]
-  dockerfile = "Dockerfile"
 
 [env]
-  GT_HOST = "0.0.0.0"
-  GT_PORT = "3001"
-  RUST_LOG = "gt_server=info,tower_http=info"
+  GT_HOST = '0.0.0.0'
+  GT_PORT = '3001'
+  RUST_LOG = 'gt_server=info,tower_http=info'
 
 [http_service]
   internal_port = 3001
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
-
-  [http_service.concurrency]
-    type = "connections"
-    hard_limit = 250
-    soft_limit = 200
+  processes = ['app']
 
 [[http_service.checks]]
-  grace_period = "10s"
-  interval = "30s"
-  method = "GET"
-  path = "/health"
-  timeout = "5s"
+  grace_period = '10s'
+  interval = '30s'
+  method = 'GET'
+  path = '/health'
+  timeout = '5s'
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1

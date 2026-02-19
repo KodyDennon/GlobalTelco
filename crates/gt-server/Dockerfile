@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/li
 
 WORKDIR /build
 
-# Copy workspace structure
+# Copy manifests first for Docker layer caching
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
 
@@ -20,7 +20,6 @@ RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/
 
 COPY --from=builder /build/target/release/gt-server /usr/local/bin/gt-server
 
-# Server configuration via environment variables
 ENV GT_HOST=0.0.0.0
 ENV GT_PORT=3001
 ENV RUST_LOG=gt_server=info,tower_http=info
