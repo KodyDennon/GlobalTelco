@@ -29,10 +29,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // World management
         .route("/api/worlds", get(list_worlds))
         .route("/api/worlds", post(create_world))
-        .route("/api/worlds/:world_id", get(get_world))
+        .route("/api/worlds/{world_id}", get(get_world))
         // Cloud saves
         .route("/api/saves", get(list_saves).post(upload_save))
-        .route("/api/saves/:slot", get(download_save).delete(delete_save))
+        .route("/api/saves/{slot}", get(download_save).delete(delete_save))
         // WebSocket endpoint
         .route("/ws", get(ws_upgrade))
         // Server info
