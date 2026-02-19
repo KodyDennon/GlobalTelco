@@ -9,6 +9,7 @@ WORKDIR /build
 # Copy manifests first for Docker layer caching
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
+COPY data/ data/
 
 # Build the server binary with postgres support
 RUN cargo build --release --bin gt-server --features postgres
