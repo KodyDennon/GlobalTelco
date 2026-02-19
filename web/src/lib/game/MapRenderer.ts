@@ -240,17 +240,46 @@ export class MapRenderer {
 			cellToParcel.set(p.cell_index, p.id);
 		}
 
-		for (const cell of cells) {
+		// Pre-compute per-cell radius from average neighbor distance so every cell
+		// properly covers its Voronoi area.  Cells near the poles are closer in
+		// longitude degrees, so they need smaller discs; cells at the equator are
+		// farther apart and need larger discs.
+		const cellById = new Map<number, GridCell>();
+		for (const c of cells) cellById.set(c.index, c);
+
+		const cellRadius = new Float64Array(cells.length);
+		for (let i = 0; i < cells.length; i++) {
+			const c = cells[i];
+			const cosLat = Math.max(0.3, Math.cos((c.lat * Math.PI) / 180));
+			let totalDist = 0;
+			let count = 0;
+			for (const ni of c.neighbors) {
+				const nb = cellById.get(ni);
+				if (!nb) continue;
+				// Distance in projected lon/lat degrees (stretch lon by 1/cosLat)
+				const dlon = (c.lon - nb.lon) / cosLat;
+				const dlat = c.lat - nb.lat;
+				totalDist += Math.sqrt(dlon * dlon + dlat * dlat);
+				count++;
+			}
+			// Radius = ~60% of avg neighbor distance → slight overlap, no gaps
+			cellRadius[i] = count > 0 ? (totalDist / count) * 0.6 : this.baseCellSize;
+		}
+
+		// Shared smooth-disc geometry (24 segments — looks round, not hexagonal)
+		const unitDisc = new THREE.CircleGeometry(1, 24);
+
+		for (let i = 0; i < cells.length; i++) {
+			const cell = cells[i];
 			const color = TERRAIN_COLORS[cell.terrain] || TERRAIN_COLORS.Ocean;
-			const geo = new THREE.CircleGeometry(this.baseCellSize, 6);
 			const mat = new THREE.MeshBasicMaterial({ color });
-			const mesh = new THREE.Mesh(geo, mat);
+			const mesh = new THREE.Mesh(unitDisc, mat);
 			mesh.position.set(cell.lon, cell.lat, 0);
 
-			// Latitude correction: stretch horizontally to compensate for longitude convergence at poles
 			const latRad = (cell.lat * Math.PI) / 180;
 			const cosLat = Math.max(0.3, Math.cos(latRad));
-			mesh.scale.x = 1 / cosLat;
+			const r = cellRadius[i];
+			mesh.scale.set(r / cosLat, r, 1);
 
 			const parcelId = cellToParcel.get(cell.index);
 			if (parcelId !== undefined) {
@@ -1011,22 +1040,22 @@ export class MapRenderer {
 			Frozen: 0xe3f2fd
 		};
 
+		const overlayDisc = new THREE.CircleGeometry(1, 24);
 		for (const cell of this.cachedCells) {
 			const color = terrainOverlayColors[cell.terrain];
 			if (!color) continue;
-			const geo = new THREE.CircleGeometry(this.baseCellSize, 6);
 			const mat = new THREE.MeshBasicMaterial({
 				color,
 				opacity: 0.35,
 				transparent: true
 			});
-			const mesh = new THREE.Mesh(geo, mat);
+			const mesh = new THREE.Mesh(overlayDisc, mat);
 			mesh.position.set(cell.lon, cell.lat, 0.2);
 
-			// Apply same latitude correction as buildLand
 			const latRad = (cell.lat * Math.PI) / 180;
 			const cosLat = Math.max(0.3, Math.cos(latRad));
-			mesh.scale.x = 1 / cosLat;
+			const r = this.baseCellSize;
+			mesh.scale.set(r / cosLat, r, 1);
 
 			this.overlayGroup.add(mesh);
 		}
@@ -1111,19 +1140,19 @@ export class MapRenderer {
 				color = 0x10b981;
 			}
 
-			const geo = new THREE.CircleGeometry(this.baseCellSize * 0.9, 6);
+			const covDisc = new THREE.CircleGeometry(1, 24);
 			const mat = new THREE.MeshBasicMaterial({
 				color,
 				opacity: 0.08 + intensity * 0.22,
 				transparent: true
 			});
-			const mesh = new THREE.Mesh(geo, mat);
+			const mesh = new THREE.Mesh(covDisc, mat);
 			mesh.position.set(cov.lon, cov.lat, 0.2);
 
-			// Apply latitude correction
 			const latRad = (cov.lat * Math.PI) / 180;
 			const cosLat = Math.max(0.3, Math.cos(latRad));
-			mesh.scale.x = 1 / cosLat;
+			const r = this.baseCellSize * 0.9;
+			mesh.scale.set(r / cosLat, r, 1);
 
 			this.overlayGroup.add(mesh);
 		}
