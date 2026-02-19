@@ -1185,24 +1185,20 @@ impl GameWorld {
         }
 
         // Enforce terrain constraints: check source/target terrain
+        // Build cell_index → terrain lookup (O(N) instead of O(N²) scanning)
+        let cell_terrain: std::collections::HashMap<usize, TerrainType> = self
+            .land_parcels
+            .values()
+            .map(|p| (p.cell_index, p.terrain))
+            .collect();
         let from_terrain = self
             .infra_nodes
             .get(&from_node)
-            .and_then(|n| {
-                self.land_parcels
-                    .values()
-                    .find(|p| p.cell_index == n.cell_index)
-            })
-            .map(|p| p.terrain);
+            .and_then(|n| cell_terrain.get(&n.cell_index).copied());
         let to_terrain = self
             .infra_nodes
             .get(&to_node)
-            .and_then(|n| {
-                self.land_parcels
-                    .values()
-                    .find(|p| p.cell_index == n.cell_index)
-            })
-            .map(|p| p.terrain);
+            .and_then(|n| cell_terrain.get(&n.cell_index).copied());
 
         match edge_type {
             EdgeType::Submarine => {

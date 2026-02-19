@@ -450,14 +450,17 @@ impl WasmBridge {
         let fin = self.world.financials.get(&player_id);
         let cash = fin.map(|f| f.cash).unwrap_or(0);
 
+        // Must match NodeType enum variants exactly — costs from InfraNode::new()
+        // (label, node_type, network_level, base_cost, build_ticks)
         let node_types = [
-            ("CellTower", "CellTower", "Local", 500_000i64, 50),
-            ("SmallCell", "SmallCell", "Local", 100_000, 20),
-            ("FiberNode", "FiberNode", "Regional", 2_000_000, 100),
-            ("DataCenter", "DataCenter", "National", 10_000_000, 200),
-            ("ExchangePoint", "ExchangePoint", "National", 5_000_000, 150),
-            ("SatelliteGround", "SatelliteGround", "Continental", 20_000_000, 300),
-            ("SubmarineLanding", "SubmarineLanding", "Global", 50_000_000, 500),
+            ("Cell Tower", "CellTower", "Local", 200_000i64, 10),
+            ("Wireless Relay", "WirelessRelay", "Local", 100_000, 10),
+            ("Central Office", "CentralOffice", "Local", 500_000, 20),
+            ("Exchange Point", "ExchangePoint", "Regional", 2_000_000, 30),
+            ("Backbone Router", "BackboneRouter", "National", 3_000_000, 50),
+            ("Data Center", "DataCenter", "National", 10_000_000, 50),
+            ("Satellite Ground", "SatelliteGround", "Continental", 5_000_000, 40),
+            ("Submarine Landing", "SubmarineLanding", "Global", 20_000_000, 60),
         ];
 
         let terrain_mult = parcel.map(|p| p.cost_modifier).unwrap_or(1.0);
@@ -896,18 +899,23 @@ impl WasmBridge {
     }
 
     pub fn get_grid_cells(&self) -> String {
+        // Build cell_index → terrain lookup once (O(parcels)) instead of scanning
+        // all parcels for every cell (which was O(cells × parcels)).
+        let mut cell_terrain: std::collections::HashMap<usize, String> =
+            std::collections::HashMap::new();
+        for parcel in self.world.land_parcels.values() {
+            cell_terrain.insert(parcel.cell_index, format!("{:?}", parcel.terrain));
+        }
+
         let cells: Vec<serde_json::Value> = self
             .world
             .grid_cell_positions
             .iter()
             .enumerate()
             .map(|(i, &(lat, lon))| {
-                let terrain = self
-                    .world
-                    .land_parcels
-                    .values()
-                    .find(|p| p.cell_index == i)
-                    .map(|p| format!("{:?}", p.terrain))
+                let terrain = cell_terrain
+                    .get(&i)
+                    .cloned()
                     .unwrap_or_else(|| "Ocean".to_string());
                 let neighbors = self.world.grid_cell_neighbors.get(i)
                     .cloned()
