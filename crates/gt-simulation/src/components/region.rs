@@ -14,4 +14,7 @@ pub struct RegionComponent {
     pub tax_rate: f64,
     pub disaster_risk: f64,
     pub city_ids: Vec<EntityId>,
+    /// Boundary polygon as ordered (lat, lon) pairs for rendering.
+    #[serde(default)]
+    pub boundary_polygon: Vec<(f64, f64)>,
 }

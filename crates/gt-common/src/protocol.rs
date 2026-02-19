@@ -229,9 +229,12 @@ pub struct WorldInfo {
 
 // ── Serialization Helpers ──────────────────────────────────────────────────
 
-/// Serialize a message to MessagePack bytes
+/// Serialize a message to MessagePack bytes.
+/// Uses `to_vec_named` so struct fields are serialized as maps with field names,
+/// not positional arrays. This is required because JS clients access fields by
+/// name (e.g., `msg.WorldJoined.world_id`), not by index.
 pub fn serialize_msgpack<T: Serialize>(msg: &T) -> Result<Vec<u8>, rmp_serde::encode::Error> {
-    rmp_serde::to_vec(msg)
+    rmp_serde::to_vec_named(msg)
 }
 
 /// Deserialize from MessagePack bytes

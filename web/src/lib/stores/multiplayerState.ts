@@ -1,3 +1,4 @@
+import { browser } from '$app/environment';
 import { writable, derived, get } from 'svelte/store';
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
@@ -25,10 +26,10 @@ export interface MultiplayerWorldInfo {
 	map_size: string;
 }
 
-const initialAccessToken = typeof localStorage !== 'undefined' ? localStorage.getItem('gt_access_token') : null;
-const initialRefreshToken = typeof localStorage !== 'undefined' ? localStorage.getItem('gt_refresh_token') : null;
-const initialPlayerUsername = typeof localStorage !== 'undefined' ? localStorage.getItem('gt_player_username') : null;
-const initialPlayerId = typeof localStorage !== 'undefined' ? localStorage.getItem('gt_player_id') : null;
+const initialAccessToken = browser ? localStorage.getItem('gt_access_token') : null;
+const initialRefreshToken = browser ? localStorage.getItem('gt_refresh_token') : null;
+const initialPlayerUsername = browser ? localStorage.getItem('gt_player_username') : null;
+const initialPlayerId = browser ? localStorage.getItem('gt_player_id') : null;
 
 export const connectionState = writable<ConnectionState>('disconnected');
 export const worldId = writable<string | null>(null);
@@ -41,7 +42,7 @@ export const accessToken = writable<string | null>(initialAccessToken);
 export const refreshToken = writable<string | null>(initialRefreshToken);
 
 // Persist tokens and user info to localStorage
-if (typeof localStorage !== 'undefined') {
+if (browser) {
 	accessToken.subscribe((value) => {
 		if (value) localStorage.setItem('gt_access_token', value);
 		else localStorage.removeItem('gt_access_token');

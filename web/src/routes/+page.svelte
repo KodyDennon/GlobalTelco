@@ -33,10 +33,17 @@
 	}
 
 	async function handleMultiplayerJoin(_worldId: string) {
-		await initGame();
-		setSpeed(0); // Server drives ticks in multiplayer — don't tick locally
-		start();
-		goto('/game');
+		try {
+			console.log('[MP] Joining world, initializing game...', _worldId);
+			await initGame();
+			console.log('[MP] Game initialized, starting loop (paused)...');
+			setSpeed(0); // Server drives ticks in multiplayer — don't tick locally
+			start();
+			console.log('[MP] Navigating to /game');
+			goto('/game');
+		} catch (e) {
+			console.error('[MP] Failed to join multiplayer game:', e);
+		}
 	}
 </script>
 

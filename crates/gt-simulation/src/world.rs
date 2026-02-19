@@ -218,6 +218,7 @@ impl GameWorld {
                     tax_rate: 0.2,
                     disaster_risk: 0.1,
                     city_ids: Vec::new(),
+                    boundary_polygon: region.boundary_polygon.clone(),
                 },
             );
             self.positions.insert(

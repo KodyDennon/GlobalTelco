@@ -119,6 +119,7 @@ function handleServerMessage(msg: ServerMessage) {
 		}
 	} else if ('WorldJoined' in msg) {
 		const joined = msg.WorldJoined as Record<string, unknown>;
+		console.log('[WS] WorldJoined received:', joined);
 		worldId.set(joined.world_id as string);
 		corpId.set(joined.corp_id as number);
 	} else if ('TickUpdate' in msg) {

@@ -115,6 +115,10 @@ impl WasmBridge {
             .regions
             .iter()
             .map(|(&id, r)| {
+                let boundary: Vec<serde_json::Value> = r.boundary_polygon
+                    .iter()
+                    .map(|&(lat, lon)| serde_json::json!([lat, lon]))
+                    .collect();
                 serde_json::json!({
                     "id": id,
                     "name": r.name,
@@ -128,10 +132,15 @@ impl WasmBridge {
                     "disaster_risk": r.disaster_risk,
                     "cell_count": r.cells.len(),
                     "city_ids": r.city_ids,
+                    "boundary_polygon": boundary,
                 })
             })
             .collect();
         serde_json::to_string(&regions).unwrap_or_default()
+    }
+
+    pub fn is_real_earth(&self) -> bool {
+        self.world.config().use_real_earth
     }
 
     pub fn get_cities(&self) -> String {

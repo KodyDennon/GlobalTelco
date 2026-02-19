@@ -16,7 +16,26 @@ const TERRAIN_COLORS: Record<string, number> = {
 	OceanDeep: 0x1a3a6a,
 	Tundra: 0x9aabb8,
 	Frozen: 0xc8d8e8,
-	Ocean: 0x0a1a3a
+	Ocean: 0x06101f // Deep ocean color
+};
+
+const POLITICAL_COLORS = [
+	0xe6194b, 0x3cb44b, 0xffe119, 0x4363d8, 0xf58231,
+	0x911eb4, 0x46f0f0, 0xf032e6, 0xbcf60c, 0xfabebe,
+	0x008080, 0xe6beff, 0x9a6324
+];
+
+const TERRAIN_TINT: Record<string, { color: number; opacity: number }> = {
+	Urban: { color: 0x4a4a5a, opacity: 0.15 },
+	Suburban: { color: 0x6b7b6b, opacity: 0.15 },
+	Rural: { color: 0x5a8a4a, opacity: 0.15 },
+	Mountainous: { color: 0x8a7a6a, opacity: 0.25 },
+	Desert: { color: 0xc4a86a, opacity: 0.2 },
+	Coastal: { color: 0x6a9aaa, opacity: 0.15 },
+	OceanShallow: { color: 0x2a5a8a, opacity: 0.15 },
+	OceanDeep: { color: 0x1a3a6a, opacity: 0.15 },
+	Tundra: { color: 0x9aabb8, opacity: 0.2 },
+	Frozen: { color: 0xc8d8e8, opacity: 0.3 },
 };
 
 const CORP_COLORS = [
@@ -179,6 +198,16 @@ export class MapRenderer {
 		this.setupResize();
 	}
 
+	private latLonToMercator(lat: number, lon: number): { x: number; y: number } {
+		const CLAMP = 85;
+		const clampedLat = Math.max(-CLAMP, Math.min(CLAMP, lat));
+		const latRad = (clampedLat * Math.PI) / 180;
+		return {
+			x: lon,
+			y: (180 / Math.PI) * Math.log(Math.tan(Math.PI / 4 + latRad / 2))
+		};
+	}
+
 	async buildMap() {
 		if (!bridge.isInitialized()) return;
 
@@ -222,64 +251,172 @@ export class MapRenderer {
 
 	private buildOcean() {
 		this.oceanGroup.clear();
-		// Large plane covering the entire coordinate space
-		const geo = new THREE.PlaneGeometry(800, 400);
-		const mat = new THREE.MeshBasicMaterial({ color: 0x0a1a3a });
+		// Large plane covering the entire coordinate space (clamped at 85 lat)
+		// Mercator range: x in [-180, 180], y in [-203, 203] (at 85 deg)
+		const geo = new THREE.PlaneGeometry(1000, 600);
+		const mat = new THREE.MeshBasicMaterial({ color: TERRAIN_COLORS.Ocean });
 		const plane = new THREE.Mesh(geo, mat);
-		plane.position.set(0, 0, -1);
+		plane.position.set(0, 0, -5); // Deepest layer
 		this.oceanGroup.add(plane);
 	}
 
-	private buildLand(cells: GridCell[]) {
+	private async buildLand(cells: GridCell[]) {
 		this.landGroup.clear();
+		const isRealEarth = bridge.isRealEarth();
 
-		// Get parcels to map cell_index → parcel_id
+		if (isRealEarth) {
+			await this.buildRealEarthPolygons();
+		} else {
+			this.buildProcgenPolygons();
+		}
+
+		// Always build invisible parcel hit targets for clicking
+		this.buildParcelHitTargets(cells);
+
+		// Always build terrain tint overlay
+		this.buildTerrainTintOverlay(cells);
+	}
+
+	private async buildRealEarthPolygons() {
+		try {
+			const res = await fetch('/countries-110m.json');
+			const data = await res.json();
+
+			for (const feature of data.features) {
+				const mapColor = feature.properties.MAPCOLOR13 ?? 1;
+				const color = POLITICAL_COLORS[(mapColor - 1) % POLITICAL_COLORS.length] ?? 0x888888;
+				this.renderGeoJsonFeature(feature, color);
+			}
+		} catch (e) {
+			console.error('Failed to load countries-110m.json', e);
+		}
+	}
+
+	private buildProcgenPolygons() {
+		const regions = bridge.getRegions();
+		for (let i = 0; i < regions.length; i++) {
+			const r = regions[i];
+			if (!r.boundary_polygon || r.boundary_polygon.length < 3) continue;
+
+			const color = POLITICAL_COLORS[i % POLITICAL_COLORS.length];
+			// Split region polygons if they cross the anti-meridian
+			const splitPolys = this.splitPolygon(r.boundary_polygon.map(p => [p[1], p[0]]));
+
+			for (const polyPoints of splitPolys) {
+				const shape = new THREE.Shape();
+				const first = this.latLonToMercator(polyPoints[0][1], polyPoints[0][0]);
+				shape.moveTo(first.x, first.y);
+
+				for (let j = 1; j < polyPoints.length; j++) {
+					const pt = this.latLonToMercator(polyPoints[j][1], polyPoints[j][0]);
+					shape.lineTo(pt.x, pt.y);
+				}
+
+				const geo = new THREE.ShapeGeometry(shape);
+				const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+				const mesh = new THREE.Mesh(geo, mat);
+				mesh.position.z = -2;
+				this.landGroup.add(mesh);
+			}
+		}
+	}
+
+	/** Split a polygon (lon, lat) at the anti-meridian (+/- 180) to prevent spiderwebs */
+	private splitPolygon(pts: [number, number][]): [number, number][][] {
+		if (pts.length < 3) return [pts];
+		const result: [number, number][][] = [];
+		let current: [number, number][] = [];
+
+		for (let i = 0; i < pts.length; i++) {
+			const p1 = pts[i];
+			const nextIdx = (i + 1) % pts.length;
+			const p2 = pts[nextIdx];
+
+			current.push(p1);
+
+			// Detect anti-meridian jump (> 180 deg delta)
+			if (Math.abs(p1[0] - p2[0]) > 180) {
+				if (current.length >= 3) result.push(current);
+				current = [];
+			}
+		}
+		if (current.length >= 3) result.push(current);
+
+		// If everything jump-free, returned as single poly
+		if (result.length === 0 && current.length >= 3) return [current];
+		return result;
+	}
+
+	private renderGeoJsonFeature(feature: any, color: number) {
+		const geometries = feature.geometry.type === 'Polygon'
+			? [feature.geometry.coordinates]
+			: feature.geometry.coordinates;
+
+		for (const poly of geometries) {
+			const outerRing = poly[0] as [number, number][];
+			const splitPolys = this.splitPolygon(outerRing);
+
+			for (const polyPoints of splitPolys) {
+				const shape = new THREE.Shape();
+				const first = this.latLonToMercator(polyPoints[0][1], polyPoints[0][0]);
+				shape.moveTo(first.x, first.y);
+
+				for (let i = 1; i < polyPoints.length; i++) {
+					const pt = this.latLonToMercator(polyPoints[i][1], polyPoints[i][0]);
+					shape.lineTo(pt.x, pt.y);
+				}
+
+				// Holes (naive: only add to the largest split part or first one that works)
+				if (polyPoints.length > 5) { // Simple heuristic
+					for (let h = 1; h < poly.length; h++) {
+						const holePath = new THREE.Path();
+						const holeRing = poly[h];
+						const hFirst = this.latLonToMercator(holeRing[0][1], holeRing[0][0]);
+						holePath.moveTo(hFirst.x, hFirst.y);
+						for (let i = 1; i < holeRing.length; i++) {
+							const hPt = this.latLonToMercator(holeRing[i][1], holeRing[i][0]);
+							holePath.lineTo(hPt.x, hPt.y);
+						}
+						shape.holes.push(holePath);
+					}
+				}
+
+				const geo = new THREE.ShapeGeometry(shape);
+				const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+				const mesh = new THREE.Mesh(geo, mat);
+				mesh.position.z = -2;
+				this.landGroup.add(mesh);
+
+				// Add crisp black border for the feature
+				const borderPts: THREE.Vector3[] = [];
+				for (const p of polyPoints) {
+					const pos = this.latLonToMercator(p[1], p[0]);
+					borderPts.push(new THREE.Vector3(pos.x, pos.y, 0.1));
+				}
+				const borderGeo = new THREE.BufferGeometry().setFromPoints(borderPts);
+				const borderMat = new THREE.LineBasicMaterial({ color: 0x000000, opacity: 0.4, transparent: true });
+				this.borderGroup.add(new THREE.Line(borderGeo, borderMat));
+			}
+		}
+	}
+
+	private buildParcelHitTargets(cells: GridCell[]) {
 		const parcels = bridge.getParcelsInView(-180, -90, 180, 90);
 		const cellToParcel = new Map<number, number>();
-		for (const p of parcels) {
-			cellToParcel.set(p.cell_index, p.id);
-		}
+		for (const p of parcels) cellToParcel.set(p.cell_index, p.id);
 
-		// Pre-compute per-cell radius from average neighbor distance so every cell
-		// properly covers its Voronoi area.  Cells near the poles are closer in
-		// longitude degrees, so they need smaller discs; cells at the equator are
-		// farther apart and need larger discs.
-		const cellById = new Map<number, GridCell>();
-		for (const c of cells) cellById.set(c.index, c);
+		// Transparent discs for raycasting hit detection
+		const unitDisc = new THREE.CircleGeometry(1, 8);
+		const invisibleMat = new THREE.MeshBasicMaterial({ visible: false });
 
-		const cellRadius = new Float64Array(cells.length);
-		for (let i = 0; i < cells.length; i++) {
-			const c = cells[i];
-			const cosLat = Math.max(0.3, Math.cos((c.lat * Math.PI) / 180));
-			let totalDist = 0;
-			let count = 0;
-			for (const ni of c.neighbors) {
-				const nb = cellById.get(ni);
-				if (!nb) continue;
-				// Distance in projected lon/lat degrees (stretch lon by 1/cosLat)
-				const dlon = (c.lon - nb.lon) / cosLat;
-				const dlat = c.lat - nb.lat;
-				totalDist += Math.sqrt(dlon * dlon + dlat * dlat);
-				count++;
-			}
-			// Radius = ~60% of avg neighbor distance → slight overlap, no gaps
-			cellRadius[i] = count > 0 ? (totalDist / count) * 0.6 : this.baseCellSize;
-		}
+		for (const cell of cells) {
+			if (Math.abs(cell.lat) > 85) continue;
+			if (cell.terrain === 'OceanDeep' || cell.terrain === 'OceanShallow') continue;
 
-		// Shared smooth-disc geometry (24 segments — looks round, not hexagonal)
-		const unitDisc = new THREE.CircleGeometry(1, 24);
-
-		for (let i = 0; i < cells.length; i++) {
-			const cell = cells[i];
-			const color = TERRAIN_COLORS[cell.terrain] || TERRAIN_COLORS.Ocean;
-			const mat = new THREE.MeshBasicMaterial({ color });
-			const mesh = new THREE.Mesh(unitDisc, mat);
-			mesh.position.set(cell.lon, cell.lat, 0);
-
-			const latRad = (cell.lat * Math.PI) / 180;
-			const cosLat = Math.max(0.3, Math.cos(latRad));
-			const r = cellRadius[i];
-			mesh.scale.set(r / cosLat, r, 1);
+			const mesh = new THREE.Mesh(unitDisc, invisibleMat);
+			const pos = this.latLonToMercator(cell.lat, cell.lon);
+			mesh.position.set(pos.x, pos.y, 1); // Top for raycasting
+			mesh.scale.set(this.baseCellSize, this.baseCellSize, 1);
 
 			const parcelId = cellToParcel.get(cell.index);
 			if (parcelId !== undefined) {
@@ -289,98 +426,66 @@ export class MapRenderer {
 		}
 	}
 
+	private buildTerrainTintOverlay(cells: GridCell[]) {
+		const unitDisc = new THREE.CircleGeometry(1, 12);
+		for (const cell of cells) {
+			if (cell.terrain === 'Ocean' || cell.terrain === 'OceanDeep') continue;
+			if (Math.abs(cell.lat) > 85) continue;
+			const tint = TERRAIN_TINT[cell.terrain];
+			if (!tint) continue;
+
+			const mat = new THREE.MeshBasicMaterial({
+				color: tint.color,
+				transparent: true,
+				opacity: tint.opacity
+			});
+			const mesh = new THREE.Mesh(unitDisc, mat);
+			const pos = this.latLonToMercator(cell.lat, cell.lon);
+			mesh.position.set(pos.x, pos.y, -1.9); // Just above land polygons
+			mesh.rotation.x = 0; // Ensure it's flat
+			mesh.scale.set(this.baseCellSize * 1.05, this.baseCellSize * 1.05, 1);
+			this.landGroup.add(mesh);
+		}
+	}
+
 	private buildRegionBorders(regions: Region[], cities: City[]) {
 		this.borderGroup.clear();
 
 		const lineMat = new THREE.LineBasicMaterial({
-			color: 0x374151,
-			opacity: 0.35,
+			color: 0x000000, // Black crisp borders for political map
+			opacity: 0.3,
 			transparent: true
 		});
 
-		// Build city lookup by ID
-		const cityById = new Map<number, City>();
-		for (const c of cities) cityById.set(c.id, c);
+		const isRealEarth = bridge.isRealEarth();
 
-		for (const region of regions) {
-			// Gather city positions for this region
-			const pts: { x: number; y: number }[] = [];
-			for (const cid of region.city_ids) {
-				const city = cityById.get(cid);
-				if (city) pts.push({ x: city.x, y: city.y });
-			}
+		if (isRealEarth) {
+			// Real earth borders are handled in renderGeoJsonFeature 
+			// BUT we can fetch them again or just draw them during feature rendering.
+			// Actually, let's use a darker shade of the land color for borders?
+			// User said "bright political map with distinct country colors". Black borders look professional.
+		} else {
+			for (const region of regions) {
+				if (!region.boundary_polygon || region.boundary_polygon.length < 3) continue;
 
-			// Also include region center as a point
-			pts.push({ x: region.center_lon, y: region.center_lat });
+				const splitPolys = this.splitPolygon(region.boundary_polygon.map(p => [p[1], p[0]]));
+				for (const polyPoints of splitPolys) {
+					const pts: THREE.Vector3[] = [];
+					for (const [lon, lat] of polyPoints) {
+						const pos = this.latLonToMercator(lat, lon);
+						pts.push(new THREE.Vector3(pos.x, pos.y, 0.1));
+					}
+					// Only close the loop if it's the full original polygon (no splits)
+					if (splitPolys.length === 1 && region.boundary_polygon.length > 0) {
+						const first = this.latLonToMercator(region.boundary_polygon[0][0], region.boundary_polygon[0][1]);
+						pts.push(new THREE.Vector3(first.x, first.y, 0.1));
+					}
 
-			if (pts.length < 3) {
-				// Fallback: small circle for tiny regions
-				const radius = Math.max(2, Math.sqrt(region.cell_count) * 0.4);
-				const segments = 24;
-				const circPts: THREE.Vector3[] = [];
-				for (let i = 0; i <= segments; i++) {
-					const theta = (i / segments) * Math.PI * 2;
-					circPts.push(new THREE.Vector3(
-						region.center_lon + Math.cos(theta) * radius,
-						region.center_lat + Math.sin(theta) * radius,
-						0.5
-					));
+					const geo = new THREE.BufferGeometry().setFromPoints(pts);
+					this.borderGroup.add(new THREE.Line(geo, lineMat));
 				}
-				const geo = new THREE.BufferGeometry().setFromPoints(circPts);
-				this.borderGroup.add(new THREE.Line(geo, lineMat));
-				continue;
 			}
-
-			// Graham scan convex hull
-			const hull = this.convexHull(pts);
-
-			// Expand hull outward by padding
-			const padding = 1.5;
-			const cx = hull.reduce((s, p) => s + p.x, 0) / hull.length;
-			const cy = hull.reduce((s, p) => s + p.y, 0) / hull.length;
-			const expanded = hull.map(p => {
-				const dx = p.x - cx;
-				const dy = p.y - cy;
-				const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-				return { x: p.x + (dx / dist) * padding, y: p.y + (dy / dist) * padding };
-			});
-
-			// Close the polyline
-			const hullPts = [...expanded, expanded[0]].map(
-				p => new THREE.Vector3(p.x, p.y, 0.5)
-			);
-			const geo = new THREE.BufferGeometry().setFromPoints(hullPts);
-			this.borderGroup.add(new THREE.Line(geo, lineMat));
 		}
-	}
-
-	/** Graham scan convex hull. Returns points in CCW order. */
-	private convexHull(pts: { x: number; y: number }[]): { x: number; y: number }[] {
-		const sorted = [...pts].sort((a, b) => a.x - b.x || a.y - b.y);
-		if (sorted.length <= 2) return sorted;
-
-		const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) =>
-			(a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-
-		const lower: { x: number; y: number }[] = [];
-		for (const p of sorted) {
-			while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0)
-				lower.pop();
-			lower.push(p);
-		}
-
-		const upper: { x: number; y: number }[] = [];
-		for (let i = sorted.length - 1; i >= 0; i--) {
-			const p = sorted[i];
-			while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0)
-				upper.pop();
-			upper.push(p);
-		}
-
-		// Remove last point of each half because it's repeated
-		lower.pop();
-		upper.pop();
-		return lower.concat(upper);
 	}
 
 	/** Get city tier icon name based on population */
@@ -411,110 +516,68 @@ export class MapRenderer {
 		const cs = this.baseCellSize;
 
 		for (const city of citiesData) {
+			if (Math.abs(city.y) > 85) continue;
+			const pos = this.latLonToMercator(city.y, city.x);
 			const pop = Math.max(city.population, 1);
 			const sat = city.infrastructure_satisfaction ?? 0;
 			const cellPositions = city.cell_positions ?? [];
 
-			// Track city cells
 			for (const cp of cellPositions) {
 				this.cityCellSet.add(cp.index);
 			}
 
-			const popScale = Math.log10(Math.max(pop, 100)) / 7; // ~0.28 to ~1.0
+			const popScale = Math.log10(Math.max(pop, 100)) / 7;
 
-			// ── Scattered population dots (satellite night-earth style) ──
-			// Number of dots scales with population: small town = ~8, metropolis = ~200
-			const dotCount = Math.min(300, Math.max(8, Math.floor(Math.sqrt(pop) * 0.15)));
+			// Scattered subtle lights
+			const dotCount = Math.min(100, Math.max(4, Math.floor(Math.sqrt(pop) * 0.1)));
 			const rand = this.dotRng(city.id * 7919 + 31);
-
-			// Dot size: tiny bright points
 			const dotRadius = cs * 0.012;
 			const dotGeo = new THREE.CircleGeometry(dotRadius, 6);
 
-			if (cellPositions.length > 0) {
-				// Spread dots across city cells, weighted toward center
-				for (let d = 0; d < dotCount; d++) {
-					// Pick a cell — bias toward center (lower indices = closer to center)
-					const bias = rand() * rand(); // Squared bias → more dots near center
-					const cellIdx = Math.min(cellPositions.length - 1, Math.floor(bias * cellPositions.length));
-					const cp = cellPositions[cellIdx];
+			const cellsToUse = cellPositions.length > 0 ? cellPositions : [{ lat: city.y, lon: city.x }];
 
-					// Scatter within cell
-					const angle = rand() * Math.PI * 2;
-					const dist = rand() * cs * 0.4;
-					const latRad = (cp.lat * Math.PI) / 180;
-					const cosLat = Math.max(0.3, Math.cos(latRad));
-					const dx = Math.cos(angle) * dist / cosLat;
-					const dy = Math.sin(angle) * dist;
+			for (let d = 0; d < dotCount; d++) {
+				const cp = cellsToUse[Math.floor(rand() * cellsToUse.length)];
+				const angle = rand() * Math.PI * 2;
+				const dist = rand() * cs * 0.4;
+				const mPos = this.latLonToMercator(cp.lat, cp.lon);
 
-					// Brightness varies: core dots brighter, outer dimmer
-					const brightness = 0.4 + (1 - bias) * 0.6;
-					// Warm city light colors: mix of golden, orange, white
-					const colorChoice = rand();
-					const color = colorChoice < 0.5 ? 0xffe4a8
-						: colorChoice < 0.8 ? 0xffd080
-						: 0xfff0d0;
+				const dx = Math.cos(angle) * dist;
+				const dy = Math.sin(angle) * dist;
 
-					const mat = new THREE.MeshBasicMaterial({
-						color,
-						opacity: brightness * 0.7,
-						transparent: true
-					});
-					const dot = new THREE.Mesh(dotGeo, mat);
-					dot.position.set(cp.lon + dx, cp.lat + dy, 0.8);
-					this.cityGlowGroup.add(dot);
-				}
-			} else {
-				// Fallback: scatter around city center
-				const spread = cs * popScale * 0.8;
-				for (let d = 0; d < dotCount; d++) {
-					const angle = rand() * Math.PI * 2;
-					const r = rand() * rand() * spread; // Squared falloff from center
-					const latRad = (city.y * Math.PI) / 180;
-					const cosLat = Math.max(0.3, Math.cos(latRad));
-					const dx = Math.cos(angle) * r / cosLat;
-					const dy = Math.sin(angle) * r;
-
-					const brightness = 0.4 + (1 - r / spread) * 0.6;
-					const color = rand() < 0.5 ? 0xffe4a8 : 0xffd080;
-					const mat = new THREE.MeshBasicMaterial({
-						color,
-						opacity: brightness * 0.7,
-						transparent: true
-					});
-					const dot = new THREE.Mesh(dotGeo, mat);
-					dot.position.set(city.x + dx, city.y + dy, 0.8);
-					this.cityGlowGroup.add(dot);
-				}
+				const mat = new THREE.MeshBasicMaterial({
+					color: 0xfff0d0,
+					opacity: 0.4,
+					transparent: true
+				});
+				const dot = new THREE.Mesh(dotGeo, mat);
+				dot.position.set(mPos.x + dx, mPos.y + dy, 0.4);
+				this.cityGlowGroup.add(dot);
 			}
 
-			// ── Soft city glow (diffuse light behind dots) ──
-			const glowSize = cs * (0.15 + popScale * 0.35);
+			// Soft diffuse glow
+			const glowSize = cs * (0.2 + popScale * 0.4);
 			const glowGeo = new THREE.CircleGeometry(glowSize, 16);
 			const glowMat = new THREE.MeshBasicMaterial({
 				color: 0xffd080,
-				opacity: 0.04 + popScale * 0.04,
+				opacity: 0.05,
 				transparent: true
 			});
 			const glow = new THREE.Mesh(glowGeo, glowMat);
-			glow.position.set(city.x, city.y, 0.5);
+			glow.position.set(pos.x, pos.y, 0.3);
 			this.cityGlowGroup.add(glow);
 
-			// ── Clickable center marker (invisible but raycastable) ──
-			const hitSize = cs * 0.08;
+			// Clickable center marker
+			const hitSize = cs * 0.15;
 			const hitGeo = new THREE.CircleGeometry(hitSize, 8);
-			const hitMat = new THREE.MeshBasicMaterial({
-				color: 0xffe4a8,
-				opacity: 0.0,
-				transparent: true
-			});
+			const hitMat = new THREE.MeshBasicMaterial({ visible: false });
 			const hitMesh = new THREE.Mesh(hitGeo, hitMat);
-			hitMesh.position.set(city.x, city.y, 1);
+			hitMesh.position.set(pos.x, pos.y, 1);
 			hitMesh.userData = { type: 'city', id: city.id, name: city.name };
 			this.cityGroup.add(hitMesh);
 			this.entityMeshMap.set(city.id, hitMesh);
 
-			// ── Satisfaction indicator (small colored dot at city center) ──
+			// Satisfaction indicator
 			const satColor = sat >= 0.7 ? 0x10b981 : sat >= 0.4 ? 0xf59e0b : 0xef4444;
 			const satDotGeo = new THREE.CircleGeometry(cs * 0.02, 8);
 			const satDotMat = new THREE.MeshBasicMaterial({
@@ -523,23 +586,23 @@ export class MapRenderer {
 				transparent: true
 			});
 			const satDot = new THREE.Mesh(satDotGeo, satDotMat);
-			satDot.position.set(city.x, city.y, 1.5);
+			satDot.position.set(pos.x, pos.y, 1.5);
 			satDot.userData = { labelType: 'cityIndicator', cityId: city.id };
 			this.cityGlowGroup.add(satDot);
 
-			// ── City name label ──
+			// City name label
 			const labelScale = cs * 0.035;
 			const label = this.createTextSprite(city.name, 0xe8e8e8, labelScale);
-			label.position.set(city.x, city.y - cs * 0.08, 5);
+			label.position.set(pos.x, pos.y - cs * 0.08, 5);
 			label.userData = { labelType: 'cityName', minZoom: 1.5 };
 			this.cityGroup.add(label);
 
-			// ── Population label ──
+			// Population label
 			const popStr = pop >= 1_000_000 ? `${(pop / 1_000_000).toFixed(1)}M`
 				: pop >= 1_000 ? `${(pop / 1_000).toFixed(0)}K`
 					: `${pop}`;
 			const popLabel = this.createTextSprite(popStr, 0x888888, labelScale * 0.7);
-			popLabel.position.set(city.x, city.y - cs * 0.14, 5);
+			popLabel.position.set(pos.x, pos.y - cs * 0.14, 5);
 			popLabel.userData = { labelType: 'cityPop', minZoom: 2.5 };
 			this.cityGroup.add(popLabel);
 		}
@@ -600,13 +663,12 @@ export class MapRenderer {
 	private buildLabels(_cities: City[], regions: Region[]) {
 		this.labelGroup.clear();
 
-		// City labels are now rendered in buildCities() with multi-cell fills
-
 		// Region labels — visible at wider zoom
 		const regionLabelSize = this.baseCellSize * 0.08;
 		for (const region of regions) {
+			const pos = this.latLonToMercator(region.center_lat, region.center_lon);
 			const sprite = this.createTextSprite(region.name, 0x6b7280, regionLabelSize);
-			sprite.position.set(region.center_lon, region.center_lat, 5);
+			sprite.position.set(pos.x, pos.y, 5);
 			sprite.userData = { labelType: 'region', minZoom: 0.5, maxZoom: 4.0 };
 			this.labelGroup.add(sprite);
 		}
@@ -669,90 +731,111 @@ export class MapRenderer {
 			const color = CORP_COLORS[i % CORP_COLORS.length];
 			const infra = bridge.getInfrastructureList(corp.id);
 
-			// Draw edges as terrain-aware spline tubes
 			const cellSize = this.baseCellSize;
 			for (const edge of infra.edges) {
 				const style: EdgeStyle = EDGE_STYLES[edge.edge_type] ?? {
 					color, opacity: 0.7, radiusFactor: 0.008, segments: 4
 				};
 
-				// Compute routed waypoints through terrain cells
-				let waypoints: THREE.Vector3[];
+				let waypointsList: THREE.Vector3[][];
 				if (needsTerrainRouting(edge.edge_type) && edge.src_cell !== undefined && edge.dst_cell !== undefined) {
 					const pathPts = this.pathfinder.findPath(edge.src_cell, edge.dst_cell, edge.edge_type);
 					if (pathPts.length >= 2) {
-						waypoints = pathPts.map(([lon, lat]) => new THREE.Vector3(lon, lat, 1.5));
-						waypoints[0].set(edge.src_x, edge.src_y, 1.5);
-						waypoints[waypoints.length - 1].set(edge.dst_x, edge.dst_y, 1.5);
+						// Split path if it crosses the anti-meridian
+						const segments: THREE.Vector3[][] = [[]];
+						for (let i = 0; i < pathPts.length; i++) {
+							const [lon, lat] = pathPts[i];
+							const p = this.latLonToMercator(lat, lon);
+							const currentSeg = segments[segments.length - 1];
+
+							if (currentSeg.length > 0) {
+								const prev = pathPts[i - 1];
+								if (Math.abs(lon - prev[0]) > 180) {
+									segments.push([]);
+								}
+							}
+							segments[segments.length - 1].push(new THREE.Vector3(p.x, p.y, 1.5));
+						}
+						waypointsList = segments.filter(s => s.length >= 2);
+
+						// Re-snap ends to precise node positions
+						if (waypointsList.length > 0) {
+							const srcP = this.latLonToMercator(edge.src_y, edge.src_x);
+							const dstP = this.latLonToMercator(edge.dst_y, edge.dst_x);
+							const firstSeg = waypointsList[0];
+							const lastSeg = waypointsList[waypointsList.length - 1];
+							firstSeg[0].set(srcP.x, srcP.y, 1.5);
+							lastSeg[lastSeg.length - 1].set(dstP.x, dstP.y, 1.5);
+						}
 					} else {
-						waypoints = [
-							new THREE.Vector3(edge.src_x, edge.src_y, 1.5),
-							new THREE.Vector3(edge.dst_x, edge.dst_y, 1.5)
-						];
+						const srcP = this.latLonToMercator(edge.src_y, edge.src_x);
+						const dstP = this.latLonToMercator(edge.dst_y, edge.dst_x);
+						waypointsList = [[
+							new THREE.Vector3(srcP.x, srcP.y, 1.5),
+							new THREE.Vector3(dstP.x, dstP.y, 1.5)
+						]];
 					}
 				} else {
-					waypoints = [
-						new THREE.Vector3(edge.src_x, edge.src_y, 1.5),
-						new THREE.Vector3(edge.dst_x, edge.dst_y, 1.5)
-					];
+					const srcP = this.latLonToMercator(edge.src_y, edge.src_x);
+					const dstP = this.latLonToMercator(edge.dst_y, edge.dst_x);
+					waypointsList = [[
+						new THREE.Vector3(srcP.x, srcP.y, 1.5),
+						new THREE.Vector3(dstP.x, dstP.y, 1.5)
+					]];
 				}
 
-				if (style.dashed) {
-					// Wireless edges: dashed line (no tube — these are radio/satellite links)
-					const geo = new THREE.BufferGeometry().setFromPoints(waypoints);
-					const mat = new THREE.LineDashedMaterial({
-						color: style.color,
-						opacity: style.opacity,
-						transparent: true,
-						dashSize: style.dashSize ?? 1.0,
-						gapSize: style.gapSize ?? 0.5
-					});
-					const line = new THREE.Line(geo, mat);
-					line.computeLineDistances();
-					line.userData = { type: 'edge', id: edge.id, edge_type: edge.edge_type };
-					this.edgeGroup.add(line);
-				} else {
-					// Wired edges: smooth tube following terrain
-					const curve = waypoints.length >= 3
-						? new THREE.CatmullRomCurve3(waypoints, false, 'centripetal', 0.5)
-						: new THREE.LineCurve3(waypoints[0], waypoints[waypoints.length - 1]);
-					const tubeSeg = Math.max(8, waypoints.length * 4);
-					const tubeRadius = style.radiusFactor * cellSize;
-					const tubeGeo = new THREE.TubeGeometry(curve, tubeSeg, tubeRadius, style.segments, false);
-					const mat = new THREE.MeshBasicMaterial({
-						color: style.color,
-						opacity: style.opacity,
-						transparent: true,
-						depthTest: false
-					});
-					const mesh = new THREE.Mesh(tubeGeo, mat);
-					mesh.userData = { type: 'edge', id: edge.id, edge_type: edge.edge_type };
-					this.edgeGroup.add(mesh);
+				for (const waypoints of waypointsList) {
+					if (style.dashed) {
+						const geo = new THREE.BufferGeometry().setFromPoints(waypoints);
+						const mat = new THREE.LineDashedMaterial({
+							color: style.color,
+							opacity: style.opacity,
+							transparent: true,
+							dashSize: style.dashSize ?? 1.0,
+							gapSize: style.gapSize ?? 0.5
+						});
+						const line = new THREE.Line(geo, mat);
+						line.computeLineDistances();
+						line.userData = { type: 'edge', id: edge.id, edge_type: edge.edge_type, corpId: corp.id };
+						this.edgeGroup.add(line);
+					} else {
+						const curve = waypoints.length >= 3
+							? new THREE.CatmullRomCurve3(waypoints, false, 'centripetal', 0.5)
+							: new THREE.LineCurve3(waypoints[0], waypoints[waypoints.length - 1]);
+						const tubeSeg = Math.max(8, waypoints.length * 4);
+						const tubeRadius = style.radiusFactor * cellSize;
+						const tubeGeo = new THREE.TubeGeometry(curve, tubeSeg, tubeRadius, style.segments, false);
+						const mat = new THREE.MeshBasicMaterial({
+							color: style.color,
+							opacity: style.opacity,
+							transparent: true,
+							depthTest: false
+						});
+						const mesh = new THREE.Mesh(tubeGeo, mat);
+						mesh.userData = { type: 'edge', id: edge.id, edge_type: edge.edge_type, corpId: corp.id };
+						this.edgeGroup.add(mesh);
+					}
 				}
 			}
 
-			// Draw nodes with SVG icon sprites (fallback to geometry)
 			const cs = this.baseCellSize;
-			const iconSize = cs * 0.15;  // Small icons proportional to hex cells
+			const iconSize = cs * 0.15;
 			const positions: THREE.Vector3[] = [];
-
-			// Track how many nodes are stacked at same position for offset
 			const positionCounts = new Map<string, number>();
 
 			for (const node of infra.nodes) {
 				const iconName = NODE_TYPE_TO_ICON[node.node_type];
 				const texture = iconName ? this.iconTextures.get(iconName) : undefined;
+				const pos = this.latLonToMercator(node.y, node.x);
 
-				// Offset nodes slightly from exact cell center so they don't cover city dots
-				// Multiple nodes at same position fan out in a circle
-				const posKey = `${node.x.toFixed(2)},${node.y.toFixed(2)}`;
+				const posKey = `${pos.x.toFixed(2)},${pos.y.toFixed(2)}`;
 				const stackIdx = positionCounts.get(posKey) ?? 0;
 				positionCounts.set(posKey, stackIdx + 1);
 
 				const offsetDist = cs * 0.12;
 				const angle = (stackIdx * Math.PI * 2) / 3 + Math.PI / 6;
-				const ox = node.x + Math.cos(angle) * offsetDist * (stackIdx > 0 ? 1 : 0.3);
-				const oy = node.y + Math.sin(angle) * offsetDist * (stackIdx > 0 ? 1 : 0.3);
+				const ox = pos.x + Math.cos(angle) * offsetDist * (stackIdx > 0 ? 1 : 0.3);
+				const oy = pos.y + Math.sin(angle) * offsetDist * (stackIdx > 0 ? 1 : 0.3);
 
 				let obj: THREE.Object3D;
 				if (texture && !node.under_construction) {
@@ -782,7 +865,6 @@ export class MapRenderer {
 				this.entityMeshMap.set(node.id, obj);
 				positions.push(new THREE.Vector3(ox, oy, 0));
 
-				// Company badge — tiny letter near node (only visible when zoomed in)
 				if (!node.under_construction && corp.name) {
 					const badgeSize = cs * 0.025;
 					const badge = this.createTextSprite(corp.name[0], color, badgeSize);

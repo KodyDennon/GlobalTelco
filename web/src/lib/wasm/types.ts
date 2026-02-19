@@ -38,6 +38,7 @@ export interface Region {
 	disaster_risk: number;
 	cell_count: number;
 	city_ids: number[];
+	boundary_polygon: [number, number][];
 }
 
 export interface City {

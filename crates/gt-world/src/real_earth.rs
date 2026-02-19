@@ -139,6 +139,7 @@ pub fn generate_real_earth(grid: &GeodesicGrid, seed: u64) -> GeneratedWorld {
         regions.push(Region {
             id: (country_idx + 1) as u64,
             name: country.name.clone(),
+            boundary_polygon: Vec::new(), // computed below
             cells,
             center_lat: country.lat,
             center_lon: country.lon,
@@ -146,6 +147,24 @@ pub fn generate_real_earth(grid: &GeodesicGrid, seed: u64) -> GeneratedWorld {
             gdp: country.gdp_billions as f64 * 1_000_000_000.0,
             development,
         });
+    }
+
+    // Compute boundary polygons from cell assignments
+    {
+        let land_indices: Vec<usize> = is_land
+            .iter()
+            .enumerate()
+            .filter(|(_, &l)| l)
+            .map(|(i, _)| i)
+            .collect();
+        // Build assignments array: cell_index -> region_index
+        let mut assignments = vec![0usize; grid.cells.len()];
+        for (ri, region) in regions.iter().enumerate() {
+            for &ci in &region.cells {
+                assignments[ci] = ri;
+            }
+        }
+        crate::regions::compute_region_boundaries(&mut regions, grid, &assignments, &land_indices);
     }
 
     // 7. Place cities from real data, snapped to nearest grid cell

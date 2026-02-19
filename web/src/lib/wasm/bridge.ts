@@ -148,6 +148,10 @@ export function getRegions(): Region[] {
 	}
 }
 
+export function isRealEarth(): boolean {
+	return bridge?.is_real_earth() ?? false;
+}
+
 export function getCities(): City[] {
 	try {
 		const json = bridge?.get_cities() ?? '[]';

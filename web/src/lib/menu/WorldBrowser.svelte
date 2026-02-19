@@ -5,6 +5,7 @@
 		authError,
 		isAuthenticated,
 		serverInfo,
+		worldId,
 		type MultiplayerWorldInfo,
 	} from "$lib/stores/multiplayerState";
 	import * as wsClient from "$lib/multiplayer/WebSocketClient";
@@ -39,15 +40,13 @@
 	});
 
 	// Watch for WorldJoined messages to navigate
-	let worldIdStore: typeof import("$lib/stores/multiplayerState").worldId;
-	import("$lib/stores/multiplayerState").then((mod) => {
-		worldIdStore = mod.worldId;
-		worldIdStore.subscribe((id) => {
-			if (id && joiningWorldId) {
-				onJoin(id);
-				joiningWorldId = null;
-			}
-		});
+	$effect(() => {
+		const id = $worldId;
+		if (id && joiningWorldId) {
+			console.log('[WorldBrowser] WorldJoined received, navigating to game. worldId:', id);
+			joiningWorldId = null;
+			onJoin(id);
+		}
 	});
 
 	async function checkServer() {

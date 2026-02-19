@@ -14,6 +14,10 @@ pub struct Region {
     pub gdp: f64,
     pub population: u64,
     pub development: f64,
+    /// Boundary polygon as ordered (lat, lon) pairs for rendering.
+    /// Computed from the outermost cells of the region.
+    #[serde(default)]
+    pub boundary_polygon: Vec<(f64, f64)>,
 }
 
 pub fn cluster_regions(
@@ -99,7 +103,7 @@ pub fn cluster_regions(
         region_cells[assignments[li]].push(li);
     }
 
-    region_cells
+    let mut regions = region_cells
         .into_iter()
         .enumerate()
         .filter(|(_, cells)| !cells.is_empty())
@@ -126,6 +130,7 @@ pub fn cluster_regions(
             Region {
                 id: 0, // Will be assigned during entity creation
                 name: generate_region_name(region_idx as u64 + seed),
+                boundary_polygon: Vec::new(), // computed below
                 cells,
                 center_lat,
                 center_lon,
@@ -134,7 +139,12 @@ pub fn cluster_regions(
                 development,
             }
         })
-        .collect()
+        .collect::<Vec<_>>();
+
+    // Compute boundary polygons for each region
+    compute_region_boundaries(&mut regions, grid, &assignments, &land_indices);
+
+    regions
 }
 
 fn dist_sq_3d(a: (f64, f64, f64), b: (f64, f64, f64)) -> f64 {
@@ -142,6 +152,75 @@ fn dist_sq_3d(a: (f64, f64, f64), b: (f64, f64, f64)) -> f64 {
     let dy = a.1 - b.1;
     let dz = a.2 - b.2;
     dx * dx + dy * dy + dz * dz
+}
+
+/// Compute boundary polygons for regions by finding cells on region edges
+/// and ordering them by angle from the region centroid.
+pub fn compute_region_boundaries(
+    regions: &mut [Region],
+    grid: &GeodesicGrid,
+    _assignments: &[usize],
+    _land_indices: &[usize],
+) {
+    for region in regions.iter_mut() {
+        if region.cells.is_empty() {
+            continue;
+        }
+
+        let region_set: std::collections::HashSet<usize> = region.cells.iter().copied().collect();
+
+        // Find boundary cells: cells that have at least one neighbor
+        // in a different region or in the ocean
+        let mut boundary_points: Vec<(f64, f64)> = Vec::new();
+        for &ci in &region.cells {
+            let cell = &grid.cells[ci];
+            let is_boundary = cell.neighbors.iter().any(|&ni| !region_set.contains(&ni));
+            if is_boundary {
+                boundary_points.push((cell.lat, cell.lon));
+            }
+        }
+
+        if boundary_points.len() < 3 {
+            // Not enough points for a polygon, use all cells
+            region.boundary_polygon = region
+                .cells
+                .iter()
+                .map(|&ci| (grid.cells[ci].lat, grid.cells[ci].lon))
+                .collect();
+            continue;
+        }
+
+        // Sort boundary points by angle from centroid
+        let cx = region.center_lon;
+        let cy = region.center_lat;
+        boundary_points.sort_by(|a, b| {
+            let mut dx = a.1 - cx;
+            if dx > 180.0 {
+                dx -= 360.0;
+            }
+            if dx < -180.0 {
+                dx += 360.0;
+            }
+            let dy = a.0 - cy;
+            let angle_a = dy.atan2(dx);
+
+            let mut dx_b = b.1 - cx;
+            if dx_b > 180.0 {
+                dx_b -= 360.0;
+            }
+            if dx_b < -180.0 {
+                dx_b += 360.0;
+            }
+            let dy_b = b.0 - cy;
+            let angle_b = dy_b.atan2(dx_b);
+
+            angle_a
+                .partial_cmp(&angle_b)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        region.boundary_polygon = boundary_points;
+    }
 }
 
 fn generate_region_name(seed: u64) -> String {
