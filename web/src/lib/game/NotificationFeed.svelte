@@ -6,6 +6,8 @@
 
 	function getCategory(event: string): string {
 		if (event.includes("Disaster")) return "disaster";
+		// Check error/warning level in GlobalNotification before generic categories
+		if (event.includes('level: "error"') || event.includes('level: "warning"')) return "command-error";
 		if (
 			event.includes("Construction") ||
 			event.includes("Node") ||
@@ -32,6 +34,8 @@
 		switch (cat) {
 			case "disaster":
 				return "var(--red)";
+			case "command-error":
+				return "#f87171";
 			case "infra":
 				return "var(--blue)";
 			case "finance":
@@ -69,7 +73,38 @@
 
 	let recentNotifs = $derived($notifications.slice(0, expanded ? 20 : 3));
 	let hasNotifs = $derived($notifications.length > 0);
+
+	// Command toast: briefly shows error/warning notifications at center-top of screen
+	let toasts: Array<{ id: number; text: string; level: string }> = $state([]);
+	let toastId = 0;
+
+	$effect(() => {
+		// Watch for new notifications that are command errors/warnings
+		const latest = $notifications[0];
+		if (!latest) return;
+		const cat = getCategory(latest.event);
+		if (cat === "command-error" || cat === "disaster") {
+			const text = formatEvent(latest.event);
+			const id = ++toastId;
+			const level = latest.event.includes('"error"') ? "error" : "warning";
+			toasts = [...toasts, { id, text, level }];
+			setTimeout(() => {
+				toasts = toasts.filter((t) => t.id !== id);
+			}, 4000);
+		}
+	});
 </script>
+
+<!-- Command error toasts (center top) -->
+{#if toasts.length > 0}
+	<div class="toast-container" role="alert" aria-live="assertive">
+		{#each toasts as toast (toast.id)}
+			<div class="toast" class:error={toast.level === "error"} class:warning={toast.level === "warning"}>
+				{toast.text}
+			</div>
+		{/each}
+	</div>
+{/if}
 
 {#if hasNotifs}
 	<div class="feed" class:expanded role="log" aria-live="polite">
@@ -184,5 +219,51 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	/* Command error toasts */
+	.toast-container {
+		position: absolute;
+		top: 56px;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 30;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		pointer-events: none;
+	}
+
+	.toast {
+		padding: 8px 16px;
+		border-radius: var(--radius-md);
+		font-family: var(--font-sans);
+		font-size: 13px;
+		font-weight: 500;
+		white-space: nowrap;
+		animation: toast-in 0.2s ease-out;
+	}
+
+	.toast.error {
+		background: rgba(239, 68, 68, 0.9);
+		color: #fff;
+		border: 1px solid rgba(239, 68, 68, 0.5);
+	}
+
+	.toast.warning {
+		background: rgba(245, 158, 11, 0.9);
+		color: #111827;
+		border: 1px solid rgba(245, 158, 11, 0.5);
+	}
+
+	@keyframes toast-in {
+		from {
+			opacity: 0;
+			transform: translateY(-8px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
 	}
 </style>

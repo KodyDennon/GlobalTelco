@@ -5,6 +5,29 @@ use crate::commands::Command;
 use crate::events::GameEvent;
 use crate::types::{EntityId, GameSpeed, Money, Tick};
 
+/// Serde helper: always serialize/deserialize Uuid as a string.
+/// MessagePack (non-human-readable) would otherwise use 16-byte binary,
+/// which JS clients can't produce — they send UUID strings like "2391ef0a-...".
+mod uuid_string {
+    use serde::{self, Deserialize, Deserializer, Serializer};
+    use uuid::Uuid;
+
+    pub fn serialize<S>(uuid: &Uuid, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&uuid.to_string())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Uuid, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Uuid::parse_str(&s).map_err(serde::de::Error::custom)
+    }
+}
+
 // ── Client → Server Messages ──────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -12,11 +35,21 @@ pub enum ClientMessage {
     /// Authenticate with the server
     Auth(AuthRequest),
     /// Send a game command
-    GameCommand { world_id: Uuid, command: Command },
+    GameCommand {
+        #[serde(with = "uuid_string")]
+        world_id: Uuid,
+        command: Command,
+    },
     /// Request a state snapshot
-    RequestSnapshot { world_id: Uuid },
+    RequestSnapshot {
+        #[serde(with = "uuid_string")]
+        world_id: Uuid,
+    },
     /// Join a game world
-    JoinWorld { world_id: Uuid },
+    JoinWorld {
+        #[serde(with = "uuid_string")]
+        world_id: Uuid,
+    },
     /// Leave the current game world
     LeaveWorld,
     /// Keepalive
@@ -67,6 +100,7 @@ pub enum ServerMessage {
     AuthResult(AuthResponse),
     /// World join result
     WorldJoined {
+        #[serde(with = "uuid_string")]
         world_id: Uuid,
         corp_id: EntityId,
         tick: Tick,
@@ -90,6 +124,7 @@ pub enum ServerMessage {
     Pong { timestamp: u64, server_time: u64 },
     /// Player connected/disconnected notification
     PlayerStatus {
+        #[serde(with = "uuid_string")]
         player_id: Uuid,
         username: String,
         status: PlayerConnectionStatus,
@@ -118,12 +153,14 @@ pub enum ServerMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AuthResponse {
     Success {
+        #[serde(with = "uuid_string")]
         player_id: Uuid,
         username: String,
         access_token: String,
         refresh_token: String,
     },
     GuestSuccess {
+        #[serde(with = "uuid_string")]
         player_id: Uuid,
         username: String,
     },
@@ -179,6 +216,7 @@ pub struct ProxyAction {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorldInfo {
+    #[serde(with = "uuid_string")]
     pub id: Uuid,
     pub name: String,
     pub player_count: u32,
@@ -224,6 +262,50 @@ mod tests {
         let decoded: ClientMessage = deserialize_msgpack(&bytes).unwrap();
         match decoded {
             ClientMessage::Ping { timestamp } => assert_eq!(timestamp, 12345),
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_uuid_roundtrip_msgpack() {
+        // Verify UUIDs survive MessagePack roundtrip as strings (not 16-byte binary)
+        let id = Uuid::parse_str("2391ef0a-8c1f-4f2e-a784-6a55a0e5b8a5").unwrap();
+        let msg = ClientMessage::JoinWorld { world_id: id };
+        let bytes = serialize_msgpack(&msg).unwrap();
+        let decoded: ClientMessage = deserialize_msgpack(&bytes).unwrap();
+        match decoded {
+            ClientMessage::JoinWorld { world_id } => assert_eq!(world_id, id),
+            _ => panic!("Wrong variant"),
+        }
+
+        // Verify the bytes contain the UUID string (not binary)
+        let bytes_str = String::from_utf8_lossy(&bytes);
+        assert!(
+            bytes_str.contains("2391ef0a"),
+            "UUID should be serialized as string in msgpack"
+        );
+    }
+
+    #[test]
+    fn test_uuid_from_js_string_msgpack() {
+        // Simulate what JS client sends: UUID as a plain string in MessagePack
+        // JS: encode({ JoinWorld: { world_id: "2391ef0a-8c1f-4f2e-a784-6a55a0e5b8a5" } })
+        let js_style = serde_json::json!({
+            "JoinWorld": {
+                "world_id": "2391ef0a-8c1f-4f2e-a784-6a55a0e5b8a5"
+            }
+        });
+        // Serialize to msgpack as JS would
+        let bytes = rmp_serde::to_vec(&js_style).unwrap();
+        // Deserialize as Rust expects
+        let decoded: ClientMessage = deserialize_msgpack(&bytes).unwrap();
+        match decoded {
+            ClientMessage::JoinWorld { world_id } => {
+                assert_eq!(
+                    world_id,
+                    Uuid::parse_str("2391ef0a-8c1f-4f2e-a784-6a55a0e5b8a5").unwrap()
+                );
+            }
             _ => panic!("Wrong variant"),
         }
     }

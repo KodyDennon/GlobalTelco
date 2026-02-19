@@ -147,6 +147,14 @@ export function start() {
 		}
 	});
 
+	// Register command notification handler — shows errors immediately when commands fail
+	bridge.setCommandNotificationHandler((notifs) => {
+		notifications.update((n) => [...notifs, ...n].slice(0, 50));
+		for (const notif of notifs) {
+			audioManager.playEventSound(notif.event);
+		}
+	});
+
 	animFrameId = requestAnimationFrame(loop);
 	setupKeyboardShortcuts();
 }

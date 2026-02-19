@@ -962,13 +962,31 @@ impl GameWorld {
     fn cmd_build_node(&mut self, node_type: NodeType, parcel_id: EntityId) {
         let corp_id = match self.player_corp_id {
             Some(id) => id,
-            None => return,
+            None => {
+                self.event_queue.push(
+                    self.tick,
+                    gt_common::events::GameEvent::GlobalNotification {
+                        message: "Cannot build: No corporation assigned.".to_string(),
+                        level: "error".to_string(),
+                    },
+                );
+                return;
+            }
         };
 
         // Validate parcel exists and get cell index + terrain
         let (cell_index, terrain) = match self.land_parcels.get(&parcel_id) {
             Some(p) => (p.cell_index, p.terrain),
-            None => return,
+            None => {
+                self.event_queue.push(
+                    self.tick,
+                    gt_common::events::GameEvent::GlobalNotification {
+                        message: "Cannot build: Invalid land parcel.".to_string(),
+                        level: "error".to_string(),
+                    },
+                );
+                return;
+            }
         };
 
         // PREVENT OVERLAP: Check if a node of the same type already exists on this cell
@@ -1045,6 +1063,16 @@ impl GameWorld {
         // Check funds
         if let Some(fin) = self.financials.get(&corp_id) {
             if fin.cash < cost {
+                self.event_queue.push(
+                    self.tick,
+                    gt_common::events::GameEvent::GlobalNotification {
+                        message: format!(
+                            "Insufficient funds: {:?} costs ${}, you have ${}.",
+                            node_type, cost, fin.cash
+                        ),
+                        level: "warning".to_string(),
+                    },
+                );
                 return;
             }
         } else {
@@ -1112,13 +1140,42 @@ impl GameWorld {
         // Get corp from either node
         let corp_id = match self.infra_nodes.get(&from_node) {
             Some(n) => n.owner,
-            None => return,
+            None => {
+                self.event_queue.push(
+                    self.tick,
+                    gt_common::events::GameEvent::GlobalNotification {
+                        message: "Cannot connect: Source node not found.".to_string(),
+                        level: "error".to_string(),
+                    },
+                );
+                return;
+            }
         };
 
         // Verify target node exists and belongs to the same corp
         match self.infra_nodes.get(&to_node) {
             Some(n) if n.owner == corp_id => {}
-            _ => return,
+            Some(_) => {
+                self.event_queue.push(
+                    self.tick,
+                    gt_common::events::GameEvent::GlobalNotification {
+                        message: "Cannot connect: Target node belongs to a different corporation."
+                            .to_string(),
+                        level: "error".to_string(),
+                    },
+                );
+                return;
+            }
+            None => {
+                self.event_queue.push(
+                    self.tick,
+                    gt_common::events::GameEvent::GlobalNotification {
+                        message: "Cannot connect: Target node not found.".to_string(),
+                        level: "error".to_string(),
+                    },
+                );
+                return;
+            }
         }
 
         // Enforce tier compatibility: edge type must be valid for the node tiers
@@ -1269,6 +1326,16 @@ impl GameWorld {
         // Check funds
         if let Some(fin) = self.financials.get(&corp_id) {
             if fin.cash < cost {
+                self.event_queue.push(
+                    self.tick,
+                    gt_common::events::GameEvent::GlobalNotification {
+                        message: format!(
+                            "Insufficient funds: {:?} costs ${}, you have ${}.",
+                            edge_type, cost, fin.cash
+                        ),
+                        level: "warning".to_string(),
+                    },
+                );
                 return;
             }
         } else {

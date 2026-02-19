@@ -43,11 +43,27 @@ impl WasmBridge {
         self.world.current_tick()
     }
 
-    pub fn process_command(&mut self, command_json: &str) -> Result<(), JsValue> {
+    pub fn process_command(&mut self, command_json: &str) -> Result<String, JsValue> {
         let cmd: gt_common::commands::Command = serde_json::from_str(command_json)
             .map_err(|e| JsValue::from_str(&format!("Invalid command: {}", e)))?;
         self.world.process_command(cmd);
-        Ok(())
+        // Immediately drain any notifications so the frontend gets instant feedback
+        // (e.g., "Insufficient funds") even when the game is paused.
+        let events = self.world.event_queue.drain();
+        if events.is_empty() {
+            Ok(String::new())
+        } else {
+            let notifications: Vec<serde_json::Value> = events
+                .iter()
+                .map(|(tick, event)| {
+                    serde_json::json!({
+                        "tick": tick,
+                        "event": format!("{:?}", event),
+                    })
+                })
+                .collect();
+            Ok(serde_json::to_string(&notifications).unwrap_or_default())
+        }
     }
 
     pub fn get_world_info(&self) -> String {

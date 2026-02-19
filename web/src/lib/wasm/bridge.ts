@@ -88,9 +88,33 @@ export function currentTick(): number {
 
 export function processCommand(command: object): void {
 	try {
-		bridge?.process_command(JSON.stringify(command));
+		const result = bridge?.process_command(JSON.stringify(command));
+		// process_command now returns any immediate notifications (e.g., error messages)
+		if (result && result.length > 0) {
+			try {
+				const notifs = JSON.parse(result);
+				if (Array.isArray(notifs) && notifs.length > 0) {
+					onCommandNotifications(notifs);
+				}
+			} catch {
+				// Not valid JSON, ignore
+			}
+		}
 	} catch (e) {
 		onBridgeError(e, 'processCommand');
+	}
+}
+
+type CommandNotificationHandler = (notifications: Array<{ tick: number; event: string }>) => void;
+let commandNotificationHandler: CommandNotificationHandler | null = null;
+
+export function setCommandNotificationHandler(handler: CommandNotificationHandler): void {
+	commandNotificationHandler = handler;
+}
+
+function onCommandNotifications(notifs: Array<{ tick: number; event: string }>): void {
+	if (commandNotificationHandler) {
+		commandNotificationHandler(notifs);
 	}
 }
 
