@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 use serde::Serialize;
 use tokio::sync::{broadcast, Mutex, RwLock};
 use uuid::Uuid;
@@ -100,6 +101,7 @@ pub struct AppState {
     pub accounts: RwLock<HashMap<String, AccountRecord>>, // username → account
     pub audit_log: RwLock<Vec<AuditEntry>>,
     pub db: SharedDb,
+    pub started_at: Instant,
 }
 
 impl AppState {
@@ -111,6 +113,7 @@ impl AppState {
             accounts: RwLock::new(HashMap::new()),
             audit_log: RwLock::new(Vec::new()),
             db: db.map(Arc::new),
+            started_at: Instant::now(),
         }
     }
 
@@ -278,5 +281,25 @@ impl AppState {
     /// Returns true if the player was found and removed.
     pub async fn kick_player(&self, player_id: &Uuid) -> bool {
         self.players.write().await.remove(player_id).is_some()
+    }
+
+    /// Remove a world instance. Returns true if the world existed.
+    pub async fn remove_world(&self, world_id: &Uuid) -> bool {
+        self.worlds.write().await.remove(world_id).is_some()
+    }
+
+    /// Return the server uptime in seconds.
+    pub fn uptime_secs(&self) -> u64 {
+        self.started_at.elapsed().as_secs()
+    }
+
+    /// Send a broadcast message to all players in a specific world.
+    pub async fn broadcast_to_world(&self, world_id: &Uuid, msg: ServerMessage) -> bool {
+        if let Some(world) = self.get_world(world_id).await {
+            let _ = world.broadcast_tx.send(msg);
+            true
+        } else {
+            false
+        }
     }
 }

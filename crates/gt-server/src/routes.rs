@@ -4,12 +4,12 @@ use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use uuid::Uuid;
 
-use gt_common::types::WorldConfig;
+use gt_common::types::{GameSpeed, WorldConfig};
 
 use crate::auth;
 use crate::state::AppState;
@@ -42,6 +42,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/admin/kick", post(admin_kick_player))
         .route("/api/admin/pause", post(admin_pause_world))
         .route("/api/admin/audit", get(admin_audit_log))
+        .route("/api/admin/health", get(admin_health))
+        .route("/api/admin/worlds", post(admin_create_world))
+        .route("/api/admin/worlds/{world_id}", delete(admin_delete_world))
+        .route("/api/admin/worlds/{world_id}/speed", post(admin_set_speed))
+        .route("/api/admin/broadcast", post(admin_broadcast))
         .with_state(state)
 }
 
@@ -594,4 +599,231 @@ async fn admin_audit_log(
 
     let log = state.get_audit_log().await;
     (StatusCode::OK, Json(serde_json::json!({ "audit_log": log })))
+}
+
+async fn admin_health(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    if let Err(e) = extract_admin_claims(&headers) {
+        return e;
+    }
+
+    let worlds = state.worlds.read().await;
+    let players = state.players.read().await;
+    let accounts = state.accounts.read().await;
+    let audit_log = state.audit_log.read().await;
+    let uptime = state.uptime_secs();
+
+    // Per-world details
+    let mut world_details = Vec::new();
+    for instance in worlds.values() {
+        let w = instance.world.lock().await;
+        world_details.push(serde_json::json!({
+            "id": instance.id,
+            "name": instance.name,
+            "tick": w.current_tick(),
+            "speed": format!("{:?}", w.speed()),
+            "player_count": instance.player_count().await,
+            "max_players": instance.max_players,
+            "tick_rate_ms": instance.tick_rate_ms,
+            "era": format!("{:?}", w.config().starting_era),
+            "map_size": format!("{:?}", w.config().map_size),
+        }));
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "version": env!("CARGO_PKG_VERSION"),
+            "uptime_secs": uptime,
+            "active_worlds": worlds.len(),
+            "connected_players": players.len(),
+            "registered_accounts": accounts.len(),
+            "audit_log_entries": audit_log.len(),
+            "worlds": world_details,
+            "has_database": state.db.is_some(),
+        })),
+    )
+}
+
+#[derive(Deserialize)]
+struct AdminCreateWorldRequest {
+    name: String,
+    #[serde(default)]
+    config: Option<WorldConfig>,
+    #[serde(default = "default_max_players")]
+    max_players: u32,
+}
+
+async fn admin_create_world(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<AdminCreateWorldRequest>,
+) -> impl IntoResponse {
+    if let Err(e) = extract_admin_claims(&headers) {
+        return e;
+    }
+
+    let config = body.config.unwrap_or_default();
+    let world_id = state
+        .create_world(body.name.clone(), config, body.max_players)
+        .await;
+
+    if let Some(world) = state.get_world(&world_id).await {
+        #[cfg(feature = "postgres")]
+        tick::spawn_world_tick_loop(world, state.db.clone());
+        #[cfg(not(feature = "postgres"))]
+        tick::spawn_world_tick_loop(world);
+    }
+
+    (
+        StatusCode::CREATED,
+        Json(serde_json::json!({
+            "world_id": world_id,
+            "name": body.name,
+        })),
+    )
+}
+
+async fn admin_delete_world(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Path(world_id): Path<Uuid>,
+) -> impl IntoResponse {
+    if let Err(e) = extract_admin_claims(&headers) {
+        return e;
+    }
+
+    // Kick all players from this world first
+    let mut kicked_players = Vec::new();
+    {
+        let mut players = state.players.write().await;
+        players.retain(|id, p| {
+            if p.world_id == Some(world_id) {
+                kicked_players.push(*id);
+                false
+            } else {
+                true
+            }
+        });
+    }
+
+    let removed = state.remove_world(&world_id).await;
+    if removed {
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "deleted": true,
+                "world_id": world_id,
+                "kicked_players": kicked_players.len(),
+            })),
+        )
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "World not found" })),
+        )
+    }
+}
+
+#[derive(Deserialize)]
+struct SetSpeedRequest {
+    speed: String,
+}
+
+async fn admin_set_speed(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Path(world_id): Path<Uuid>,
+    Json(body): Json<SetSpeedRequest>,
+) -> impl IntoResponse {
+    if let Err(e) = extract_admin_claims(&headers) {
+        return e;
+    }
+
+    let target_speed = match body.speed.to_lowercase().as_str() {
+        "paused" => GameSpeed::Paused,
+        "normal" => GameSpeed::Normal,
+        "fast" => GameSpeed::Fast,
+        "veryfast" => GameSpeed::VeryFast,
+        "ultra" => GameSpeed::Ultra,
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": "Invalid speed. Use: Paused, Normal, Fast, VeryFast, Ultra" })),
+            );
+        }
+    };
+
+    match state.get_world(&world_id).await {
+        Some(world) => {
+            let mut w = world.world.lock().await;
+            w.process_command(gt_common::commands::Command::SetSpeed(target_speed));
+            let speed = w.speed();
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "world_id": world_id,
+                    "speed": format!("{:?}", speed),
+                    "paused": speed == GameSpeed::Paused,
+                })),
+            )
+        }
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "World not found" })),
+        ),
+    }
+}
+
+#[derive(Deserialize)]
+struct BroadcastRequest {
+    message: String,
+    #[serde(default)]
+    world_id: Option<Uuid>,
+}
+
+async fn admin_broadcast(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<BroadcastRequest>,
+) -> impl IntoResponse {
+    if let Err(e) = extract_admin_claims(&headers) {
+        return e;
+    }
+
+    let msg = gt_common::protocol::ServerMessage::ChatBroadcast {
+        sender: "ADMIN".to_string(),
+        message: body.message.clone(),
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+    };
+
+    if let Some(wid) = body.world_id {
+        let sent = state.broadcast_to_world(&wid, msg).await;
+        if sent {
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({ "broadcast": true, "scope": "world", "world_id": wid })),
+            )
+        } else {
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": "World not found" })),
+            )
+        }
+    } else {
+        // Broadcast to all worlds
+        let worlds = state.worlds.read().await;
+        for instance in worlds.values() {
+            let _ = instance.broadcast_tx.send(msg.clone());
+        }
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({ "broadcast": true, "scope": "all", "world_count": worlds.len() })),
+        )
+    }
 }

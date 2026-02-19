@@ -7,7 +7,7 @@
 	import Credits from '$lib/menu/Credits.svelte';
 	import WorldBrowser from '$lib/menu/WorldBrowser.svelte';
 	import { goto } from '$app/navigation';
-	import { initGame, start, loadFromSave } from '$lib/game/GameLoop';
+	import { initGame, start, loadFromSave, setSpeed } from '$lib/game/GameLoop';
 	import { initWasm } from '$lib/wasm/bridge';
 
 	type Screen = 'splash' | 'main' | 'newGame' | 'loadGame' | 'settings' | 'multiplayer' | 'credits';
@@ -28,6 +28,13 @@
 	async function handleLoad(data: string) {
 		await initWasm();
 		await loadFromSave(data);
+		start();
+		goto('/game');
+	}
+
+	async function handleMultiplayerJoin(_worldId: string) {
+		await initGame();
+		setSpeed(0); // Server drives ticks in multiplayer — don't tick locally
 		start();
 		goto('/game');
 	}
@@ -53,7 +60,7 @@
 {:else if screen === 'credits'}
 	<Credits onBack={() => (screen = 'main')} />
 {:else if screen === 'multiplayer'}
-	<WorldBrowser onBack={() => (screen = 'main')} onJoin={() => goto('/game')} />
+	<WorldBrowser onBack={() => (screen = 'main')} onJoin={handleMultiplayerJoin} />
 {/if}
 
 <style>
