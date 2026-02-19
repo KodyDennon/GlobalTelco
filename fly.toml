@@ -2,7 +2,7 @@ app = "globaltelco"
 primary_region = "sjc"
 
 [build]
-  dockerfile = "crates/gt-server/Dockerfile"
+  dockerfile = "Dockerfile"
 
 [env]
   GT_HOST = "0.0.0.0"
