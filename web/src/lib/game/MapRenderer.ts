@@ -392,6 +392,17 @@ export class MapRenderer {
 		return 'hamlet';
 	}
 
+	/** Seeded PRNG for deterministic dot scatter (xorshift32) */
+	private dotRng(seed: number): () => number {
+		let s = seed | 1;
+		return () => {
+			s ^= s << 13;
+			s ^= s >> 17;
+			s ^= s << 5;
+			return (s >>> 0) / 4294967296;
+		};
+	}
+
 	private buildCities(citiesData: City[]) {
 		this.cityGroup.clear();
 		this.cityGlowGroup.clear();
@@ -402,84 +413,133 @@ export class MapRenderer {
 		for (const city of citiesData) {
 			const pop = Math.max(city.population, 1);
 			const sat = city.infrastructure_satisfaction ?? 0;
+			const cellPositions = city.cell_positions ?? [];
 
 			// Track city cells
-			for (const cp of (city.cell_positions ?? [])) {
+			for (const cp of cellPositions) {
 				this.cityCellSet.add(cp.index);
 			}
 
-			// City icon sprite — sized by population
-			const tierName = this.getCityTier(pop);
-			const tierTexture = this.cityTextures.get(tierName);
 			const popScale = Math.log10(Math.max(pop, 100)) / 7; // ~0.28 to ~1.0
-			const iconSize = cs * (0.15 + popScale * 0.35);
 
-			if (tierTexture) {
-				const spriteMat = new THREE.SpriteMaterial({
-					map: tierTexture,
-					transparent: true,
-					depthTest: false,
-					opacity: 0.9
-				});
-				const sprite = new THREE.Sprite(spriteMat);
-				sprite.scale.set(iconSize, iconSize, 1);
-				sprite.position.set(city.x, city.y, 1);
-				sprite.userData = { type: 'city', id: city.id, name: city.name };
-				this.cityGroup.add(sprite);
-				this.entityMeshMap.set(city.id, sprite);
+			// ── Scattered population dots (satellite night-earth style) ──
+			// Number of dots scales with population: small town = ~8, metropolis = ~200
+			const dotCount = Math.min(300, Math.max(8, Math.floor(Math.sqrt(pop) * 0.15)));
+			const rand = this.dotRng(city.id * 7919 + 31);
+
+			// Dot size: tiny bright points
+			const dotRadius = cs * 0.012;
+			const dotGeo = new THREE.CircleGeometry(dotRadius, 6);
+
+			if (cellPositions.length > 0) {
+				// Spread dots across city cells, weighted toward center
+				for (let d = 0; d < dotCount; d++) {
+					// Pick a cell — bias toward center (lower indices = closer to center)
+					const bias = rand() * rand(); // Squared bias → more dots near center
+					const cellIdx = Math.min(cellPositions.length - 1, Math.floor(bias * cellPositions.length));
+					const cp = cellPositions[cellIdx];
+
+					// Scatter within cell
+					const angle = rand() * Math.PI * 2;
+					const dist = rand() * cs * 0.4;
+					const latRad = (cp.lat * Math.PI) / 180;
+					const cosLat = Math.max(0.3, Math.cos(latRad));
+					const dx = Math.cos(angle) * dist / cosLat;
+					const dy = Math.sin(angle) * dist;
+
+					// Brightness varies: core dots brighter, outer dimmer
+					const brightness = 0.4 + (1 - bias) * 0.6;
+					// Warm city light colors: mix of golden, orange, white
+					const colorChoice = rand();
+					const color = colorChoice < 0.5 ? 0xffe4a8
+						: colorChoice < 0.8 ? 0xffd080
+						: 0xfff0d0;
+
+					const mat = new THREE.MeshBasicMaterial({
+						color,
+						opacity: brightness * 0.7,
+						transparent: true
+					});
+					const dot = new THREE.Mesh(dotGeo, mat);
+					dot.position.set(cp.lon + dx, cp.lat + dy, 0.8);
+					this.cityGlowGroup.add(dot);
+				}
 			} else {
-				// Fallback: warm dot
-				const dotSize = cs * 0.03 + popScale * cs * 0.05;
-				const dotGeo = new THREE.CircleGeometry(dotSize, 8);
-				const dotMat = new THREE.MeshBasicMaterial({ color: 0xffe8c0 });
-				const dot = new THREE.Mesh(dotGeo, dotMat);
-				dot.position.set(city.x, city.y, 1);
-				dot.userData = { type: 'city', id: city.id, name: city.name };
-				this.cityGroup.add(dot);
-				this.entityMeshMap.set(city.id, dot);
+				// Fallback: scatter around city center
+				const spread = cs * popScale * 0.8;
+				for (let d = 0; d < dotCount; d++) {
+					const angle = rand() * Math.PI * 2;
+					const r = rand() * rand() * spread; // Squared falloff from center
+					const latRad = (city.y * Math.PI) / 180;
+					const cosLat = Math.max(0.3, Math.cos(latRad));
+					const dx = Math.cos(angle) * r / cosLat;
+					const dy = Math.sin(angle) * r;
+
+					const brightness = 0.4 + (1 - r / spread) * 0.6;
+					const color = rand() < 0.5 ? 0xffe4a8 : 0xffd080;
+					const mat = new THREE.MeshBasicMaterial({
+						color,
+						opacity: brightness * 0.7,
+						transparent: true
+					});
+					const dot = new THREE.Mesh(dotGeo, mat);
+					dot.position.set(city.x + dx, city.y + dy, 0.8);
+					this.cityGlowGroup.add(dot);
+				}
 			}
 
-			// Subtle warm glow behind city (night-earth city lights)
-			const glowSize = iconSize * 1.0;
-			const glowGeo = new THREE.CircleGeometry(glowSize, 10);
+			// ── Soft city glow (diffuse light behind dots) ──
+			const glowSize = cs * (0.15 + popScale * 0.35);
+			const glowGeo = new THREE.CircleGeometry(glowSize, 16);
 			const glowMat = new THREE.MeshBasicMaterial({
-				color: 0xffe0a0,
-				opacity: 0.06 + popScale * 0.04,
+				color: 0xffd080,
+				opacity: 0.04 + popScale * 0.04,
 				transparent: true
 			});
 			const glow = new THREE.Mesh(glowGeo, glowMat);
 			glow.position.set(city.x, city.y, 0.5);
 			this.cityGlowGroup.add(glow);
 
-			// Satisfaction ring — thin colored ring around city
-			const satColor = sat >= 0.7 ? 0x10b981 : sat >= 0.4 ? 0xf59e0b : 0xef4444;
-			const ri = iconSize * 0.5;
-			const ro = iconSize * 0.58;
-			const ringGeo = new THREE.RingGeometry(ri, ro, 16);
-			const ringMat = new THREE.MeshBasicMaterial({
-				color: satColor,
-				opacity: 0.45,
-				transparent: true,
-				side: THREE.DoubleSide
+			// ── Clickable center marker (invisible but raycastable) ──
+			const hitSize = cs * 0.08;
+			const hitGeo = new THREE.CircleGeometry(hitSize, 8);
+			const hitMat = new THREE.MeshBasicMaterial({
+				color: 0xffe4a8,
+				opacity: 0.0,
+				transparent: true
 			});
-			const ring = new THREE.Mesh(ringGeo, ringMat);
-			ring.position.set(city.x, city.y, 1.5);
-			ring.userData = { labelType: 'cityIndicator', cityId: city.id };
-			this.cityGlowGroup.add(ring);
+			const hitMesh = new THREE.Mesh(hitGeo, hitMat);
+			hitMesh.position.set(city.x, city.y, 1);
+			hitMesh.userData = { type: 'city', id: city.id, name: city.name };
+			this.cityGroup.add(hitMesh);
+			this.entityMeshMap.set(city.id, hitMesh);
 
-			// City name label
+			// ── Satisfaction indicator (small colored dot at city center) ──
+			const satColor = sat >= 0.7 ? 0x10b981 : sat >= 0.4 ? 0xf59e0b : 0xef4444;
+			const satDotGeo = new THREE.CircleGeometry(cs * 0.02, 8);
+			const satDotMat = new THREE.MeshBasicMaterial({
+				color: satColor,
+				opacity: 0.8,
+				transparent: true
+			});
+			const satDot = new THREE.Mesh(satDotGeo, satDotMat);
+			satDot.position.set(city.x, city.y, 1.5);
+			satDot.userData = { labelType: 'cityIndicator', cityId: city.id };
+			this.cityGlowGroup.add(satDot);
+
+			// ── City name label ──
 			const labelScale = cs * 0.035;
 			const label = this.createTextSprite(city.name, 0xe8e8e8, labelScale);
-			label.position.set(city.x, city.y - iconSize * 0.55, 5);
+			label.position.set(city.x, city.y - cs * 0.08, 5);
 			label.userData = { labelType: 'cityName', minZoom: 1.5 };
 			this.cityGroup.add(label);
 
-			// Population label
+			// ── Population label ──
 			const popStr = pop >= 1_000_000 ? `${(pop / 1_000_000).toFixed(1)}M`
 				: pop >= 1_000 ? `${(pop / 1_000).toFixed(0)}K`
 					: `${pop}`;
 			const popLabel = this.createTextSprite(popStr, 0x888888, labelScale * 0.7);
-			popLabel.position.set(city.x, city.y - iconSize * 0.8, 5);
+			popLabel.position.set(city.x, city.y - cs * 0.14, 5);
 			popLabel.userData = { labelType: 'cityPop', minZoom: 2.5 };
 			this.cityGroup.add(popLabel);
 		}
