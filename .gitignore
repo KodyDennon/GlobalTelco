@@ -16,10 +16,13 @@ web/build/
 # Tauri
 desktop/src-tauri/target/
 
-# IDE
+# IDE / AI tools
 .vs/
 .vscode/
 .idea/
+.cursor/
+.agents/
+.claude/
 *.xcworkspace
 *.xcodeproj
 *.sln
