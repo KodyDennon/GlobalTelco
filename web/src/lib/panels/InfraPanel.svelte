@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { playerCorp, formatMoney } from '$lib/stores/gameState';
-	import { activePanel, selectedEntityId, selectedEntityType } from '$lib/stores/uiState';
+	import { activePanel, selectedEntityId, selectedEntityType, buildMode, buildEdgeSource } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
 	import type { InfraNode, InfraEdge, InfrastructureList } from '$lib/wasm/types';
 	import NetworkDiagram from '$lib/charts/NetworkDiagram.svelte';
@@ -30,6 +30,17 @@
 
 	function close() {
 		activePanel.set('none');
+		buildMode.set(null);
+	}
+
+	function toggleConnectMode() {
+		if ($buildMode === 'edge') {
+			buildMode.set(null);
+			buildEdgeSource.set(null);
+		} else {
+			buildMode.set('edge');
+			activePanel.set('none'); // Hide panel to focus on map
+		}
 	}
 
 	let operationalNodes = $derived(infra.nodes.filter((n) => !n.under_construction));
@@ -42,7 +53,12 @@
 
 <div class="panel" aria-label={$tr('panels.infrastructure')}>
 	<div class="panel-header">
-		<span class="title">{$tr('panels.infrastructure')}</span>
+		<div class="header-left">
+			<span class="title">{$tr('panels.infrastructure')}</span>
+			<button class="action-btn" class:active={$buildMode === 'edge'} onclick={toggleConnectMode}>
+				{$buildMode === 'edge' ? 'Cancel' : 'Connect'}
+			</button>
+		</div>
 		<button class="close" onclick={close}>x</button>
 	</div>
 
@@ -140,7 +156,37 @@
 		z-index: 1;
 	}
 
+	.header-left {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.action-btn {
+		background: var(--bg-surface);
+		border: 1px solid var(--border);
+		color: var(--text-secondary);
+		padding: 4px 10px;
+		border-radius: var(--radius-sm);
+		font-size: 11px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.action-btn:hover {
+		border-color: var(--blue);
+		color: var(--blue);
+	}
+
+	.action-btn.active {
+		background: var(--blue);
+		color: white;
+		border-color: var(--blue);
+	}
+
 	.title {
+
 		font-weight: 700;
 		font-size: 14px;
 		color: var(--text-primary);

@@ -34,13 +34,13 @@ interface EdgeStyle {
 	segments: number;     // Tube radial segments (fewer = cheaper)
 }
 const EDGE_STYLES: Record<string, EdgeStyle> = {
-	FiberLocal:    { color: 0x22d3a0, opacity: 0.85, radiusFactor: 0.008, segments: 4 },
-	FiberRegional: { color: 0x60a5fa, opacity: 0.9,  radiusFactor: 0.012, segments: 4 },
+	FiberLocal: { color: 0x22d3a0, opacity: 0.85, radiusFactor: 0.008, segments: 4 },
+	FiberRegional: { color: 0x60a5fa, opacity: 0.9, radiusFactor: 0.012, segments: 4 },
 	FiberNational: { color: 0x818cf8, opacity: 0.95, radiusFactor: 0.016, segments: 5 },
-	Copper:        { color: 0xd97706, opacity: 0.75, radiusFactor: 0.006, segments: 3 },
-	Microwave:     { color: 0x22d3ee, opacity: 0.6,  radiusFactor: 0.008, segments: 3, dashed: true, dashSize: 1.2, gapSize: 0.6 },
-	Satellite:     { color: 0xfbbf24, opacity: 0.5,  radiusFactor: 0.008, segments: 3, dashed: true, dashSize: 2.0, gapSize: 1.0 },
-	Submarine:     { color: 0x3b82f6, opacity: 0.9,  radiusFactor: 0.014, segments: 4 }
+	Copper: { color: 0xd97706, opacity: 0.75, radiusFactor: 0.006, segments: 3 },
+	Microwave: { color: 0x22d3ee, opacity: 0.6, radiusFactor: 0.008, segments: 3, dashed: true, dashSize: 1.2, gapSize: 0.6 },
+	Satellite: { color: 0xfbbf24, opacity: 0.5, radiusFactor: 0.008, segments: 3, dashed: true, dashSize: 2.0, gapSize: 1.0 },
+	Submarine: { color: 0x3b82f6, opacity: 0.9, radiusFactor: 0.014, segments: 4 }
 };
 
 // Map Rust NodeType variants to SVG icon names
@@ -103,6 +103,9 @@ export class MapRenderer {
 
 	// Edge source highlight group
 	private edgePreviewGroup: THREE.Group;
+	private currentEdgeSourceId: number | null = null;
+	private previewLine: THREE.Line | null = null;
+
 
 	// Grid pathfinder for terrain-aware edge routing
 	private pathfinder = new GridPathfinder();
@@ -444,7 +447,7 @@ export class MapRenderer {
 			// Population label
 			const popStr = pop >= 1_000_000 ? `${(pop / 1_000_000).toFixed(1)}M`
 				: pop >= 1_000 ? `${(pop / 1_000).toFixed(0)}K`
-				: `${pop}`;
+					: `${pop}`;
 			const popLabel = this.createTextSprite(popStr, 0x888888, labelScale * 0.7);
 			popLabel.position.set(city.x, city.y - iconSize * 0.8, 5);
 			popLabel.userData = { labelType: 'cityPop', minZoom: 2.5 };
@@ -475,7 +478,11 @@ export class MapRenderer {
 
 	highlightEdgeSource(nodeId: number | null) {
 		this.edgePreviewGroup.clear();
-		if (nodeId === null) return;
+		this.currentEdgeSourceId = nodeId;
+		if (nodeId === null) {
+			this.previewLine = null;
+			return;
+		}
 
 		const obj = this.entityMeshMap.get(nodeId);
 		if (!obj) return;
@@ -1181,5 +1188,44 @@ export class MapRenderer {
 	dispose() {
 		this.renderer.dispose();
 		this.renderer.domElement.remove();
+	}
+
+	handleMouseMove(e: MouseEvent) {
+		if (this.currentEdgeSourceId === null) return;
+
+		const rect = this.renderer.domElement.getBoundingClientRect();
+		this.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+		this.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+		this.raycaster.setFromCamera(this.pointer, this.camera);
+
+		// Project ray onto Z=0 plane (map surface)
+		const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+		const target = new THREE.Vector3();
+		this.raycaster.ray.intersectPlane(plane, target);
+
+		const sourceObj = this.entityMeshMap.get(this.currentEdgeSourceId);
+		if (!sourceObj) return;
+
+		// Create or update preview line
+		if (!this.previewLine) {
+			const geo = new THREE.BufferGeometry().setFromPoints([
+				sourceObj.position,
+				target
+			]);
+			const mat = new THREE.LineDashedMaterial({
+				color: 0x3b82f6,
+				dashSize: 2,
+				gapSize: 1,
+				transparent: true,
+				opacity: 0.6
+			});
+			this.previewLine = new THREE.Line(geo, mat);
+			this.previewLine.renderOrder = 10;
+			this.edgePreviewGroup.add(this.previewLine);
+		} else {
+			const pts = [sourceObj.position, target];
+			this.previewLine.geometry.setFromPoints(pts);
+			this.previewLine.computeLineDistances();
+		}
 	}
 }

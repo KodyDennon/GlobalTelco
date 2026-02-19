@@ -6,6 +6,9 @@
 	import { tr } from '$lib/i18n/index';
 
 	let contracts: ContractInfo[] = $state([]);
+	let showProposeForm = $state(false);
+	let proposeTarget = $state(0);
+	let proposeTerms = $state('bandwidth:1000,price:5000,duration:100');
 
 	$effect(() => {
 		const corp = $playerCorp;
@@ -24,6 +27,17 @@
 		if ($playerCorp) contracts = bridge.getContracts($playerCorp.id);
 	}
 
+	function proposeContract() {
+		const corp = $playerCorp;
+		if (!corp || !proposeTarget) return;
+		bridge.processCommand({
+			ProposeContract: { from: corp.id, to: proposeTarget, terms: proposeTerms }
+		});
+		showProposeForm = false;
+		proposeTarget = 0;
+		if (corp) contracts = bridge.getContracts(corp.id);
+	}
+
 	function close() {
 		activePanel.set('none');
 	}
@@ -34,6 +48,7 @@
 	let expenseContracts = $derived(activeContracts.filter((c) => c.to === ($playerCorp?.id ?? 0)));
 	let contractRevenue = $derived(revenueContracts.reduce((s, c) => s + c.price_per_tick, 0));
 	let contractCost = $derived(expenseContracts.reduce((s, c) => s + c.price_per_tick, 0));
+	let aiCorps = $derived($allCorporations.filter((c) => !c.is_player));
 </script>
 
 <div class="panel">
@@ -56,6 +71,27 @@
 			<span class="muted">{$tr('panels.contract_expenses')}</span>
 			<span class="mono red">{formatMoney(contractCost)}/tick</span>
 		</div>
+	</div>
+
+	<div class="section">
+		<div class="section-hdr">
+			<h3>Propose Contract</h3>
+			<button class="action-btn" onclick={() => (showProposeForm = !showProposeForm)}>
+				{showProposeForm ? 'Cancel' : '+ Propose'}
+			</button>
+		</div>
+		{#if showProposeForm}
+			<div class="propose-form">
+				<select bind:value={proposeTarget}>
+					<option value={0}>Select corporation...</option>
+					{#each aiCorps as corp}
+						<option value={corp.id}>{corp.name}</option>
+					{/each}
+				</select>
+				<input type="text" bind:value={proposeTerms} placeholder="bandwidth:1000,price:5000,duration:100" />
+				<button class="confirm-btn" onclick={proposeContract} disabled={!proposeTarget}>Send Proposal</button>
+			</div>
+		{/if}
 	</div>
 
 	{#if proposedContracts.length > 0}
@@ -275,5 +311,63 @@
 		text-align: center;
 		padding: 16px;
 		font-size: 12px;
+	}
+
+	.section-hdr {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 8px;
+	}
+
+	.action-btn {
+		background: var(--bg-surface);
+		border: 1px solid var(--border);
+		color: var(--blue);
+		padding: 4px 10px;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		font-size: 12px;
+		font-family: var(--font-mono);
+	}
+
+	.action-btn:hover {
+		background: var(--bg-hover);
+	}
+
+	.propose-form {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		background: var(--bg-surface);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		padding: 10px;
+	}
+
+	.propose-form select,
+	.propose-form input {
+		background: rgba(17, 24, 39, 0.8);
+		border: 1px solid var(--border);
+		color: var(--text-secondary);
+		padding: 6px 8px;
+		border-radius: var(--radius-sm);
+		font-size: 12px;
+		font-family: var(--font-mono);
+	}
+
+	.confirm-btn {
+		background: var(--green-bg);
+		border: 1px solid var(--green-border);
+		color: var(--green);
+		padding: 6px 12px;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		font-size: 12px;
+	}
+
+	.confirm-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
 	}
 </style>

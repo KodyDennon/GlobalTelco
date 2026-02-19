@@ -1,36 +1,69 @@
 <script lang="ts">
-	import { notifications } from '$lib/stores/gameState';
-	import { tr } from '$lib/i18n/index';
+	import { notifications } from "$lib/stores/gameState";
+	import { tr } from "$lib/i18n/index";
 
 	let expanded = $state(false);
 
 	function getCategory(event: string): string {
-		if (event.includes('Disaster')) return 'disaster';
-		if (event.includes('Construction') || event.includes('Node') || event.includes('Edge') || event.includes('Repair')) return 'infra';
-		if (event.includes('Revenue') || event.includes('Cost') || event.includes('Loan') || event.includes('Bankruptcy')) return 'finance';
-		if (event.includes('Contract')) return 'contract';
-		if (event.includes('Research')) return 'research';
-		if (event.includes('Regulation') || event.includes('Market')) return 'market';
-		return 'info';
+		if (event.includes("Disaster")) return "disaster";
+		if (
+			event.includes("Construction") ||
+			event.includes("Node") ||
+			event.includes("Edge") ||
+			event.includes("Repair")
+		)
+			return "infra";
+		if (
+			event.includes("Revenue") ||
+			event.includes("Cost") ||
+			event.includes("Loan") ||
+			event.includes("Bankruptcy")
+		)
+			return "finance";
+		if (event.includes("Contract")) return "contract";
+		if (event.includes("Research")) return "research";
+		if (event.includes("Regulation") || event.includes("Market"))
+			return "market";
+		if (event.startsWith("GlobalNotification")) return "system";
+		return "info";
 	}
 
 	function getCategoryColor(cat: string): string {
 		switch (cat) {
-			case 'disaster': return 'var(--red)';
-			case 'infra': return 'var(--blue)';
-			case 'finance': return 'var(--green)';
-			case 'contract': return 'var(--amber)';
-			case 'research': return '#8b5cf6';
-			case 'market': return '#ec4899';
-			default: return 'var(--text-dim)';
+			case "disaster":
+				return "var(--red)";
+			case "infra":
+				return "var(--blue)";
+			case "finance":
+				return "var(--green)";
+			case "contract":
+				return "var(--amber)";
+			case "research":
+				return "#8b5cf6";
+			case "market":
+				return "#ec4899";
+			case "system":
+				return "#6b7280";
+			default:
+				return "var(--text-dim)";
 		}
 	}
 
 	function formatEvent(event: string): string {
-		// Clean up Rust debug format
+		// Handle GlobalNotification specially to keep the message
+		if (event.startsWith("GlobalNotification")) {
+			try {
+				const msgMatch = event.match(/message:\s*"([^"]+)"/);
+				if (msgMatch) return msgMatch[1];
+			} catch (e) {
+				return event;
+			}
+		}
+
+		// Clean up Rust debug format for other events
 		return event
-			.replace(/\{[^}]*\}/g, '')
-			.replace(/([A-Z])/g, ' $1')
+			.replace(/\{[^}]*\}/g, "")
+			.replace(/([A-Z])/g, " $1")
 			.trim();
 	}
 
@@ -41,15 +74,18 @@
 {#if hasNotifs}
 	<div class="feed" class:expanded role="log" aria-live="polite">
 		<button class="feed-header" onclick={() => (expanded = !expanded)}>
-			<span class="feed-title">{$tr('game.events')}</span>
+			<span class="feed-title">{$tr("game.events")}</span>
 			<span class="feed-count">{$notifications.length}</span>
-			<span class="toggle">{expanded ? 'v' : '^'}</span>
+			<span class="toggle">{expanded ? "v" : "^"}</span>
 		</button>
 		<div class="feed-list">
 			{#each recentNotifs as notif}
 				{@const cat = getCategory(notif.event)}
 				<div class="notif-row">
-					<span class="dot" style="background: {getCategoryColor(cat)}"></span>
+					<span
+						class="dot"
+						style="background: {getCategoryColor(cat)}"
+					></span>
 					<span class="notif-tick">T{notif.tick}</span>
 					<span class="notif-text">{formatEvent(notif.event)}</span>
 				</div>

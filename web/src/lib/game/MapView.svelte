@@ -106,9 +106,12 @@
 	});
 
 	function handleMouseMove(e: MouseEvent) {
-		// Simple tooltip on hover — could be extended with raycasting for entity info
+		if (renderer) {
+			renderer.handleMouseMove(e);
+		}
 		tooltipData.set(null); // Clear by default; entity hover sets it via raycaster
 	}
+
 
 	function handleMouseLeave() {
 		tooltipData.set(null);

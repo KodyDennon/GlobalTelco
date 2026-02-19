@@ -133,6 +133,41 @@
 	</div>
 
 	<div class="section">
+		<h3>Budgets & Policies</h3>
+		<div class="policy-row">
+			<span class="policy-label">Maintenance Budget</span>
+			<input type="range" min={0} max={5000000} step={50000} value={500000}
+				oninput={(e) => {
+					const val = Number((e.target as HTMLInputElement).value);
+					bridge.processCommand({ SetBudget: { corporation: $playerCorp?.id ?? 0, category: 'maintenance', amount: val } });
+				}} />
+			<span class="policy-val mono">Auto</span>
+		</div>
+		<div class="policy-row">
+			<span class="policy-label">Expansion Priority</span>
+			<select class="policy-select"
+				onchange={(e) => {
+					bridge.processCommand({ SetPolicy: { corporation: $playerCorp?.id ?? 0, policy: 'expansion_priority', value: (e.target as HTMLSelectElement).value } });
+				}}>
+				<option value="balanced">Balanced</option>
+				<option value="aggressive">Aggressive</option>
+				<option value="conservative">Conservative</option>
+			</select>
+		</div>
+		<div class="policy-row">
+			<span class="policy-label">Pricing Strategy</span>
+			<select class="policy-select"
+				onchange={(e) => {
+					bridge.processCommand({ SetPolicy: { corporation: $playerCorp?.id ?? 0, policy: 'pricing_strategy', value: (e.target as HTMLSelectElement).value } });
+				}}>
+				<option value="market">Market Rate</option>
+				<option value="undercut">Undercut (-10%)</option>
+				<option value="premium">Premium (+15%)</option>
+			</select>
+		</div>
+	</div>
+
+	<div class="section">
 		<h3>{$tr('panels.market_share')}</h3>
 		<MarketShareChart />
 	</div>
@@ -344,5 +379,41 @@
 		border-radius: var(--radius-sm);
 		font-size: 11px;
 		font-weight: 600;
+	}
+
+	.policy-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 4px 0;
+	}
+
+	.policy-label {
+		font-size: 12px;
+		color: var(--text-muted);
+		min-width: 120px;
+	}
+
+	.policy-val {
+		font-size: 12px;
+		color: var(--text-secondary);
+		min-width: 50px;
+		text-align: right;
+	}
+
+	.policy-row input[type='range'] {
+		flex: 1;
+		accent-color: var(--blue);
+	}
+
+	.policy-select {
+		flex: 1;
+		background: var(--bg-surface);
+		border: 1px solid var(--border);
+		color: var(--text-secondary);
+		padding: 4px 6px;
+		border-radius: var(--radius-sm);
+		font-size: 12px;
+		font-family: var(--font-sans);
 	}
 </style>

@@ -58,6 +58,10 @@
 		bridge.processCommand({ StartResearch: { corporation: playerCorpId, tech: techName } });
 	}
 
+	function cancelResearch() {
+		bridge.processCommand({ CancelResearch: { corporation: playerCorpId } });
+	}
+
 	function setBudget() {
 		bridge.processCommand({
 			SetBudget: { corporation: playerCorpId, category: 'research', amount: rdBudget }
@@ -105,6 +109,7 @@
 					<span>{(activeResearch.progress_pct * 100).toFixed(1)}%</span>
 					<span>{formatMoney(activeResearch.total_cost - activeResearch.progress)} remaining</span>
 				</div>
+				<button class="btn cancel-research" onclick={cancelResearch}>Cancel Research</button>
 			</div>
 		</div>
 	{/if}
@@ -385,6 +390,22 @@
 
 	.btn.research:hover {
 		background: rgba(59, 130, 246, 0.25);
+	}
+
+	.btn.cancel-research {
+		background: rgba(239, 68, 68, 0.1);
+		border: 1px solid rgba(239, 68, 68, 0.3);
+		color: var(--red);
+		padding: 4px 10px;
+		font-size: 11px;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		margin-top: 6px;
+		width: 100%;
+	}
+
+	.btn.cancel-research:hover {
+		background: rgba(239, 68, 68, 0.2);
 	}
 
 	.completed-list {

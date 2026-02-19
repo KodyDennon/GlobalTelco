@@ -4,8 +4,8 @@ use gt_common::commands::Command;
 use gt_common::types::*;
 use serde::{Deserialize, Serialize};
 
-use crate::components::*;
 use crate::components::covert_ops::MissionType;
+use crate::components::*;
 use crate::events::EventQueue;
 use crate::systems;
 
@@ -290,7 +290,9 @@ impl GameWorld {
                     // Find nearby cells in the same region, sorted by distance to center
                     let mut candidates: Vec<(usize, f64)> = rcells
                         .iter()
-                        .filter(|&&ci| ci != city.cell_index && !self.cell_to_city.contains_key(&ci))
+                        .filter(|&&ci| {
+                            ci != city.cell_index && !self.cell_to_city.contains_key(&ci)
+                        })
                         .filter_map(|&ci| {
                             let (lat, lon) = self.grid_cell_positions.get(ci)?;
                             let dlat = lat - clat;
@@ -303,7 +305,8 @@ impl GameWorld {
                             }
                         })
                         .collect();
-                    candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+                    candidates
+                        .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
                     for (ci, _) in candidates.into_iter().take(cell_budget - 1) {
                         city_cells.push(ci);
@@ -384,7 +387,11 @@ impl GameWorld {
         // Create player corporation
         let player_id = self.allocate_entity();
         self.player_corp_id = Some(player_id);
-        let player_name = self.config.corp_name.clone().unwrap_or_else(|| "Player Corp".to_string());
+        let player_name = self
+            .config
+            .corp_name
+            .clone()
+            .unwrap_or_else(|| "Player Corp".to_string());
         self.corporations
             .insert(player_id, Corporation::new(&player_name, true));
         self.financials.insert(
@@ -479,7 +486,35 @@ impl GameWorld {
         // Place a central office in the first city of their region
         if let Some(&city_id) = region.city_ids.first() {
             if let Some(city) = self.cities.get(&city_id) {
-                let cell_index = city.cell_index;
+                // Find a suitable neighbor: must be land, and ideally no city
+                let city_center_cell = city.cell_index;
+                let cell_index = self
+                    .grid_cell_neighbors
+                    .get(city_center_cell)
+                    .and_then(|neighbors| {
+                        neighbors
+                            .iter()
+                            .find(|&&n_idx| {
+                                let is_not_city = !self.cell_to_city.contains_key(&n_idx);
+                                let is_land = self
+                                    .cell_to_parcel
+                                    .get(&n_idx)
+                                    .and_then(|p_id| self.land_parcels.get(p_id))
+                                    .map(|p| {
+                                        !matches!(
+                                            p.terrain,
+                                            TerrainType::OceanDeep | TerrainType::OceanShallow
+                                        )
+                                    })
+                                    .unwrap_or(false);
+
+                                is_not_city && is_land
+                            })
+                            .or_else(|| neighbors.first())
+                    })
+                    .copied()
+                    .unwrap_or(city_center_cell);
+
                 let node_id = self.allocate_entity();
                 let node = InfraNode::new(NodeType::CentralOffice, cell_index, corp_id);
                 let maintenance = node.maintenance_cost;
@@ -488,6 +523,7 @@ impl GameWorld {
                 self.healths.insert(node_id, Health::new());
                 self.capacities.insert(node_id, Capacity::new(1000.0));
                 self.ownerships.insert(node_id, Ownership::sole(corp_id));
+
                 if let Some(&(lat, lon)) = self.grid_cell_positions.get(cell_index) {
                     self.positions.insert(
                         node_id,
@@ -515,7 +551,35 @@ impl GameWorld {
         // Place cell towers in additional cities (up to 2 more) to create a small network
         for &city_id in region.city_ids.iter().skip(1).take(2) {
             if let Some(city) = self.cities.get(&city_id) {
-                let cell_index = city.cell_index;
+                // Find a suitable neighbor for the cell tower
+                let city_center_cell = city.cell_index;
+                let cell_index = self
+                    .grid_cell_neighbors
+                    .get(city_center_cell)
+                    .and_then(|neighbors| {
+                        neighbors
+                            .iter()
+                            .find(|&&n_idx| {
+                                let is_not_city = !self.cell_to_city.contains_key(&n_idx);
+                                let is_land = self
+                                    .cell_to_parcel
+                                    .get(&n_idx)
+                                    .and_then(|p_id| self.land_parcels.get(p_id))
+                                    .map(|p| {
+                                        !matches!(
+                                            p.terrain,
+                                            TerrainType::OceanDeep | TerrainType::OceanShallow
+                                        )
+                                    })
+                                    .unwrap_or(false);
+
+                                is_not_city && is_land
+                            })
+                            .or_else(|| neighbors.get(1).or_else(|| neighbors.first()))
+                    })
+                    .copied()
+                    .unwrap_or(city_center_cell);
+
                 let node_id = self.allocate_entity();
                 let node = InfraNode::new(NodeType::CellTower, cell_index, corp_id);
                 let maintenance = node.maintenance_cost;
@@ -524,6 +588,7 @@ impl GameWorld {
                 self.healths.insert(node_id, Health::new());
                 self.capacities.insert(node_id, Capacity::new(500.0));
                 self.ownerships.insert(node_id, Ownership::sole(corp_id));
+
                 if let Some(&(lat, lon)) = self.grid_cell_positions.get(cell_index) {
                     self.positions.insert(
                         node_id,
@@ -671,8 +736,8 @@ impl GameWorld {
             }
             _ => return Err(format!("Unsupported save version: {}", version)),
         };
-        let decompressed = zstd::decode_all(payload)
-            .map_err(|e| format!("Zstd decompress failed: {}", e))?;
+        let decompressed =
+            zstd::decode_all(payload).map_err(|e| format!("Zstd decompress failed: {}", e))?;
         bincode::deserialize(&decompressed)
             .map_err(|e| format!("Bincode deserialize failed: {}", e))
     }
@@ -902,24 +967,68 @@ impl GameWorld {
             None => return,
         };
 
+        // PREVENT OVERLAP: Check if a node of the same type already exists on this cell
+        let already_exists = self
+            .infra_nodes
+            .values()
+            .any(|n| n.cell_index == cell_index && n.node_type == node_type);
+
+        if already_exists {
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::GlobalNotification {
+                    message: format!("Cannot build: A {:?} already exists here.", node_type),
+                    level: "warning".to_string(),
+                },
+            );
+            return;
+        }
+
         // Terrain constraints for node types
         match node_type {
             NodeType::SubmarineLanding => {
                 // Must be on coastal or ocean terrain
                 if !matches!(terrain, TerrainType::Coastal | TerrainType::OceanShallow) {
+                    self.event_queue.push(
+                        self.tick,
+                        gt_common::events::GameEvent::GlobalNotification {
+                            message: "Cannot build: Submarine landing requires coastal or shallow ocean terrain.".to_string(),
+                            level: "error".to_string(),
+                        },
+                    );
                     return;
                 }
             }
-            NodeType::CellTower | NodeType::WirelessRelay | NodeType::CentralOffice
-            | NodeType::ExchangePoint | NodeType::DataCenter => {
+            NodeType::CellTower
+            | NodeType::WirelessRelay
+            | NodeType::CentralOffice
+            | NodeType::ExchangePoint
+            | NodeType::DataCenter => {
                 // Land-based nodes can't be placed in deep ocean
                 if matches!(terrain, TerrainType::OceanDeep | TerrainType::OceanShallow) {
+                    self.event_queue.push(
+                        self.tick,
+                        gt_common::events::GameEvent::GlobalNotification {
+                            message: format!(
+                                "Cannot build {:?}: Requires solid ground.",
+                                node_type
+                            ),
+                            level: "error".to_string(),
+                        },
+                    );
                     return;
                 }
             }
             NodeType::SatelliteGround => {
                 // Can go anywhere except deep ocean
                 if matches!(terrain, TerrainType::OceanDeep) {
+                    self.event_queue.push(
+                        self.tick,
+                        gt_common::events::GameEvent::GlobalNotification {
+                            message: "Cannot build: Satellite ground station cannot be placed on deep ocean.".to_string(),
+                            level: "error".to_string(),
+                        },
+                    );
                     return;
                 }
             }
@@ -1036,31 +1145,79 @@ impl GameWorld {
             EdgeType::Submarine => self.cell_spacing_km * 30.0,
         };
         if length_km > max_distance_km {
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::GlobalNotification {
+                    message: format!(
+                        "Connection distance too long: {:.0}km / {:.0}km max.",
+                        length_km, max_distance_km
+                    ),
+                    level: "warning".to_string(),
+                },
+            );
             return; // Too far
         }
 
         // Enforce terrain constraints: check source/target terrain
-        let from_terrain = self.infra_nodes.get(&from_node)
-            .and_then(|n| self.land_parcels.values().find(|p| p.cell_index == n.cell_index))
+        let from_terrain = self
+            .infra_nodes
+            .get(&from_node)
+            .and_then(|n| {
+                self.land_parcels
+                    .values()
+                    .find(|p| p.cell_index == n.cell_index)
+            })
             .map(|p| p.terrain);
-        let to_terrain = self.infra_nodes.get(&to_node)
-            .and_then(|n| self.land_parcels.values().find(|p| p.cell_index == n.cell_index))
+        let to_terrain = self
+            .infra_nodes
+            .get(&to_node)
+            .and_then(|n| {
+                self.land_parcels
+                    .values()
+                    .find(|p| p.cell_index == n.cell_index)
+            })
             .map(|p| p.terrain);
 
         match edge_type {
             EdgeType::Submarine => {
                 // Submarine edges must have at least one endpoint on ocean/coastal
-                let is_water = |t: Option<TerrainType>| matches!(t,
-                    Some(TerrainType::OceanShallow | TerrainType::OceanDeep | TerrainType::Coastal));
+                let is_water = |t: Option<TerrainType>| {
+                    matches!(
+                        t,
+                        Some(
+                            TerrainType::OceanShallow
+                                | TerrainType::OceanDeep
+                                | TerrainType::Coastal
+                        )
+                    )
+                };
                 if !is_water(from_terrain) && !is_water(to_terrain) {
+                    self.event_queue.push(
+                        self.tick,
+                        gt_common::events::GameEvent::GlobalNotification {
+                            message: "Cannot build: Submarine edges require at least one endpoint on water.".to_string(),
+                            level: "error".to_string(),
+                        },
+                    );
                     return; // Submarine requires water
                 }
             }
-            EdgeType::Copper | EdgeType::FiberLocal | EdgeType::FiberRegional | EdgeType::FiberNational => {
+            EdgeType::Copper
+            | EdgeType::FiberLocal
+            | EdgeType::FiberRegional
+            | EdgeType::FiberNational => {
                 // Land-based cables can't span open ocean
-                let is_deep_ocean = |t: Option<TerrainType>| matches!(t,
-                    Some(TerrainType::OceanDeep));
+                let is_deep_ocean =
+                    |t: Option<TerrainType>| matches!(t, Some(TerrainType::OceanDeep));
                 if is_deep_ocean(from_terrain) || is_deep_ocean(to_terrain) {
+                    self.event_queue.push(
+                        self.tick,
+                        gt_common::events::GameEvent::GlobalNotification {
+                            message: "Cannot build: Wired cables cannot be placed in deep ocean."
+                                .to_string(),
+                            level: "error".to_string(),
+                        },
+                    );
                     return; // Fiber/copper can't be on deep ocean
                 }
             }
@@ -1069,7 +1226,11 @@ impl GameWorld {
 
         // Network contiguity: new edge must connect to existing corp network
         // (exempt if corp has fewer than 2 nodes — first edge always allowed)
-        let corp_nodes = self.corp_infra_nodes.get(&corp_id).map(|v| v.len()).unwrap_or(0);
+        let corp_nodes = self
+            .corp_infra_nodes
+            .get(&corp_id)
+            .map(|v| v.len())
+            .unwrap_or(0);
         if corp_nodes > 1 {
             let connected = self.network.connected_nodes(from_node);
             if !connected.contains(&from_node) && !connected.contains(&to_node) {
@@ -1694,10 +1855,7 @@ impl GameWorld {
     /// Transfer all assets from one corporation to another.
     pub fn transfer_corporation_assets(&mut self, from: EntityId, to: EntityId) {
         // Transfer infrastructure nodes
-        let nodes = self
-            .corp_infra_nodes
-            .remove(&from)
-            .unwrap_or_default();
+        let nodes = self.corp_infra_nodes.remove(&from).unwrap_or_default();
         for &node_id in &nodes {
             if let Some(node) = self.infra_nodes.get_mut(&node_id) {
                 node.owner = to;
@@ -1706,10 +1864,7 @@ impl GameWorld {
                 own.owner = to;
             }
         }
-        self.corp_infra_nodes
-            .entry(to)
-            .or_default()
-            .extend(nodes);
+        self.corp_infra_nodes.entry(to).or_default().extend(nodes);
 
         // Transfer edge ownership
         for edge in self.infra_edges.values_mut() {
@@ -1792,8 +1947,7 @@ impl GameWorld {
             .get(&corp_id)
             .map(|c| c.security_level)
             .unwrap_or(0);
-        let success_chance =
-            0.8 - target_security as f64 * 0.1 + attacker_security as f64 * 0.05;
+        let success_chance = 0.8 - target_security as f64 * 0.1 + attacker_security as f64 * 0.05;
 
         let mission = Mission {
             mission_type: MissionType::Espionage,
@@ -1840,8 +1994,7 @@ impl GameWorld {
             .get(&corp_id)
             .map(|c| c.security_level)
             .unwrap_or(0);
-        let detection_chance =
-            0.2 - attacker_security as f64 * 0.05 + target_security as f64 * 0.1;
+        let detection_chance = 0.2 - attacker_security as f64 * 0.05 + target_security as f64 * 0.1;
 
         let region = self
             .positions
@@ -1941,12 +2094,7 @@ impl GameWorld {
 
     // === Phase 10.5: Cooperative Infrastructure ===
 
-    fn cmd_propose_co_ownership(
-        &mut self,
-        node: EntityId,
-        target_corp: EntityId,
-        share_pct: f64,
-    ) {
+    fn cmd_propose_co_ownership(&mut self, node: EntityId, target_corp: EntityId, share_pct: f64) {
         let corp_id = match self.player_corp_id {
             Some(id) => id,
             None => return,
@@ -1989,12 +2137,7 @@ impl GameWorld {
         // AI responds to co-ownership proposals — handled in AI system
     }
 
-    fn cmd_propose_buyout(
-        &mut self,
-        node: EntityId,
-        target_corp: EntityId,
-        price: Money,
-    ) {
+    fn cmd_propose_buyout(&mut self, node: EntityId, target_corp: EntityId, price: Money) {
         let corp_id = match self.player_corp_id {
             Some(id) => id,
             None => return,

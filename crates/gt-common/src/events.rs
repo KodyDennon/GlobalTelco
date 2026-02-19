@@ -253,4 +253,10 @@ pub enum GameEvent {
         victory_type: String,
         score: f64,
     },
+
+    // UI & System
+    GlobalNotification {
+        message: String,
+        level: String, // "info", "warning", "error", "success"
+    },
 }

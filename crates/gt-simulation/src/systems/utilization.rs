@@ -9,7 +9,8 @@ pub fn run(world: &mut GameWorld) {
     // Phase 1: DataCenter boost — DataCenters increase effective capacity of connected nodes
     apply_datacenter_boosts(world);
 
-    // Phase 2: ExchangePoint latency reduction — ExchangePoints reduce latency on connected edges
+    // Phase 2: Reset edge latency to base, then apply ExchangePoint reductions
+    reset_edge_latency(world);
     apply_exchange_point_latency(world);
 
     // Phase 3: Calculate node utilization from per-cell coverage demand

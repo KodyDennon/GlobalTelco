@@ -12,7 +12,8 @@ import {
 import { saveToSlot, loadFromSlot, getNextAutoSaveSlot, QUICK_SAVE_SLOT } from '$lib/saves/SaveManager';
 import { get } from 'svelte/store';
 import { audioManager } from '$lib/audio/AudioManager';
-import { buildMode, activePanel, buildEdgeSource, buildMenuParcel } from '$lib/stores/uiState';
+import { buildMode, activePanel, buildEdgeSource, buildMenuParcel, selectedEntityId, selectedEntityType, activeOverlay } from '$lib/stores/uiState';
+import type { PanelType, OverlayType } from '$lib/stores/uiState';
 import { writable } from 'svelte/store';
 
 let running = false;
@@ -289,11 +290,14 @@ function handleKeyDown(e: KeyboardEvent) {
 			break;
 		case 'Escape':
 			e.preventDefault();
-			// Close panel or cancel build mode
+			// Close panel, cancel build mode, or deselect entity
 			if (get(buildMode)) {
 				buildMode.set(null);
 				buildMenuParcel.set(null);
 				buildEdgeSource.set(null);
+			} else if (get(selectedEntityId) !== null) {
+				selectedEntityId.set(null);
+				selectedEntityType.set(null);
 			} else if (get(activePanel) !== 'none') {
 				activePanel.set('none');
 			}
@@ -301,6 +305,43 @@ function handleKeyDown(e: KeyboardEvent) {
 		case 'F3':
 			e.preventDefault();
 			showPerfMonitor.update((v) => !v);
+			break;
+		// Panel shortcuts
+		case 'd':
+		case 'D':
+			e.preventDefault();
+			activePanel.update((p) => p === 'dashboard' ? 'none' : 'dashboard');
+			break;
+		case 'i':
+		case 'I':
+			e.preventDefault();
+			activePanel.update((p) => p === 'infrastructure' ? 'none' : 'infrastructure');
+			break;
+		case 'r':
+		case 'R':
+			e.preventDefault();
+			activePanel.update((p) => p === 'research' ? 'none' : 'research');
+			break;
+		case 'c':
+		case 'C':
+			e.preventDefault();
+			activePanel.update((p) => p === 'contracts' ? 'none' : 'contracts');
+			break;
+		case 'w':
+		case 'W':
+			e.preventDefault();
+			activePanel.update((p) => p === 'workforce' ? 'none' : 'workforce');
+			break;
+		// Overlay shortcut
+		case 't':
+		case 'T':
+			e.preventDefault();
+			activeOverlay.update((o) => o === 'terrain' ? 'none' : 'terrain');
+			break;
+		case 'o':
+		case 'O':
+			e.preventDefault();
+			activeOverlay.update((o) => o === 'ownership' ? 'none' : 'ownership');
 			break;
 	}
 }
