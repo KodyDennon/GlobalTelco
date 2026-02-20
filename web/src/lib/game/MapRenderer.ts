@@ -988,9 +988,9 @@ export class MapRenderer {
 				this.panX -= (dx / this.zoom) * 0.5;
 				this.panY += (dy / this.zoom) * 0.5;
 
-				// Clamp pan (Mercator world is approx 360x360)
-				this.panX = Math.max(-150, Math.min(150, this.panX));
-				this.panY = Math.max(-130, Math.min(130, this.panY));
+				// Further clamp pan for a more focused experience
+				this.panX = Math.max(-130, Math.min(130, this.panX));
+				this.panY = Math.max(-110, Math.min(110, this.panY));
 
 				this.lastMouse = { x: e.clientX, y: e.clientY };
 				this.updateCamera();
@@ -1004,8 +1004,8 @@ export class MapRenderer {
 		el.addEventListener('wheel', (e) => {
 			e.preventDefault();
 			const factor = e.deltaY > 0 ? 0.9 : 1.1;
-			// Tighten zoom (0.8 prevents excessive world duplication)
-			this.zoom = Math.max(0.8, Math.min(50, this.zoom * factor));
+			// Tightened zoom (1.3 prevents seeing more than ~1.5 worlds on most screens)
+			this.zoom = Math.max(1.3, Math.min(50, this.zoom * factor));
 			this.updateCamera();
 			this.updateLabelVisibility();
 		});
