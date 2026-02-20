@@ -199,7 +199,7 @@ export class MapRenderer {
 	}
 
 	private latLonToMercator(lat: number, lon: number): { x: number; y: number } {
-		const CLAMP = 85;
+		const CLAMP = 82; // Tighten clamp to avoid extreme polar stretching
 		const clampedLat = Math.max(-CLAMP, Math.min(CLAMP, lat));
 		const latRad = (clampedLat * Math.PI) / 180;
 		return {
@@ -987,6 +987,11 @@ export class MapRenderer {
 				}
 				this.panX -= (dx / this.zoom) * 0.5;
 				this.panY += (dy / this.zoom) * 0.5;
+
+				// Clamp pan (Mercator world is approx 360x360)
+				this.panX = Math.max(-150, Math.min(150, this.panX));
+				this.panY = Math.max(-130, Math.min(130, this.panY));
+
 				this.lastMouse = { x: e.clientX, y: e.clientY };
 				this.updateCamera();
 			}
@@ -999,7 +1004,8 @@ export class MapRenderer {
 		el.addEventListener('wheel', (e) => {
 			e.preventDefault();
 			const factor = e.deltaY > 0 ? 0.9 : 1.1;
-			this.zoom = Math.max(0.1, Math.min(50, this.zoom * factor));
+			// Tighten zoom (0.8 prevents excessive world duplication)
+			this.zoom = Math.max(0.8, Math.min(50, this.zoom * factor));
 			this.updateCamera();
 			this.updateLabelVisibility();
 		});
@@ -1129,7 +1135,7 @@ export class MapRenderer {
 	}
 
 	private renderTerrainOverlay() {
-		// Enhance terrain visibility with stronger colors
+		// Use a tiled grid look instead of individual discs
 		const terrainOverlayColors: Record<string, number> = {
 			Urban: 0xfbbf24,
 			Suburban: 0x8bc34a,
@@ -1143,29 +1149,32 @@ export class MapRenderer {
 			Frozen: 0xe3f2fd
 		};
 
-		const overlayDisc = new THREE.CircleGeometry(1, 24);
+		// Use PlaneGeometry for a crisp square/tile look
+		// Scaling slightly larger (1.05) to ensure gapless grid
+		const r = this.baseCellSize * 1.05;
+		const tileGeo = new THREE.PlaneGeometry(r, r);
+
 		for (const cell of this.cachedCells) {
-			const color = terrainOverlayColors[cell.terrain];
-			if (!color) continue;
+			const color = terrainOverlayColors[cell.terrain] ?? 0xcccccc;
+			if (Math.abs(cell.lat) > 80) continue; // Clip polar extremes
+
+			const pos = this.latLonToMercator(cell.lat, cell.lon);
 			const mat = new THREE.MeshBasicMaterial({
 				color,
-				opacity: 0.35,
+				opacity: 0.25, // Subtle but clearly visible background
 				transparent: true
 			});
-			const mesh = new THREE.Mesh(overlayDisc, mat);
-			mesh.position.set(cell.lon, cell.lat, 0.2);
 
-			const latRad = (cell.lat * Math.PI) / 180;
-			const cosLat = Math.max(0.3, Math.cos(latRad));
-			const r = this.baseCellSize;
-			mesh.scale.set(r / cosLat, r, 1);
-
-			this.overlayGroup.add(mesh);
+			for (const offset of [-360, 0, 360]) {
+				const mesh = new THREE.Mesh(tileGeo, mat);
+				mesh.position.set(pos.x + offset, pos.y, 0.2);
+				this.overlayGroup.add(mesh);
+			}
 		}
 	}
 
 	private renderOwnershipOverlay() {
-		// Make ownership circles larger and more opaque
+		// Professional soft aura for ownership clusters
 		if (!bridge.isInitialized()) return;
 
 		const corps = bridge.getAllCorporations();
@@ -1177,21 +1186,26 @@ export class MapRenderer {
 			const infra = bridge.getInfrastructureList(corp.id);
 
 			for (const node of infra.nodes) {
-				const geo = new THREE.CircleGeometry(this.baseCellSize * 0.3, 16);
+				const pos = this.latLonToMercator(node.y, node.x);
+				// Use a soft aura that feels integrated into the map
+				const geo = new THREE.CircleGeometry(this.baseCellSize * 0.6, 16);
 				const mat = new THREE.MeshBasicMaterial({
 					color,
-					opacity: 0.15,
+					opacity: 0.1, // Very subtle aura
 					transparent: true
 				});
-				const mesh = new THREE.Mesh(geo, mat);
-				mesh.position.set(node.x, node.y, 0.25);
-				this.overlayGroup.add(mesh);
+
+				for (const offset of [-360, 0, 360]) {
+					const mesh = new THREE.Mesh(geo, mat);
+					mesh.position.set(pos.x + offset, pos.y, 0.15);
+					this.overlayGroup.add(mesh);
+				}
 			}
 		}
 	}
 
 	private renderDemandOverlay() {
-		// Color regions by population density (demand proxy)
+		// Color regions by population density with a professional soft glow
 		for (const region of this.cachedRegions) {
 			const pop = region.population ?? 0;
 			// Normalize: low pop = blue, high pop = red
@@ -1200,21 +1214,26 @@ export class MapRenderer {
 			const b = Math.floor((1 - intensity) * 255);
 			const color = (r << 16) | (50 << 8) | b;
 
-			const radius = Math.sqrt(region.cell_count) * this.baseCellSize * 0.15;
-			const geo = new THREE.CircleGeometry(radius, 24);
+			const pos = this.latLonToMercator(region.center_lat, region.center_lon);
+			// Use a very soft, large blurred disc for a 'heat' feel rather than a hard circle
+			const radius = Math.sqrt(region.cell_count) * this.baseCellSize * 0.4;
+			const geo = new THREE.CircleGeometry(radius, 32);
 			const mat = new THREE.MeshBasicMaterial({
 				color,
-				opacity: 0.2,
+				opacity: 0.12,
 				transparent: true
 			});
-			const mesh = new THREE.Mesh(geo, mat);
-			mesh.position.set(region.center_lon, region.center_lat, 0.2);
-			this.overlayGroup.add(mesh);
+
+			for (const offset of [-360, 0, 360]) {
+				const mesh = new THREE.Mesh(geo, mat);
+				mesh.position.set(pos.x + offset, pos.y, 0.18);
+				this.overlayGroup.add(mesh);
+			}
 		}
 	}
 
 	private renderCoverageOverlay() {
-		// Show real per-cell coverage data as a heatmap
+		// Show real per-cell coverage data as a tiled heatmap
 		if (!bridge.isInitialized()) return;
 
 		const coverageData = bridge.getCellCoverage();
@@ -1231,9 +1250,14 @@ export class MapRenderer {
 		const corps = bridge.getAllCorporations();
 		this.buildCorpColorMap(corps);
 
+		// Use gapless tiled planes
+		const r = this.baseCellSize * 1.05;
+		const tileGeo = new THREE.PlaneGeometry(r, r);
+
 		for (const cov of coverageData) {
 			const intensity = Math.min(1.0, cov.signal_strength / maxSignal);
 			if (intensity < 0.01) continue;
+			if (Math.abs(cov.lat) > 80) continue;
 
 			// Color by dominant owner, fall back to green
 			let color: number;
@@ -1243,26 +1267,23 @@ export class MapRenderer {
 				color = 0x10b981;
 			}
 
-			const covDisc = new THREE.CircleGeometry(1, 24);
+			const pos = this.latLonToMercator(cov.lat, cov.lon);
 			const mat = new THREE.MeshBasicMaterial({
 				color,
-				opacity: 0.08 + intensity * 0.22,
+				opacity: 0.15 + intensity * 0.35,
 				transparent: true
 			});
-			const mesh = new THREE.Mesh(covDisc, mat);
-			mesh.position.set(cov.lon, cov.lat, 0.2);
 
-			const latRad = (cov.lat * Math.PI) / 180;
-			const cosLat = Math.max(0.3, Math.cos(latRad));
-			const r = this.baseCellSize * 0.9;
-			mesh.scale.set(r / cosLat, r, 1);
-
-			this.overlayGroup.add(mesh);
+			for (const offset of [-360, 0, 360]) {
+				const mesh = new THREE.Mesh(tileGeo, mat);
+				mesh.position.set(pos.x + offset, pos.y, 0.22); // Slightly above terrain
+				this.overlayGroup.add(mesh);
+			}
 		}
 	}
 
 	private renderDisasterRiskOverlay() {
-		// Color regions by disaster risk: green (low) → yellow → red (high)
+		// Risk heatmap with region-aware sizing
 		for (const region of this.cachedRegions) {
 			const risk = region.disaster_risk ?? 0;
 			const intensity = Math.min(1.0, risk * 5); // Scale up for visibility
@@ -1270,21 +1291,25 @@ export class MapRenderer {
 			const g = Math.floor((1 - intensity) * 180);
 			const color = (r << 16) | (g << 8) | 0;
 
-			const radius = Math.sqrt(region.cell_count) * this.baseCellSize * 0.15;
-			const geo = new THREE.CircleGeometry(radius, 24);
+			const pos = this.latLonToMercator(region.center_lat, region.center_lon);
+			const radius = Math.sqrt(region.cell_count) * this.baseCellSize * 0.4;
+			const geo = new THREE.CircleGeometry(radius, 32);
 			const mat = new THREE.MeshBasicMaterial({
 				color,
-				opacity: 0.25,
+				opacity: 0.15,
 				transparent: true
 			});
-			const mesh = new THREE.Mesh(geo, mat);
-			mesh.position.set(region.center_lon, region.center_lat, 0.2);
-			this.overlayGroup.add(mesh);
+
+			for (const offset of [-360, 0, 360]) {
+				const mesh = new THREE.Mesh(geo, mat);
+				mesh.position.set(pos.x + offset, pos.y, 0.18);
+				this.overlayGroup.add(mesh);
+			}
 		}
 	}
 
 	private renderCongestionOverlay() {
-		// Show node congestion: green (low utilization) → red (high utilization)
+		// Professional node status indicators (congestion)
 		if (!bridge.isInitialized()) return;
 
 		const corps = bridge.getAllCorporations();
@@ -1298,16 +1323,23 @@ export class MapRenderer {
 				const g = Math.floor(Math.max(0, 1 - util) * 200);
 				const color = (r << 16) | (g << 8) | 0;
 
-				const radius = this.baseCellSize * (0.15 + util * 0.15);
-				const geo = new THREE.CircleGeometry(radius, 16);
+				const pos = this.latLonToMercator(node.y, node.x);
+				// Smaller, crisp indicator rings for congestion
+				const innerR = this.baseCellSize * 0.12;
+				const outerR = this.baseCellSize * (0.12 + util * 0.18);
+				const geo = new THREE.RingGeometry(innerR, outerR, 24);
 				const mat = new THREE.MeshBasicMaterial({
 					color,
-					opacity: 0.25,
-					transparent: true
+					opacity: 0.3,
+					transparent: true,
+					side: THREE.DoubleSide
 				});
-				const mesh = new THREE.Mesh(geo, mat);
-				mesh.position.set(node.x, node.y, 0.2);
-				this.overlayGroup.add(mesh);
+
+				for (const offset of [-360, 0, 360]) {
+					const mesh = new THREE.Mesh(geo, mat);
+					mesh.position.set(pos.x + offset, pos.y, 0.22);
+					this.overlayGroup.add(mesh);
+				}
 			}
 		}
 	}
@@ -1317,7 +1349,7 @@ export class MapRenderer {
 
 		const flows: TrafficFlows = bridge.getTrafficFlows();
 
-		// Draw edges colored by utilization: green (<50%) → yellow (50-80%) → red (>80%) → flashing red (>100%)
+		// Draw edges colored by utilization with subtle, thin tubes
 		for (const ef of flows.edge_flows) {
 			if (ef.traffic <= 0 && ef.utilization <= 0) continue;
 
@@ -1326,52 +1358,48 @@ export class MapRenderer {
 			let opacity: number;
 
 			if (util > 1.0) {
-				// Overloaded: bright red
 				color = 0xff2222;
-				opacity = 0.9;
+				opacity = 0.6;
 			} else if (util > 0.8) {
-				// High: red
 				const t = (util - 0.8) / 0.2;
-				const r = 255;
-				const g = Math.floor((1 - t) * 80);
-				color = (r << 16) | (g << 8) | 0;
-				opacity = 0.7;
-			} else if (util > 0.5) {
-				// Medium: yellow-orange
-				const t = (util - 0.5) / 0.3;
-				const r = Math.floor(200 + t * 55);
-				const g = Math.floor(200 - t * 120);
-				color = (r << 16) | (g << 8) | 0;
+				color = (255 << 16) | (Math.floor((1 - t) * 80) << 8) | 0;
 				opacity = 0.5;
+			} else if (util > 0.5) {
+				const t = (util - 0.5) / 0.3;
+				color = (Math.floor(200 + t * 55) << 16) | (Math.floor(200 - t * 120) << 8) | 0;
+				opacity = 0.35;
 			} else {
-				// Low: green
 				const t = util / 0.5;
-				const r = Math.floor(t * 100);
-				const g = Math.floor(150 + t * 50);
-				color = (r << 16) | (g << 8) | 0x20;
-				opacity = 0.4;
+				color = (Math.floor(t * 100) << 16) | (Math.floor(150 + t * 50) << 8) | 0x20;
+				opacity = 0.25;
 			}
 
-			// Edge thickness proportional to traffic volume (clamped)
-			const thickness = this.baseCellSize * (0.01 + Math.min(util, 1.5) * 0.02);
+			// Subtler thickness
+			const thickness = this.baseCellSize * (0.005 + Math.min(util, 1.5) * 0.012);
 
-			const pts = [
-				new THREE.Vector3(ef.src_x, ef.src_y, 2.0),
-				new THREE.Vector3(ef.dst_x, ef.dst_y, 2.0)
-			];
-			const curve = new THREE.LineCurve3(pts[0], pts[1]);
-			const tubeGeo = new THREE.TubeGeometry(curve, 4, thickness, 4, false);
+			const srcPos = this.latLonToMercator(ef.src_y, ef.src_x);
+			const dstPos = this.latLonToMercator(ef.dst_y, ef.dst_x);
+
 			const mat = new THREE.MeshBasicMaterial({
 				color,
 				opacity,
 				transparent: true,
 				depthTest: false
 			});
-			const mesh = new THREE.Mesh(tubeGeo, mat);
-			this.overlayGroup.add(mesh);
+
+			for (const offset of [-360, 0, 360]) {
+				const pts = [
+					new THREE.Vector3(srcPos.x + offset, srcPos.y, 2.0),
+					new THREE.Vector3(dstPos.x + offset, dstPos.y, 2.0)
+				];
+				const curve = new THREE.LineCurve3(pts[0], pts[1]);
+				const tubeGeo = new THREE.TubeGeometry(curve, 4, thickness, 3, false); // Fewer segments for performance/look
+				const mesh = new THREE.Mesh(tubeGeo, mat);
+				this.overlayGroup.add(mesh);
+			}
 		}
 
-		// Draw nodes with utilization fill
+		// Draw nodes with subtle status glows
 		for (const nf of flows.node_flows) {
 			if (nf.traffic <= 0) continue;
 
@@ -1380,17 +1408,21 @@ export class MapRenderer {
 			const g = Math.floor(Math.max(0, 1 - util) * 200);
 			const color = (r << 16) | (g << 8) | 0;
 
-			const radius = this.baseCellSize * (0.1 + Math.min(util, 1.0) * 0.1);
+			const pos = this.latLonToMercator(nf.y, nf.x);
+			const radius = this.baseCellSize * (0.1 + Math.min(util, 1.0) * 0.15);
 			const geo = new THREE.CircleGeometry(radius, 12);
 			const mat = new THREE.MeshBasicMaterial({
 				color,
-				opacity: 0.35,
+				opacity: 0.25,
 				transparent: true,
 				depthTest: false
 			});
-			const mesh = new THREE.Mesh(geo, mat);
-			mesh.position.set(nf.x, nf.y, 2.0);
-			this.overlayGroup.add(mesh);
+
+			for (const offset of [-360, 0, 360]) {
+				const mesh = new THREE.Mesh(geo, mat);
+				mesh.position.set(pos.x + offset, pos.y, 2.0);
+				this.overlayGroup.add(mesh);
+			}
 		}
 	}
 
