@@ -35,17 +35,46 @@
 
 ---
 
-## 3. Coding Standards & Conventions
+## 3. ECS Tick Order (20 Systems)
+
+All systems run in this deterministic order every tick. Order is critical for correctness and multiplayer sync.
+
+1. `construction_system` — advance construction timers, complete builds
+2. `maintenance_system` — check workforce vs maintenance needs, degrade unmaintained infra
+3. `population_system` — update populations, migration, employment based on infrastructure
+4. `coverage_system` — calculate network coverage per region, signal strength, dead zones
+5. `demand_system` — calculate regional demand based on population and economy
+6. `routing_system` — recalculate network routes if topology changed
+7. `utilization_system` — calculate infrastructure utilization from routed demand
+8. `revenue_system` — calculate per-corp revenue from served demand
+9. `cost_system` — calculate maintenance, salary, interest costs
+10. `finance_system` — update corporate finances (income, balance sheet, credit rating)
+11. `contract_system` — process contract terms, renewals, breaches
+12. `ai_system` — AI corporations make decisions (build, hire, contract, research)
+13. `disaster_system` — roll for disasters, apply damage
+14. `regulation_system` — process regulatory changes, political events
+15. `research_system` — advance tech research progress
+16. `market_system` — dynamic AI spawning, mergers, bankruptcies
+17. `auction_system` — process spectrum and infrastructure auction bids, resolve winners
+18. `covert_ops_system` — execute espionage actions, intel gathering, sabotage resolution
+19. `lobbying_system` — process lobbying investments, political influence, regulation nudges
+20. `achievement_system` — check achievement conditions, unlock milestones, track stats
+
+**Planned additional systems:** alliance, legal, grants, fog_of_war, pricing, maintenance_scheduling
+
+---
+
+## 4. Coding Standards & Conventions
 - **Implementation Required:** No stub or placeholder code — all features must be fully coded, integrated, and tested.
 - **Language & Framework:** Rust for all simulation logic. TypeScript/Svelte for frontend UI. Three.js for map rendering. D3.js for data visualization.
 - **Rust Standards:** `cargo clippy` clean, `cargo fmt` formatted, all public APIs documented with `///` doc comments.
 - **TypeScript Standards:** Strict mode, proper typing, no `any` types.
-- **Testing:** Unit tests for every crate (`cargo test`); integration tests for cross-crate interactions; frontend tests via Bun.
+- **Testing:** Target ~120-150 tests total. Happy path + edge cases per system (`cargo test`); integration tests for cross-crate interactions; frontend tests via Bun. Coverage goal: every system has at least 2 happy-path tests and 2 edge-case tests.
 - **Naming Conventions:** Rust: snake_case for functions/variables, PascalCase for types. TypeScript: camelCase for functions/variables, PascalCase for types/components.
 
 ---
 
-## 4. Full-Stack Responsibilities
+## 5. Full-Stack Responsibilities
 - **Simulation Engine (Rust):** Deterministic ECS, world generation, economy, AI, infrastructure, population modeling.
 - **Frontend (Svelte/Three.js/D3.js):** 2D political map rendering, interactive dashboards, management panels, data visualization.
 - **WASM Bridge:** TypeScript ↔ Rust interop via wasm-bindgen. Commands (player actions) and Queries (state reads).
@@ -55,15 +84,16 @@
 
 ---
 
-## 5. Rules for Complete Integration
+## 6. Rules for Complete Integration
 - **No Partial Systems:** Every feature must be integrated end-to-end before merging to main.
 - **Cross-Crate Contracts:** Crates expose public APIs; integration tests ensure contracts are respected.
 - **Version Control:** Every change must include updated documentation, unit tests, and integration tests.
 - **Continuous Build:** `cargo build`, `cargo test`, `cargo clippy`, and `bun run build` must all succeed on main; broken builds are blocked.
+- **Tauri Desktop Compatibility:** All frontend changes must maintain compatibility with the Tauri desktop app throughout development. Test `cargo tauri dev` periodically. No browser-only APIs without Tauri fallbacks.
 
 ---
 
-## 6. Developer / AI Agent Obligations
+## 7. Developer / AI Agent Obligations
 - Follow this charter strictly; all development must adhere to repository architecture and engine rules.
 - Ensure all crates and frontend components are fully implemented, integrated, and tested.
 - Maintain deterministic simulation for consistency across WASM and native builds.

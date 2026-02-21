@@ -28,7 +28,7 @@ This plan covers: world generation, AI corporations, save/load, speed controls, 
 │  │  │  - World generation                    │  │  │
 │  │  │  - AI corporations (gt-ai)             │  │  │
 │  │  │  - Economy, infra, population          │  │  │
-│  │  │  - All 15 systems per tick             │  │  │
+│  │  │  - All 20 systems per tick             │  │  │
 │  │  └────────────────────────────────────────┘  │  │
 │  └──────────────────────────────────────────────┘  │
 │                                                    │
@@ -50,8 +50,8 @@ This plan covers: world generation, AI corporations, save/load, speed controls, 
 - `Tick` — simulation tick counter (u64)
 - `WorldConfig` — starting era, difficulty, AI count, disaster severity, world seed, speed settings
 - `TerrainType` — enum: Urban, Suburban, Rural, Mountainous, Desert, Coastal, OceanShallow, OceanDeep, Tundra, Frozen
-- `NodeType` — enum: AccessTower, FiberHub, DataCenter, IXP, SubseaStation, SatelliteStation
-- `EdgeType` — enum: FiberLocal, FiberRegional, FiberNational, Microwave, Subsea, Satellite
+- `NodeType` — enum: ~33 types across eras (e.g., TelegraphOffice, TelephoneExchange, AccessTower, FiberHub, DataCenter, IXP, SubseaStation, SatelliteStation, 5GSmallCell, EdgeComputeNode, etc.)
+- `EdgeType` — enum: ~15 types across eras (e.g., TelegraphWire, CopperLoop, FiberLocal, FiberRegional, FiberNational, Microwave, Subsea, Satellite, 5GmmWave, MeshWireless, etc.)
 - `CreditRating` — enum: AAA through D
 - `AIArchetype` — enum: AggressiveExpander, DefensiveConsolidator, TechInnovator, BudgetOperator
 - `AIStrategy` — enum: Expand, Consolidate, Compete, Survive
@@ -62,7 +62,7 @@ This plan covers: world generation, AI corporations, save/load, speed controls, 
 
 - `GameWorld` struct — owns all component storage (SoA arrays), entity allocator, event queue, tick counter
 - `GameWorld::new(config: WorldConfig) -> Self` — creates empty world from config
-- `GameWorld::tick(&mut self, dt: f64)` — runs all 15 systems in deterministic order
+- `GameWorld::tick(&mut self, dt: f64)` — runs all 20 systems in deterministic order
 - `GameWorld::process_command(&mut self, cmd: Command) -> Result<(), CommandError>` — validates and executes player actions
 - Entity CRUD: `spawn_entity()`, `despawn_entity()`, `get_component()`, `set_component()`
 
@@ -98,21 +98,29 @@ One file per component group:
 
 Each system is a function: `fn system_name(world: &mut GameWorld)`
 
+20 core systems in deterministic tick order:
 1. `construction_system` — advance construction timers, complete builds
 2. `maintenance_system` — check workforce vs maintenance needs, degrade unmaintained infra
 3. `population_system` — update populations, migration, employment based on infrastructure
-4. `demand_system` — calculate regional demand based on population and economy
-5. `routing_system` — recalculate network routes if topology changed (dirty-flag optimization)
-6. `utilization_system` — calculate infrastructure utilization from routed demand
-7. `revenue_system` — calculate per-corp revenue from served demand
-8. `cost_system` — calculate maintenance, salary, interest costs
-9. `finance_system` — update corporate finances (income, balance sheet, credit rating)
-10. `contract_system` — process contract terms, renewals, breaches
-11. `ai_system` — AI corporations make decisions (build, hire, contract, research)
-12. `disaster_system` — roll for disasters, apply damage
-13. `regulation_system` — process regulatory changes, political events
-14. `research_system` — advance tech research progress
-15. `market_system` — dynamic AI spawning, mergers, bankruptcies
+4. `coverage_system` — calculate network coverage per region, signal strength, dead zones
+5. `demand_system` — calculate regional demand based on population and economy
+6. `routing_system` — recalculate network routes if topology changed (dirty-flag optimization)
+7. `utilization_system` — calculate infrastructure utilization from routed demand
+8. `revenue_system` — calculate per-corp revenue from served demand
+9. `cost_system` — calculate maintenance, salary, interest costs
+10. `finance_system` — update corporate finances (income, balance sheet, credit rating)
+11. `contract_system` — process contract terms, renewals, breaches
+12. `ai_system` — AI corporations make decisions (build, hire, contract, research)
+13. `disaster_system` — roll for disasters, apply damage
+14. `regulation_system` — process regulatory changes, political events
+15. `research_system` — advance tech research progress
+16. `market_system` — dynamic AI spawning, mergers, bankruptcies
+17. `auction_system` — process spectrum and infrastructure auction bids, resolve winners
+18. `covert_ops_system` — execute espionage actions, intel gathering, sabotage resolution
+19. `lobbying_system` — process lobbying investments, political influence, regulation nudges
+20. `achievement_system` — check achievement conditions, unlock milestones, track stats
+
+Planned additional systems: alliance, legal, grants, fog_of_war, pricing, maintenance_scheduling
 
 ---
 
@@ -294,9 +302,9 @@ For logged-in users:
    - Disaster severity (slider 1-10)
    - World seed (text input, 0 = random)
 4. Click "Start Game"
-5. WASM module initializes: creates `GameWorld`, generates world, creates player corp, spawns AI corps
+5. WASM module initializes: creates `GameWorld`, generates world, creates player corp with 1 starter node appropriate to starting era (e.g., Telegraph Office for Telegraph era, Cell Tower for Modern era), spawns AI corps
 6. Three.js map renders the world, Svelte UI shows HUD panels
-7. Game begins paused so player can orient
+7. Game begins paused so player can orient. Auto-pause triggers on critical events (bankruptcy warning, hostile takeover offer, major disaster).
 
 ### 6b. Initialization Sequence (in WASM)
 
@@ -308,11 +316,13 @@ new_game(config: WorldConfig, player_name: String) -> GameWorld:
     4. generate_regions(world, config)         // gt-world
     5. seed_economics(world, config)           // gt-economy
     6. player_corp = create_corporation(world, player_name, false)  // player
-    7. for i in 0..config.ai_count:
+    7. place_starter_node(world, player_corp, config.starting_era)  // 1 starter node appropriate to era
+    8. for i in 0..config.ai_count:
          archetype = ARCHETYPES[i % 4]
          name = archetype.random_name(config.seed + i)
          create_corporation(world, name, true, archetype)  // AI corp
-    8. return world
+    9. world.paused = true                     // game starts paused
+   10. return world
 ```
 
 ### 6c. Load Game Flow
@@ -328,6 +338,44 @@ new_game(config: WorldConfig, player_name: String) -> GameWorld:
 - Every 50 economic ticks, auto-save to "AutoSave" slot
 - Rotating auto-saves: AutoSave1, AutoSave2, AutoSave3 (keeps last 3)
 - Auto-save runs asynchronously (doesn't block simulation)
+
+### 6e. Tutorial Integration
+
+- Tutorial references the player's starter node as the first interactive element
+- Step 1: "Welcome — you've just founded your telecom company. Your first [era-appropriate node] is operational."
+- Tutorial guides player through examining the starter node, then building a second node and connecting them with an edge
+- Tutorial is skippable at any point
+
+### 6f. Research System (Single-Player)
+
+- Research tree is freely explorable: techs gated by prerequisites only, NOT by era
+- Players can research any tech they meet the prereqs for regardless of current era
+- Tech functions as an economic commodity: patents, licenses, and open-sourcing create strategic depth
+- AI corps research based on archetype priorities, not era restrictions
+
+### 6g. Sandbox Mode
+
+- Sandbox available as a game mode in single-player (selectable in New Game menu)
+- Sandbox features: unlimited funds, no bankruptcy, instant construction, adjustable AI behavior
+- All simulation systems still run — sandbox shields from failure, not from gameplay
+- Useful for learning game mechanics, testing strategies, and creative play
+
+### 6h. Panel Architecture (6 Tabbed Groups)
+
+- Management panels organized into 6 tabbed groups for clean navigation:
+  - **Finance** — Dashboard, pricing strategy, insurance
+  - **Operations** — Infrastructure, maintenance, repair queue, workforce, build menu
+  - **Diplomacy** — Alliances, legal actions, intel/espionage, co-ownership
+  - **Research** — Tech tree, patents/licensing
+  - **Market** — Contracts, auctions, mergers & acquisitions, government grants, subsidiaries
+  - **Info** — Region overview, advisor, achievements
+
+### 6i. Build Menu
+
+- Build menu categorized by tier (Local → Regional → National → Continental → Global Backbone)
+- Node types grouped within tiers for easy discovery
+- Edge types shown contextually based on selected source/target node tiers
+- Cost, construction time, and era availability shown per item
 
 ---
 

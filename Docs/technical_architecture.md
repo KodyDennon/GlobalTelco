@@ -63,6 +63,19 @@ All game state is managed through an ECS architecture. Entities are IDs, compone
 - `LandParcel` — ownable land units
 - `TechResearch` — ongoing research projects
 - `DebtInstrument` — loans, bonds
+- `Patent` — owned intellectual property (tech patents, licenses)
+- `LicenseAgreement` — active license between patent holder and licensee
+- `Alliance` — formal multi-corp alliance entity
+- `Lawsuit` — active legal dispute between corporations
+- `GovernmentGrant` — government-funded infrastructure project
+
+**NodeType Enum (era-specific, flat enum — ~33 variants):**
+- **Telegraph:** `TelegraphOffice`, `TelegraphRelay`
+- **Telephone:** `TelephoneExchange`, `OperatorSwitch`, `LongDistanceRelay`
+- **Early Digital:** `DigitalSwitch`, `MicrowaveTower`, `CoaxHub`
+- **Internet:** `DSLTerminal`, `FiberPOP`, `WebHostingCenter`, `DialUpGateway`
+- **Modern:** `CellTower4G`, `CellTower5G`, `DataCenter`, `FTTHNode`, `CDNEdge`, `ExchangePoint`, `BackboneRouter`
+- **Near Future:** `Cell6G`, `SatelliteGround`, `QuantumRelay`, `EdgeAINode`, `SubmarineLanding`
 
 **Core Component Types:**
 - `Position { longitude, latitude }` — geographic location
@@ -76,6 +89,15 @@ All game state is managed through an ECS architecture. Entities are IDs, compone
 - `Workforce { skill_level, experience, salary, assigned_region }` — employee data
 - `AIStrategy { archetype, current_mode, weights }` — AI decision state
 - `MaintenancePolicy { target_uptime, budget, priority }` — management policies
+- `Patent { tech_id, holder_corp, filed_tick, expires_tick, licensed_to }` — patent ownership and licensing
+- `LicenseAgreement { patent_id, licensee_corp, royalty_rate, expires_tick }` — active license terms
+- `Alliance { alliance_id, name, trust_score, revenue_share_pct }` — alliance membership details
+- `AllianceMember { alliance_id, corp_id, joined_tick, vote_weight }` — per-corp alliance participation
+- `Lawsuit { plaintiff_corp, defendant_corp, type, damages_claimed, filed_tick }` — active legal dispute
+- `GovernmentGrant { region_id, requirements, reward, deadline_tick, progress }` — government-funded project
+- `IntelLevel { target_corp, observer_corp, level, last_updated_tick }` — espionage intelligence gathered
+- `MaintenancePriority { entity_id, priority_tier, auto_repair }` — per-asset maintenance priority
+- `PriceTier { region_id, corp_id, tier_name, price_per_unit }` — regional pricing strategy
 
 ### 2b. Systems (Processing Order Per Tick)
 
@@ -84,18 +106,27 @@ Each economic tick, systems run in deterministic order:
 1. `construction_system` — advance construction timers, complete builds
 2. `maintenance_system` — check workforce vs maintenance needs, degrade unmaintained infra
 3. `population_system` — update populations, migration, employment based on infrastructure
-4. `demand_system` — calculate regional demand based on population and economy
-5. `routing_system` — recalculate network routes if topology changed
-6. `utilization_system` — calculate infrastructure utilization from routed demand
-7. `revenue_system` — calculate per-corp revenue from served demand
-8. `cost_system` — calculate maintenance, salary, interest costs
-9. `finance_system` — update corporate finances (income, balance sheet, credit rating)
-10. `contract_system` — process contract terms, renewals, breaches
-11. `ai_system` — AI corporations make decisions (build, hire, contract, research)
-12. `disaster_system` — roll for disasters, apply damage
-13. `regulation_system` — process regulatory changes, political events
-14. `research_system` — advance tech research progress
-15. `market_system` — dynamic AI spawning, mergers, bankruptcies
+4. `coverage_system` — calculate network coverage per region, signal strength, dead zones
+5. `demand_system` — calculate regional demand based on population and economy
+6. `routing_system` — recalculate network routes if topology changed
+7. `utilization_system` — calculate infrastructure utilization from routed demand
+8. `revenue_system` — calculate per-corp revenue from served demand
+9. `cost_system` — calculate maintenance, salary, interest costs
+10. `finance_system` — update corporate finances (income, balance sheet, credit rating)
+11. `contract_system` — process contract terms, renewals, breaches
+12. `ai_system` — AI corporations make decisions (build, hire, contract, research)
+13. `disaster_system` — roll for disasters, apply damage
+14. `regulation_system` — process regulatory changes, political events
+15. `research_system` — advance tech research progress
+16. `market_system` — dynamic AI spawning, mergers, bankruptcies
+17. `auction_system` — process spectrum and infrastructure auction bids, resolve winners
+18. `covert_ops_system` — execute espionage actions, intel gathering, sabotage resolution
+19. `lobbying_system` — process lobbying investments, political influence, regulation nudges
+20. `achievement_system` — check achievement conditions, unlock milestones, track stats
+21. `patent_system` — license revenue collection, patent expiration, enforcement
+22. `alliance_system` — trust scoring, revenue sharing, dissolution checks
+23. `legal_system` — lawsuit resolution, damage calculation, settlement processing
+24. `grants_system` — government grant generation, progress tracking, completion payouts
 
 ### 2c. Crate Structure
 
@@ -112,6 +143,10 @@ crates/
 │   ├── src/
 │   │   ├── world.rs        # ECS world container
 │   │   ├── systems/        # All ECS systems
+│   │   │   ├── patent.rs       # License revenue collection, patent expiration, enforcement
+│   │   │   ├── alliance.rs     # Trust scoring, revenue sharing, dissolution
+│   │   │   ├── legal.rs        # Lawsuit resolution, damage calculation
+│   │   │   └── grants.rs       # Government grant generation and completion
 │   │   ├── components/     # All ECS components
 │   │   ├── events.rs       # Event queue
 │   │   └── tick.rs         # Tick processing orchestrator
@@ -192,14 +227,35 @@ web/src/
 │   │   ├── SpeedControls.svelte    # Pause/play/speed buttons
 │   │   ├── AdvisorPanel.svelte     # AI advisor suggestions
 │   │   └── NotificationFeed.svelte # Event notifications
-│   ├── panels/
-│   │   ├── DashboardPanel.svelte   # Corporate financial dashboard
-│   │   ├── InfraPanel.svelte       # Infrastructure management
-│   │   ├── WorkforcePanel.svelte   # Employee/team management
-│   │   ├── ResearchPanel.svelte    # Tech tree and R&D
-│   │   ├── ContractPanel.svelte    # Contract negotiation
-│   │   ├── RegionPanel.svelte      # Regional overview
-│   │   └── BuildMenu.svelte        # Infrastructure build menu
+│   ├── panels/                             # 6 tabbed panel groups
+│   │   ├── finance/
+│   │   │   ├── DashboardPanel.svelte       # Corporate financial dashboard
+│   │   │   ├── PricingPanel.svelte         # Regional pricing strategy
+│   │   │   └── InsurancePanel.svelte       # Infrastructure insurance
+│   │   ├── operations/
+│   │   │   ├── InfraPanel.svelte           # Infrastructure management
+│   │   │   ├── MaintenancePanel.svelte     # Maintenance priorities
+│   │   │   ├── RepairPanel.svelte          # Repair queue and scheduling
+│   │   │   ├── WorkforcePanel.svelte       # Employee/team management
+│   │   │   └── BuildMenu.svelte            # Infrastructure build menu
+│   │   ├── diplomacy/
+│   │   │   ├── AlliancePanel.svelte        # Alliance management and proposals
+│   │   │   ├── LegalPanel.svelte           # Lawsuits and legal actions
+│   │   │   ├── IntelPanel.svelte           # Espionage and intelligence
+│   │   │   └── CoOwnershipPanel.svelte     # Shared infrastructure voting
+│   │   ├── research/
+│   │   │   ├── TechTreePanel.svelte        # Tech tree and R&D
+│   │   │   └── PatentPanel.svelte          # Patent filing and licensing
+│   │   ├── market/
+│   │   │   ├── ContractPanel.svelte        # Contract negotiation
+│   │   │   ├── AuctionPanel.svelte         # Spectrum and asset auctions
+│   │   │   ├── MergerPanel.svelte          # Mergers and acquisitions
+│   │   │   ├── GrantPanel.svelte           # Government grants
+│   │   │   └── SubsidiaryPanel.svelte      # Subsidiary management
+│   │   └── info/
+│   │       ├── RegionPanel.svelte          # Regional overview
+│   │       ├── AdvisorPanel.svelte         # AI advisor suggestions
+│   │       └── AchievementPanel.svelte     # Achievements and milestones
 │   ├── menu/
 │   │   ├── MainMenu.svelte         # Title screen
 │   │   ├── NewGame.svelte          # New game setup
@@ -284,17 +340,39 @@ The bridge between Svelte/JS and Rust/WASM uses `wasm-bindgen` and follows this 
 - `set_speed(multiplier)` → game speed
 - `toggle_pause()` → pause/resume
 - `save_game(slot)` / `load_game(slot)` → persistence
+- `file_patent(tech_id, corp_id)` → file a patent on researched tech
+- `request_license(patent_id, corp_id)` → request license from patent holder
+- `set_license_price(patent_id, price)` → set royalty rate for a patent
+- `revoke_license(patent_id, licensee_corp)` → revoke a license agreement
+- `start_independent_research(tech_id, corp_id)` → research around existing patents
+- `propose_alliance(target_corp, terms)` → propose a new alliance
+- `accept_alliance(alliance_id, corp_id)` → accept an alliance proposal
+- `dissolve_alliance(alliance_id, corp_id)` → leave or dissolve an alliance
+- `alliance_vote(alliance_id, proposal_id, vote)` → vote on alliance decisions
+- `file_lawsuit(target_corp, type, damages)` → initiate legal action
+- `settle_lawsuit(lawsuit_id, terms)` → propose settlement
+- `defend_lawsuit(lawsuit_id, strategy)` → choose defense strategy
+- `bid_for_grant(grant_id, corp_id, proposal)` → bid on government grant
+- `complete_grant(grant_id, corp_id)` → submit grant completion
+- `set_region_pricing(region_id, corp_id, tiers)` → set per-region pricing tiers
+- `set_maintenance_priority(entity_id, priority_tier)` → set asset maintenance priority
 
 **Queries (sim → UI):**
-- `get_visible_entities(viewport)` → entities in current map view
+- `get_visible_entities(viewport)` → entities in current map view (fog of war filtered)
 - `get_corporation_data(corp_id)` → financial summary
 - `get_region_data(region_id)` → regional economy
 - `get_infrastructure_list(corp_id)` → owned assets
 - `get_workforce(corp_id)` → employee roster
 - `get_contracts(corp_id)` → active contracts
-- `get_research_state(corp_id)` → tech tree progress
-- `get_notifications()` → recent events
+- `get_research_state(corp_id)` → tech tree progress (freely explorable, not era-gated)
+- `get_notifications()` → recent events (priority levels: Critical/Important/Info + category filters)
 - `get_advisor_suggestion()` → AI advisor recommendation
+- `get_patent_data(corp_id)` → owned patents, active licenses, license revenue
+- `get_alliance_data(corp_id)` → alliance membership, trust scores, revenue share
+- `get_intel_data(corp_id)` → fog of war intel levels per region/competitor
+- `get_lawsuit_data(corp_id)` → active lawsuits (filed and received)
+- `get_grant_data(region_id)` → available government grants and progress
+- `get_pricing_data(corp_id)` → per-region pricing tiers and revenue impact
 
 ---
 
@@ -321,9 +399,9 @@ The bridge between Svelte/JS and Rust/WASM uses `wasm-bindgen` and follows this 
 └───────────────┘
 ```
 
-**Server authority:** The server runs the simulation. Clients send commands, server validates and executes, broadcasts state updates to all clients.
+**Server authority:** The server runs the simulation. Clients send commands, server validates and executes, broadcasts state updates to all clients. Fog of war is enforced server-side: each client only receives world state their corporation has intel on. Competitor infrastructure is filtered before transmission.
 
-**Client rendering:** Clients receive state snapshots and deltas. They render the map and UI locally. No simulation runs on client in multiplayer mode.
+**Client rendering:** Clients receive state snapshots and deltas. They render the map and UI locally. No simulation runs on client in multiplayer mode. Pure thin client — no WASM tick execution in MP.
 
 **Single-player:** The WASM module IS the server. Same simulation code, running in the browser. Commands go directly to WASM, no network needed.
 
@@ -345,7 +423,18 @@ Messages are serialized with MessagePack (compact binary) or JSON (debug mode).
 { type: "snapshot", state: { ... } }                   // Full state (on connect)
 ```
 
-### 4c. AI Proxy (Offline Management)
+### 4c. Fog of War (Server-Side Filtering)
+
+In multiplayer mode, the server filters all state deltas and snapshots before sending to each client. Each client only receives:
+- Full visibility of their own corporation's infrastructure and financials
+- Geography data (terrain, regions, cities, borders, population) — always visible to all
+- Competitor data filtered by intel level (None → Basic → Full), gathered through espionage
+- Intel decays over 50 ticks unless refreshed
+- Alliance members automatically share Basic intel on covered regions
+
+The `get_visible_entities()` query respects fog of war in both SP and MP modes.
+
+### 4d. AI Proxy (Offline Management)
 
 When a player disconnects from a multiplayer world:
 1. Server marks their corporation as "AI-managed"
@@ -357,6 +446,16 @@ When a player disconnects from a multiplayer world:
    - Responds to disasters with repair crews (if available)
 4. When player reconnects: AI proxy deactivates, player resumes control
 5. Player gets a summary of what happened while away
+
+### 4e. Research & Era Philosophy
+
+**Research is freely explorable:** The tech tree is gated by prerequisites only, NOT by era. Players can research any technology they meet the prereqs for, regardless of the current world era. Tech functions as a primary economic commodity — it can be patented, licensed, leased, or open-sourced.
+
+**World era is a cosmetic milestone:** The world era advances when ALL corporations in the world have completed at least one technology from that era. It is a collective achievement indicator with no gameplay effects — it does not gate content or restrict actions.
+
+**Patent hard block:** Patented technology cannot be used by non-holders without a license. Attempting to build patent-protected infrastructure without a license is rejected by the command validator.
+
+**Independent research workaround:** Corporations can bypass patents by independently researching at 150% cost (gains access, cannot patent) or 200% cost (gains improved version with +10% bonus, CAN patent the improvement).
 
 ---
 
@@ -392,9 +491,48 @@ Single-player saves serialize the entire ECS world to a binary format:
 
 Cloud saves use the same format, stored as a blob in PostgreSQL.
 
+### 5c. Save Migration
+
+Save files include a version header. When loading a save with an older version:
+- The loader applies sequential migration steps (v1→v2→v3→...) to upgrade the save format
+- New components added in later versions get default values
+- Removed components are stripped during migration
+- If migration fails, the user is offered the option to delete or attempt recovery
+
 ---
 
-## 6. Open Data Pipeline
+## 6. Hosting Architecture
+
+### Current (Development)
+```
+Players ──► Fly.io (Rust game server binary)
+                │
+                ▼
+           PostgreSQL (world state, accounts, cloud saves)
+
+Frontend ──► Vercel (Svelte app CDN)
+```
+
+### Target (Production)
+```
+Players ──► Cloudflare Workers (auth, matchmaking, APIs, CDN)
+                │
+                ▼
+           Hetzner (Rust game server binary × 1-5 instances)
+                │
+                ▼
+           PostgreSQL (world state, accounts, cloud saves)
+
+Frontend ──► Cloudflare (static assets CDN)
+```
+
+- **Dev:** Fly.io for game server + Vercel for frontend
+- **Prod:** Hetzner Dedicated AX42 (Ryzen 7 7700, 64GB RAM) for 3-5 sim instances + Cloudflare Workers for service layer
+- **No AWS, no Azure, no Oracle**
+
+---
+
+## 7. Open Data Pipeline
 
 ### 6a. Earth Map Data
 
@@ -429,7 +567,7 @@ When "Procedural World" is selected:
 
 ---
 
-## 7. Performance Targets
+## 8. Performance Targets
 
 - **Simulation tick:** < 50ms for world with 10,000+ entities
 - **Map rendering:** 60fps at all zoom levels with 100,000+ visible entities
@@ -441,7 +579,38 @@ When "Procedural World" is selected:
 
 ---
 
-## 8. SVG Asset Pipeline
+## 7A. Hosting Architecture
+
+**Current (dev):**
+```
+Players ──► Vercel (Svelte frontend CDN)
+                │
+                ▼
+           Fly.io (Rust game server)
+                │
+                ▼
+           PostgreSQL (world state, accounts, cloud saves)
+```
+
+**Production target:**
+```
+Players ──► Cloudflare Workers (auth, matchmaking, APIs, CDN)
+                │
+                ▼
+           Hetzner (Rust game server binary × 1-5 instances)
+                │
+                ▼
+           PostgreSQL (world state, accounts, cloud saves)
+```
+
+- **Dev:** Fly.io (game server) + Vercel (frontend CDN) + PostgreSQL
+- **Prod:** Hetzner Dedicated AX42 (Ryzen 7 7700, 64GB RAM, ~€57/month, runs 3-5 sim instances)
+- **Service layer:** Cloudflare Workers (free tier: 100k req/day, paid $5/month: 10M req)
+- **Frontend CDN:** Vercel (Svelte app) + Cloudflare (static assets)
+
+---
+
+## 9. SVG Asset Pipeline
 
 All visual assets (icons, symbols, indicators) use inline SVG with a unified pipeline from source files through Svelte UI and Three.js map rendering.
 

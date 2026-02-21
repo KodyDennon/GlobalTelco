@@ -15,7 +15,7 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] Set up CI (GitHub Actions: build, test, clippy, fmt)
 
 ### gt-common — Shared Types
-- [x] Core type definitions: EntityId, Tick, WorldConfig, TerrainType, NodeType, EdgeType, CreditRating, AIArchetype, AIStrategy
+- [x] Core type definitions: EntityId, Tick, WorldConfig, TerrainType, NodeType (~33 types across eras), EdgeType (~15 types across eras), CreditRating, AIArchetype, AIStrategy
 - [x] GameEvent enum (all event types)
 - [x] Command enum (all player action types)
 - [x] Serialization traits (serde Serialize/Deserialize on all types)
@@ -28,7 +28,9 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] `GameWorld::tick()` — runs all systems in deterministic order
 - [x] `GameWorld::process_command()` — validates and applies player commands
 - [x] Event queue: append-only, drained each tick
-- [x] All 15 systems fully implemented (construction, maintenance, population, demand, routing, utilization, revenue, cost, finance, contract, ai, disaster, regulation, research, market)
+- [x] 20 core systems fully implemented in deterministic tick order:
+  1. construction → 2. maintenance → 3. population → 4. coverage → 5. demand → 6. routing → 7. utilization → 8. revenue → 9. cost → 10. finance → 11. contract → 12. ai → 13. disaster → 14. regulation → 15. research → 16. market → 17. auction → 18. covert_ops → 19. lobbying → 20. achievement
+- [ ] Planned additional systems: alliance, legal, grants, fog_of_war, pricing, maintenance_scheduling
 
 ### gt-world — World Generation
 - [x] 3D sphere-based fractal noise for terrain elevation
@@ -66,8 +68,8 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] Contract system (peering, transit, SLA — terms, capacity, penalties, renewal)
 
 ### gt-infrastructure — Network Graph
-- [x] Infrastructure node entities (6 types: tower, fiber hub, data center, IXP, subsea station, satellite station)
-- [x] Infrastructure edge entities (6 types: fiber local/regional/national, microwave, subsea, satellite)
+- [x] Infrastructure node entities (~33 types across eras, flat expansion — e.g., telegraph office, telephone exchange, cell tower, fiber hub, data center, IXP, subsea station, satellite station, 5G small cell, edge compute node, etc.)
+- [x] Infrastructure edge entities (~15 types across eras, flat expansion — e.g., telegraph wire, copper loop, fiber local/regional/national, microwave, subsea, satellite, 5G mmWave, mesh wireless, etc.)
 - [x] 5-level hierarchical network graph (Local → Regional → National → Continental → Global Backbone)
 - [x] Dijkstra routing with cached shortest-path trees
 - [x] Dirty-node invalidation (only recalculate affected clusters)
@@ -89,8 +91,8 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] AI proxy for offline multiplayer (policy-only execution)
 
 ### System Implementation (gt-simulation)
-- [x] Fully implement all 15 systems (not stubs):
-  - construction, maintenance, population, demand, routing, utilization, revenue, cost, finance, contract, ai, disaster, regulation, research, market
+- [x] Fully implement all 20 systems (not stubs):
+  - construction, maintenance, population, coverage, demand, routing, utilization, revenue, cost, finance, contract, ai, disaster, regulation, research, market, auction, covert_ops, lobbying, achievement
 
 ### Verification
 - [x] Create a world with 1 player corp + 4 AI corps → tick 500 times → AI corps build infrastructure, earn revenue, some grow, some struggle
@@ -167,13 +169,20 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] Visual feedback: ghost/preview before confirming, construction-in-progress indicator
 - [x] Validation: parcel ownership, zoning compatibility, sufficient funds, no duplicates
 
-### Management Panels
+### Management Panels (6 Tabbed Groups)
+- [x] Panel architecture uses 6 tabbed groups for organized access:
+  - **Finance** — Dashboard, pricing strategy, insurance
+  - **Operations** — Infrastructure, maintenance, repair queue, workforce, build menu
+  - **Diplomacy** — Alliances, legal actions, intel/espionage, co-ownership
+  - **Research** — Tech tree, patents/licensing
+  - **Market** — Contracts, auctions, mergers & acquisitions, government grants, subsidiaries
+  - **Info** — Region overview, advisor, achievements
 - [x] `DashboardPanel.svelte` — Financial overview: cash, revenue, expenses, net income, debt, credit rating (charts over time using D3)
 - [x] `InfraPanel.svelte` — Owned infrastructure list: status, revenue contribution, maintenance cost, upgrade options
 - [x] `WorkforcePanel.svelte` — Employee/team management (hire/fire, morale, workforce impact bars)
 - [x] `ContractPanel.svelte` — Active contracts, pending proposals, propose new contracts
 - [x] `RegionPanel.svelte` — Regional overview: demand, population, competitor presence, market share
-- [x] `BuildMenu.svelte` — Context menu for build placement (node type selection)
+- [x] `BuildMenu.svelte` — Context menu for build placement (node types categorized by tier)
 
 ### Financial Actions
 - [x] Take loan (choose amount, see interest rate based on credit rating)
@@ -261,6 +270,8 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] Define 6 categories: Optical Networks, Wireless/5G, Satellite, Data Center, Network Resilience, Operational Efficiency
 - [x] 6 techs per category (36 total), each with: name, description, cost, prerequisites, unlock effects (throughput/cost/reliability bonuses)
 - [x] Tech definitions as code-defined data (Rust structs via `generate_tech_tree()`, no external assets)
+- [x] Freely-explorable tree: techs are gated by prerequisites only, NOT by era. Players can research any tech they meet the prereqs for regardless of current era.
+- [x] Tech as economic commodity: completed research has market value, can be licensed, traded, or open-sourced for strategic advantage.
 
 ### Research System
 - [x] R&D budget allocation per corporation (per-tick spending)
@@ -273,6 +284,9 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] Patent options: PatentStatus enum (None, Patented, OpenSourced, Proprietary)
 - [x] License price field, licensed_to tracking
 - [x] Patent owner and license info exposed via WASM bridge
+- [x] Hard block enforcement: patented tech cannot be used by non-holders without a license. Attempting to build patent-protected infrastructure without a license is rejected.
+- [x] Independent research workaround: corps can independently research a patented tech at 150% cost (standard), or 200% cost (rush), bypassing the patent holder entirely.
+- [x] License types: Exclusive (one licensee, premium price), Non-Exclusive (multiple licensees, standard price), Open Source (free to all, reputation bonus to holder).
 
 ### Research UI
 - [x] `ResearchPanel.svelte` — Tech tree display with category tabs (All + 6 categories)
@@ -331,7 +345,7 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] Settings save and persist (localStorage)
 - [x] `svelte-check` — 0 errors, 0 warnings (467 files)
 - [x] `cargo clippy -- -D warnings` — clean
-- [x] `cargo test` — 45 tests pass
+- [x] `cargo test` — target ~120-150 tests (happy path + edge cases per system, integration cross-crate, frontend via Bun)
 - [x] `bun run build` — production build succeeds
 
 ---
@@ -349,6 +363,16 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] Volume controls: music and SFX volume sliders wired to AudioManager via settings stores
 - [x] Mute/unmute toggle, proper dispose on game exit
 - [x] AudioManager auto-initializes on game start, subscribes to settings store changes
+
+### Full Audio Expansion
+- [ ] Ambient background music tracks per era (synthesized or licensed, layered loops)
+- [ ] Era-specific sound palettes (telegraph clicks for Telegraph era, digital tones for Modern, etc.)
+- [ ] UI interaction sounds: panel open/close, tab switch, button hover, slider drag
+- [ ] Environmental audio: city hum at city zoom, ocean ambience at coastal zoom, wind at mountain zoom
+- [ ] Disaster-specific audio cues: earthquake rumble, storm winds, cyber attack glitch sounds
+- [ ] Victory/achievement fanfare with escalating intensity based on achievement tier
+- [ ] Audio ducking: lower music volume during important notifications and events
+- [ ] Spatial audio hints: directional cues for off-screen events (disaster in another region)
 
 ### Visual Content
 - [x] Distinct node shapes per type: CentralOffice=square, CellTower=triangle, DataCenter=pentagon, ExchangePoint=hexagon, SatelliteGround=star, SubmarineLanding=diamond, WirelessRelay=circle
@@ -417,6 +441,48 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] VoteUpgrade: majority approval for node upgrades
 - [x] Revenue/cost split proportionally by ownership share in revenue/cost systems
 
+### Alliance System
+- [ ] Form alliances between corps (player-initiated or AI-proposed)
+- [ ] Trust scoring based on contract history, shared infrastructure, trade volume
+- [ ] Revenue sharing within alliances (configurable percentage)
+- [ ] Alliance dissolution checks: trust drops below threshold → alliance breaks
+- [ ] Alliance-exclusive benefits: shared routing, bulk discount on co-builds
+
+### Legal System
+- [ ] Lawsuit filing: patent infringement, contract breach, anti-competitive behavior
+- [ ] Lawsuit resolution over N ticks (damage calculation, settlement offers)
+- [ ] Legal costs scale with lawsuit complexity and jurisdiction
+- [ ] Court outcomes: damages awarded, injunctions, forced licensing
+- [ ] AI corps file lawsuits based on archetype (Aggressive Expander litigates frequently)
+
+### Government Grants System
+- [ ] Government grants generated per region (underserved area incentives)
+- [ ] Grant requirements: build coverage in target area within deadline
+- [ ] Grant rewards: cash payout, tax breaks, exclusive land access
+- [ ] Progress tracking toward grant completion
+- [ ] AI corps compete for grants based on strategy mode
+
+### Fog of War System
+- [ ] Competitor infrastructure hidden by default (only see own assets + public info)
+- [ ] Intel levels: None → Basic (node count) → Detailed (capacity, revenue) → Full (financials, strategy)
+- [ ] Intel gathered through espionage missions, market reports, alliance sharing
+- [ ] Intel decays over time (stale data)
+- [ ] Map overlay for fog of war visualization (dimmed regions with unknown competitor data)
+
+### Pricing System
+- [ ] Per-region pricing tiers (economy, standard, premium)
+- [ ] Price-per-unit setting affects demand capture and revenue per customer
+- [ ] Undercut pricing strategy: lower prices to steal market share
+- [ ] Premium pricing: higher margins but slower growth
+- [ ] AI corps adjust pricing dynamically based on archetype and competition
+
+### Maintenance Scheduling System
+- [ ] Per-asset maintenance priority tiers (Critical, High, Normal, Low, Deferred)
+- [ ] Auto-repair toggle per asset
+- [ ] Scheduled maintenance windows (reduced capacity during maintenance vs emergency downtime)
+- [ ] Preventive maintenance reduces disaster damage
+- [ ] Maintenance budget allocation with diminishing returns
+
 ### Achievements & Win Conditions
 - [x] 20 achievements tracked: FirstNode, FirstProfit, TenNodes, HundredNodes, MillionRevenue, BillionRevenue, AAARating, DebtFree, GlobalBackbone, OceanCable, FirstContract, AllRegions, FirstMerger, MonopolyRegion, SurviveBankruptcy, ResearchComplete, etc.
 - [x] Victory conditions: Domination (>75% regions), Tech (all research), Wealth ($10B net worth), Infrastructure (200+ nodes)
@@ -425,10 +491,18 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] AchievementPanel.svelte: victory progress bars (4 scores), achievement grid with unlock status
 - [x] VictoryAchieved event emitted when total score reaches 1.0
 
+### Sandbox Mode
+- [ ] Sandbox as a selectable game mode alongside Standard (in New Game menu)
+- [ ] Sandbox features: unlimited funds, no bankruptcy, instant construction, adjustable AI behavior
+- [ ] All systems still run (disasters, AI, market) but player is shielded from failure
+- [ ] Sandbox mode flag stored in WorldConfig, checked by finance/bankruptcy systems
+- [ ] Available in both single-player and multiplayer (host option)
+
 ### Verification
 - [x] `cargo build --release` succeeds with all Phase 10 additions
-- [x] `cargo test` — 45 tests pass (including Phase 10 systems)
-- [x] All 4 new systems integrated into tick order (auction, covert_ops, lobbying, achievement)
+- [x] `cargo test` — target ~120-150 tests (happy path + edge cases per system, integration cross-crate)
+- [x] All 4 existing systems integrated into tick order (auction, covert_ops, lobbying, achievement)
+- [ ] 6 new planned systems to integrate: alliance, legal, grants, fog_of_war, pricing, maintenance_scheduling
 - [x] ~25 new events, ~15 new commands, 6 new component files, 4 new systems
 - [x] 4 new frontend panels (AuctionPanel, MergerPanel, IntelPanel, AchievementPanel)
 - [x] HUD updated with panel buttons: Auc, M&A, Int, Ach
@@ -479,10 +553,11 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] Dockerfile — multi-stage build: rust:1.83 builder → debian:bookworm-slim runtime, postgres feature enabled
 - [x] docker-compose.yml — gt-server + PostgreSQL 16 Alpine with health checks
 - [x] CI workflow — desktop-release.yml with matrix builds (macOS ARM/Intel, Linux, Windows)
+- **Hosting:** Currently Fly.io + Vercel. Production target: Hetzner + Cloudflare Workers.
 
 ### Verification
 - [x] `cargo build --release` succeeds — all crates compile clean
-- [x] `cargo test` passes — 45 tests across all crates
+- [x] `cargo test` passes — target ~120-150 tests across all crates
 - [x] `bun run build` succeeds — frontend compiles with multiplayer components
 - [x] WebSocket protocol roundtrip tests pass — MessagePack serialization verified
 

@@ -116,10 +116,12 @@ gt-ai → gt-common, gt-economy, gt-infrastructure
 
 All game state is managed through an Entity Component System. Entities are IDs, components are data, systems process entities with matching component sets.
 
-**Core entity types:** InfrastructureNode, InfrastructureEdge, Corporation, Subsidiary, Employee/Team, Region, City, Contract, LandParcel, TechResearch, DebtInstrument
+**Core entity types:** InfrastructureNode, InfrastructureEdge, Corporation, Subsidiary, Employee/Team, Region, City, Contract, LandParcel, TechResearch, DebtInstrument, Patent, LicenseAgreement, Alliance, Lawsuit, GovernmentGrant
 
-**Systems run in deterministic order each tick:**
-1. construction → 2. maintenance → 3. population → 4. demand → 5. routing → 6. utilization → 7. revenue → 8. cost → 9. finance → 10. contract → 11. ai → 12. disaster → 13. regulation → 14. research → 15. market
+**Systems run in deterministic order each tick (20+):**
+1. construction → 2. maintenance → 3. population → 4. coverage → 5. demand → 6. routing → 7. utilization → 8. revenue → 9. cost → 10. finance → 11. contract → 12. ai → 13. disaster → 14. regulation → 15. research → 16. market → 17. auction → 18. covert_ops → 19. lobbying → 20. achievement
+
+**Planned system additions:** patent, alliance, legal, grants
 
 ## Key Architecture Concepts
 
@@ -127,24 +129,24 @@ All game state is managed through an Entity Component System. Entities are IDs, 
 
 **Hex-based Land Parcels:** Terrain classification, zoning, ownership, regulatory strictness, disaster risk, cost modifiers. Terrain types (urban, suburban, rural, mountainous, desert, coastal, ocean shallow/deep, tundra, frozen) apply multipliers.
 
-**Hierarchical Network Graph (5 levels):** Local → Regional → National → Continental → Global Backbone. Event-driven dirty-node invalidation, cluster-based routing, cached shortest-path trees. Aggregate bandwidth — no packet-level sim.
+**Hierarchical Network Graph (5 levels):** Local → Regional → National → Continental → Global Backbone. Event-driven dirty-node invalidation, cluster-based routing, cached shortest-path trees. Aggregate bandwidth — no packet-level sim. Competitor infrastructure hidden by default — requires espionage intel to view.
 
-**Modular Industry Abstraction:** Sim core is industry-agnostic (Node, Edge, Resource, Dependency, Throughput, Risk, Ownership, Jurisdiction). Telecom is first module; energy, water, transport are future modules.
+**Modular Industry Abstraction:** Sim core is industry-agnostic (Node, Edge, Resource, Dependency, Throughput, Risk, Ownership, Jurisdiction). Telecom is first module; energy, water, transport are future modules. Research is organized by era but freely explorable — no era gates. Tech is the primary economic commodity (patent, license, lease).
 
 **Cooperative Ownership:** Infrastructure assets can be jointly owned with shared revenue and upgrade voting.
 
 **Tiered Management:** Small company = hands-on. Medium = teams and budgets. Large = policies, departments, regional managers, AI execution. Dwarf Fortress style scaling.
 
-**Era Progression:** Telegraph (~1850s) → Telephone (~1900s) → Early Digital (~1970s) → Internet (~1990s) → Modern (~2010s) → Near Future (~2030s). Player picks starting era.
+**Era Progression:** Telegraph (~1850s) → Telephone (~1900s) → Early Digital (~1970s) → Internet (~1990s) → Modern (~2010s) → Near Future (~2030s). Player picks starting era. Research tree organized by era but freely explorable — players can research higher-era tech with prerequisites. World era = cosmetic collective milestone (no gameplay effects).
 
 ## WASM Bridge Pattern
 
 ```
 Svelte Component → bridge.ts (TypeScript) → gt-wasm (wasm-bindgen) → ECS World
 
-Commands (player → sim): build_node, build_edge, hire_employee, set_policy, take_loan, propose_contract, set_research, set_speed, toggle_pause, save_game, load_game
+Commands (player → sim): build_node, build_edge, hire_employee, set_policy, take_loan, propose_contract, set_research, set_speed, toggle_pause, save_game, load_game, file_patent, request_license, propose_alliance, file_lawsuit, bid_for_grant, set_region_pricing, set_maintenance_priority, start_independent_research
 
-Queries (sim → UI): get_visible_entities, get_corporation_data, get_region_data, get_infrastructure_list, get_workforce, get_contracts, get_research_state, get_notifications, get_advisor_suggestion
+Queries (sim → UI): get_visible_entities, get_corporation_data, get_region_data, get_infrastructure_list, get_workforce, get_contracts, get_research_state, get_notifications, get_advisor_suggestion, get_patents, get_licenses, get_alliances, get_lawsuits, get_grants, get_intel_levels
 ```
 
 ## AI Corporation System
@@ -152,7 +154,8 @@ Queries (sim → UI): get_visible_entities, get_corporation_data, get_region_dat
 - 4 archetypes: Aggressive Expander, Defensive Consolidator, Tech Innovator, Budget Operator
 - 4 strategy modes selected dynamically: Expand, Consolidate, Compete, Survive
 - AI actions: land acquisition, node/edge building, finance management, contract proposals
-- Dynamic market: AI companies spawn, grow, merge, go bankrupt naturally
+- Full autonomy — AI uses ALL game systems: patents, alliances, legal, pricing, maintenance, grants, insurance
+- Dynamic market: AI companies spawn, grow, merge, go bankrupt naturally. Dynamic spawning (new AI corps when market underserved) and mergers.
 
 ## Multiplayer Architecture
 
@@ -206,6 +209,18 @@ All located in `Docs/`:
 
 ## Hosting Architecture
 
+**Currently deployed (dev):**
+```
+Players ──► Vercel (Svelte frontend CDN)
+                │
+                ▼
+           Fly.io (Rust game server)
+                │
+                ▼
+           PostgreSQL (world state, accounts, cloud saves)
+```
+
+**Production target:**
 ```
 Players ──► Cloudflare Workers (auth, matchmaking, APIs, CDN)
                 │
@@ -216,9 +231,9 @@ Players ──► Cloudflare Workers (auth, matchmaking, APIs, CDN)
            PostgreSQL (world state, accounts, cloud saves)
 ```
 
-- **Dev:** Hetzner Cloud CX22 (2 vCPU, 4GB RAM, ~€3.49/month)
-- **Prod:** Hetzner Dedicated AX42 (Ryzen 7 7700, 64GB RAM, ~€57/month, runs 3-5 sim instances)
-- **Service layer:** Cloudflare Workers (free tier: 100k req/day, paid $5/month: 10M req)
+- **Dev (current):** Fly.io (game server) + Vercel (frontend CDN) + PostgreSQL
+- **Prod (target):** Hetzner Dedicated AX42 (Ryzen 7 7700, 64GB RAM, ~€57/month, runs 3-5 sim instances)
+- **Service layer (target):** Cloudflare Workers (free tier: 100k req/day, paid $5/month: 10M req)
 - **Frontend CDN:** Vercel (Svelte app) + Cloudflare (static assets)
 - **No AWS, no Azure, no Oracle, no Unreal Engine.**
 
