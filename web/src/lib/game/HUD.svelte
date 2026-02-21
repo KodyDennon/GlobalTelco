@@ -14,6 +14,7 @@
 	import { isMultiplayer, connectionState, playerList } from '$lib/stores/multiplayerState';
 	import { tr } from '$lib/i18n/index';
 	import SpeedControls from './SpeedControls.svelte';
+	import TierGuide from '$lib/ui/TierGuide.svelte';
 
 	function toggleGroup(group: PanelGroupType) {
 		if ($activePanelGroup === group) {
@@ -41,6 +42,7 @@
 	let currentBuild = $derived($buildMode);
 	let currentOverlay = $derived($activeOverlay);
 	let currentGroup = $derived($activePanelGroup);
+	let showTierGuide = $state(false);
 
 	const PANEL_GROUPS: Array<{ key: PanelGroupType; label: string }> = [
 		{ key: 'finance', label: 'Finance' },
@@ -103,14 +105,15 @@
 			</button>
 			{#if currentBuild === 'edge'}
 				<select class="edge-type-select" bind:value={$selectedEdgeType} aria-label="Edge type">
-					<option value="FiberLocal">Fiber Local</option>
-					<option value="FiberRegional">Fiber Regional</option>
-					<option value="FiberNational">Fiber National</option>
-					<option value="Copper">Copper</option>
-					<option value="Microwave">Microwave</option>
-					<option value="Satellite">Satellite</option>
-					<option value="Submarine">Submarine</option>
+					<option value="Copper">Copper &mdash; Short range</option>
+					<option value="FiberLocal">Fiber Local &mdash; Medium range</option>
+					<option value="Microwave">Microwave &mdash; Long range</option>
+					<option value="FiberRegional">Fiber Regional &mdash; Very long</option>
+					<option value="FiberNational">Fiber National &mdash; Massive</option>
+					<option value="Satellite">Satellite &mdash; Unlimited</option>
+					<option value="Submarine">Submarine &mdash; Extreme</option>
 				</select>
+				<button class="tier-help-btn" onclick={() => showTierGuide = !showTierGuide} title="Tier Guide">?</button>
 			{/if}
 		</div>
 
@@ -148,6 +151,10 @@
 		</div>
 	</div>
 </div>
+
+{#if showTierGuide}
+	<TierGuide onclose={() => showTierGuide = false} />
+{/if}
 
 <style>
 	.hud {
@@ -328,4 +335,27 @@
 		font-size: 11px;
 		color: var(--text-muted);
 	}
+
+	/* Tier help button */
+	.tier-help-btn {
+		width: 24px;
+		height: 24px;
+		background: rgba(59, 130, 246, 0.2);
+		border: 1px solid rgba(59, 130, 246, 0.4);
+		color: #60a5fa;
+		font-size: 12px;
+		font-weight: 700;
+		border-radius: 50%;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.15s;
+	}
+
+	.tier-help-btn:hover {
+		background: rgba(59, 130, 246, 0.3);
+		color: #93c5fd;
+	}
+
 </style>

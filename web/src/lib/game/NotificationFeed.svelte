@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { notifications } from "$lib/stores/gameState";
 	import { tr } from "$lib/i18n/index";
 	import { autoPauseReason } from "$lib/game/GameLoop";
@@ -89,7 +90,8 @@
 			const text = formatEvent(latest.event);
 			const id = ++toastId;
 			const level = latest.event.includes('"error"') ? "error" : "warning";
-			toasts = [...toasts, { id, text, level }];
+			// Use untrack to avoid tracking `toasts` read — prevents infinite reactive loop
+			toasts = [...untrack(() => toasts), { id, text, level }];
 			setTimeout(() => {
 				toasts = toasts.filter((t) => t.id !== id);
 			}, 4000);

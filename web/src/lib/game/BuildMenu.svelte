@@ -5,6 +5,18 @@
 	import * as bridge from '$lib/wasm/bridge';
 	import type { BuildOption } from '$lib/wasm/types';
 
+	// Node type → tier label
+	const NODE_TIER_LABEL: Record<string, string> = {
+		CellTower: 'T1 Access',
+		WirelessRelay: 'T1 Access',
+		CentralOffice: 'T2 Aggregation',
+		ExchangePoint: 'T2 Aggregation',
+		DataCenter: 'T3 Core',
+		BackboneRouter: 'T4 Backbone',
+		SatelliteGround: 'T5 Global',
+		SubmarineLanding: 'T5 Global',
+	};
+
 	let options: BuildOption[] = $state([]);
 
 	$effect(() => {
@@ -47,7 +59,7 @@
 				>
 					<div class="opt-info">
 						<span class="opt-name">{opt.label}</span>
-						<span class="opt-level">{opt.network_level}</span>
+						<span class="opt-level">{NODE_TIER_LABEL[opt.node_type] ?? opt.network_level}</span>
 					</div>
 					<div class="opt-meta">
 						<span class="opt-cost" class:unaffordable={!opt.affordable}>{formatMoney(opt.cost)}</span>
