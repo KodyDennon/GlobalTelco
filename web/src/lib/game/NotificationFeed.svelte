@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { notifications } from "$lib/stores/gameState";
 	import { tr } from "$lib/i18n/index";
+	import { autoPauseReason } from "$lib/game/GameLoop";
+	import { setSpeed } from "$lib/game/GameLoop";
 
 	let expanded = $state(false);
 
@@ -103,6 +105,14 @@
 				{toast.text}
 			</div>
 		{/each}
+	</div>
+{/if}
+
+{#if $autoPauseReason}
+	<div class="pause-banner" role="alert">
+		<span class="pause-icon">||</span>
+		<span class="pause-text">PAUSED: {$autoPauseReason}</span>
+		<button class="resume-btn" onclick={() => setSpeed(1)}>Resume</button>
 	</div>
 {/if}
 
@@ -265,5 +275,51 @@
 			opacity: 1;
 			transform: translateY(0);
 		}
+	}
+
+	/* Auto-pause banner */
+	.pause-banner {
+		position: absolute;
+		bottom: 70px;
+		right: 8px;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 14px;
+		background: rgba(239, 68, 68, 0.15);
+		border: 1px solid rgba(239, 68, 68, 0.4);
+		border-radius: var(--radius-md);
+		z-index: 13;
+		font-family: var(--font-sans);
+		font-size: 12px;
+		animation: toast-in 0.2s ease-out;
+	}
+
+	.pause-icon {
+		color: var(--red);
+		font-weight: 900;
+		font-size: 14px;
+	}
+
+	.pause-text {
+		color: #fca5a5;
+		font-weight: 500;
+	}
+
+	.resume-btn {
+		padding: 4px 12px;
+		background: rgba(239, 68, 68, 0.3);
+		border: 1px solid rgba(239, 68, 68, 0.5);
+		color: #fca5a5;
+		font-size: 11px;
+		font-family: var(--font-sans);
+		border-radius: 4px;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.resume-btn:hover {
+		background: rgba(239, 68, 68, 0.4);
+		color: #fff;
 	}
 </style>

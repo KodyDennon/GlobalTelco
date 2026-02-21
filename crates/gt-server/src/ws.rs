@@ -1,4 +1,6 @@
+use std::net::IpAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::extract::ws::{Message, WebSocket};
 use futures::{SinkExt, StreamExt};
@@ -67,6 +69,60 @@ fn command_target_corp(command: &Command) -> Option<gt_common::types::EntityId> 
     }
 }
 
+/// Validate command parameters before forwarding to the simulation.
+/// Returns an error message if validation fails.
+fn validate_command(command: &Command) -> Result<(), &'static str> {
+    match command {
+        Command::TakeLoan { amount, .. } => {
+            if *amount <= 0 {
+                return Err("Loan amount must be positive");
+            }
+        }
+        Command::HireEmployee { role, .. } => {
+            if role.trim().is_empty() {
+                return Err("Employee role cannot be empty");
+            }
+        }
+        Command::ProposeContract { terms, .. } => {
+            if terms.len() > 10_000 {
+                return Err("Contract terms too long (max 10,000 chars)");
+            }
+        }
+        Command::RepayLoan { amount, .. } => {
+            if *amount <= 0 {
+                return Err("Repayment amount must be positive");
+            }
+        }
+        Command::PlaceBid { amount, .. } => {
+            if *amount <= 0 {
+                return Err("Bid amount must be positive");
+            }
+        }
+        Command::ProposeAcquisition { offer, .. } => {
+            if *offer <= 0 {
+                return Err("Acquisition offer must be positive");
+            }
+        }
+        Command::StartLobbying { budget, .. } => {
+            if *budget <= 0 {
+                return Err("Lobbying budget must be positive");
+            }
+        }
+        Command::ProposeCoOwnership { share_pct, .. } => {
+            if *share_pct <= 0.0 || *share_pct > 100.0 {
+                return Err("Co-ownership share must be between 0 and 100");
+            }
+        }
+        Command::ProposeBuyout { price, .. } => {
+            if *price <= 0 {
+                return Err("Buyout price must be positive");
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 /// Simple sliding window rate limiter
 struct RateLimiter {
     command_timestamps: Vec<std::time::Instant>,
@@ -108,8 +164,40 @@ impl RateLimiter {
     }
 }
 
+/// Maximum connections per IP address
+const MAX_CONNECTIONS_PER_IP: usize = 10;
+/// Time allowed for authentication after WebSocket upgrade
+const AUTH_TIMEOUT_SECS: u64 = 10;
+/// Maximum chat message length in bytes
+const MAX_CHAT_LENGTH: usize = 500;
+/// Maximum cloud save size in bytes (50 MB)
+const MAX_SAVE_SIZE: usize = 50_000_000;
+
+/// Sanitize a chat message: strip control characters, trim whitespace.
+/// Returns None if the message is empty after sanitization.
+fn sanitize_chat(message: &str) -> Option<String> {
+    let cleaned: String = message
+        .chars()
+        .filter(|c| !c.is_control() || *c == '\n')
+        .collect();
+    let trimmed = cleaned.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
 /// Handle an individual WebSocket connection
-pub async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
+pub async fn handle_socket(socket: WebSocket, state: Arc<AppState>, ip: IpAddr) {
+    // Per-IP connection limit
+    let conn_count = state.ip_connect(ip).await;
+    if conn_count > MAX_CONNECTIONS_PER_IP {
+        state.ip_disconnect(ip).await;
+        warn!("Rejected WebSocket from {ip}: too many connections ({conn_count})");
+        return;
+    }
+
     let (mut sender, mut receiver) = socket.split();
 
     let mut player: Option<ConnectedPlayer> = None;
@@ -131,7 +219,54 @@ pub async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         sender
     });
 
-    // Main receive loop
+    // Auth timeout: first message must be an Auth message within AUTH_TIMEOUT_SECS
+    let auth_result = tokio::time::timeout(Duration::from_secs(AUTH_TIMEOUT_SECS), async {
+        while let Some(msg) = receiver.next().await {
+            match msg {
+                Ok(Message::Binary(data)) => {
+                    if let Ok(ClientMessage::Auth(auth_req)) = deserialize_msgpack::<ClientMessage>(&data) {
+                        return Some(auth_req);
+                    }
+                }
+                Ok(Message::Text(text)) => {
+                    if let Ok(ClientMessage::Auth(auth_req)) = serde_json::from_str::<ClientMessage>(&text) {
+                        return Some(auth_req);
+                    }
+                }
+                Ok(Message::Close(_)) => return None,
+                Err(_) => return None,
+                _ => continue,
+            }
+        }
+        None
+    })
+    .await;
+
+    match auth_result {
+        Ok(Some(auth_req)) => {
+            let response = handle_auth(auth_req, &state, &mut player).await;
+            if forward_tx.send(response).await.is_err() {
+                state.ip_disconnect(ip).await;
+                let _ = forward_sender.await;
+                return;
+            }
+            if player.is_none() {
+                // Auth failed
+                state.ip_disconnect(ip).await;
+                let _ = forward_sender.await;
+                return;
+            }
+        }
+        _ => {
+            // Timeout or connection closed before auth
+            warn!("WebSocket from {ip}: auth timeout or closed before auth");
+            state.ip_disconnect(ip).await;
+            let _ = forward_sender.await;
+            return;
+        }
+    }
+
+    // Main receive loop (player is authenticated at this point)
     while let Some(msg) = receiver.next().await {
         let msg = match msg {
             Ok(Message::Binary(data)) => match deserialize_msgpack::<ClientMessage>(&data) {
@@ -194,7 +329,9 @@ pub async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         }
     }
 
-    // Cleanup: activate AI proxy for disconnected player's corporation
+    // Cleanup: decrement IP connection count and activate AI proxy
+    state.ip_disconnect(ip).await;
+
     if let Some(p) = &player {
         info!("Player {} disconnected", p.username);
 
@@ -407,6 +544,14 @@ async fn handle_client_message(
                 });
             }
 
+            // Validate command parameters
+            if let Err(reason) = validate_command(&command) {
+                return Some(ServerMessage::Error {
+                    code: ErrorCode::InvalidCommand,
+                    message: reason.to_string(),
+                });
+            }
+
             // Anti-cheat: verify the player owns the corporation targeted by the command
             if let Some(target_corp) = command_target_corp(&command) {
                 if p.corp_id != Some(target_corp) {
@@ -477,12 +622,31 @@ async fn handle_client_message(
         }
 
         ClientMessage::Chat { message } => {
+            // Validate chat message length
+            if message.len() > MAX_CHAT_LENGTH {
+                return Some(ServerMessage::Error {
+                    code: ErrorCode::InvalidCommand,
+                    message: format!("Chat message too long (max {} chars)", MAX_CHAT_LENGTH),
+                });
+            }
+
+            // Sanitize: strip control chars, trim whitespace
+            let sanitized = match sanitize_chat(&message) {
+                Some(m) => m,
+                None => {
+                    return Some(ServerMessage::Error {
+                        code: ErrorCode::InvalidCommand,
+                        message: "Chat message is empty".to_string(),
+                    });
+                }
+            };
+
             if let Some(p) = player {
                 if let Some(world_id) = &p.world_id {
                     if let Some(world) = state.get_world(world_id).await {
                         let _ = world.broadcast_tx.send(ServerMessage::ChatBroadcast {
                             sender: p.username.clone(),
-                            message,
+                            message: sanitized,
                             timestamp: std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
@@ -510,6 +674,18 @@ async fn handle_client_message(
                     });
                 }
             };
+
+            // Enforce save size limit
+            if save_data.len() > MAX_SAVE_SIZE {
+                return Some(ServerMessage::Error {
+                    code: ErrorCode::InvalidCommand,
+                    message: format!(
+                        "Save data too large ({:.1} MB, max {} MB)",
+                        save_data.len() as f64 / 1_000_000.0,
+                        MAX_SAVE_SIZE / 1_000_000
+                    ),
+                });
+            }
 
             #[cfg(feature = "postgres")]
             if let Some(db) = state.db.as_ref() {

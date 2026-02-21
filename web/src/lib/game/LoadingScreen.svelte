@@ -18,6 +18,9 @@
 	<div class="loading-content">
 		<h1 class="title">GlobalTelco</h1>
 		<div class="spinner"></div>
+		<div class="progress-bar">
+			<div class="progress-fill" style="width: {Math.min(100, ((stage + 1) / stages.length) * 100)}%"></div>
+		</div>
 		<div class="stages">
 			{#each stages as stageKey, i}
 				<span class="stage" class:active={i === stage} class:done={i < stage}>
@@ -68,6 +71,22 @@
 
 	@keyframes spin {
 		to { transform: rotate(360deg); }
+	}
+
+	.progress-bar {
+		width: 100%;
+		height: 4px;
+		background: rgba(55, 65, 81, 0.4);
+		border-radius: 2px;
+		margin-bottom: 24px;
+		overflow: hidden;
+	}
+
+	.progress-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #10b981, #3b82f6);
+		border-radius: 2px;
+		transition: width 0.4s ease;
 	}
 
 	.stages {

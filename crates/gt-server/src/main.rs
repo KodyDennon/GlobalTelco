@@ -7,6 +7,7 @@ mod tick;
 mod ws;
 
 use std::sync::Arc;
+use axum::http::{header, HeaderValue, Method};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing::info;
@@ -86,11 +87,20 @@ async fn main() {
         tick::spawn_world_tick_loop(world);
     }
 
-    // CORS for local development
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+    // CORS — restrict in production when CORS_ORIGIN is set
+    let cors = if let Ok(origin) = std::env::var("CORS_ORIGIN") {
+        info!("CORS restricted to origin: {}", origin);
+        CorsLayer::new()
+            .allow_origin(origin.parse::<HeaderValue>().expect("Invalid CORS_ORIGIN value"))
+            .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
+            .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
+    } else {
+        info!("CORS open (no CORS_ORIGIN set — dev mode)");
+        CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any)
+    };
 
     // Build router
     let app = routes::create_router(Arc::clone(&state))
@@ -104,5 +114,10 @@ async fn main() {
     info!("REST API: http://{}/api", bind_addr);
     info!("Health check: http://{}/health", bind_addr);
 
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    .unwrap();
 }

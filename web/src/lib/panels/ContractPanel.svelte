@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { playerCorp, formatMoney, allCorporations } from '$lib/stores/gameState';
-	import { activePanel } from '$lib/stores/uiState';
+	import { closePanelGroup } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
 	import type { ContractInfo } from '$lib/wasm/types';
 	import { tr } from '$lib/i18n/index';
@@ -38,10 +38,6 @@
 		if (corp) contracts = bridge.getContracts(corp.id);
 	}
 
-	function close() {
-		activePanel.set('none');
-	}
-
 	let activeContracts = $derived(contracts.filter((c) => c.status === 'Active'));
 	let proposedContracts = $derived(contracts.filter((c) => c.status === 'Proposed'));
 	let revenueContracts = $derived(activeContracts.filter((c) => c.from === ($playerCorp?.id ?? 0)));
@@ -52,11 +48,6 @@
 </script>
 
 <div class="panel">
-	<div class="panel-header">
-		<span class="title">{$tr('panels.contracts')}</span>
-		<button class="close" onclick={close}>x</button>
-	</div>
-
 	<div class="section">
 		<h3>{$tr('panels.summary')}</h3>
 		<div class="stat-row">
@@ -156,32 +147,6 @@
 		color: var(--text-secondary);
 		font-family: var(--font-sans);
 		font-size: 13px;
-	}
-
-	.panel-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		padding: 12px 16px;
-		border-bottom: 1px solid var(--border);
-		position: sticky;
-		top: 0;
-		background: var(--bg-panel);
-		z-index: 1;
-	}
-
-	.title {
-		font-weight: 700;
-		font-size: 14px;
-		color: var(--text-primary);
-	}
-
-	.close {
-		background: none;
-		border: none;
-		color: var(--text-dim);
-		cursor: pointer;
-		font-size: 16px;
 	}
 
 	.section {

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { playerCorp, formatMoney } from '$lib/stores/gameState';
-	import { activePanel, selectedEntityId, selectedEntityType, buildMode, buildEdgeSource } from '$lib/stores/uiState';
+	import { closePanelGroup, selectedEntityId, selectedEntityType, buildMode, buildEdgeSource } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
 	import type { InfraNode, InfraEdge, InfrastructureList, TrafficFlows } from '$lib/wasm/types';
 	import NetworkDiagram from '$lib/charts/NetworkDiagram.svelte';
@@ -30,18 +30,13 @@
 		bridge.processCommand({ DecommissionNode: { entity: id } });
 	}
 
-	function close() {
-		activePanel.set('none');
-		buildMode.set(null);
-	}
-
 	function toggleConnectMode() {
 		if ($buildMode === 'edge') {
 			buildMode.set(null);
 			buildEdgeSource.set(null);
 		} else {
 			buildMode.set('edge');
-			activePanel.set('none'); // Hide panel to focus on map
+			closePanelGroup(); // Hide panel to focus on map
 		}
 	}
 
@@ -54,14 +49,10 @@
 </script>
 
 <div class="panel" aria-label={$tr('panels.infrastructure')}>
-	<div class="panel-header">
-		<div class="header-left">
-			<span class="title">{$tr('panels.infrastructure')}</span>
-			<button class="action-btn" class:active={$buildMode === 'edge'} onclick={toggleConnectMode}>
-				{$buildMode === 'edge' ? 'Cancel' : 'Connect'}
-			</button>
-		</div>
-		<button class="close" onclick={close}>x</button>
+	<div class="section" style="padding-top: 8px;">
+		<button class="action-btn" class:active={$buildMode === 'edge'} onclick={toggleConnectMode}>
+			{$buildMode === 'edge' ? 'Cancel Connect' : 'Connect Nodes'}
+		</button>
 	</div>
 
 	<div class="section">
@@ -179,24 +170,6 @@
 		font-size: 13px;
 	}
 
-	.panel-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		padding: 12px 16px;
-		border-bottom: 1px solid var(--border);
-		position: sticky;
-		top: 0;
-		background: var(--bg-panel);
-		z-index: 1;
-	}
-
-	.header-left {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-	}
-
 	.action-btn {
 		background: var(--bg-surface);
 		border: 1px solid var(--border);
@@ -218,21 +191,6 @@
 		background: var(--blue);
 		color: white;
 		border-color: var(--blue);
-	}
-
-	.title {
-
-		font-weight: 700;
-		font-size: 14px;
-		color: var(--text-primary);
-	}
-
-	.close {
-		background: none;
-		border: none;
-		color: var(--text-dim);
-		cursor: pointer;
-		font-size: 16px;
 	}
 
 	.section {

@@ -35,8 +35,6 @@
 </script>
 
 <div class="panel" role="region" aria-label={$tr('panels.auctions')}>
-	<h2>{$tr('panels.auctions')}</h2>
-
 	{#if auctions.length === 0}
 		<p class="empty">{$tr('panels.no_auctions')}</p>
 	{:else}
@@ -77,7 +75,6 @@
 
 <style>
 	.panel { padding: 16px; color: var(--text-secondary); }
-	h2 { font-size: 16px; margin: 0 0 12px; color: var(--blue-light); }
 	.empty { color: var(--text-dim); font-size: 13px; }
 	.auction-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; margin-bottom: 8px; }
 	.auction-card.closed { opacity: 0.5; }

@@ -309,6 +309,10 @@ struct SaveUploadRequest {
     config_json: serde_json::Value,
 }
 
+/// Maximum cloud save size in bytes (50 MB)
+#[allow(dead_code)]
+const MAX_SAVE_SIZE: usize = 50_000_000;
+
 #[allow(unused_variables)]
 async fn upload_save(
     AuthClaims(account_id): AuthClaims,
@@ -463,8 +467,13 @@ async fn delete_save(
 
 // ── WebSocket ──────────────────────────────────────────────────────────────
 
-async fn ws_upgrade(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| ws::handle_socket(socket, state))
+async fn ws_upgrade(
+    ws: WebSocketUpgrade,
+    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let ip = addr.ip();
+    ws.on_upgrade(move |socket| ws::handle_socket(socket, state, ip))
 }
 
 // ── Server Info ────────────────────────────────────────────────────────────
@@ -481,21 +490,41 @@ async fn server_info(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 
 // ── Admin Endpoints ───────────────────────────────────────────────────────
 
-const DEFAULT_ADMIN_KEY: &str = "globaltelco-dev-admin-key";
-
 /// Validate the admin key from the `X-Admin-Key` request header.
-/// Returns Ok(()) on success, or an error response tuple on failure.
+/// ADMIN_KEY env var is required — if unset, all admin endpoints return 503.
+/// Uses constant-time comparison to prevent timing attacks.
 fn extract_admin_claims(
     headers: &HeaderMap,
 ) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
-    let expected_key =
-        std::env::var("ADMIN_KEY").unwrap_or_else(|_| DEFAULT_ADMIN_KEY.to_string());
+    let expected = std::env::var("ADMIN_KEY").map_err(|_| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({ "error": "Admin not configured" })),
+        )
+    })?;
+
+    if expected.is_empty() {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({ "error": "Admin not configured" })),
+        ));
+    }
 
     match headers.get("X-Admin-Key").and_then(|v| v.to_str().ok()) {
-        Some(key) if key == expected_key => Ok(()),
-        _ => Err((
+        Some(key) => {
+            use subtle::ConstantTimeEq;
+            if key.as_bytes().ct_eq(expected.as_bytes()).into() {
+                Ok(())
+            } else {
+                Err((
+                    StatusCode::UNAUTHORIZED,
+                    Json(serde_json::json!({ "error": "Invalid admin key" })),
+                ))
+            }
+        }
+        None => Err((
             StatusCode::UNAUTHORIZED,
-            Json(serde_json::json!({ "error": "Invalid or missing admin key" })),
+            Json(serde_json::json!({ "error": "Missing admin key" })),
         )),
     }
 }

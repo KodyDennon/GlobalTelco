@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { playerCorp, formatMoney, regions, cities } from '$lib/stores/gameState';
-	import { activePanel } from '$lib/stores/uiState';
+	import { closePanelGroup } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
 	import { tr, t } from '$lib/i18n/index';
 
@@ -65,10 +65,6 @@
 		suggestions = s;
 	});
 
-	function close() {
-		activePanel.set('none');
-	}
-
 	function priorityColor(p: string): string {
 		switch (p) {
 			case 'critical': return 'var(--red)';
@@ -79,11 +75,6 @@
 </script>
 
 <div class="panel" role="region" aria-label={$tr('panels.advisor')}>
-	<div class="panel-header">
-		<span class="title">{$tr('panels.advisor')}</span>
-		<button class="close" onclick={close}>x</button>
-	</div>
-
 	{#if suggestions.length === 0}
 		<div class="section">
 			<div class="all-good">{$tr('panels.all_good')}</div>
@@ -111,21 +102,6 @@
 		font-family: var(--font-sans);
 		font-size: 13px;
 	}
-
-	.panel-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		padding: 12px 16px;
-		border-bottom: 1px solid var(--border);
-		position: sticky;
-		top: 0;
-		background: var(--bg-panel);
-		z-index: 1;
-	}
-
-	.title { font-weight: 700; font-size: 14px; color: var(--text-primary); }
-	.close { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 16px; }
 
 	.section { padding: 12px 16px; }
 

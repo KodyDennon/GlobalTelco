@@ -25,6 +25,31 @@ const POLITICAL_COLORS = [
 	0x008080, 0xe6beff, 0x9a6324
 ];
 
+// Muted pastels for cell-based region fill (softer than POLITICAL_COLORS)
+const REGION_PASTELS = [
+	0x7c9eb2, 0x8faa7c, 0xb89c7e, 0x9a8caa, 0x7eb8a4,
+	0xb5887c, 0x8aa4c7, 0xa4b87c, 0xb87ca4, 0x7cc4b8,
+	0xc4a87c, 0x7c8ab8, 0xb8a47c
+];
+
+// Network tier mapping: higher tier = more visually prominent
+const NODE_TIER: Record<string, number> = {
+	WirelessRelay: 1,
+	CellTower: 1,
+	CentralOffice: 2,
+	ExchangePoint: 2,
+	DataCenter: 3,
+	BackboneRouter: 4,
+	SatelliteGround: 5,
+	SubmarineLanding: 5
+};
+
+// Scale multiplier per tier index (0 unused, tiers 1-5)
+const TIER_SCALE = [1.0, 1.0, 1.3, 1.6, 2.0, 2.5];
+
+// Backbone edge types get extra thickness
+const BACKBONE_EDGE_TYPES = new Set(['FiberNational', 'Satellite', 'Submarine']);
+
 const TERRAIN_TINT: Record<string, { color: number; opacity: number }> = {
 	Urban: { color: 0x4a4a5a, opacity: 0.15 },
 	Suburban: { color: 0x6b7b6b, opacity: 0.15 },
@@ -307,29 +332,40 @@ export class MapRenderer {
 	}
 
 	private buildProcgenPolygons() {
-		const regions = bridge.getRegions();
-		for (let i = 0; i < regions.length; i++) {
-			const r = regions[i];
-			if (!r.boundary_polygon || r.boundary_polygon.length < 3) continue;
+		// Cell-based region fill: render each land cell as a small hex colored by region
+		const cells = this.cachedCells;
+		const regions = this.cachedRegions;
 
-			const color = POLITICAL_COLORS[i % POLITICAL_COLORS.length];
-			const pts = this.normalizePolygon(r.boundary_polygon.map(p => [p[1], p[0]]));
+		// Assign each cell to nearest region center for coloring
+		const regionCenters = regions.map(r => ({ lat: r.center_lat, lon: r.center_lon }));
 
-			const shape = new THREE.Shape();
-			const first = this.latLonToMercator(pts[0][1], pts[0][0]);
-			shape.moveTo(first.x, first.y);
-			for (let j = 1; j < pts.length; j++) {
-				const pt = this.latLonToMercator(pts[j][1], pts[j][0]);
-				shape.lineTo(pt.x, pt.y);
+		const hexGeo = new THREE.CircleGeometry(1, 6);
+
+		for (const cell of cells) {
+			if (cell.terrain === 'OceanDeep' || cell.terrain === 'OceanShallow' || cell.terrain === 'Ocean') continue;
+			if (Math.abs(cell.lat) > 85) continue;
+
+			// Find nearest region
+			let bestIdx = 0;
+			let bestDist = Infinity;
+			for (let i = 0; i < regionCenters.length; i++) {
+				const dlat = cell.lat - regionCenters[i].lat;
+				const dlon = cell.lon - regionCenters[i].lon;
+				const dist = dlat * dlat + dlon * dlon;
+				if (dist < bestDist) {
+					bestDist = dist;
+					bestIdx = i;
+				}
 			}
+			const color = REGION_PASTELS[bestIdx % REGION_PASTELS.length];
 
-			const geo = new THREE.ShapeGeometry(shape);
 			const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+			const pos = this.latLonToMercator(cell.lat, cell.lon);
 
-			// Triple render for wrap-around
 			for (const offset of [-360, 0, 360]) {
-				const mesh = new THREE.Mesh(geo, mat);
-				mesh.position.set(offset, 0, -2);
+				const mesh = new THREE.Mesh(hexGeo, mat);
+				mesh.position.set(pos.x + offset, pos.y, -2);
+				mesh.scale.set(this.baseCellSize * 1.05, this.baseCellSize * 1.05, 1);
 				this.landGroup.add(mesh);
 			}
 		}
@@ -571,7 +607,7 @@ export class MapRenderer {
 			const labelScale = cs * 0.035;
 			const label = this.createTextSprite(city.name, 0xe8e8e8, labelScale);
 			label.position.set(pos.x, pos.y - cs * 0.08, 5);
-			label.userData = { labelType: 'cityName', minZoom: 1.5 };
+			label.userData = { labelType: 'cityName', minZoom: 0.8 };
 			this.cityGroup.add(label);
 
 			// Population label
@@ -710,9 +746,14 @@ export class MapRenderer {
 
 			const cellSize = this.baseCellSize;
 			for (const edge of infra.edges) {
-				const style: EdgeStyle = EDGE_STYLES[edge.edge_type] ?? {
+				const baseStyle: EdgeStyle = EDGE_STYLES[edge.edge_type] ?? {
 					color, opacity: 0.7, radiusFactor: 0.008, segments: 4
 				};
+				// Backbone edges get doubled thickness
+				const isBackbone = BACKBONE_EDGE_TYPES.has(edge.edge_type);
+				const style: EdgeStyle = isBackbone
+					? { ...baseStyle, radiusFactor: baseStyle.radiusFactor * 2.0 }
+					: baseStyle;
 
 				let rawWaypoints: [number, number][];
 				if (needsTerrainRouting(edge.edge_type) && edge.src_cell !== undefined && edge.dst_cell !== undefined) {
@@ -768,12 +809,26 @@ export class MapRenderer {
 						mesh.position.set(offset, 0, 0);
 						mesh.userData = { type: 'edge', id: edge.id, edge_type: edge.edge_type, corpId: corp.id };
 						this.edgeGroup.add(mesh);
+
+						// Backbone glow: outer transparent tube
+						if (isBackbone) {
+							const glowGeo = new THREE.TubeGeometry(curve, tubeSeg, tubeRadius * 2.5, style.segments, false);
+							const glowMat = new THREE.MeshBasicMaterial({
+								color: style.color,
+								opacity: 0.12,
+								transparent: true,
+								depthTest: false
+							});
+							const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+							glowMesh.position.set(offset, 0, -0.1);
+							this.edgeGroup.add(glowMesh);
+						}
 					}
 				}
 			}
 
 			const cs = this.baseCellSize;
-			const iconSize = cs * 0.15;
+			const baseIconSize = cs * 0.15;
 			const positions: THREE.Vector3[] = [];
 			const positionCounts = new Map<string, number>();
 
@@ -781,6 +836,11 @@ export class MapRenderer {
 				const iconName = NODE_TYPE_TO_ICON[node.node_type];
 				const texture = iconName ? this.iconTextures.get(iconName) : undefined;
 				const pos = this.latLonToMercator(node.y, node.x);
+
+				// Tier-based scaling
+				const tier = NODE_TIER[node.node_type] ?? 1;
+				const tierScale = TIER_SCALE[tier] ?? 1.0;
+				const iconSize = baseIconSize * tierScale;
 
 				const posKey = `${pos.x.toFixed(2)},${pos.y.toFixed(2)}`;
 				const stackIdx = positionCounts.get(posKey) ?? 0;
@@ -810,7 +870,7 @@ export class MapRenderer {
 						this.infraGroup.add(sprite);
 						obj = sprite;
 					} else {
-						const size = node.under_construction ? cs * 0.04 : cs * 0.06;
+						const size = node.under_construction ? cs * 0.04 : cs * 0.06 * tierScale;
 						const nodeColor = node.under_construction ? 0x6b7280 : color;
 						const geo = this.getNodeGeometry(node.node_type, size);
 						const mat = new THREE.MeshBasicMaterial({ color: nodeColor });
@@ -831,6 +891,14 @@ export class MapRenderer {
 						badge.position.set(ox + iconSize * 0.4, oy + iconSize * 0.4, 4);
 						badge.userData = { labelType: 'badge', minZoom: 4.0 };
 						this.infraGroup.add(badge);
+					}
+
+					// Tier badge visible at higher zoom
+					if (!node.under_construction && tier >= 2 && offset === 0) {
+						const tierLabel = this.createTextSprite(`T${tier}`, 0x9ca3af, cs * 0.02);
+						tierLabel.position.set(ox - iconSize * 0.4, oy + iconSize * 0.4, 4);
+						tierLabel.userData = { labelType: 'tierBadge', minZoom: 5.0 };
+						this.infraGroup.add(tierLabel);
 					}
 				}
 			}
@@ -988,9 +1056,8 @@ export class MapRenderer {
 				this.panX -= (dx / this.zoom) * 0.5;
 				this.panY += (dy / this.zoom) * 0.5;
 
-				// Further clamp pan for a more focused experience
-				this.panX = Math.max(-130, Math.min(130, this.panX));
-				this.panY = Math.max(-110, Math.min(110, this.panY));
+				this.panX = Math.max(-180, Math.min(180, this.panX));
+				this.panY = Math.max(-170, Math.min(170, this.panY));
 
 				this.lastMouse = { x: e.clientX, y: e.clientY };
 				this.updateCamera();
@@ -1004,8 +1071,7 @@ export class MapRenderer {
 		el.addEventListener('wheel', (e) => {
 			e.preventDefault();
 			const factor = e.deltaY > 0 ? 0.9 : 1.1;
-			// Tightened zoom (1.3 prevents seeing more than ~1.5 worlds on most screens)
-			this.zoom = Math.max(1.3, Math.min(50, this.zoom * factor));
+			this.zoom = Math.max(0.5, Math.min(50, this.zoom * factor));
 			this.updateCamera();
 			this.updateLabelVisibility();
 		});
@@ -1135,7 +1201,6 @@ export class MapRenderer {
 	}
 
 	private renderTerrainOverlay() {
-		// Use a tiled grid look instead of individual discs
 		const terrainOverlayColors: Record<string, number> = {
 			Urban: 0xfbbf24,
 			Suburban: 0x8bc34a,
@@ -1149,25 +1214,25 @@ export class MapRenderer {
 			Frozen: 0xe3f2fd
 		};
 
-		// Use PlaneGeometry for a crisp square/tile look
-		// Scaling slightly larger (1.05) to ensure gapless grid
+		// Hex-based terrain overlay matching the parcel system
+		const hexGeo = new THREE.CircleGeometry(1, 6);
 		const r = this.baseCellSize * 1.05;
-		const tileGeo = new THREE.PlaneGeometry(r, r);
 
 		for (const cell of this.cachedCells) {
 			const color = terrainOverlayColors[cell.terrain] ?? 0xcccccc;
-			if (Math.abs(cell.lat) > 80) continue; // Clip polar extremes
+			if (Math.abs(cell.lat) > 80) continue;
 
 			const pos = this.latLonToMercator(cell.lat, cell.lon);
 			const mat = new THREE.MeshBasicMaterial({
 				color,
-				opacity: 0.25, // Subtle but clearly visible background
+				opacity: 0.45,
 				transparent: true
 			});
 
 			for (const offset of [-360, 0, 360]) {
-				const mesh = new THREE.Mesh(tileGeo, mat);
+				const mesh = new THREE.Mesh(hexGeo, mat);
 				mesh.position.set(pos.x + offset, pos.y, 0.2);
+				mesh.scale.set(r, r, 1);
 				this.overlayGroup.add(mesh);
 			}
 		}
@@ -1205,22 +1270,20 @@ export class MapRenderer {
 	}
 
 	private renderDemandOverlay() {
-		// Color regions by population density with a professional soft glow
+		// Color regions by population density: blue → purple → red
 		for (const region of this.cachedRegions) {
 			const pop = region.population ?? 0;
-			// Normalize: low pop = blue, high pop = red
 			const intensity = Math.min(1.0, pop / 500000);
 			const r = Math.floor(intensity * 255);
 			const b = Math.floor((1 - intensity) * 255);
 			const color = (r << 16) | (50 << 8) | b;
 
 			const pos = this.latLonToMercator(region.center_lat, region.center_lon);
-			// Use a very soft, large blurred disc for a 'heat' feel rather than a hard circle
 			const radius = Math.sqrt(region.cell_count) * this.baseCellSize * 0.4;
 			const geo = new THREE.CircleGeometry(radius, 32);
 			const mat = new THREE.MeshBasicMaterial({
 				color,
-				opacity: 0.12,
+				opacity: 0.45,
 				transparent: true
 			});
 
@@ -1250,16 +1313,15 @@ export class MapRenderer {
 		const corps = bridge.getAllCorporations();
 		this.buildCorpColorMap(corps);
 
-		// Use gapless tiled planes
+		// Hex-based coverage tiles
+		const hexGeo = new THREE.CircleGeometry(1, 6);
 		const r = this.baseCellSize * 1.05;
-		const tileGeo = new THREE.PlaneGeometry(r, r);
 
 		for (const cov of coverageData) {
 			const intensity = Math.min(1.0, cov.signal_strength / maxSignal);
 			if (intensity < 0.01) continue;
 			if (Math.abs(cov.lat) > 80) continue;
 
-			// Color by dominant owner, fall back to green
 			let color: number;
 			if (cov.dominant_owner !== null) {
 				color = this.corpColorMap.get(cov.dominant_owner) ?? 0x10b981;
@@ -1270,23 +1332,24 @@ export class MapRenderer {
 			const pos = this.latLonToMercator(cov.lat, cov.lon);
 			const mat = new THREE.MeshBasicMaterial({
 				color,
-				opacity: 0.15 + intensity * 0.35,
+				opacity: 0.3 + intensity * 0.4,
 				transparent: true
 			});
 
 			for (const offset of [-360, 0, 360]) {
-				const mesh = new THREE.Mesh(tileGeo, mat);
-				mesh.position.set(pos.x + offset, pos.y, 0.22); // Slightly above terrain
+				const mesh = new THREE.Mesh(hexGeo, mat);
+				mesh.position.set(pos.x + offset, pos.y, 0.22);
+				mesh.scale.set(r, r, 1);
 				this.overlayGroup.add(mesh);
 			}
 		}
 	}
 
 	private renderDisasterRiskOverlay() {
-		// Risk heatmap with region-aware sizing
+		// Risk heatmap: green → yellow → red
 		for (const region of this.cachedRegions) {
 			const risk = region.disaster_risk ?? 0;
-			const intensity = Math.min(1.0, risk * 5); // Scale up for visibility
+			const intensity = Math.min(1.0, risk * 5);
 			const r = Math.floor(intensity * 255);
 			const g = Math.floor((1 - intensity) * 180);
 			const color = (r << 16) | (g << 8) | 0;
@@ -1296,7 +1359,7 @@ export class MapRenderer {
 			const geo = new THREE.CircleGeometry(radius, 32);
 			const mat = new THREE.MeshBasicMaterial({
 				color,
-				opacity: 0.15,
+				opacity: 0.45,
 				transparent: true
 			});
 
@@ -1330,7 +1393,7 @@ export class MapRenderer {
 				const geo = new THREE.RingGeometry(innerR, outerR, 24);
 				const mat = new THREE.MeshBasicMaterial({
 					color,
-					opacity: 0.3,
+					opacity: 0.5,
 					transparent: true,
 					side: THREE.DoubleSide
 				});

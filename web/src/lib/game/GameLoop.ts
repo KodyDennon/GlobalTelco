@@ -12,8 +12,19 @@ import {
 import { saveToSlot, loadFromSlot, getNextAutoSaveSlot, QUICK_SAVE_SLOT } from '$lib/saves/SaveManager';
 import { get } from 'svelte/store';
 import { audioManager } from '$lib/audio/AudioManager';
-import { buildMode, activePanel, buildEdgeSource, buildMenuParcel, selectedEntityId, selectedEntityType, activeOverlay } from '$lib/stores/uiState';
-import type { PanelType, OverlayType } from '$lib/stores/uiState';
+import {
+	buildMode,
+	activePanelGroup,
+	buildEdgeSource,
+	buildMenuParcel,
+	selectedEntityId,
+	selectedEntityType,
+	activeOverlay,
+	openPanelGroup,
+	closePanelGroup,
+} from '$lib/stores/uiState';
+import type { OverlayType } from '$lib/stores/uiState';
+import { autoPauseOnCritical, showPerfMonitor } from '$lib/stores/settings';
 import { writable } from 'svelte/store';
 
 let running = false;
@@ -23,11 +34,12 @@ let tickAccumulator = 0;
 let currentSpeed = 1; // ticks per second
 let lastAutoSaveTick = 0;
 const AUTO_SAVE_INTERVAL = 50; // ticks between auto-saves
-let gameConfig: object | undefined;
 
 // Performance profiling stores
 export const simTickTime = writable<number>(0);
-export const showPerfMonitor = writable<boolean>(false);
+
+// Auto-pause state
+export const autoPauseReason = writable<string | null>(null);
 
 function getTickInterval(): number {
 	switch (currentSpeed) {
@@ -105,6 +117,18 @@ function updateStores() {
 		for (const notif of notifs) {
 			audioManager.playEventSound(notif.event);
 		}
+
+		// Auto-pause on critical events
+		if (get(autoPauseOnCritical) && currentSpeed > 0) {
+			for (const notif of notifs) {
+				const reason = checkCriticalEvent(notif.event);
+				if (reason) {
+					setSpeed(0);
+					autoPauseReason.set(reason);
+					break;
+				}
+			}
+		}
 	}
 
 	// Auto-save check
@@ -112,6 +136,29 @@ function updateStores() {
 		lastAutoSaveTick = info.tick;
 		performAutoSave(info.tick);
 	}
+}
+
+function checkCriticalEvent(event: string): string | null {
+	// Disasters with severity > 0.3
+	if (event.includes('Disaster') && event.includes('severity')) {
+		const match = event.match(/severity:\s*([\d.]+)/);
+		if (match && parseFloat(match[1]) > 0.3) {
+			return 'Major disaster detected!';
+		}
+	}
+	// Insolvency warning
+	if (event.includes('Bankruptcy') || event.includes('Insolvency')) {
+		return 'Financial crisis — insolvency warning!';
+	}
+	// Hostile acquisition
+	if (event.includes('HostileAcquisition') || event.includes('hostile_acquisition')) {
+		return 'Hostile acquisition attempt!';
+	}
+	// Espionage detected
+	if (event.includes('EspionageDetected') || event.includes('espionage_detected')) {
+		return 'Espionage operation detected!';
+	}
+	return null;
 }
 
 async function performAutoSave(tick: number) {
@@ -171,6 +218,10 @@ export function stop() {
 
 export function setSpeed(speed: number) {
 	currentSpeed = speed;
+	// Clear auto-pause reason when resuming
+	if (speed > 0) {
+		autoPauseReason.set(null);
+	}
 	if (speed === 0) {
 		bridge.processCommand({ SetSpeed: 'Paused' });
 	} else {
@@ -196,6 +247,8 @@ export async function initGame(config?: object) {
 	await bridge.initWasm();
 	bridge.newGame(config as any);
 	await audioManager.init();
+	// Start paused so player can orient
+	setSpeed(0);
 	initialized.set(true);
 	updateStores();
 }
@@ -306,41 +359,46 @@ function handleKeyDown(e: KeyboardEvent) {
 			} else if (get(selectedEntityId) !== null) {
 				selectedEntityId.set(null);
 				selectedEntityType.set(null);
-			} else if (get(activePanel) !== 'none') {
-				activePanel.set('none');
+			} else if (get(activePanelGroup) !== 'none') {
+				closePanelGroup();
 			}
 			break;
 		case 'F3':
 			e.preventDefault();
 			showPerfMonitor.update((v) => !v);
 			break;
-		// Panel shortcuts
+		// Panel group shortcuts
 		case 'd':
 		case 'D':
 			e.preventDefault();
-			activePanel.update((p) => p === 'dashboard' ? 'none' : 'dashboard');
+			if (get(activePanelGroup) === 'finance') closePanelGroup();
+			else openPanelGroup('finance');
 			break;
 		case 'i':
 		case 'I':
 			e.preventDefault();
-			activePanel.update((p) => p === 'infrastructure' ? 'none' : 'infrastructure');
+			if (get(activePanelGroup) === 'operations') closePanelGroup();
+			else openPanelGroup('operations');
 			break;
 		case 'r':
 		case 'R':
 			e.preventDefault();
-			activePanel.update((p) => p === 'research' ? 'none' : 'research');
+			if (get(activePanelGroup) === 'research') closePanelGroup();
+			else openPanelGroup('research');
 			break;
 		case 'c':
 		case 'C':
 			e.preventDefault();
-			activePanel.update((p) => p === 'contracts' ? 'none' : 'contracts');
+			if (get(activePanelGroup) === 'market') closePanelGroup();
+			else openPanelGroup('market');
 			break;
 		case 'w':
 		case 'W':
 			e.preventDefault();
-			activePanel.update((p) => p === 'workforce' ? 'none' : 'workforce');
+			if (get(activePanelGroup) === 'operations') closePanelGroup();
+			else openPanelGroup('operations', 'workforce');
 			break;
-		// Overlay shortcut
+		// Overlay shortcuts
 		case 't':
 		case 'T':
 			e.preventDefault();

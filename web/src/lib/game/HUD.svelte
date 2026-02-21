@@ -1,14 +1,26 @@
 <script lang="ts">
 	import { worldInfo, playerCorp, formatMoney } from '$lib/stores/gameState';
-	import { activePanel, buildMode, buildMenuParcel, buildEdgeSource, activeOverlay, selectedEdgeType } from '$lib/stores/uiState';
-	import type { PanelType, OverlayType } from '$lib/stores/uiState';
+	import {
+		activePanelGroup,
+		buildMode,
+		buildMenuParcel,
+		buildEdgeSource,
+		activeOverlay,
+		selectedEdgeType,
+		openPanelGroup,
+		closePanelGroup,
+	} from '$lib/stores/uiState';
+	import type { PanelGroupType, OverlayType } from '$lib/stores/uiState';
 	import { isMultiplayer, connectionState, playerList } from '$lib/stores/multiplayerState';
 	import { tr } from '$lib/i18n/index';
 	import SpeedControls from './SpeedControls.svelte';
-	import Icon from '$lib/components/Icon.svelte';
 
-	function togglePanel(panel: PanelType) {
-		activePanel.update((p) => (p === panel ? 'none' : panel));
+	function toggleGroup(group: PanelGroupType) {
+		if ($activePanelGroup === group) {
+			closePanelGroup();
+		} else {
+			openPanelGroup(group);
+		}
 	}
 
 	function toggleBuild(mode: string) {
@@ -28,20 +40,60 @@
 
 	let currentBuild = $derived($buildMode);
 	let currentOverlay = $derived($activeOverlay);
+	let currentGroup = $derived($activePanelGroup);
+
+	const PANEL_GROUPS: Array<{ key: PanelGroupType; label: string }> = [
+		{ key: 'finance', label: 'Finance' },
+		{ key: 'operations', label: 'Operations' },
+		{ key: 'diplomacy', label: 'Diplomacy' },
+		{ key: 'research', label: 'Research' },
+		{ key: 'market', label: 'Market' },
+		{ key: 'info', label: 'Info' },
+	];
+
+	const OVERLAYS: Array<{ key: OverlayType; label: string; cls?: string }> = [
+		{ key: 'terrain', label: 'Terrain' },
+		{ key: 'ownership', label: 'Own' },
+		{ key: 'demand', label: 'Demand' },
+		{ key: 'coverage', label: 'Cover' },
+		{ key: 'disaster', label: 'Risk', cls: 'disaster' },
+		{ key: 'traffic', label: 'Traffic', cls: 'traffic' },
+	];
 </script>
 
 <div class="hud">
-	<div class="hud-left" role="status">
-		<span class="corp-name">{$playerCorp?.name ?? 'Loading...'}</span>
-		<span class="cash" class:negative={($playerCorp?.cash ?? 0) < 0}>
-			{formatMoney($playerCorp?.cash ?? 0)}
-		</span>
-		<span class="profit" class:loss={($playerCorp?.profit_per_tick ?? 0) < 0}>
-			{($playerCorp?.profit_per_tick ?? 0) >= 0 ? '+' : ''}{formatMoney($playerCorp?.profit_per_tick ?? 0)}/tick
-		</span>
+	<!-- Row 1: Status bar -->
+	<div class="hud-row row-1">
+		<div class="hud-left" role="status">
+			<span class="corp-name">{$playerCorp?.name ?? 'Loading...'}</span>
+			<span class="cash" class:negative={($playerCorp?.cash ?? 0) < 0}>
+				{formatMoney($playerCorp?.cash ?? 0)}
+			</span>
+			<span class="profit" class:loss={($playerCorp?.profit_per_tick ?? 0) < 0}>
+				{($playerCorp?.profit_per_tick ?? 0) >= 0 ? '+' : ''}{formatMoney($playerCorp?.profit_per_tick ?? 0)}/tick
+			</span>
+		</div>
+
+		<div class="hud-center" role="toolbar" aria-label="Game controls">
+			<SpeedControls />
+			<div class="divider"></div>
+			<span class="tick">{$tr('game.tick', { tick: $worldInfo.tick })}</span>
+			<span class="rating">{$playerCorp?.credit_rating ?? '---'}</span>
+			<span class="infra">{$tr('game.nodes', { count: $playerCorp?.infrastructure_count ?? 0 })}</span>
+		</div>
+
+		<div class="hud-right" role="status">
+			{#if $isMultiplayer}
+				<span class="mp-status" class:connected={$connectionState === 'connected'} class:reconnecting={$connectionState === 'reconnecting'}>
+					{$connectionState === 'connected' ? $tr('game.online') : $connectionState === 'reconnecting' ? $tr('game.reconnecting') : $tr('game.offline')}
+				</span>
+				<span class="mp-players">{$tr('game.players', { count: $playerList.filter(p => p.status === 'Connected').length })}</span>
+			{/if}
+		</div>
 	</div>
 
-	<div class="hud-center" role="toolbar" aria-label="Game controls">
+	<!-- Row 2: Actions bar -->
+	<div class="hud-row row-2">
 		<div class="build-buttons">
 			<button class="build-btn" class:active={currentBuild === 'node'} onclick={() => toggleBuild('node')} title={$tr('game.build_node')} aria-pressed={currentBuild === 'node'}>
 				{$tr('game.build_node')}
@@ -61,66 +113,39 @@
 				</select>
 			{/if}
 		</div>
-		<div class="divider"></div>
-		<SpeedControls />
-		<div class="divider"></div>
-		<div class="panel-buttons">
-			<button class="panel-btn" class:active={$activePanel === 'dashboard'} onclick={() => togglePanel('dashboard')} title={$tr('hud.dashboard')} aria-pressed={$activePanel === 'dashboard'}>
-				<Icon name="dashboard" size={16} />
-			</button>
-			<button class="panel-btn" class:active={$activePanel === 'infrastructure'} onclick={() => togglePanel('infrastructure')} title={$tr('hud.infrastructure')} aria-pressed={$activePanel === 'infrastructure'}>
-				<Icon name="infrastructure" size={16} />
-			</button>
-			<button class="panel-btn" class:active={$activePanel === 'contracts'} onclick={() => togglePanel('contracts')} title={$tr('hud.contracts')} aria-pressed={$activePanel === 'contracts'}>
-				<Icon name="contract" size={16} />
-			</button>
-			<button class="panel-btn" class:active={$activePanel === 'research'} onclick={() => togglePanel('research')} title={$tr('hud.research')} aria-pressed={$activePanel === 'research'}>
-				<Icon name="research" size={16} />
-			</button>
-			<button class="panel-btn" class:active={$activePanel === 'region'} onclick={() => togglePanel('region')} title={$tr('panels.regions')} aria-pressed={$activePanel === 'region'}>
-				<Icon name="region" size={16} />
-			</button>
-			<button class="panel-btn" class:active={$activePanel === 'workforce'} onclick={() => togglePanel('workforce')} title={$tr('hud.workforce')} aria-pressed={$activePanel === 'workforce'}>
-				<Icon name="workforce" size={16} />
-			</button>
-			<button class="panel-btn advisor" class:active={$activePanel === 'advisor'} onclick={() => togglePanel('advisor')} title={$tr('hud.advisor')} aria-pressed={$activePanel === 'advisor'}>
-				<Icon name="advisor" size={16} />
-			</button>
-			<button class="panel-btn" class:active={$activePanel === 'auctions'} onclick={() => togglePanel('auctions')} title={$tr('hud.auctions')} aria-pressed={$activePanel === 'auctions'}>
-				<Icon name="auction" size={16} />
-			</button>
-			<button class="panel-btn" class:active={$activePanel === 'mergers'} onclick={() => togglePanel('mergers')} title={$tr('hud.mergers')} aria-pressed={$activePanel === 'mergers'}>
-				<Icon name="merger" size={16} />
-			</button>
-			<button class="panel-btn" class:active={$activePanel === 'intel'} onclick={() => togglePanel('intel')} title={$tr('hud.intel')} aria-pressed={$activePanel === 'intel'}>
-				<Icon name="intel" size={16} />
-			</button>
-			<button class="panel-btn" class:active={$activePanel === 'achievements'} onclick={() => togglePanel('achievements')} title={$tr('hud.achievements')} aria-pressed={$activePanel === 'achievements'}>
-				<Icon name="achievement" size={16} />
-			</button>
-		</div>
-		<div class="divider"></div>
-		<div class="overlay-buttons">
-			<button class="overlay-btn" class:active={currentOverlay === 'terrain'} onclick={() => toggleOverlay('terrain')} title={$tr('hud.terrain_overlay')} aria-pressed={currentOverlay === 'terrain'}>T</button>
-			<button class="overlay-btn" class:active={currentOverlay === 'ownership'} onclick={() => toggleOverlay('ownership')} title={$tr('hud.ownership_overlay')} aria-pressed={currentOverlay === 'ownership'}>O</button>
-			<button class="overlay-btn" class:active={currentOverlay === 'demand'} onclick={() => toggleOverlay('demand')} title={$tr('hud.demand_overlay')} aria-pressed={currentOverlay === 'demand'}>D</button>
-			<button class="overlay-btn" class:active={currentOverlay === 'coverage'} onclick={() => toggleOverlay('coverage')} title={$tr('hud.coverage_overlay')} aria-pressed={currentOverlay === 'coverage'}>C</button>
-			<button class="overlay-btn disaster" class:active={currentOverlay === 'disaster'} onclick={() => toggleOverlay('disaster')} title={$tr('hud.disaster_overlay')} aria-pressed={currentOverlay === 'disaster'}>!</button>
-			<button class="overlay-btn" class:active={currentOverlay === 'congestion'} onclick={() => toggleOverlay('congestion')} title={$tr('hud.congestion_overlay')} aria-pressed={currentOverlay === 'congestion'}>~</button>
-			<button class="overlay-btn traffic" class:active={currentOverlay === 'traffic'} onclick={() => toggleOverlay('traffic')} title="Traffic Flow Overlay" aria-pressed={currentOverlay === 'traffic'}>F</button>
-		</div>
-	</div>
 
-	<div class="hud-right" role="status">
-		{#if $isMultiplayer}
-			<span class="mp-status" class:connected={$connectionState === 'connected'} class:reconnecting={$connectionState === 'reconnecting'}>
-				{$connectionState === 'connected' ? $tr('game.online') : $connectionState === 'reconnecting' ? $tr('game.reconnecting') : $tr('game.offline')}
-			</span>
-			<span class="mp-players">{$tr('game.players', { count: $playerList.filter(p => p.status === 'Connected').length })}</span>
-		{/if}
-		<span class="tick">{$tr('game.tick', { tick: $worldInfo.tick })}</span>
-		<span class="rating">{$playerCorp?.credit_rating ?? '---'}</span>
-		<span class="infra">{$tr('game.nodes', { count: $playerCorp?.infrastructure_count ?? 0 })}</span>
+		<div class="divider"></div>
+
+		<div class="panel-buttons">
+			{#each PANEL_GROUPS as group}
+				<button
+					class="panel-btn"
+					class:active={currentGroup === group.key}
+					onclick={() => toggleGroup(group.key)}
+					aria-pressed={currentGroup === group.key}
+				>
+					{group.label}
+				</button>
+			{/each}
+		</div>
+
+		<div class="divider"></div>
+
+		<div class="overlay-buttons">
+			{#each OVERLAYS as overlay}
+				<button
+					class="overlay-btn"
+					class:active={currentOverlay === overlay.key}
+					class:disaster={overlay.cls === 'disaster'}
+					class:traffic={overlay.cls === 'traffic'}
+					onclick={() => toggleOverlay(overlay.key)}
+					title={overlay.label}
+					aria-pressed={currentOverlay === overlay.key}
+				>
+					{overlay.label}
+				</button>
+			{/each}
+		</div>
 	</div>
 </div>
 
@@ -130,35 +155,42 @@
 		top: 0;
 		left: 0;
 		right: 0;
-		height: 48px;
-		background: rgba(17, 24, 39, 0.95);
-		border-bottom: 1px solid var(--border);
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 0 16px;
 		z-index: 10;
 		font-family: var(--font-mono);
 		font-size: 13px;
 		color: var(--text-secondary);
 	}
 
-	.hud-left, .hud-right {
+	.hud-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0 16px;
+		height: 40px;
+		background: rgba(17, 24, 39, 0.95);
+	}
+
+	.row-1 {
+		border-bottom: 1px solid rgba(55, 65, 81, 0.3);
+	}
+
+	.row-2 {
+		border-bottom: 1px solid var(--border);
+		justify-content: flex-start;
+		gap: 8px;
+	}
+
+	.hud-left, .hud-right, .hud-center {
 		display: flex;
 		align-items: center;
 		gap: 16px;
-	}
-
-	.hud-center {
-		display: flex;
-		align-items: center;
-		gap: 8px;
 	}
 
 	.divider {
 		width: 1px;
 		height: 24px;
 		background: var(--border);
+		flex-shrink: 0;
 	}
 
 	.corp-name {
@@ -215,12 +247,13 @@
 		cursor: pointer;
 		border-radius: 3px;
 		transition: all 0.15s;
+		white-space: nowrap;
 	}
 
 	.overlay-btn {
-		padding: 4px 6px;
+		padding: 4px 8px;
 		font-size: 10px;
-		font-weight: 700;
+		font-weight: 600;
 	}
 
 	.build-btn:hover, .panel-btn:hover, .overlay-btn:hover {
@@ -250,15 +283,6 @@
 	}
 
 	.overlay-btn.active {
-		background: rgba(245, 158, 11, 0.2);
-		color: var(--amber);
-	}
-
-	.panel-btn.advisor {
-		color: var(--amber);
-	}
-
-	.panel-btn.advisor.active {
 		background: rgba(245, 158, 11, 0.2);
 		color: var(--amber);
 	}

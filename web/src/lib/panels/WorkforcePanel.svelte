@@ -1,12 +1,8 @@
 <script lang="ts">
 	import { playerCorp, formatMoney } from '$lib/stores/gameState';
-	import { activePanel } from '$lib/stores/uiState';
+	import { closePanelGroup } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
 	import { tr } from '$lib/i18n/index';
-
-	function close() {
-		activePanel.set('none');
-	}
 
 	function hire() {
 		const corp = $playerCorp;
@@ -29,11 +25,6 @@
 </script>
 
 <div class="panel" role="region" aria-label={$tr('panels.workforce')}>
-	<div class="panel-header">
-		<span class="title">{$tr('panels.workforce')}</span>
-		<button class="close" onclick={close}>x</button>
-	</div>
-
 	<div class="section">
 		<h3>{$tr('panels.overview')}</h3>
 		<div class="stat-grid">
@@ -110,32 +101,6 @@
 		color: var(--text-secondary);
 		font-family: var(--font-sans);
 		font-size: 13px;
-	}
-
-	.panel-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		padding: 12px 16px;
-		border-bottom: 1px solid var(--border);
-		position: sticky;
-		top: 0;
-		background: var(--bg-panel);
-		z-index: 1;
-	}
-
-	.title {
-		font-weight: 700;
-		font-size: 14px;
-		color: var(--text-primary);
-	}
-
-	.close {
-		background: none;
-		border: none;
-		color: var(--text-dim);
-		cursor: pointer;
-		font-size: 16px;
 	}
 
 	.section {

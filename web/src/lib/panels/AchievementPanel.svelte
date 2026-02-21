@@ -77,8 +77,6 @@
 </script>
 
 <div class="panel" role="region" aria-label={$tr('panels.achievements')}>
-	<h2>{$tr('panels.achievements')}</h2>
-
 	<section class="victory-section">
 		<h3>{$tr('panels.victory_progress')}</h3>
 		{#if victory.victory_type}
@@ -126,7 +124,6 @@
 
 <style>
 	.panel { padding: 16px; color: var(--text-secondary); }
-	h2 { font-size: 16px; margin: 0 0 12px; color: var(--blue-light); }
 	h3 { font-size: 13px; color: var(--text-muted); margin: 12px 0 8px; text-transform: uppercase; letter-spacing: 0.05em; }
 	section { margin-bottom: 16px; }
 	.victory-banner { background: linear-gradient(135deg, var(--amber), #d97706); color: #000; font-weight: 700; text-align: center; padding: 12px; border-radius: var(--radius-md); font-size: 18px; margin-bottom: 12px; }

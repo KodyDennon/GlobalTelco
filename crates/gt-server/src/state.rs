@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Instant;
 use serde::Serialize;
@@ -100,6 +101,7 @@ pub struct AppState {
     pub players: RwLock<HashMap<Uuid, ConnectedPlayer>>,
     pub accounts: RwLock<HashMap<String, AccountRecord>>, // username → account
     pub audit_log: RwLock<Vec<AuditEntry>>,
+    pub ip_connections: RwLock<HashMap<IpAddr, usize>>,
     pub db: SharedDb,
     pub started_at: Instant,
 }
@@ -112,8 +114,28 @@ impl AppState {
             players: RwLock::new(HashMap::new()),
             accounts: RwLock::new(HashMap::new()),
             audit_log: RwLock::new(Vec::new()),
+            ip_connections: RwLock::new(HashMap::new()),
             db: db.map(Arc::new),
             started_at: Instant::now(),
+        }
+    }
+
+    /// Increment the connection count for an IP. Returns the new count.
+    pub async fn ip_connect(&self, ip: IpAddr) -> usize {
+        let mut conns = self.ip_connections.write().await;
+        let count = conns.entry(ip).or_insert(0);
+        *count += 1;
+        *count
+    }
+
+    /// Decrement the connection count for an IP.
+    pub async fn ip_disconnect(&self, ip: IpAddr) {
+        let mut conns = self.ip_connections.write().await;
+        if let Some(count) = conns.get_mut(&ip) {
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                conns.remove(&ip);
+            }
         }
     }
 

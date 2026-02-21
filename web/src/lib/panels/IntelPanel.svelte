@@ -85,8 +85,6 @@
 </script>
 
 <div class="panel" role="region" aria-label={$tr('panels.intel')}>
-	<h2>{$tr('panels.intel')}</h2>
-
 	<section>
 		<h3>{$tr('panels.security')}</h3>
 		<div class="security-row">
@@ -172,7 +170,6 @@
 
 <style>
 	.panel { padding: 16px; color: var(--text-secondary); }
-	h2 { font-size: 16px; margin: 0 0 12px; color: var(--blue-light); }
 	h3 { font-size: 13px; color: var(--text-muted); margin: 12px 0 8px; text-transform: uppercase; letter-spacing: 0.05em; }
 	section { margin-bottom: 16px; }
 	.security-row { display: flex; align-items: center; gap: 12px; font-size: 13px; flex-wrap: wrap; }

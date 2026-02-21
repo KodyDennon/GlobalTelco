@@ -49,8 +49,6 @@
 </script>
 
 <div class="panel" role="region" aria-label={$tr('panels.mergers')}>
-	<h2>{$tr('panels.mergers')}</h2>
-
 	<section>
 		<h3>{$tr('panels.propose_acquisition')}</h3>
 		<div class="form">
@@ -101,7 +99,6 @@
 
 <style>
 	.panel { padding: 16px; color: var(--text-secondary); }
-	h2 { font-size: 16px; margin: 0 0 12px; color: var(--blue-light); }
 	h3 { font-size: 13px; color: var(--text-muted); margin: 12px 0 8px; text-transform: uppercase; letter-spacing: 0.05em; }
 	section { margin-bottom: 16px; }
 	.form { display: flex; flex-direction: column; gap: 8px; }

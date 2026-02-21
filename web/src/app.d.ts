@@ -8,6 +8,9 @@ declare module '*.svg?raw' {
 }
 
 declare global {
+	// Vite build-time defines
+	const __APP_VERSION__: string;
+
 	namespace App {
 		// interface Error {}
 		// interface Locals {}

@@ -64,7 +64,7 @@
 	.chat-overlay {
 		position: fixed;
 		bottom: 16px;
-		right: 16px;
+		left: 16px;
 		width: 320px;
 		background: rgba(17, 24, 39, 0.95);
 		border: 1px solid rgba(55, 65, 81, 0.5);
