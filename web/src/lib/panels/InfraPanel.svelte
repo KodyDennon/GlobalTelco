@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { playerCorp, formatMoney } from '$lib/stores/gameState';
-	import { closePanelGroup, selectedEntityId, selectedEntityType, buildMode, buildEdgeSource } from '$lib/stores/uiState';
+	import { closePanelGroup, selectedEntityId, selectedEntityType, buildMode, buildEdgeSource, showConfirm } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
 	import type { InfraNode, InfraEdge, InfrastructureList, TrafficFlows } from '$lib/wasm/types';
 	import NetworkDiagram from '$lib/charts/NetworkDiagram.svelte';
@@ -27,7 +27,9 @@
 	}
 
 	function decommission(id: number) {
-		bridge.processCommand({ DecommissionNode: { entity: id } });
+		showConfirm('Decommission this node? You will recover 20% of the build cost.', () => {
+			bridge.processCommand({ DecommissionNode: { entity: id } });
+		});
 	}
 
 	function toggleConnectMode() {
@@ -54,6 +56,13 @@
 			{$buildMode === 'edge' ? 'Cancel Connect' : 'Connect Nodes'}
 		</button>
 	</div>
+
+	{#if operationalNodes.length === 0 && constructingNodes.length === 0 && infra.edges.length === 0}
+		<div class="empty-state">
+			<p class="empty-msg">No infrastructure yet — enter Build Mode to get started!</p>
+			<button class="action-btn" onclick={() => { buildMode.set('node'); closePanelGroup(); }}>Enter Build Mode</button>
+		</div>
+	{/if}
 
 	<div class="section">
 		<h3>{$tr('panels.summary')}</h3>
@@ -334,5 +343,17 @@
 	.edge-type {
 		color: var(--text-primary);
 		min-width: 80px;
+	}
+
+	.empty-state {
+		text-align: center;
+		padding: 24px 16px;
+		border-bottom: 1px solid var(--border);
+	}
+
+	.empty-msg {
+		color: var(--text-dim);
+		font-size: 13px;
+		margin-bottom: 12px;
 	}
 </style>

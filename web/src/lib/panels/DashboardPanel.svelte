@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { playerCorp, formatMoney, allCorporations } from '$lib/stores/gameState';
-
+	import { showConfirm } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
 	import type { DebtInfo } from '$lib/wasm/types';
 	import FinanceChart from '$lib/charts/FinanceChart.svelte';
@@ -21,9 +21,13 @@
 	function takeLoan() {
 		const corp = $playerCorp;
 		if (!corp) return;
-		bridge.processCommand({ TakeLoan: { corporation: corp.id, amount: loanAmount } });
-		showLoanDialog = false;
-		debts = bridge.getDebtInstruments(corp.id);
+		const corpId = corp.id;
+		const amount = loanAmount;
+		showConfirm(`Take a loan of ${formatMoney(amount)}? Interest rates depend on your credit rating.`, () => {
+			bridge.processCommand({ TakeLoan: { corporation: corpId, amount } });
+			showLoanDialog = false;
+			debts = bridge.getDebtInstruments(corpId);
+		});
 	}
 
 	function repayLoan(debtId: number) {

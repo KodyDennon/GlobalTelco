@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { tr } from "$lib/i18n/index";
+	import LoadingScreen from "./LoadingScreen.svelte";
 	import MapView from "./MapView.svelte";
 	import HUD from "./HUD.svelte";
 	import InfoPanel from "./InfoPanel.svelte";
@@ -14,7 +15,7 @@
 	import FloatingPanel from "$lib/ui/FloatingPanel.svelte";
 	import ConfirmDialog from "$lib/ui/ConfirmDialog.svelte";
 	import ComingSoon from "$lib/ui/ComingSoon.svelte";
-	import { initialized } from "$lib/stores/gameState";
+	import { initialized, playerCorp, regions } from "$lib/stores/gameState";
 	import {
 		activePanelGroup,
 		activeGroupTab,
@@ -31,6 +32,7 @@
 	} from "$lib/stores/tutorialState";
 	import { isMultiplayer } from "$lib/stores/multiplayerState";
 	import { showPerfMonitor } from "$lib/stores/settings";
+	import { loadingStage, showWelcome, setSpeed } from "./GameLoop";
 
 	// Lazy-load panels only when needed
 	const panelComponents: Record<string, () => Promise<any>> = {
@@ -142,6 +144,20 @@
 		<Tutorial />
 		<MiniMap />
 		<ConfirmDialog />
+		{#if $showWelcome}
+			<div class="welcome-overlay">
+				<div class="welcome-card">
+					<h2 class="welcome-title">Welcome to {$playerCorp?.name ?? 'your corporation'}!</h2>
+					{#if $regions.length > 0}
+						<p class="welcome-text">Your starting region is <strong>{$regions[0]?.name}</strong>. Build infrastructure, expand your network, and grow into a global telecom empire.</p>
+					{:else}
+						<p class="welcome-text">Build infrastructure, expand your network, and grow into a global telecom empire.</p>
+					{/if}
+					<button class="welcome-btn" onclick={() => setSpeed(1)}>Start Playing</button>
+					<p class="welcome-hint">or press Spacebar</p>
+				</div>
+			</div>
+		{/if}
 		{#if $isMultiplayer}
 			<Chat />
 		{/if}
@@ -177,9 +193,7 @@
 		{/if}
 	</div>
 {:else}
-	<div class="loading">
-		<p>{$tr("game.loading")}</p>
-	</div>
+	<LoadingScreen stage={$loadingStage} />
 {/if}
 
 <style>
@@ -191,15 +205,66 @@
 		background: #06101f;
 	}
 
-	.loading {
-		width: 100vw;
-		height: 100vh;
+	.welcome-overlay {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.6);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: #06101f;
+		z-index: 90;
+	}
+
+	.welcome-card {
+		background: rgba(17, 24, 39, 0.98);
+		border: 1px solid rgba(55, 65, 81, 0.6);
+		border-radius: 12px;
+		padding: 32px 40px;
+		max-width: 440px;
+		text-align: center;
+		box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+	}
+
+	.welcome-title {
+		font-size: 22px;
+		font-weight: 700;
+		background: linear-gradient(90deg, #10b981, #3b82f6);
+		-webkit-background-clip: text;
+		-webkit-text-fill-color: transparent;
+		background-clip: text;
+		margin: 0 0 12px;
+	}
+
+	.welcome-text {
+		font-size: 14px;
 		color: #9ca3af;
-		font-family: system-ui, sans-serif;
-		font-size: 16px;
+		line-height: 1.6;
+		margin: 0 0 24px;
+	}
+
+	.welcome-text strong {
+		color: #f3f4f6;
+	}
+
+	.welcome-btn {
+		background: linear-gradient(135deg, #10b981, #3b82f6);
+		color: white;
+		border: none;
+		padding: 12px 32px;
+		border-radius: 8px;
+		font-size: 15px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: opacity 0.15s;
+	}
+
+	.welcome-btn:hover {
+		opacity: 0.9;
+	}
+
+	.welcome-hint {
+		font-size: 12px;
+		color: #6b7280;
+		margin: 12px 0 0;
 	}
 </style>

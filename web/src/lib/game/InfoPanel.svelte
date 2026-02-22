@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { selectedEntityId, selectedEntityType } from '$lib/stores/uiState';
+	import { selectedEntityId, selectedEntityType, showConfirm } from '$lib/stores/uiState';
 	import { cities, formatMoney, formatPopulation } from '$lib/stores/gameState';
 	import * as bridge from '$lib/wasm/bridge';
 	import type { InfraNode } from '$lib/wasm/types';
@@ -74,8 +74,11 @@
 
 	function decommissionNode() {
 		if (!entityData) return;
-		bridge.processCommand({ DecommissionNode: { entity: entityData.id } });
-		close();
+		const id = entityData.id;
+		showConfirm('Decommission this node? You will recover 20% of the build cost.', () => {
+			bridge.processCommand({ DecommissionNode: { entity: id } });
+			close();
+		});
 	}
 
 	function toggleInsurance() {

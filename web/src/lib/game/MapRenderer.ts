@@ -66,6 +66,15 @@ const EDGE_TIER_WIDTH: Record<string, number> = {
     Submarine: 6
 };
 
+// Tier badge labels for nodes
+const NETWORK_TIER_LABEL: Record<string, string> = {
+    Local: 'T1',
+    Regional: 'T2',
+    National: 'T3',
+    Continental: 'T4',
+    Global: 'T5'
+};
+
 export class MapRenderer {
     private deck: Deck | null = null;
     private container: HTMLElement;
@@ -96,7 +105,7 @@ export class MapRenderer {
                 zoom: 2,
                 pitch: 0,
                 bearing: 0,
-                minZoom: 1,
+                minZoom: 0.5,
                 maxZoom: 12,
                 maxPitch: 60
             },
@@ -262,7 +271,8 @@ export class MapRenderer {
                     position: [node.x, node.y],
                     color: [...color, opacity],
                     icon: node.node_type.toLowerCase().replace(/_/g, '-'),
-                    tierSize: NODE_TIER_SIZE[node.network_level] || 32
+                    tierSize: NODE_TIER_SIZE[node.network_level] || 32,
+                    tierLabel: NETWORK_TIER_LABEL[node.network_level] || ''
                 });
             }
         }
@@ -303,7 +313,20 @@ export class MapRenderer {
                         window.dispatchEvent(event);
                     }
                 }
-            })
+            }),
+            // Tier badge labels (visible at zoom > 5)
+            ...(this.currentZoom > 5 ? [new TextLayer({
+                id: 'node-tier-labels',
+                data: nodesData,
+                getPosition: (d: any) => d.position,
+                getText: (d: any) => d.tierLabel,
+                getSize: 10,
+                getColor: [255, 255, 255, 180],
+                getPixelOffset: [14, -14],
+                fontFamily: 'Inter, sans-serif',
+                fontWeight: 'bold',
+                parameters: { depthTest: false }
+            })] : [])
         ];
     }
 
@@ -356,34 +379,58 @@ export class MapRenderer {
         const layers = [];
 
         if (this.activeOverlay === 'demand') {
+            // Cell-based demand rendering using city cell positions
+            const demandCells: { position: [number, number]; color: [number, number, number, number] }[] = [];
+            for (const city of this.cachedCities) {
+                const intensity = Math.min(1.0, city.telecom_demand / 500);
+                // Gradient: blue → purple → red
+                const r = Math.floor(59 + intensity * 196);
+                const g = Math.floor(130 * (1 - intensity));
+                const b = Math.floor(246 * (1 - intensity));
+                for (const cp of city.cell_positions) {
+                    demandCells.push({
+                        position: [cp.lon, cp.lat],
+                        color: [r, g, b, 150]
+                    });
+                }
+            }
             layers.push(new ScatterplotLayer({
                 id: 'overlay-demand',
-                data: this.cachedRegions,
-                getPosition: (d: Region) => [d.center_lon, d.center_lat],
-                getFillColor: (d: Region) => {
-                    const pop = d.population ?? 0;
-                    const intensity = Math.min(1.0, pop / 500000);
-                    const color: [number, number, number, number] = [Math.floor(intensity * 255), 50, Math.floor((1 - intensity) * 255), 115];
-                    return color;
-                },
-                getRadius: (d: Region) => Math.sqrt(d.cell_count) * 80000 * 0.4,
+                data: demandCells,
+                getPosition: (d: any) => d.position,
+                getFillColor: (d: any) => d.color,
+                getRadius: 80000 * 1.05,
                 pickable: false,
                 parameters: { depthTest: false }
             }));
         }
 
         if (this.activeOverlay === 'disaster') {
+            // Cell-based disaster risk rendering using city cells + region risk
+            const regionRiskMap = new Map<number, number>();
+            for (const r of this.cachedRegions) {
+                regionRiskMap.set(r.id, r.disaster_risk);
+            }
+            const riskCells: { position: [number, number]; color: [number, number, number, number] }[] = [];
+            for (const city of this.cachedCities) {
+                const risk = regionRiskMap.get(city.region_id) ?? 0;
+                const intensity = Math.min(1.0, risk * 5);
+                // Gradient: green → yellow → red
+                const r = Math.floor(intensity * 255);
+                const g = Math.floor((1 - intensity) * 200);
+                for (const cp of city.cell_positions) {
+                    riskCells.push({
+                        position: [cp.lon, cp.lat],
+                        color: [r, g, 50, 150]
+                    });
+                }
+            }
             layers.push(new ScatterplotLayer({
                 id: 'overlay-disaster',
-                data: this.cachedRegions,
-                getPosition: (d: Region) => [d.center_lon, d.center_lat],
-                getFillColor: (d: Region) => {
-                    const risk = d.disaster_risk ?? 0;
-                    const intensity = Math.min(1.0, risk * 5);
-                    const color: [number, number, number, number] = [Math.floor(intensity * 255), Math.floor((1 - intensity) * 180), 0, 115];
-                    return color;
-                },
-                getRadius: (d: Region) => Math.sqrt(d.cell_count) * 80000 * 0.4,
+                data: riskCells,
+                getPosition: (d: any) => d.position,
+                getFillColor: (d: any) => d.color,
+                getRadius: 80000 * 1.05,
                 pickable: false,
                 parameters: { depthTest: false }
             }));
@@ -543,10 +590,14 @@ export class MapRenderer {
     }
 
     private createLabelsLayer() {
-        if (this.currentZoom < 2) return null;
+        if (this.currentZoom < 0.8) return null;
 
-        // At lower zoom, only show major cities
-        const minPop = this.currentZoom < 3 ? 500000 : this.currentZoom < 5 ? 100000 : 0;
+        // Progressive population filtering: only show major cities at low zoom
+        const minPop = this.currentZoom < 1.5 ? 5000000
+            : this.currentZoom < 2 ? 1000000
+            : this.currentZoom < 3 ? 500000
+            : this.currentZoom < 5 ? 100000
+            : 0;
         const visibleCities = minPop > 0
             ? this.cachedCities.filter(c => c.population >= minPop)
             : this.cachedCities;

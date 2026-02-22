@@ -40,8 +40,14 @@ const AUTO_SAVE_INTERVAL = 50; // ticks between auto-saves
 // Performance profiling stores
 export const simTickTime = writable<number>(0);
 
+// Loading stage for LoadingScreen (0-3)
+export const loadingStage = writable<number>(0);
+
 // Auto-pause state
 export const autoPauseReason = writable<string | null>(null);
+
+// Welcome overlay shown on first game load
+export const showWelcome = writable<boolean>(false);
 
 function getTickInterval(): number {
 	switch (currentSpeed) {
@@ -203,9 +209,10 @@ export function stop() {
 
 export function setSpeed(speed: number) {
 	currentSpeed = speed;
-	// Clear auto-pause reason when resuming
+	// Clear auto-pause reason and welcome overlay when resuming
 	if (speed > 0) {
 		autoPauseReason.set(null);
+		showWelcome.set(false);
 	}
 	if (speed === 0) {
 		bridge.processCommand({ SetSpeed: 'Paused' });
@@ -229,7 +236,9 @@ export function togglePause() {
 }
 
 export async function initGame(config?: object) {
+	loadingStage.set(0);
 	await bridge.initWasm();
+	loadingStage.set(1);
 
 	// Register handlers before any commands can be issued
 	bridge.setErrorHandler((error, context) => {
@@ -250,9 +259,12 @@ export async function initGame(config?: object) {
 	});
 
 	bridge.newGame(config as any);
+	loadingStage.set(2);
 	await audioManager.init();
+	loadingStage.set(3);
 	// Start paused so player can orient
 	setSpeed(0);
+	showWelcome.set(true);
 	initialized.set(true);
 	updateStores();
 }

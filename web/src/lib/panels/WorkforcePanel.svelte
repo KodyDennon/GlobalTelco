@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { playerCorp, formatMoney } from '$lib/stores/gameState';
-
+	import { showConfirm } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
 	import { tr } from '$lib/i18n/index';
 
@@ -14,7 +14,10 @@
 		const corp = $playerCorp;
 		if (!corp) return;
 		if ((corp.employee_count ?? 0) <= 1) return;
-		bridge.processCommand({ FireEmployee: { entity: corp.id } });
+		const corpId = corp.id;
+		showConfirm('Fire an employee? This will reduce your workforce by 1.', () => {
+			bridge.processCommand({ FireEmployee: { entity: corpId } });
+		});
 	}
 
 	let moralePercent = $derived(Math.round(($playerCorp?.morale ?? 0) * 100));
@@ -38,6 +41,12 @@
 			</div>
 		</div>
 	</div>
+
+	{#if ($playerCorp?.employee_count ?? 0) === 0}
+		<div class="section">
+			<p class="empty-hint">No employees yet — hire your first team to boost operations!</p>
+		</div>
+	{/if}
 
 	<div class="section">
 		<h3>{$tr('panels.staffing')}</h3>
@@ -230,5 +239,12 @@
 		font-size: 12px;
 		color: var(--text-muted);
 		border-bottom: 1px solid rgba(55, 65, 81, 0.3);
+	}
+
+	.empty-hint {
+		color: var(--text-dim);
+		font-size: 13px;
+		text-align: center;
+		margin: 0;
 	}
 </style>

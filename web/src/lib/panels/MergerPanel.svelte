@@ -89,6 +89,10 @@
 			{/each}
 		</section>
 	{/if}
+
+	{#if incomingProposals.length === 0 && outgoingProposals.length === 0}
+		<div class="empty">No acquisition proposals yet. Grow your empire to attract M&A interest, or propose an acquisition above.</div>
+	{/if}
 </div>
 
 <style>
@@ -109,4 +113,5 @@
 	.reject { background: var(--red-bg); color: var(--red-light); border: none; padding: 4px 10px; border-radius: var(--radius-sm); cursor: pointer; font-size: 12px; }
 	.accept:hover { opacity: 0.85; }
 	.reject:hover { opacity: 0.85; }
+	.empty { color: var(--text-dim); font-size: 13px; text-align: center; padding: 16px; }
 </style>
