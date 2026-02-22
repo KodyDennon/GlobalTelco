@@ -1,11 +1,12 @@
 import { Deck } from '@deck.gl/core';
-import { GeoJsonLayer, ArcLayer, ScatterplotLayer, TextLayer, PathLayer } from '@deck.gl/layers';
+import { GeoJsonLayer, ArcLayer, ScatterplotLayer, TextLayer, PathLayer, IconLayer } from '@deck.gl/layers';
 
 import * as bridge from '$lib/wasm/bridge';
 import type { GridCell, City, Region, CorpSummary, CellCoverage, TrafficFlows } from '$lib/wasm/types';
 import type { IconName } from '$lib/assets/icons';
 import { GridPathfinder, needsTerrainRouting } from './GridPathfinder';
 import { tooltipData } from '$lib/stores/uiState';
+import { icons } from '$lib/assets/icons';
 
 // Premium Dark Mode / Neon colors
 const CORP_COLORS = [
@@ -29,6 +30,23 @@ const EDGE_STYLES: Record<string, { color: [number, number, number], width: numb
     Submarine: { color: [59, 130, 246], width: 5 }
 };
 
+// Helper to convert raw SVG to data URI for Deck.gl IconLayer (UTF-8 safe)
+function svgToDataUri(svg: string): string {
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+const ICON_MAPPING = Object.fromEntries(
+    Object.entries(icons).map(([name, svg]) => [
+        name,
+        {
+            url: svgToDataUri(svg as string),
+            width: 64,
+            height: 64,
+            mask: false
+        }
+    ])
+);
+
 export class MapRenderer {
     private deck: Deck | null = null;
     private container: HTMLElement;
@@ -44,6 +62,7 @@ export class MapRenderer {
     private hoveredEntity: any = null;
     private selectedId: number | null = null;
     private currentEdgeSourceId: number | null = null;
+    private currentZoom: number = 2;
 
     constructor(container: HTMLElement, quality: 'low' | 'medium' | 'high' = 'medium') {
         this.quality = quality;
@@ -71,8 +90,8 @@ export class MapRenderer {
                     window.dispatchEvent(new CustomEvent('entity-selected', { detail: { id: null, type: null } }));
                 }
             },
-            onViewStateChange: ({ viewState }) => {
-                // Update tooltips or LOD based on zoom if needed
+            onViewStateChange: ({ viewState }: any) => {
+                this.currentZoom = viewState.zoom;
             }
         });
     }
@@ -92,14 +111,17 @@ export class MapRenderer {
     private renderLayers() {
         if (!this.deck) return;
 
-        const layers = [
+        const layers: any[] = [
             this.createLandLayer(),
             this.createBordersLayer(),
             ...this.createOverlayLayers(),
             ...this.createInfrastructureLayers(),
             this.createCitiesLayer(),
+            this.createLabelsLayer(),
+            this.createRegionLabelsLayer(),
+            this.createSelectionLayer(),
             this.createPathfindingPreviewLayer()
-        ].filter(Boolean);
+        ].filter(Boolean).flat() as any[];
 
         this.deck.setProps({ layers });
     }
@@ -110,8 +132,8 @@ export class MapRenderer {
         return new ScatterplotLayer({
             id: 'land-layer',
             data: this.cachedCells.filter(c => c.terrain !== 'Ocean' && c.terrain !== 'OceanDeep' && Math.abs(c.lat) <= 85),
-            getPosition: d => [d.lon, d.lat],
-            getFillColor: d => [20, 30, 45, 200], // Dark base color
+            getPosition: (d: GridCell) => [d.lon, d.lat],
+            getFillColor: [20, 30, 45, 200], // Dark base color
             getRadius: 80000, // Roughly cell size in meters
             pickable: true,
             onClick: (info: any) => {
@@ -139,7 +161,7 @@ export class MapRenderer {
         return new PathLayer({
             id: 'region-borders',
             data: borderData,
-            getPath: d => d.polygon,
+            getPath: (d: any) => d.polygon,
             getColor: [100, 110, 140, 150],
             getWidth: 2,
             widthUnits: 'pixels'
@@ -219,7 +241,8 @@ export class MapRenderer {
                 nodesData.push({
                     ...node,
                     position: [node.x, node.y],
-                    color: [...color, opacity]
+                    color: [...color, opacity],
+                    icon: node.node_type.toLowerCase().replace(/_/g, '-')
                 });
             }
         }
@@ -228,30 +251,33 @@ export class MapRenderer {
             new ArcLayer({
                 id: 'infra-edges',
                 data: edgesData,
-                getSourcePosition: d => d.sourcePosition,
-                getTargetPosition: d => d.targetPosition,
-                getSourceColor: d => d.color,
-                getTargetColor: d => d.color,
-                getWidth: d => d.width,
+                getSourcePosition: (d: any) => d.sourcePosition,
+                getTargetPosition: (d: any) => d.targetPosition,
+                getSourceColor: (d: any) => d.color,
+                getTargetColor: (d: any) => d.color,
+                getWidth: (d: any) => d.width,
                 pickable: true,
                 autoHighlight: true,
-                onClick: ({ object }) => {
+                onClick: ({ object }: any) => {
                     if (object) {
                         window.dispatchEvent(new CustomEvent('entity-selected', { detail: { id: object.id, type: 'edge' } }));
                     }
                 }
             }),
-            new ScatterplotLayer({
+            new IconLayer({
                 id: 'infra-nodes',
                 data: nodesData,
-                getPosition: d => d.position,
-                getFillColor: d => d.color,
-                getRadius: 10000,
-                radiusMinPixels: 4,
-                radiusMaxPixels: 20,
+                getPosition: (d: any) => d.position,
+                getIcon: (d: any) => d.icon,
+                iconAtlas: null, // We use individual data URIs
+                iconMapping: ICON_MAPPING,
+                getSize: 32,
+                sizeMinPixels: 12,
+                sizeMaxPixels: 64,
+                getColor: (d: any) => d.color,
                 pickable: true,
                 autoHighlight: true,
-                onClick: ({ object }) => {
+                onClick: ({ object }: any) => {
                     if (object) {
                         const event = new CustomEvent('entity-selected', { detail: { id: object.id, type: 'node' } });
                         window.dispatchEvent(event);
@@ -262,26 +288,48 @@ export class MapRenderer {
     }
 
     private createCitiesLayer() {
-        const gtgCities = this.cachedCities.filter(c => Math.abs(c.y) <= 85);
-
-        return new ScatterplotLayer({
-            id: 'cities-glow',
-            data: gtgCities,
-            getPosition: d => [d.x, d.y],
-            getFillColor: [255, 230, 150, 100], // Glow color
-            getRadius: d => Math.log10(Math.max(d.population, 10)) * 15000,
-            pickable: true,
-            autoHighlight: true,
-            onClick: ({ object }) => {
-                if (object) {
-                    window.dispatchEvent(new CustomEvent('entity-selected', { detail: { id: object.id, type: 'city' } }));
-                }
-            },
-            parameters: {
-                blend: true,
-                blendFunc: [WebGLRenderingContext.SRC_ALPHA, WebGLRenderingContext.ONE], // Additive blending
-            }
+        const gtgCities = this.cachedCities.filter(c => Math.abs(c.y) <= 85).map(c => {
+            let tier = 'hamlet';
+            if (c.population > 5000000) tier = 'megalopolis';
+            else if (c.population > 1000000) tier = 'metropolis';
+            else if (c.population > 250000) tier = 'city';
+            else if (c.population > 50000) tier = 'town';
+            return { ...c, tier };
         });
+
+        return [
+            new ScatterplotLayer({
+                id: 'cities-glow',
+                data: gtgCities,
+                getPosition: (d: any) => [d.x, d.y],
+                getFillColor: [255, 230, 150, 100], // Glow color
+                getRadius: (d: any) => Math.log10(Math.max(d.population, 10)) * 15000,
+                pickable: false,
+                parameters: {
+                    blend: true,
+                    blendFunc: [WebGLRenderingContext.SRC_ALPHA, WebGLRenderingContext.ONE], // Additive blending
+                }
+            }),
+            new IconLayer({
+                id: 'cities-icons',
+                data: gtgCities,
+                getPosition: (d: any) => [d.x, d.y],
+                getIcon: (d: any) => d.tier,
+                iconAtlas: null,
+                iconMapping: ICON_MAPPING,
+                getSize: (d: any) => Math.log10(Math.max(d.population, 10)) * 8,
+                sizeMinPixels: 16,
+                sizeMaxPixels: 48,
+                getColor: [255, 255, 255, 255],
+                pickable: true,
+                autoHighlight: true,
+                onClick: ({ object }: any) => {
+                    if (object) {
+                        window.dispatchEvent(new CustomEvent('entity-selected', { detail: { id: object.id, type: 'city' } }));
+                    }
+                }
+            })
+        ];
     }
 
     private createOverlayLayers() {
@@ -291,13 +339,14 @@ export class MapRenderer {
             layers.push(new ScatterplotLayer({
                 id: 'overlay-demand',
                 data: this.cachedRegions,
-                getPosition: d => [d.center_lon, d.center_lat],
-                getFillColor: d => {
+                getPosition: (d: Region) => [d.center_lon, d.center_lat],
+                getFillColor: (d: Region) => {
                     const pop = d.population ?? 0;
                     const intensity = Math.min(1.0, pop / 500000);
-                    return [Math.floor(intensity * 255), 50, Math.floor((1 - intensity) * 255), 115];
+                    const color: [number, number, number, number] = [Math.floor(intensity * 255), 50, Math.floor((1 - intensity) * 255), 115];
+                    return color;
                 },
-                getRadius: d => Math.sqrt(d.cell_count) * 80000 * 0.4,
+                getRadius: (d: Region) => Math.sqrt(d.cell_count) * 80000 * 0.4,
                 pickable: false,
                 parameters: { depthTest: false }
             }));
@@ -307,13 +356,14 @@ export class MapRenderer {
             layers.push(new ScatterplotLayer({
                 id: 'overlay-disaster',
                 data: this.cachedRegions,
-                getPosition: d => [d.center_lon, d.center_lat],
-                getFillColor: d => {
+                getPosition: (d: Region) => [d.center_lon, d.center_lat],
+                getFillColor: (d: Region) => {
                     const risk = d.disaster_risk ?? 0;
                     const intensity = Math.min(1.0, risk * 5);
-                    return [Math.floor(intensity * 255), Math.floor((1 - intensity) * 180), 0, 115];
+                    const color: [number, number, number, number] = [Math.floor(intensity * 255), Math.floor((1 - intensity) * 180), 0, 115];
+                    return color;
                 },
-                getRadius: d => Math.sqrt(d.cell_count) * 80000 * 0.4,
+                getRadius: (d: Region) => Math.sqrt(d.cell_count) * 80000 * 0.4,
                 pickable: false,
                 parameters: { depthTest: false }
             }));
@@ -325,14 +375,59 @@ export class MapRenderer {
                 layers.push(new ScatterplotLayer({
                     id: 'overlay-coverage',
                     data: coverageData,
-                    getPosition: d => [d.lon, d.lat],
-                    getFillColor: d => {
+                    getPosition: (d: CellCoverage) => [d.lon, d.lat],
+                    getFillColor: (d: CellCoverage) => {
                         const intensity = Math.min(1.0, d.signal_strength / 100);
-                        return [Math.floor((1 - intensity) * 255), Math.floor(intensity * 200), 50, 150];
+                        const color: [number, number, number, number] = [Math.floor((1 - intensity) * 255), Math.floor(intensity * 200), 50, 150];
+                        return color;
                     },
                     getRadius: 80000 * 1.05,
                     pickable: false,
                     parameters: { depthTest: false }
+                }));
+            }
+        }
+
+        if (this.activeOverlay === 'terrain') {
+            const TERRAIN_COLORS: Record<string, [number, number, number]> = {
+                Ocean: [10, 20, 40],
+                OceanDeep: [5, 10, 25],
+                Plains: [40, 60, 40],
+                Forest: [20, 45, 20],
+                Mountain: [60, 60, 65],
+                Desert: [70, 65, 45],
+                Tundra: [60, 70, 75],
+                Urban: [80, 80, 90]
+            };
+
+            layers.push(new ScatterplotLayer({
+                id: 'overlay-terrain',
+                data: this.cachedCells,
+                getPosition: (d: GridCell) => [d.lon, d.lat],
+                getFillColor: (d: GridCell) => {
+                    const color = TERRAIN_COLORS[d.terrain] || [50, 50, 50];
+                    return [...color, 255] as [number, number, number, number];
+                },
+                getRadius: 85000,
+                pickable: false
+            }));
+        }
+
+        if (this.activeOverlay === 'ownership') {
+            if (bridge.isInitialized()) {
+                const coverageData = bridge.getCellCoverage(); // Use dominant owner from coverage
+                layers.push(new ScatterplotLayer({
+                    id: 'overlay-ownership',
+                    data: coverageData.filter(d => d.dominant_owner !== null),
+                    getPosition: (d: CellCoverage) => [d.lon, d.lat],
+                    getFillColor: (d: CellCoverage) => {
+                        const corps = bridge.getAllCorporations();
+                        const idx = corps.findIndex(c => c.id === d.dominant_owner);
+                        const baseColor = CORP_COLORS[idx % CORP_COLORS.length];
+                        return [...baseColor, 180] as [number, number, number, number];
+                    },
+                    getRadius: 85000,
+                    pickable: false
                 }));
             }
         }
@@ -354,6 +449,91 @@ export class MapRenderer {
     highlightEdgeSource(nodeId: number | null) {
         this.currentEdgeSourceId = nodeId;
         this.renderLayers();
+    }
+
+    setSelected(id: number | null) {
+        this.selectedId = id;
+        this.renderLayers();
+    }
+
+    private createSelectionLayer() {
+        if (!this.selectedId) return null;
+
+        // Find the selected object (node, edge, or city)
+        let selectedObject: any = null;
+        let pos: [number, number] = [0, 0];
+        let radius = 20000;
+
+        // Search nodes
+        const infra = bridge.getAllInfrastructure();
+        const node = infra.nodes.find(n => n.id === this.selectedId);
+        if (node) {
+            pos = [node.x, node.y];
+            radius = 25000;
+        } else {
+            // Search edges
+            const edge = infra.edges.find(e => e.id === this.selectedId);
+            if (edge) {
+                // For edges, maybe we don't draw a ring? 
+                // Or we could draw a line highlight. For now just focus on nodes/cities.
+                return null;
+            } else {
+                // Search cities
+                const city = this.cachedCities.find(c => c.id === this.selectedId);
+                if (city) {
+                    pos = [city.x, city.y];
+                    radius = Math.log10(Math.max(city.population, 10)) * 25000;
+                }
+            }
+        }
+
+        if (pos[0] === 0 && pos[1] === 0) return null;
+
+        return new ScatterplotLayer({
+            id: 'selection-highlight',
+            data: [{ position: pos }],
+            getPosition: (d: any) => d.position,
+            getFillColor: [255, 255, 255, 0],
+            getLineColor: [255, 255, 255, 200],
+            getLineWidth: 2,
+            lineWidthUnits: 'pixels',
+            getRadius: radius,
+            parameters: { depthTest: false }
+        });
+    }
+
+    private createLabelsLayer() {
+        if (this.currentZoom < 4) return null;
+
+        return new TextLayer({
+            id: 'city-labels',
+            data: this.cachedCities,
+            getPosition: (d: City) => [d.x, d.y],
+            getText: (d: City) => d.name,
+            getSize: 12,
+            getColor: [255, 255, 255, 200],
+            getAlignmentBaseline: 'bottom',
+            getPixelOffset: [0, -10],
+            fontFamily: 'Inter, sans-serif',
+            parameters: { depthTest: false }
+        });
+    }
+
+    private createRegionLabelsLayer() {
+        if (this.currentZoom > 5) return null;
+
+        return new TextLayer({
+            id: 'region-labels',
+            data: this.cachedRegions,
+            getPosition: (d: Region) => [d.center_lon, d.center_lat],
+            getText: (d: Region) => d.name,
+            getSize: 18,
+            getColor: [255, 255, 255, 100],
+            getAlignmentBaseline: 'center',
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: 'bold',
+            parameters: { depthTest: false }
+        });
     }
 
     private createPathfindingPreviewLayer() {
@@ -417,7 +597,7 @@ export class MapRenderer {
             if (pickInfo && pickInfo.object && pickInfo.layer) {
                 if (pickInfo.layer.id === 'infra-nodes') type = 'node';
                 else if (pickInfo.layer.id === 'infra-edges') type = 'edge';
-                else if (pickInfo.layer.id === 'cities-glow') type = 'city';
+                else if (pickInfo.layer.id === 'cities-icons') type = 'city';
 
                 if (type) {
                     object = pickInfo.object;

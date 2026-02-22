@@ -237,6 +237,13 @@ Players ──► Cloudflare Workers (auth, matchmaking, APIs, CDN)
 - **Frontend CDN:** Vercel (Svelte app) + Cloudflare (static assets)
 - **No AWS, no Azure, no Oracle, no Unreal Engine.**
 
+## Tool Rules (Mandatory)
+
+- **NEVER use `sed` or `awk` for file editing.** Use the Edit tool for all file modifications. No exceptions.
+- **NEVER use `cat` with heredoc or `echo` redirection to write files.** Use the Write tool.
+- **NEVER use `grep` or `rg` via Bash.** Use the Grep tool.
+- Use Bash only for: git operations, build commands (cargo, bun, wasm-pack), and system commands that require shell execution.
+
 ## Performance Targets
 
 - Simulation tick: < 50ms for 10,000+ entities
