@@ -1,5 +1,5 @@
 import { Deck } from '@deck.gl/core';
-import { GeoJsonLayer, ArcLayer, ScatterplotLayer, TextLayer, PathLayer, IconLayer } from '@deck.gl/layers';
+import { ArcLayer, ScatterplotLayer, TextLayer, PathLayer, IconLayer } from '@deck.gl/layers';
 
 import * as bridge from '$lib/wasm/bridge';
 import type { GridCell, City, Region, CorpSummary, CellCoverage, TrafficFlows } from '$lib/wasm/types';
@@ -541,15 +541,16 @@ export class MapRenderer {
             return null;
         }
 
-        const sourceNode = bridge.getAllInfrastructure().nodes.find(n => n.id === this.currentEdgeSourceId);
-        const targetNode = this.hoveredEntity.object; // The node we're hovering over
+        const allInfra = bridge.getAllInfrastructure();
+        const sourceNode = allInfra.nodes.find(n => n.id === this.currentEdgeSourceId);
+        const targetNode = allInfra.nodes.find(n => n.id === this.hoveredEntity.object?.id);
 
         if (!sourceNode || !targetNode || sourceNode.id === targetNode.id) return null;
 
-        const srcCell = (sourceNode as any).cell;
-        const tgtCell = (targetNode as any).cell;
+        const srcCell = sourceNode.cell_index;
+        const tgtCell = targetNode.cell_index;
 
-        // Ensure nodes have cell associations (assuming they do in WASM, but fallback to direct line if not)
+        // Use terrain-aware pathfinding if both nodes have cell associations
         if (srcCell !== undefined && tgtCell !== undefined) {
             const edgeType = 'FiberLocal'; // hardcode for preview right now, could pull from uiState
             if (needsTerrainRouting(edgeType)) {

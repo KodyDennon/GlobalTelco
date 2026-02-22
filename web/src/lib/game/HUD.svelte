@@ -78,6 +78,7 @@
 		{ key: 'demand', label: 'Demand' },
 		{ key: 'coverage', label: 'Cover' },
 		{ key: 'disaster', label: 'Risk', cls: 'disaster' },
+		{ key: 'congestion', label: 'Congest', cls: 'congestion' },
 		{ key: 'traffic', label: 'Traffic', cls: 'traffic' },
 	];
 </script>
@@ -155,6 +156,7 @@
 					class="overlay-btn"
 					class:active={currentOverlay === overlay.key}
 					class:disaster={overlay.cls === 'disaster'}
+					class:congestion={overlay.cls === 'congestion'}
 					class:traffic={overlay.cls === 'traffic'}
 					onclick={() => toggleOverlay(overlay.key)}
 					title={overlay.label}
@@ -317,6 +319,15 @@
 	.overlay-btn.disaster.active {
 		background: rgba(239, 68, 68, 0.2);
 		color: var(--red);
+	}
+
+	.overlay-btn.congestion {
+		color: var(--amber);
+	}
+
+	.overlay-btn.congestion.active {
+		background: rgba(245, 158, 11, 0.2);
+		color: var(--amber);
 	}
 
 	.overlay-btn.traffic {

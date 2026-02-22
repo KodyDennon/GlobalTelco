@@ -5,7 +5,6 @@ import type {
 	City,
 	InfrastructureList,
 	VisibleEntities,
-	Parcel,
 	Notification,
 	GridCell,
 	CellCoverage,
@@ -184,21 +183,6 @@ export function getVisibleEntities(
 	} catch (e) {
 		onBridgeError(e, 'getVisibleEntities');
 		return { nodes: [], cities: [] };
-	}
-}
-
-export function getParcelsInView(
-	minX: number,
-	minY: number,
-	maxX: number,
-	maxY: number
-): Parcel[] {
-	try {
-		const json = bridge?.get_parcels_in_view(minX, minY, maxX, maxY) ?? '[]';
-		return JSON.parse(json);
-	} catch (e) {
-		onBridgeError(e, 'getParcelsInView');
-		return [];
 	}
 }
 

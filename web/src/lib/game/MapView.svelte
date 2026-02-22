@@ -62,12 +62,12 @@
 				renderer = new MapRenderer(container, get(mapQuality));
 				await renderer.buildMap();
 				renderer.updateInfrastructure();
-				renderer?.updateInfrastructure();
 
+				// Update map every 500ms (roughly per-tick at 1x speed, responsive at higher speeds)
 				const interval = setInterval(() => {
 					renderer?.updateInfrastructure();
 					renderer?.updateCities();
-				}, 2000);
+				}, 500);
 
 				window.addEventListener(
 					"entity-selected",
@@ -88,6 +88,11 @@
 					renderer?.highlightEdgeSource(sourceId);
 				});
 
+				// Subscribe to selection changes to render selection ring on map
+				const selectionSub = selectedEntityId.subscribe((id) => {
+					renderer?.setSelected(id);
+				});
+
 				// Mouse move for tooltips
 				container.addEventListener("mousemove", handleMouseMove);
 				container.addEventListener("mouseleave", handleMouseLeave);
@@ -96,6 +101,7 @@
 					clearInterval(interval);
 					overlaySub();
 					edgeSrcSub();
+					selectionSub();
 					window.removeEventListener(
 						"entity-selected",
 						handleEntitySelected as EventListener,

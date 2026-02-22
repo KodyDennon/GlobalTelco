@@ -22,17 +22,28 @@
 			isPlayerOwned = false;
 		} else if (type === 'node') {
 			const corpId = bridge.getPlayerCorpId();
-			// Check player infra first
 			const infra = bridge.getInfrastructureList(corpId);
 			const playerNode = infra.nodes.find((n: InfraNode) => n.id === id);
 			if (playerNode) {
 				entityData = { ...playerNode, entityType: 'node' };
 				isPlayerOwned = true;
 			} else {
-				// Also show info for non-player nodes (from all infra)
 				const allInfra = bridge.getAllInfrastructure();
 				const anyNode = allInfra.nodes.find((n: any) => n.id === id);
 				entityData = anyNode ? { ...anyNode, entityType: 'node' } : null;
+				isPlayerOwned = false;
+			}
+		} else if (type === 'edge') {
+			const allInfra = bridge.getAllInfrastructure();
+			const edge = allInfra.edges.find((e: any) => e.id === id);
+			if (edge) {
+				const corpId = bridge.getPlayerCorpId();
+				const playerInfra = bridge.getInfrastructureList(corpId);
+				const isOwned = playerInfra.edges.some((e: any) => e.id === id);
+				entityData = { ...edge, entityType: 'edge' };
+				isPlayerOwned = isOwned;
+			} else {
+				entityData = null;
 				isPlayerOwned = false;
 			}
 		} else {
@@ -78,7 +89,7 @@
 	<div class="info-panel">
 		<div class="panel-header">
 			<span class="panel-title">
-				{entityData.entityType === 'city' ? entityData.name : entityData.node_type}
+				{entityData.entityType === 'city' ? entityData.name : entityData.entityType === 'edge' ? entityData.edge_type : entityData.node_type}
 			</span>
 			{#if !isPlayerOwned && entityData.entityType === 'node' && entityData.owner_name}
 				<span class="owner-tag">{entityData.owner_name}</span>
@@ -87,7 +98,34 @@
 		</div>
 
 		<div class="panel-body">
-			{#if entityData.entityType === 'city'}
+			{#if entityData.entityType === 'edge'}
+				<div class="stat">
+					<span class="label">Type</span>
+					<span class="value">{entityData.edge_type}</span>
+				</div>
+				<div class="stat">
+					<span class="label">Bandwidth</span>
+					<span class="value">{entityData.bandwidth?.toFixed(0) ?? '—'}</span>
+				</div>
+				<div class="stat">
+					<span class="label">Load</span>
+					<span class="value">{entityData.current_load?.toFixed(0) ?? '—'}</span>
+				</div>
+				<div class="stat">
+					<span class="label">Latency</span>
+					<span class="value">{entityData.latency_ms?.toFixed(1) ?? '—'} ms</span>
+				</div>
+				<div class="stat">
+					<span class="label">Length</span>
+					<span class="value">{entityData.length_km?.toFixed(1) ?? '—'} km</span>
+				</div>
+				<div class="stat">
+					<span class="label">Health</span>
+					<span class="value" class:damaged={entityData.health < 0.5} class:warn-health={entityData.health < 0.8 && entityData.health >= 0.5}>
+						{((entityData.health ?? 1) * 100).toFixed(0)}%
+					</span>
+				</div>
+			{:else if entityData.entityType === 'city'}
 				<div class="stat">
 					<span class="label">Population</span>
 					<span class="value">{formatPopulation(entityData.population)}</span>

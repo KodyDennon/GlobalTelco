@@ -39,6 +39,8 @@
 
 	function close() {
 		buildMenuLocation.set(null);
+		buildMode.set(null);
+		buildEdgeSource.set(null);
 	}
 </script>
 
