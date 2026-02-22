@@ -11,9 +11,9 @@ Comprehensive technical architecture for the GlobalTelco web-based infrastructur
 │                     BROWSER / TAURI                          │
 │                                                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
-│  │   Svelte UI  │  │   Three.js   │  │     D3.js        │  │
-│  │  (panels,    │  │  (2D map     │  │  (charts, data   │  │
-│  │   menus,     │  │   rendering) │  │   visualization) │  │
+│  │   Svelte UI  │  │   deck.gl    │  │     D3.js        │  │
+│  │  (panels,    │  │  (2D map,    │  │  (charts, data   │  │
+│  │   menus,     │  │  free place) │  │   visualization) │  │
 │  │   HUD)       │  │              │  │                  │  │
 │  └──────┬───────┘  └──────┬───────┘  └────────┬─────────┘  │
 │         │                 │                    │             │
@@ -60,7 +60,7 @@ All game state is managed through an ECS architecture. Entities are IDs, compone
 - `Region` — geographic/political regions
 - `City` — population centers
 - `Contract` — business agreements
-- `LandParcel` — ownable land units
+- `LandParcel` — backend spatial cells (terrain, coverage queries; invisible to player)
 - `TechResearch` — ongoing research projects
 - `DebtInstrument` — loans, bonds
 - `Patent` — owned intellectual property (tech patents, licenses)
@@ -208,7 +208,7 @@ crates/
 
 ---
 
-## 3. Frontend Architecture (Svelte + Three.js + D3.js)
+## 3. Frontend Architecture (Svelte + deck.gl + D3.js)
 
 ### 3a. Svelte App Structure
 
@@ -222,7 +222,7 @@ web/src/
 │   │   └── queries.ts      # Query game state from sim
 │   ├── game/
 │   │   ├── GameView.svelte         # Main game screen container
-│   │   ├── MapRenderer.svelte      # Three.js map canvas wrapper
+│   │   ├── MapRenderer.ts           # deck.gl map renderer (free placement)
 │   │   ├── HUD.svelte              # Heads-up display overlay
 │   │   ├── SpeedControls.svelte    # Pause/play/speed buttons
 │   │   ├── AdvisorPanel.svelte     # AI advisor suggestions
@@ -284,19 +284,19 @@ web/src/
     └── data/               # Map data, country borders (GeoJSON)
 ```
 
-### 3b. Three.js Map Renderer
+### 3b. deck.gl Map Renderer
 
-The map is rendered using Three.js in orthographic 2D mode with a perspective camera for zoom transitions.
+The map is rendered using deck.gl with WebGL layers. Infrastructure is placed freely at exact (lon, lat) coordinates — no grid snapping.
 
-**Layers (rendered bottom to top):**
-1. **Ocean base** — dark blue plane
-2. **Land masses** — terrain-colored polygons (green/brown/white) from GeoJSON
-3. **Political borders** — line geometry for country/region borders
-4. **City dots** — scaled circles for population centers
-5. **Infrastructure** — icon sprites for nodes, line geometry for edges
-6. **Ownership overlay** — semi-transparent company-colored regions
-7. **Selection highlight** — glow effect on hovered/selected entities
-8. **Labels** — text sprites for city/region names at appropriate zoom levels
+**Layers (rendered by deck.gl):**
+1. **Land layer** — `ScatterplotLayer` rendering grid cells as dark base map (filtered to exclude ocean)
+2. **Region borders** — `PathLayer` for region boundary outlines
+3. **Infrastructure edges** — `ArcLayer` for connections between nodes (colored by edge type)
+4. **Infrastructure nodes** — `ScatterplotLayer` for nodes (colored by corporation, sized by tier)
+5. **Cities** — `ScatterplotLayer` with additive blending for city glow effect
+6. **Pathfinding preview** — `PathLayer`/`ArcLayer` for edge building preview
+
+**Build system:** Click anywhere on land → `map-clicked` event with exact (lon, lat) → BuildMenu shows options → `BuildNode { node_type, lon, lat }` command sent to WASM.
 
 **Zoom levels control visibility:**
 - Level 1 (World): continents, major countries, backbone routes
@@ -330,7 +330,7 @@ The bridge between Svelte/JS and Rust/WASM uses `wasm-bindgen` and follows this 
 ```
 
 **Commands (player actions → sim):**
-- `build_node(type, location, corp_id)` → place infrastructure
+- `build_node(type, lon, lat)` → place infrastructure at exact coordinates
 - `build_edge(type, node_a, node_b, corp_id)` → connect nodes
 - `hire_employee(role, region, corp_id)` → hire workforce
 - `set_policy(policy_type, params, corp_id)` → set management policy
@@ -612,7 +612,7 @@ Players ──► Cloudflare Workers (auth, matchmaking, APIs, CDN)
 
 ## 9. SVG Asset Pipeline
 
-All visual assets (icons, symbols, indicators) use inline SVG with a unified pipeline from source files through Svelte UI and Three.js map rendering.
+All visual assets (icons, symbols, indicators) use inline SVG with a unified pipeline from source files through Svelte UI and deck.gl map rendering.
 
 ### Directory Structure
 
@@ -678,31 +678,13 @@ Icons are imported as raw strings via Vite's `?raw` suffix and rendered inline:
 | `class` | `string` | `''` | Additional CSS classes |
 | `title` | `string` | `undefined` | Accessible label (adds `role="img"`) |
 
-### Three.js Map Integration
+### deck.gl Map Integration
 
-For rendering infrastructure icons on the 2D political map, SVGs are rasterized to canvas textures via `SpriteFactory`:
+The map renderer uses deck.gl layers. Infrastructure nodes are rendered as `ScatterplotLayer` points colored by corporation. Edges use `ArcLayer` connecting source/target positions.
 
-```typescript
-import { createIconSprite, preloadInfrastructureIcons, clearTextureCache } from '$lib/game/SpriteFactory';
+**Free Placement:** Players click anywhere on the map → deck.gl provides exact (lon, lat) coordinates via `info.coordinate` → `BuildNode { node_type, lon, lat }` command → nearest grid cell looked up for terrain/region data → node placed at exact clicked position.
 
-// Single sprite
-const tower = await createIconSprite('cell-tower', {
-  size: 128,             // Rasterization resolution (px)
-  color: '#00ff88',      // Player's company color
-  worldSize: 2,          // Size in Three.js world units
-});
-scene.add(tower);
-
-// Preload all infrastructure icons at game start
-const textures = await preloadInfrastructureIcons('#ffffff', 64);
-
-// Clear cache on theme/color change
-clearTextureCache();
-```
-
-**Pipeline:** SVG string → `currentColor` replacement → Blob URL → Image → Canvas → `THREE.CanvasTexture` → `THREE.SpriteMaterial` → `THREE.Sprite`
-
-**Caching:** Textures are cached by `name:size:color:padding` key. Same combo returns the same texture instance. Call `clearTextureCache()` when player changes company color or UI theme.
+**Icon Assets:** SVG infrastructure icons exist in `web/src/lib/assets/icons/infrastructure/` for future icon layer integration (currently rendered as colored dots via ScatterplotLayer).
 
 ### Adding New Icons
 

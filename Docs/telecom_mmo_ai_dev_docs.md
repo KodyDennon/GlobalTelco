@@ -109,7 +109,7 @@ Each archetype has distinct behavioral patterns across the new game systems:
 
 ### 9. AI Bankruptcy — Enhanced
 - **Trigger:** AI corporation enters bankruptcy when cash reserves are negative for 10 consecutive ticks and no viable debt instruments are available.
-- **Asset Auction:** All infrastructure assets (nodes, edges, land parcels, spectrum licenses) are listed for auction. Auctions run for 20 ticks. Both player and AI corporations may bid. Assets are sold to the highest bidder; unsold assets become government-owned public infrastructure.
+- **Asset Auction:** All infrastructure assets (nodes, edges, spectrum licenses) are listed for auction. Auctions run for 20 ticks. Both player and AI corporations may bid. Assets are sold to the highest bidder; unsold assets become government-owned public infrastructure.
 - **Workforce Redistribution:** All employees become available on the regional labor market for hire by other corporations. Skilled employees (specialists, managers) retain their qualifications and experience levels.
 - **Customer Redistribution:** Customers of the bankrupt corporation are redistributed to remaining providers in each region, proportional to each provider's existing market share and available capacity. Customers without alternative providers become unserved demand, potentially triggering new AI corporation spawning.
 - **Debt Resolution:** Outstanding debts are partially recovered from auction proceeds. Creditors receive proportional payouts based on debt seniority. Remaining unpaid debt is written off.
@@ -124,10 +124,9 @@ Each archetype has distinct behavioral patterns across the new game systems:
 - Multi-player corporations with shared voting, revenue, and infrastructure decisions.
 - Alliances: creation, maintenance, and dissolution handled by AI.
 
-### 2. Land & Parcel System
-- Hex-based parcels with terrain, disaster risk, zoning, and ownership.
-- Leasing, auctions, public land usage.
-- AI manages auctions, zoning compliance, and infrastructure placement.
+### 2. Spatial & Terrain System
+- Free placement of infrastructure at exact coordinates; invisible hex cell grid for terrain, disaster risk, coverage, and demand queries.
+- AI manages auctions, compliance, and infrastructure placement using cell-based strategic analysis with jittered positions.
 
 ### 3. Conflict & Sabotage
 - Legal system for lawsuits, sabotage claims, ownership disputes.

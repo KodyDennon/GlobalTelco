@@ -1,22 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="currentColor">
-  <!-- Outer insulation -->
-  <rect x="6" y="24" width="52" height="16" rx="8" opacity="0.2"/>
-  <rect x="6" y="24" width="52" height="16" rx="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
-  <!-- Twisted pair 1 -->
-  <path d="M10 30c3-3 6-3 9 0s6 3 9 0 6-3 9 0 6 3 9 0" fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.8"/>
-  <!-- Twisted pair 2 -->
-  <path d="M10 34c3 3 6 3 9 0s6-3 9 0 6 3 9 0 6-3 9 0" fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.8"/>
-  <!-- Shielding foil hints -->
-  <line x1="10" y1="26" x2="54" y2="26" stroke="currentColor" stroke-width="0.5" opacity="0.3" stroke-dasharray="3 2"/>
-  <line x1="10" y1="38" x2="54" y2="38" stroke="currentColor" stroke-width="0.5" opacity="0.3" stroke-dasharray="3 2"/>
-  <!-- Connector left - RJ-style -->
-  <rect x="1" y="26" width="7" height="12" rx="1"/>
-  <rect x="2" y="28" width="2" height="2" rx="0.5" opacity="0.5" fill="#fff"/>
-  <rect x="2" y="32" width="2" height="2" rx="0.5" opacity="0.5" fill="#fff"/>
-  <!-- Connector right -->
-  <rect x="56" y="26" width="7" height="12" rx="1"/>
-  <rect x="60" y="28" width="2" height="2" rx="0.5" opacity="0.5" fill="#fff"/>
-  <rect x="60" y="32" width="2" height="2" rx="0.5" opacity="0.5" fill="#fff"/>
-  <!-- Signal trace -->
-  <path d="M14 44c6-2 12-2 18 0s12 2 18 0" fill="none" stroke="currentColor" stroke-width="1" opacity="0.15"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="100%" height="100%">
+    <defs>
+        <filter id="neon-glow-copper" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
+            <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+        <linearGradient id="grad-copper" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#b45309" />
+            <stop offset="50%" stop-color="#f59e0b" />
+            <stop offset="100%" stop-color="#b45309" />
+        </linearGradient>
+    </defs>
+
+    <!-- Thick Copper Wire -->
+    <path d="M 8 32 L 56 32" stroke="url(#grad-copper)" stroke-width="6" filter="url(#neon-glow-copper)"/>
+    
+    <!-- Sheathing breaks -->
+    <line x1="20" y1="28" x2="20" y2="36" stroke="#fbbf24" stroke-width="2" filter="url(#neon-glow-copper)"/>
+    <line x1="44" y1="28" x2="44" y2="36" stroke="#fbbf24" stroke-width="2" filter="url(#neon-glow-copper)"/>
+
+    <!-- Subtle Data Pulse -->
+    <path d="M 8 32 L 20 28 L 32 36 L 44 28 L 56 32" fill="none" stroke="#fcd34d" stroke-width="1.5" filter="url(#neon-glow-copper)" opacity="0.8"/>
 </svg>

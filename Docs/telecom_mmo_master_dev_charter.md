@@ -15,7 +15,7 @@
   - `crates/gt-ai/` — AI corporation controllers, archetypes, strategy
   - `crates/gt-wasm/` — WASM bindings (wasm-bindgen bridge to JS frontend)
   - `crates/gt-server/` — Multiplayer server binary (WebSocket, auth, persistence)
-  - `web/` — Svelte frontend (UI, Three.js map, D3.js charts)
+  - `web/` — Svelte frontend (UI, deck.gl map, D3.js charts)
   - `desktop/` — Tauri desktop app wrapper
   - `data/` — Open data sources (OSM, World Bank, UN)
   - `Docs/` — Design documents and specifications
@@ -66,7 +66,7 @@ All systems run in this deterministic order every tick. Order is critical for co
 
 ## 4. Coding Standards & Conventions
 - **Implementation Required:** No stub or placeholder code — all features must be fully coded, integrated, and tested.
-- **Language & Framework:** Rust for all simulation logic. TypeScript/Svelte for frontend UI. Three.js for map rendering. D3.js for data visualization.
+- **Language & Framework:** Rust for all simulation logic. TypeScript/Svelte for frontend UI. deck.gl for map rendering. D3.js for data visualization.
 - **Rust Standards:** `cargo clippy` clean, `cargo fmt` formatted, all public APIs documented with `///` doc comments.
 - **TypeScript Standards:** Strict mode, proper typing, no `any` types.
 - **Testing:** Target ~120-150 tests total. Happy path + edge cases per system (`cargo test`); integration tests for cross-crate interactions; frontend tests via Bun. Coverage goal: every system has at least 2 happy-path tests and 2 edge-case tests.
@@ -76,7 +76,7 @@ All systems run in this deterministic order every tick. Order is critical for co
 
 ## 5. Full-Stack Responsibilities
 - **Simulation Engine (Rust):** Deterministic ECS, world generation, economy, AI, infrastructure, population modeling.
-- **Frontend (Svelte/Three.js/D3.js):** 2D political map rendering, interactive dashboards, management panels, data visualization.
+- **Frontend (Svelte/deck.gl/D3.js):** 2D political map rendering, interactive dashboards, management panels, data visualization.
 - **WASM Bridge:** TypeScript ↔ Rust interop via wasm-bindgen. Commands (player actions) and Queries (state reads).
 - **Multiplayer Server (Rust):** Authoritative simulation, WebSocket communication, world persistence, AI proxy.
 - **AI Agents:** Deterministic decision-making for infrastructure, economics, alliances, and expansion. 4 archetype personalities.

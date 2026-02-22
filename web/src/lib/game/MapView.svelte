@@ -1,46 +1,41 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
-	import { MapRenderer } from './MapRenderer';
-	import { initialized } from '$lib/stores/gameState';
-	import { mapQuality } from '$lib/stores/settings';
-	import { get } from 'svelte/store';
+	import { onMount, onDestroy } from "svelte";
+	import { MapRenderer } from "./MapRenderer";
+	import { initialized } from "$lib/stores/gameState";
+	import { mapQuality } from "$lib/stores/settings";
+	import { get } from "svelte/store";
 	import {
 		selectedEntityId,
 		selectedEntityType,
 		buildMode,
-		buildMenuParcel,
+		buildMenuLocation,
 		buildEdgeSource,
 		activeOverlay,
 		tooltipData,
-		selectedEdgeType
-	} from '$lib/stores/uiState';
-	import * as bridge from '$lib/wasm/bridge';
+		selectedEdgeType,
+	} from "$lib/stores/uiState";
+	import * as bridge from "$lib/wasm/bridge";
 
 	let container: HTMLElement;
 	let renderer: MapRenderer | null = null;
 	let frameId: number | null = null;
-
-	function animate() {
-		renderer?.render();
-		frameId = requestAnimationFrame(animate);
-	}
 
 	function handleEntitySelected(e: CustomEvent) {
 		const { id, type } = e.detail;
 		let currentBuildMode: string | null = null;
 		buildMode.subscribe((m) => (currentBuildMode = m))();
 
-		if (currentBuildMode === 'edge' && type === 'node') {
+		if (currentBuildMode === "edge" && type === "node") {
 			let source: number | null = null;
 			buildEdgeSource.subscribe((s) => (source = s))();
 
 			if (source === null) {
 				buildEdgeSource.set(id);
 			} else {
-				let edgeType = 'FiberLocal';
+				let edgeType = "FiberLocal";
 				selectedEdgeType.subscribe((t) => (edgeType = t))();
 				bridge.processCommand({
-					BuildEdge: { edge_type: edgeType, from: source, to: id }
+					BuildEdge: { edge_type: edgeType, from: source, to: id },
 				});
 				buildEdgeSource.set(null);
 			}
@@ -51,12 +46,13 @@
 		selectedEntityType.set(type);
 	}
 
-	function handleParcelClicked(e: CustomEvent) {
+	function handleMapClicked(e: CustomEvent) {
 		let currentBuildMode: string | null = null;
 		buildMode.subscribe((m) => (currentBuildMode = m))();
 
-		if (currentBuildMode === 'node') {
-			buildMenuParcel.set(e.detail);
+		if (currentBuildMode === "node") {
+			const { lon, lat } = e.detail;
+			buildMenuLocation.set({ lon, lat });
 		}
 	}
 
@@ -66,15 +62,21 @@
 				renderer = new MapRenderer(container, get(mapQuality));
 				await renderer.buildMap();
 				renderer.updateInfrastructure();
-				animate();
+				renderer?.updateInfrastructure();
 
 				const interval = setInterval(() => {
 					renderer?.updateInfrastructure();
 					renderer?.updateCities();
 				}, 2000);
 
-				window.addEventListener('entity-selected', handleEntitySelected as EventListener);
-				window.addEventListener('parcel-clicked', handleParcelClicked as EventListener);
+				window.addEventListener(
+					"entity-selected",
+					handleEntitySelected as EventListener,
+				);
+				window.addEventListener(
+					"map-clicked",
+					handleMapClicked as EventListener,
+				);
 
 				// Subscribe to overlay changes
 				const overlaySub = activeOverlay.subscribe((overlay) => {
@@ -87,17 +89,26 @@
 				});
 
 				// Mouse move for tooltips
-				container.addEventListener('mousemove', handleMouseMove);
-				container.addEventListener('mouseleave', handleMouseLeave);
+				container.addEventListener("mousemove", handleMouseMove);
+				container.addEventListener("mouseleave", handleMouseLeave);
 
 				return () => {
 					clearInterval(interval);
 					overlaySub();
 					edgeSrcSub();
-					window.removeEventListener('entity-selected', handleEntitySelected as EventListener);
-					window.removeEventListener('parcel-clicked', handleParcelClicked as EventListener);
-					container.removeEventListener('mousemove', handleMouseMove);
-					container.removeEventListener('mouseleave', handleMouseLeave);
+					window.removeEventListener(
+						"entity-selected",
+						handleEntitySelected as EventListener,
+					);
+					window.removeEventListener(
+						"map-clicked",
+						handleMapClicked as EventListener,
+					);
+					container.removeEventListener("mousemove", handleMouseMove);
+					container.removeEventListener(
+						"mouseleave",
+						handleMouseLeave,
+					);
 				};
 			}
 		});
@@ -109,9 +120,7 @@
 		if (renderer) {
 			renderer.handleMouseMove(e);
 		}
-		tooltipData.set(null); // Clear by default; entity hover sets it via raycaster
 	}
-
 
 	function handleMouseLeave() {
 		tooltipData.set(null);

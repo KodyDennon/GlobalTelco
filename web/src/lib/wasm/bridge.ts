@@ -292,9 +292,9 @@ export function getResearchState(): ResearchInfo[] {
 	}
 }
 
-export function getBuildableNodes(parcelId: number): BuildOption[] {
+export function getBuildableNodes(lon: number, lat: number): BuildOption[] {
 	try {
-		const json = bridge?.get_buildable_nodes(BigInt(parcelId)) ?? '[]';
+		const json = bridge?.get_buildable_nodes(lon, lat) ?? '[]';
 		return JSON.parse(json);
 	} catch (e) {
 		onBridgeError(e, 'getBuildableNodes');

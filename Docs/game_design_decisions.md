@@ -338,7 +338,7 @@ Complexity scales with company size:
 
 ### Frontend (TypeScript/Svelte)
 - **Framework:** Svelte (compile-time, tiny bundles, fast runtime)
-- **Map rendering:** Three.js in 2D mode (flexible, supports future 3D close-ups)
+- **Map rendering:** deck.gl in 2D mode (WebGL layers: ScatterplotLayer, ArcLayer, PathLayer)
 - **Charts/data viz:** D3.js (custom financial charts, network diagrams, analytics)
 - **Styling:** CSS (Svelte scoped styles) — dark theme, responsive
 - **State:** Rust/WASM owns ALL game state via ECS. Svelte UI reads from WASM bridge.

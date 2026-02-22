@@ -529,12 +529,15 @@ impl GameWorld {
                 self.capacities.insert(node_id, Capacity::new(1000.0));
                 self.ownerships.insert(node_id, Ownership::sole(corp_id));
 
-                if let Some(&(lat, lon)) = self.grid_cell_positions.get(cell_index) {
+                if let Some(&(cell_lat, cell_lon)) = self.grid_cell_positions.get(cell_index) {
+                    let jitter_range = (self.cell_spacing_km / 111.0) * 0.2;
+                    let r1 = self.deterministic_random();
+                    let r2 = self.deterministic_random();
                     self.positions.insert(
                         node_id,
                         Position {
-                            x: lon,
-                            y: lat,
+                            x: cell_lon + (r1 * 2.0 - 1.0) * jitter_range,
+                            y: cell_lat + (r2 * 2.0 - 1.0) * jitter_range,
                             region_id: Some(start_region_id),
                         },
                     );
@@ -594,12 +597,15 @@ impl GameWorld {
                 self.capacities.insert(node_id, Capacity::new(500.0));
                 self.ownerships.insert(node_id, Ownership::sole(corp_id));
 
-                if let Some(&(lat, lon)) = self.grid_cell_positions.get(cell_index) {
+                if let Some(&(cell_lat, cell_lon)) = self.grid_cell_positions.get(cell_index) {
+                    let jitter_range = (self.cell_spacing_km / 111.0) * 0.2;
+                    let r1 = self.deterministic_random();
+                    let r2 = self.deterministic_random();
                     self.positions.insert(
                         node_id,
                         Position {
-                            x: lon,
-                            y: lat,
+                            x: cell_lon + (r1 * 2.0 - 1.0) * jitter_range,
+                            y: cell_lat + (r2 * 2.0 - 1.0) * jitter_range,
                             region_id: Some(start_region_id),
                         },
                     );
@@ -621,20 +627,19 @@ impl GameWorld {
         // Connect all placed nodes with fiber optic edges so bandwidth/latency flows exist from tick 0
         if placed_node_ids.len() > 1 {
             let hub_id = placed_node_ids[0].0;
-            let hub_cell = placed_node_ids[0].1;
 
-            for &(spoke_id, spoke_cell) in &placed_node_ids[1..] {
-                // Calculate distance using haversine
+            for &(spoke_id, _spoke_cell) in &placed_node_ids[1..] {
+                // Calculate distance using actual node positions (haversine)
                 let length_km = match (
-                    self.grid_cell_positions.get(hub_cell),
-                    self.grid_cell_positions.get(spoke_cell),
+                    self.positions.get(&hub_id),
+                    self.positions.get(&spoke_id),
                 ) {
-                    (Some(&(lat1, lon1)), Some(&(lat2, lon2))) => {
-                        let dlat = (lat1 - lat2).to_radians();
-                        let dlon = (lon1 - lon2).to_radians();
+                    (Some(p1), Some(p2)) => {
+                        let dlat = (p1.y - p2.y).to_radians();
+                        let dlon = (p1.x - p2.x).to_radians();
                         let a = (dlat / 2.0).sin().powi(2)
-                            + lat1.to_radians().cos()
-                                * lat2.to_radians().cos()
+                            + p1.y.to_radians().cos()
+                                * p2.y.to_radians().cos()
                                 * (dlon / 2.0).sin().powi(2);
                         let c = 2.0 * a.sqrt().asin();
                         6371.0 * c
@@ -783,8 +788,8 @@ impl GameWorld {
                     GameSpeed::Paused
                 };
             }
-            Command::BuildNode { node_type, parcel } => {
-                self.cmd_build_node(node_type, parcel);
+            Command::BuildNode { node_type, lon, lat } => {
+                self.cmd_build_node(node_type, lon, lat);
             }
             Command::BuildEdge {
                 edge_type,
@@ -960,7 +965,35 @@ impl GameWorld {
         }
     }
 
-    fn cmd_build_node(&mut self, node_type: NodeType, parcel_id: EntityId) {
+    /// Find the nearest grid cell to the given (lon, lat) coordinates.
+    /// Returns (cell_index, distance_degrees) or None if no cells exist.
+    pub fn find_nearest_cell(&self, lon: f64, lat: f64) -> Option<(usize, f64)> {
+        if self.grid_cell_positions.is_empty() {
+            return None;
+        }
+        let mut best_idx = 0;
+        let mut best_dist = f64::MAX;
+        for (idx, &(cell_lat, cell_lon)) in self.grid_cell_positions.iter().enumerate() {
+            let dlat = cell_lat - lat;
+            let dlon = cell_lon - lon;
+            let dist_sq = dlat * dlat + dlon * dlon;
+            if dist_sq < best_dist {
+                best_dist = dist_sq;
+                best_idx = idx;
+            }
+        }
+        Some((best_idx, best_dist.sqrt()))
+    }
+
+    /// Get the terrain for a given cell index by looking up the land parcel.
+    pub fn get_cell_terrain(&self, cell_index: usize) -> Option<TerrainType> {
+        self.cell_to_parcel
+            .get(&cell_index)
+            .and_then(|pid| self.land_parcels.get(pid))
+            .map(|p| p.terrain)
+    }
+
+    fn cmd_build_node(&mut self, node_type: NodeType, lon: f64, lat: f64) {
         let corp_id = match self.player_corp_id {
             Some(id) => id,
             None => {
@@ -975,14 +1008,14 @@ impl GameWorld {
             }
         };
 
-        // Validate parcel exists and get cell index + terrain
-        let (cell_index, terrain) = match self.land_parcels.get(&parcel_id) {
-            Some(p) => (p.cell_index, p.terrain),
+        // Find nearest grid cell for terrain/region lookup
+        let (cell_index, _dist) = match self.find_nearest_cell(lon, lat) {
+            Some(result) => result,
             None => {
                 self.event_queue.push(
                     self.tick,
                     gt_common::events::GameEvent::GlobalNotification {
-                        message: "Cannot build: Invalid land parcel.".to_string(),
+                        message: "Cannot build: No valid location found.".to_string(),
                         level: "error".to_string(),
                     },
                 );
@@ -990,27 +1023,15 @@ impl GameWorld {
             }
         };
 
-        // PREVENT OVERLAP: Check if a node of the same type already exists on this cell
-        let already_exists = self
-            .infra_nodes
-            .values()
-            .any(|n| n.cell_index == cell_index && n.node_type == node_type);
-
-        if already_exists {
-            self.event_queue.push(
-                self.tick,
-                gt_common::events::GameEvent::GlobalNotification {
-                    message: format!("Cannot build: A {:?} already exists here.", node_type),
-                    level: "warning".to_string(),
-                },
-            );
-            return;
-        }
+        // Get terrain from nearest cell's parcel
+        let terrain = match self.get_cell_terrain(cell_index) {
+            Some(t) => t,
+            None => TerrainType::Rural, // fallback if no parcel data
+        };
 
         // Terrain constraints for node types
         match node_type {
             NodeType::SubmarineLanding => {
-                // Must be on coastal or ocean terrain
                 if !matches!(terrain, TerrainType::Coastal | TerrainType::OceanShallow) {
                     self.event_queue.push(
                         self.tick,
@@ -1028,7 +1049,6 @@ impl GameWorld {
             | NodeType::ExchangePoint
             | NodeType::DataCenter
             | NodeType::BackboneRouter => {
-                // Land-based nodes can't be placed in deep ocean
                 if matches!(terrain, TerrainType::OceanDeep | TerrainType::OceanShallow) {
                     self.event_queue.push(
                         self.tick,
@@ -1044,7 +1064,6 @@ impl GameWorld {
                 }
             }
             NodeType::SatelliteGround => {
-                // Can go anywhere except deep ocean
                 if matches!(terrain, TerrainType::OceanDeep) {
                     self.event_queue.push(
                         self.tick,
@@ -1106,17 +1125,16 @@ impl GameWorld {
         self.healths.insert(node_id, Health::new());
         self.capacities.insert(node_id, Capacity::new(0.0)); // 0 until construction completes
 
-        if let Some(&(lat, lon)) = self.grid_cell_positions.get(cell_index) {
-            let region_id = self.cell_to_region.get(&cell_index).copied();
-            self.positions.insert(
-                node_id,
-                Position {
-                    x: lon,
-                    y: lat,
-                    region_id,
-                },
-            );
-        }
+        // Position at exact clicked coordinates (free placement)
+        let region_id = self.cell_to_region.get(&cell_index).copied();
+        self.positions.insert(
+            node_id,
+            Position {
+                x: lon,
+                y: lat,
+                region_id,
+            },
+        );
 
         self.corp_infra_nodes
             .entry(corp_id)
@@ -1184,14 +1202,30 @@ impl GameWorld {
         let to_type = self.infra_nodes.get(&to_node).map(|n| n.node_type);
         if let (Some(ft), Some(tt)) = (from_type, to_type) {
             if !edge_type.can_connect(ft, tt) {
-                let from_tier = ft.tier();
-                let to_tier = tt.tier();
+                // Build a suggestion of which edge types CAN connect these two node types
+                let all_types = [
+                    EdgeType::Copper, EdgeType::FiberLocal, EdgeType::Microwave,
+                    EdgeType::FiberRegional, EdgeType::FiberNational,
+                    EdgeType::Satellite, EdgeType::Submarine,
+                ];
+                let suggestions: Vec<&str> = all_types.iter()
+                    .filter(|et| et.can_connect(ft, tt))
+                    .map(|et| et.display_name())
+                    .collect();
+                let hint = if suggestions.is_empty() {
+                    format!("{} and {} are too far apart in tier — build intermediate nodes.", ft.display_name(), tt.display_name())
+                } else {
+                    format!("Try: {}", suggestions.join(", "))
+                };
                 self.event_queue.push(
                     self.tick,
                     gt_common::events::GameEvent::GlobalNotification {
                         message: format!(
-                            "Cannot connect {:?} (Tier {:?}) to {:?} (Tier {:?}) with {:?}. Check tier compatibility.",
-                            ft, from_tier, tt, to_tier, edge_type
+                            "{} cannot connect {} ({}) to {} ({}). {}",
+                            edge_type.display_name(),
+                            ft.display_name(), ft.tier().display_name(),
+                            tt.display_name(), tt.tier().display_name(),
+                            hint
                         ),
                         level: "error".to_string(),
                     },
@@ -1218,28 +1252,37 @@ impl GameWorld {
         };
 
         // Enforce max distance based on edge type, scaled to grid resolution.
-        // On a small map (cell_spacing ~500km), distances are larger than real-world.
-        let max_distance_km = match edge_type {
-            EdgeType::Copper => self.cell_spacing_km * 1.5,
-            EdgeType::FiberLocal => self.cell_spacing_km * 3.0,
-            EdgeType::FiberRegional => self.cell_spacing_km * 8.0,
-            EdgeType::FiberNational => self.cell_spacing_km * 20.0,
-            EdgeType::Microwave => self.cell_spacing_km * 4.0,
-            EdgeType::Satellite => f64::INFINITY, // No distance limit
-            EdgeType::Submarine => self.cell_spacing_km * 30.0,
-        };
+        let max_distance_km = self.cell_spacing_km * edge_type.distance_multiplier();
         if length_km > max_distance_km {
+            // Suggest a longer-range edge type that can still connect these tiers
+            let from_ft = self.infra_nodes.get(&from_node).map(|n| n.node_type);
+            let to_ft = self.infra_nodes.get(&to_node).map(|n| n.node_type);
+            let all_types = [
+                EdgeType::Copper, EdgeType::FiberLocal, EdgeType::Microwave,
+                EdgeType::FiberRegional, EdgeType::FiberNational,
+                EdgeType::Satellite, EdgeType::Submarine,
+            ];
+            let suggestion = if let (Some(ft), Some(tt)) = (from_ft, to_ft) {
+                all_types.iter()
+                    .filter(|et| et.can_connect(ft, tt) && self.cell_spacing_km * et.distance_multiplier() >= length_km)
+                    .map(|et| format!("{} ({:.0}km range)", et.display_name(), self.cell_spacing_km * et.distance_multiplier()))
+                    .next()
+                    .map(|s| format!(" Try: {}", s))
+                    .unwrap_or_else(|| " Build intermediate relay nodes to bridge the gap.".to_string())
+            } else {
+                String::new()
+            };
             self.event_queue.push(
                 self.tick,
                 gt_common::events::GameEvent::GlobalNotification {
                     message: format!(
-                        "Connection distance too long: {:.0}km / {:.0}km max.",
-                        length_km, max_distance_km
+                        "Too far for {}: {:.0}km distance, {:.0}km max range.{}",
+                        edge_type.display_name(), length_km, max_distance_km, suggestion
                     ),
                     level: "warning".to_string(),
                 },
             );
-            return; // Too far
+            return;
         }
 
         // Enforce terrain constraints: check source/target terrain
@@ -1331,8 +1374,8 @@ impl GameWorld {
                     self.tick,
                     gt_common::events::GameEvent::GlobalNotification {
                         message: format!(
-                            "Insufficient funds: {:?} costs ${}, you have ${}.",
-                            edge_type, cost, fin.cash
+                            "Insufficient funds: {} costs ${}, you have ${}.",
+                            edge_type.display_name(), cost, fin.cash
                         ),
                         level: "warning".to_string(),
                     },

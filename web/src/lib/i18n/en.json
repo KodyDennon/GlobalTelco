@@ -416,7 +416,7 @@
 		"design": "Game Design & Development",
 		"tech_stack": "Technology Stack",
 		"simulation": "Simulation: Rust (ECS Architecture)",
-		"frontend": "Frontend: Svelte + Three.js + D3.js",
+		"frontend": "Frontend: Svelte + deck.gl + D3.js",
 		"desktop": "Desktop: Tauri",
 		"server": "Server: Rust (Axum)",
 		"built_with": "Built with open-source technology"

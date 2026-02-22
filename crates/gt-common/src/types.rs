@@ -79,6 +79,17 @@ pub enum NetworkTier {
 }
 
 impl NetworkTier {
+    /// Human-readable display name.
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            NetworkTier::Access => "Access",
+            NetworkTier::Aggregation => "Aggregation",
+            NetworkTier::Core => "Core",
+            NetworkTier::Backbone => "Backbone",
+            NetworkTier::Global => "Global",
+        }
+    }
+
     pub fn can_connect_to(&self, other: &NetworkTier) -> bool {
         let diff = (*self as i32 - *other as i32).abs();
         diff <= 1
@@ -135,6 +146,20 @@ pub enum NodeType {
 }
 
 impl NodeType {
+    /// Human-readable display name for UI.
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            NodeType::CellTower => "Cell Tower",
+            NodeType::WirelessRelay => "Wireless Relay",
+            NodeType::CentralOffice => "Central Office",
+            NodeType::ExchangePoint => "Exchange Point",
+            NodeType::DataCenter => "Data Center",
+            NodeType::BackboneRouter => "Backbone Router",
+            NodeType::SatelliteGround => "Satellite Ground Station",
+            NodeType::SubmarineLanding => "Submarine Landing Point",
+        }
+    }
+
     /// Returns the network tier for this node type.
     pub fn tier(&self) -> NetworkTier {
         match self {
@@ -219,7 +244,7 @@ pub enum EdgeType {
 impl EdgeType {
     /// Returns the set of tier pairs this edge type can connect.
     /// Each tuple is (min_tier, max_tier) — the edge can connect nodes
-    /// whose tiers fall within this range.
+    /// whose tiers fall within this range (order: lower tier first).
     pub fn allowed_tier_connections(&self) -> &[(NetworkTier, NetworkTier)] {
         match self {
             EdgeType::Copper => &[
@@ -227,24 +252,30 @@ impl EdgeType {
                 (NetworkTier::Access, NetworkTier::Aggregation),
             ],
             EdgeType::FiberLocal => &[
+                (NetworkTier::Access, NetworkTier::Access),
                 (NetworkTier::Access, NetworkTier::Aggregation),
                 (NetworkTier::Aggregation, NetworkTier::Aggregation),
             ],
             EdgeType::FiberRegional => &[
+                (NetworkTier::Aggregation, NetworkTier::Aggregation),
                 (NetworkTier::Aggregation, NetworkTier::Core),
                 (NetworkTier::Core, NetworkTier::Core),
             ],
             EdgeType::FiberNational => &[
+                (NetworkTier::Core, NetworkTier::Core),
                 (NetworkTier::Core, NetworkTier::Backbone),
                 (NetworkTier::Backbone, NetworkTier::Backbone),
             ],
             EdgeType::Microwave => &[
+                (NetworkTier::Access, NetworkTier::Access),
                 (NetworkTier::Access, NetworkTier::Aggregation),
+                (NetworkTier::Aggregation, NetworkTier::Aggregation),
                 (NetworkTier::Aggregation, NetworkTier::Core),
             ],
             EdgeType::Satellite => &[
                 (NetworkTier::Core, NetworkTier::Global),
                 (NetworkTier::Backbone, NetworkTier::Global),
+                (NetworkTier::Global, NetworkTier::Global),
             ],
             EdgeType::Submarine => &[
                 (NetworkTier::Global, NetworkTier::Global),
@@ -264,6 +295,32 @@ impl EdgeType {
         self.allowed_tier_connections()
             .iter()
             .any(|(t_lo, t_hi)| *t_lo == lo && *t_hi == hi)
+    }
+
+    /// Distance multiplier relative to cell_spacing_km.
+    pub fn distance_multiplier(&self) -> f64 {
+        match self {
+            EdgeType::Copper => 2.0,
+            EdgeType::FiberLocal => 5.0,
+            EdgeType::Microwave => 8.0,
+            EdgeType::FiberRegional => 15.0,
+            EdgeType::FiberNational => 40.0,
+            EdgeType::Satellite => f64::INFINITY,
+            EdgeType::Submarine => 60.0,
+        }
+    }
+
+    /// Human-readable display name for UI.
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            EdgeType::Copper => "Copper",
+            EdgeType::FiberLocal => "Fiber Local",
+            EdgeType::FiberRegional => "Fiber Regional",
+            EdgeType::FiberNational => "Fiber National",
+            EdgeType::Microwave => "Microwave",
+            EdgeType::Satellite => "Satellite",
+            EdgeType::Submarine => "Submarine Cable",
+        }
     }
 
     /// Revenue rate per unit of traffic on this edge type.

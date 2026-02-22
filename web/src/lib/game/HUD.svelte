@@ -3,7 +3,7 @@
 	import {
 		activePanelGroup,
 		buildMode,
-		buildMenuParcel,
+		buildMenuLocation,
 		buildEdgeSource,
 		activeOverlay,
 		selectedEdgeType,
@@ -27,7 +27,7 @@
 	function toggleBuild(mode: string) {
 		buildMode.update((m) => {
 			if (m === mode) {
-				buildMenuParcel.set(null);
+				buildMenuLocation.set(null);
 				buildEdgeSource.set(null);
 				return null;
 			}
@@ -43,6 +43,25 @@
 	let currentOverlay = $derived($activeOverlay);
 	let currentGroup = $derived($activePanelGroup);
 	let showTierGuide = $state(false);
+
+	// Edge types with distance multipliers (must match Rust EdgeType::distance_multiplier())
+	const EDGE_TYPES = [
+		{ key: 'Copper', name: 'Copper', mult: 2, tiers: 'T1-T1/T2' },
+		{ key: 'FiberLocal', name: 'Fiber Local', mult: 5, tiers: 'T1-T1/T2, T2-T2' },
+		{ key: 'Microwave', name: 'Microwave', mult: 8, tiers: 'T1-T2, T2-T2/T3' },
+		{ key: 'FiberRegional', name: 'Fiber Reg.', mult: 15, tiers: 'T2-T2/T3, T3-T3' },
+		{ key: 'FiberNational', name: 'Fiber Nat.', mult: 40, tiers: 'T3-T3/T4, T4-T4' },
+		{ key: 'Satellite', name: 'Satellite', mult: Infinity, tiers: 'T3/T4-T5' },
+		{ key: 'Submarine', name: 'Submarine', mult: 60, tiers: 'T5-T5' },
+	];
+
+	let spacing = $derived($worldInfo.cell_spacing_km || 100);
+
+	function fmtRange(mult: number): string {
+		if (!isFinite(mult)) return '∞';
+		const km = Math.round(spacing * mult);
+		return km >= 1000 ? `${(km / 1000).toFixed(1)}k km` : `${km}km`;
+	}
 
 	const PANEL_GROUPS: Array<{ key: PanelGroupType; label: string }> = [
 		{ key: 'finance', label: 'Finance' },
@@ -105,13 +124,9 @@
 			</button>
 			{#if currentBuild === 'edge'}
 				<select class="edge-type-select" bind:value={$selectedEdgeType} aria-label="Edge type">
-					<option value="Copper">Copper &mdash; Short range</option>
-					<option value="FiberLocal">Fiber Local &mdash; Medium range</option>
-					<option value="Microwave">Microwave &mdash; Long range</option>
-					<option value="FiberRegional">Fiber Regional &mdash; Very long</option>
-					<option value="FiberNational">Fiber National &mdash; Massive</option>
-					<option value="Satellite">Satellite &mdash; Unlimited</option>
-					<option value="Submarine">Submarine &mdash; Extreme</option>
+					{#each EDGE_TYPES as et}
+						<option value={et.key}>{et.name} ({fmtRange(et.mult)}) {et.tiers}</option>
+					{/each}
 				</select>
 				<button class="tier-help-btn" onclick={() => showTierGuide = !showTierGuide} title="Tier Guide">?</button>
 			{/if}

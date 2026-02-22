@@ -1,35 +1,34 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="currentColor">
-  <!-- City: Mixed mid-rise buildings, office tower -->
-  <rect x="2" y="34" width="8" height="18" rx="1"/>
-  <rect x="11" y="24" width="8" height="28" rx="1"/>
-  <rect x="20" y="18" width="10" height="34" rx="1"/>
-  <rect x="24" y="12" width="2" height="6"/>
-  <rect x="31" y="28" width="8" height="24" rx="1"/>
-  <rect x="40" y="22" width="8" height="30" rx="1"/>
-  <rect x="49" y="30" width="8" height="22" rx="1"/>
-  <rect x="58" y="38" width="4" height="14" rx="1"/>
-  <!-- Windows grid -->
-  <rect x="4" y="38" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="4" y="42" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="13" y="28" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="13" y="33" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="13" y="38" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="13" y="43" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="16" y="28" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="16" y="33" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="22" y="22" width="2.5" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="22" y="28" width="2.5" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="22" y="34" width="2.5" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="22" y="40" width="2.5" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="26" y="22" width="2.5" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="26" y="28" width="2.5" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="26" y="34" width="2.5" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="42" y="26" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="42" y="32" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="42" y="38" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="45" y="26" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="51" y="34" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <rect x="51" y="40" width="2" height="2" fill="rgba(0,0,0,0.35)" rx="0.3"/>
-  <!-- Ground -->
-  <rect x="0" y="52" width="64" height="2" rx="1" opacity="0.3"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="100%" height="100%">
+    <defs>
+        <filter id="neon-glow-city" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3.5" result="coloredBlur"/>
+            <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+        <radialGradient id="city-grad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#ef4444" stop-opacity="0.8"/>
+            <stop offset="100%" stop-color="#991b1b" stop-opacity="0.3"/>
+        </radialGradient>
+    </defs>
+    
+    <!-- Outer Expansion Ring -->
+    <path d="M 32 4 A 28 28 0 1 1 31.9 4" fill="none" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="4 6" filter="url(#neon-glow-city)" opacity="0.5"/>
+
+    <!-- Core City Area -->
+    <circle cx="32" cy="32" r="22" fill="url(#city-grad)" filter="url(#neon-glow-city)"/>
+    
+    <!-- Sub-centers -->
+    <circle cx="24" cy="24" r="4" fill="#fee2e2" filter="url(#neon-glow-city)"/>
+    <circle cx="40" cy="24" r="4" fill="#fee2e2" filter="url(#neon-glow-city)"/>
+    <circle cx="32" cy="40" r="4" fill="#fee2e2" filter="url(#neon-glow-city)"/>
+
+    <!-- Connecting Infrastructure -->
+    <line x1="24" y1="24" x2="40" y2="24" stroke="#f87171" stroke-width="2" filter="url(#neon-glow-city)"/>
+    <line x1="24" y1="24" x2="32" y2="40" stroke="#f87171" stroke-width="2" filter="url(#neon-glow-city)"/>
+    <line x1="40" y1="24" x2="32" y2="40" stroke="#f87171" stroke-width="2" filter="url(#neon-glow-city)"/>
+    
+    <!-- Downtown Core -->
+    <circle cx="32" cy="30" r="8" fill="#fef2f2" filter="url(#neon-glow-city)"/>
 </svg>

@@ -1,17 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="currentColor">
-  <!-- Trophy cup -->
-  <path d="M18 8h28v4c0 12-6 20-14 24-8-4-14-12-14-24V8z" opacity="0.7"/>
-  <!-- Cup shine -->
-  <path d="M22 12h6v3c0 8-3 14-6 16V12z" fill="#fff" opacity="0.2"/>
-  <!-- Left handle -->
-  <path d="M18 12H12c0 0-2 0-2 4s2 8 6 8h2" fill="none" stroke="currentColor" stroke-width="3" opacity="0.4"/>
-  <!-- Right handle -->
-  <path d="M46 12h6c0 0 2 0 2 4s-2 8-6 8h-2" fill="none" stroke="currentColor" stroke-width="3" opacity="0.4"/>
-  <!-- Stem -->
-  <rect x="28" y="36" width="8" height="10" rx="1" opacity="0.5"/>
-  <!-- Base -->
-  <rect x="20" y="46" width="24" height="4" rx="2" opacity="0.6"/>
-  <rect x="16" y="50" width="32" height="5" rx="2.5" opacity="0.4"/>
-  <!-- Star on cup -->
-  <polygon points="32,14 34,20 40,20 35,24 37,30 32,26 27,30 29,24 24,20 30,20" fill="#fff" opacity="0.35"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trophy">
+  <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+  <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+  <path d="M4 22h16" />
+  <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+  <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+  <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
 </svg>

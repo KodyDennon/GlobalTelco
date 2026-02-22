@@ -8,6 +8,7 @@ export interface WorldInfo {
 	infra_node_count: number;
 	infra_edge_count: number;
 	player_corp_id: number;
+	cell_spacing_km: number;
 }
 
 export interface CorporationData {

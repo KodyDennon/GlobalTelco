@@ -77,6 +77,7 @@ impl WasmBridge {
             "infra_node_count": self.world.infra_nodes.len(),
             "infra_edge_count": self.world.infra_edges.len(),
             "player_corp_id": self.world.player_corp_id(),
+            "cell_spacing_km": self.world.cell_spacing_km,
         });
         serde_json::to_string(&info).unwrap_or_default()
     }
@@ -469,13 +470,22 @@ impl WasmBridge {
         serde_json::to_string(&research).unwrap_or_default()
     }
 
-    pub fn get_buildable_nodes(&self, parcel_id: u64) -> String {
-        let parcel = self.world.land_parcels.get(&parcel_id);
+    /// Get buildable node options for a given map coordinate.
+    /// Uses nearest grid cell for terrain cost modifier lookup.
+    pub fn get_buildable_nodes(&self, lon: f64, lat: f64) -> String {
         let player_id = self.world.player_corp_id().unwrap_or(0);
         let fin = self.world.financials.get(&player_id);
         let cash = fin.map(|f| f.cash).unwrap_or(0);
 
-        // Must match NodeType enum variants exactly — costs from InfraNode::new()
+        // Find nearest cell for terrain cost modifier
+        let terrain_mult = self.world.find_nearest_cell(lon, lat)
+            .and_then(|(cell_idx, _)| {
+                self.world.cell_to_parcel.get(&cell_idx)
+                    .and_then(|&pid| self.world.land_parcels.get(&pid))
+                    .map(|p| p.cost_modifier)
+            })
+            .unwrap_or(1.0);
+
         // (label, node_type, network_level, base_cost, build_ticks)
         let node_types = [
             ("Cell Tower", "CellTower", "Local", 200_000i64, 10),
@@ -487,8 +497,6 @@ impl WasmBridge {
             ("Satellite Ground", "SatelliteGround", "Continental", 5_000_000, 40),
             ("Submarine Landing", "SubmarineLanding", "Global", 20_000_000, 60),
         ];
-
-        let terrain_mult = parcel.map(|p| p.cost_modifier).unwrap_or(1.0);
 
         let options: Vec<serde_json::Value> = node_types
             .iter()

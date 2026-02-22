@@ -15,7 +15,7 @@ This plan covers: world generation, AI corporations, save/load, speed controls, 
 │              BROWSER / TAURI                       │
 │                                                    │
 │  ┌────────────┐  ┌──────────────┐                 │
-│  │  Svelte UI │  │  Three.js    │                 │
+│  │  Svelte UI │  │  deck.gl     │                 │
 │  │  (menus,   │  │  (2D map)    │                 │
 │  │   panels)  │  │              │                 │
 │  └─────┬──────┘  └──────┬───────┘                 │
@@ -146,14 +146,15 @@ Planned additional systems: alliance, legal, grants, fog_of_war, pricing, mainte
 - Load economic indicators (GDP, internet penetration, urbanization)
 - All data stored as static assets, loaded at game start when "Real Earth" selected
 
-### 2c. Hex Grid / Land Parcels
+### 2c. Invisible Grid Cells (Spatial Index)
 
-**File:** `crates/gt-world/src/parcels.rs`
+**File:** `crates/gt-world/src/procgen.rs`
 
 - Geodesic grid: icosahedral subdivision → cells on unit sphere
-- Spatial hash for O(1) lookups by coordinate
-- Each parcel: terrain type, zoning, ownership (government by default), regulatory strictness, disaster risk, cost modifiers
-- `generate_parcels(world: &mut GameWorld, config: &WorldConfig)` — creates all land parcels as entities
+- Spatial hash for O(1) lookups by coordinate (`find_nearest_cell(lon, lat)`)
+- Each grid cell: terrain type, disaster risk, cost modifiers — used for spatial queries only (not player-visible)
+- Infrastructure placement is free at exact (lon, lat) coordinates; grid cells provide terrain/cost lookups behind the scenes
+- AI nodes use jittered positions near cell centers for organic-looking placement
 
 ### 2d. Region & Economy Seeding
 
@@ -208,8 +209,7 @@ The `ai_system` runs once per tick for each AI corporation:
 
 **File:** `crates/gt-ai/src/actions.rs`
 
-- `acquire_land(world, corp_id, archetype)` — score parcels by terrain suitability, regional demand, proximity to existing network, cost. Buy top-scoring parcel if affordable.
-- `build_node(world, corp_id, archetype)` — find owned parcels without infrastructure, choose node type based on regional demand and network gaps.
+- `build_node(world, corp_id, archetype)` — score locations by terrain suitability, regional demand, proximity to existing network, cost. Choose node type based on demand and network gaps. Place at jittered position near target cell center.
 - `build_edge(world, corp_id, archetype)` — find pairs of owned nodes that could benefit from a connection, choose edge type based on distance and terrain.
 - `manage_finances(world, corp_id, archetype)` — take loans if cash low and credit good, pay down debt if cash high.
 - `propose_contract(world, corp_id, archetype)` — identify nearby corps, propose peering/transit contracts based on mutual benefit.
@@ -303,7 +303,7 @@ For logged-in users:
    - World seed (text input, 0 = random)
 4. Click "Start Game"
 5. WASM module initializes: creates `GameWorld`, generates world, creates player corp with 1 starter node appropriate to starting era (e.g., Telegraph Office for Telegraph era, Cell Tower for Modern era), spawns AI corps
-6. Three.js map renders the world, Svelte UI shows HUD panels
+6. deck.gl map renders the world, Svelte UI shows HUD panels
 7. Game begins paused so player can orient. Auto-pause triggers on critical events (bankruptcy warning, hostile takeover offer, major disaster).
 
 ### 6b. Initialization Sequence (in WASM)
@@ -312,7 +312,7 @@ For logged-in users:
 new_game(config: WorldConfig, player_name: String) -> GameWorld:
     1. world = GameWorld::new(config)
     2. generate_terrain(world, config)        // gt-world
-    3. generate_parcels(world, config)         // gt-world
+    3. generate_grid_cells(world, config)       // gt-world (invisible spatial index)
     4. generate_regions(world, config)         // gt-world
     5. seed_economics(world, config)           // gt-economy
     6. player_corp = create_corporation(world, player_name, false)  // player
@@ -381,7 +381,7 @@ new_game(config: WorldConfig, player_name: String) -> GameWorld:
 
 ## Verification
 
-1. **World gen:** New game → world generates with terrain, parcels, regions, economics
+1. **World gen:** New game → world generates with terrain, grid cells, regions, economics
 2. **AI corps:** AI corporations spawn, make decisions, build infrastructure, manage finances over time
 3. **Speed controls:** Pause/resume/2x/4x/8x all work correctly
 4. **Save/Load:** Save a game → close browser → reopen → load → state matches exactly

@@ -35,7 +35,7 @@ All systems must interlock and influence one another continuously.
 
 ## 2.2 Physically Grounded World
 - 2D political map (Victoria 3 / Risk style) with multi-layer zoom: World → Country → Region → City
-- Hex-based land parcels (geodesic grid)
+- Free placement on 2D map (no grid snapping); invisible hex cell grid for backend spatial queries
 - Real geographic constraints abstracted but meaningful
 - Player choice: Real Earth (open data) or procedural world
 
@@ -52,14 +52,18 @@ Geography influences:
 
 # 3. WORLD STRUCTURE
 
-## 3.1 Land Parcel System
-Each parcel contains:
-- Parcel ID
-- Geographic coordinates
+## 3.1 Placement & Spatial System
+Infrastructure is placed at exact map coordinates (free placement — no grid snapping). An invisible hex cell grid provides the backend spatial index for:
+- Terrain classification and cost modifiers
+- Coverage radius calculations
+- Demand modeling and population density
+- AI strategic decisions
+- Disaster impact zones
+
+Each cell contains:
+- Geographic coordinates (center point)
 - Terrain classification
 - Zoning category
-- Ownership (player / government / public)
-- Lease rate
 - Tax rate
 - Regulatory strictness
 - Political stability index
@@ -67,11 +71,7 @@ Each parcel contains:
 - Labor cost modifier
 - Power grid reliability modifier
 
-Players can:
-- Purchase land
-- Lease land
-- Lease from other players
-- Use public land via permit
+Players place infrastructure anywhere on land. Terrain modifiers are derived from the nearest cell.
 
 ## 3.2 Terrain Abstraction
 Not hyper-detailed meshes. Instead:
@@ -509,7 +509,7 @@ Construction:
 
 - Dedicated authoritative simulation server (Rust native binary)
 - Deterministic simulation kernel (Rust ECS — same code compiles to WASM for browser SP and native for MP servers)
-- Rendering client separated from simulation logic (Svelte + Three.js frontend)
+- Rendering client separated from simulation logic (Svelte + deck.gl frontend)
 - **Pure thin client in multiplayer:** Clients do NOT run WASM simulation ticks in MP mode. The server is the sole simulation authority. Clients send commands via WebSocket and receive state deltas. No client-side prediction or local tick execution.
 - 250 concurrent players per world
 - WebSocket communication (MessagePack binary or JSON debug)

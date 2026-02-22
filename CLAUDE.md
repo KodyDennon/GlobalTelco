@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Technology Stack
 
 - **Simulation engine:** Rust (ECS architecture) — compiles to WASM for browser + native binary for servers
-- **Frontend:** Svelte (UI framework) + Three.js (2D map rendering) + D3.js (charts/data viz)
+- **Frontend:** Svelte (UI framework) + deck.gl (2D map rendering) + D3.js (charts/data viz)
 - **Build/runtime:** Bun (bundler, package manager, test runner) + wasm-pack (Rust → WASM)
 - **Desktop app:** Tauri (Rust-based wrapper, uses system webview)
 - **Multiplayer servers:** Rust native binary (same sim code as WASM, compiled natively)
@@ -125,9 +125,9 @@ All game state is managed through an Entity Component System. Entities are IDs, 
 
 ## Key Architecture Concepts
 
-**Political Map (2D):** Multi-layer zoom: World → Country → Region → City. Three.js in orthographic 2D mode. Layers: ocean, land, borders, cities, infrastructure, ownership overlay, selection, labels.
+**Political Map (2D):** Multi-layer zoom: World → Country → Region → City. deck.gl in 2D mode. Layers: ocean, land, borders, cities, infrastructure, ownership overlay, selection, labels.
 
-**Hex-based Land Parcels:** Terrain classification, zoning, ownership, regulatory strictness, disaster risk, cost modifiers. Terrain types (urban, suburban, rural, mountainous, desert, coastal, ocean shallow/deep, tundra, frozen) apply multipliers.
+**Free Placement + Invisible Grid:** Infrastructure can be placed at any exact (lon, lat) coordinate on the map — no grid snapping. An invisible hex grid of cells remains as the backend spatial index for terrain lookup, coverage calculations, demand modeling, and AI strategic decisions. Terrain types (urban, suburban, rural, mountainous, desert, coastal, ocean shallow/deep, tundra, frozen) apply cost multipliers based on the nearest cell's terrain.
 
 **Hierarchical Network Graph (5 levels):** Local → Regional → National → Continental → Global Backbone. Event-driven dirty-node invalidation, cluster-based routing, cached shortest-path trees. Aggregate bandwidth — no packet-level sim. Competitor infrastructure hidden by default — requires espionage intel to view.
 

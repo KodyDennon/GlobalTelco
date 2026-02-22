@@ -183,7 +183,9 @@ pub fn acquire_parcel(world: &mut GameWorld, corp_id: EntityId, cell_index: usiz
 
 // ─── Node Construction ───────────────────────────────────────────────────────
 
-/// Build a node for an AI corporation. Returns the new node ID if successful.
+/// Build a node for an AI corporation at the given cell with a random positional offset.
+/// Uses cell_index for terrain/region lookup but places the node at a jittered position
+/// so it doesn't snap to the cell center. Returns the new node ID if successful.
 pub fn build_node(
     world: &mut GameWorld,
     corp_id: EntityId,
@@ -232,7 +234,18 @@ pub fn build_node(
     world.healths.insert(node_id, Health::new());
     world.capacities.insert(node_id, Capacity::new(0.0));
 
-    if let Some(&(lat, lon)) = world.grid_cell_positions.get(cell_index) {
+    if let Some(&(cell_lat, cell_lon)) = world.grid_cell_positions.get(cell_index) {
+        // Add random jitter so nodes don't sit exactly on cell centers.
+        // Jitter is ~20% of cell spacing (in degrees, roughly cell_spacing_km / 111 * 0.2).
+        let jitter_range = (world.cell_spacing_km / 111.0) * 0.2;
+        let rng_val = world.deterministic_random();
+        let jitter_lon = (rng_val * 2.0 - 1.0) * jitter_range;
+        let rng_val2 = world.deterministic_random();
+        let jitter_lat = (rng_val2 * 2.0 - 1.0) * jitter_range;
+
+        let lon = cell_lon + jitter_lon;
+        let lat = cell_lat + jitter_lat;
+
         let region_id = world.cell_to_region.get(&cell_index).copied();
         world.positions.insert(
             node_id,
@@ -290,16 +303,8 @@ pub fn build_edge(
     let edge_type = pick_edge_type_for_tiers(world, from, to)
         .unwrap_or_else(|| pick_fiber_type_by_level(world, from, to));
 
-    // Enforce max distance
-    let max_distance_km = match edge_type {
-        EdgeType::Copper => world.cell_spacing_km * 1.5,
-        EdgeType::FiberLocal => world.cell_spacing_km * 3.0,
-        EdgeType::FiberRegional => world.cell_spacing_km * 8.0,
-        EdgeType::FiberNational => world.cell_spacing_km * 20.0,
-        EdgeType::Microwave => world.cell_spacing_km * 4.0,
-        EdgeType::Satellite => f64::INFINITY,
-        EdgeType::Submarine => world.cell_spacing_km * 30.0,
-    };
+    // Enforce max distance using centralized multiplier
+    let max_distance_km = world.cell_spacing_km * edge_type.distance_multiplier();
     if length_km > max_distance_km {
         return false;
     }

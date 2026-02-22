@@ -5,7 +5,7 @@
 The AUDIT.md identified 12 Critical, 26 Major, 25 Minor, and 15 Polish issues across UI/UX, gameplay/simulation, and server/multiplayer. This plan addresses ALL audit issues plus implements missing designed features based on extensive design doc review and user decisions.
 
 ### Key Decisions (Original)
-- Map: Cell-based fill + earcut polygon borders
+- Map: deck.gl rendering, free placement (no grid snap), invisible cell grid for backend spatial queries
 - HUD: Two-row layout
 - Player start: Tutorial-guided first build + 1 starter node
 - MP sync: Pure thin client (no WASM tick in MP)
@@ -114,18 +114,14 @@ The AUDIT.md identified 12 Critical, 26 Major, 25 Minor, and 15 Polish issues ac
 
 ## Phase 2: Map Rendering Overhaul
 
-### 2.1 Cell-based region fill
-- Add `earcut` npm dependency to `web/package.json`
-- Replace `buildProcgenPolygons()` with cell-based rendering:
-  - Each grid cell assigned to its region
-  - Render cells as small colored hexagons/circles grouped by region
-  - Use muted pastel `POLITICAL_COLORS` (replace bright primaries)
-- **File:** `web/src/lib/game/MapRenderer.ts`
+### 2.1 Cell-based region fill [DONE — deck.gl rewrite]
+- **Replaced Three.js with deck.gl** — ScatterplotLayer renders cells as base map
+- Region fill via cell coloring (land layer)
+- **File:** `web/src/lib/game/MapRenderer.ts` (rewritten to ~300 lines using deck.gl)
 
-### 2.2 Earcut polygon borders
-- Use earcut.js for region boundary outlines only (not fill)
-- Render as `THREE.LineLoop` or `THREE.Line` with region border color
-- Remove triple-render wrap-around hack (handle Mercator wrapping properly)
+### 2.2 Region borders [DONE — deck.gl rewrite]
+- PathLayer renders region boundary outlines
+- No earcut needed — deck.gl handles polygon rendering natively
 - **File:** `web/src/lib/game/MapRenderer.ts`
 
 ### 2.3 Contour/isoline overlay system
@@ -154,7 +150,7 @@ The AUDIT.md identified 12 Critical, 26 Major, 25 Minor, and 15 Polish issues ac
   - Submarine landing: undersea cable icon
   - Wireless relay: small antenna icon
   - Era-specific variants (telegraph pole, telephone exchange, etc. — see Phase 6)
-- Load SVGs as canvas textures, render as Three.js sprites
+- Load SVGs as canvas textures, render as deck.gl icon sprites
 - Icons scale with zoom, remain readable at all levels
 - **Build menu categorized by network tier:**
   - Access (tier 1): towers, terminals, relays, FTTH
@@ -190,10 +186,18 @@ The AUDIT.md identified 12 Critical, 26 Major, 25 Minor, and 15 Polish issues ac
 - Positioned above events feed
 - **Files:** new `web/src/lib/game/MiniMap.svelte`, `web/src/lib/game/GameView.svelte`
 
-### 2.9 Terrain overlay: hex grid
-- Replace `PlaneGeometry` tiles with `CircleGeometry(6)` hexagons for terrain overlay
-- Match the hex-based parcel system from the design
+### 2.9 Terrain overlay [DONE — deck.gl rewrite]
+- Terrain overlay uses ScatterplotLayer with terrain-colored cells
+- No hex geometry needed — deck.gl renders circles per cell
 - **File:** `web/src/lib/game/MapRenderer.ts`
+
+### 2.10 Free placement system [DONE]
+- **Removed parcel-based build flow** — nodes placed at exact (lon, lat) clicked coordinates
+- `BuildNode` command changed from `{ node_type, parcel }` to `{ node_type, lon, lat }`
+- Invisible grid cells remain as backend spatial index (terrain, coverage, demand, AI)
+- AI nodes placed with random jitter around cell centers (not grid-snapped)
+- Frontend: `buildMenuParcel` → `buildMenuLocation`, `parcel-clicked` → `map-clicked`
+- **Files:** `commands.rs`, `world.rs`, `gt-wasm/lib.rs`, `bridge.ts`, `BuildMenu.svelte`, `MapView.svelte`, `MapRenderer.ts`, `uiState.ts`, `HUD.svelte`, `GameLoop.ts`
 
 ---
 
@@ -500,11 +504,10 @@ The AUDIT.md identified 12 Critical, 26 Major, 25 Minor, and 15 Polish issues ac
   - If 3 corps serve a region, each gets 1/3 of the GDP boost benefit for revenue calculation
   - First-mover advantage: early entrant captures larger market share before competitors arrive
 
-- **Dampening mechanism 3: Rising costs (land + labor)**
-  - As regional GDP grows, parcel acquisition costs increase: `base_cost * (1 + gdp_growth_ratio * 0.5)`
+- **Dampening mechanism 3: Rising costs (terrain + labor)**
+  - As regional GDP grows, construction costs increase: `base_cost * terrain_modifier * (1 + gdp_growth_ratio * 0.5)`
   - Construction labor costs rise similarly: `base_construction * (1 + gdp_growth_ratio * 0.3)`
   - Effect: booming regions become more expensive to build in, creating natural cost brakes
-  - Parcels already owned don't retroactively cost more (only new acquisitions)
 
 - **Dampening mechanism 4: Regulatory intervention**
   - When one corp dominates a region (>60% market share):
@@ -933,7 +936,7 @@ The AUDIT.md identified 12 Critical, 26 Major, 25 Minor, and 15 Polish issues ac
   - `aria-label` on all icon-only buttons
   - `aria-live="polite"` on notification feed (announces new events)
   - `aria-expanded` on collapsible sections
-- Alt text for map elements (though Three.js canvas is limited — add accessible summary panel)
+- Alt text for map elements (though deck.gl canvas is limited — add accessible summary panel)
 - Screen reader announcement for game state changes (speed change, pause, era progression)
 - **Files:** all `.svelte` files with interactive elements
 

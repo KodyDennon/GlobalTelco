@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { buildMenuParcel, buildMode, buildEdgeSource } from '$lib/stores/uiState';
+	import { buildMenuLocation, buildMode, buildEdgeSource } from '$lib/stores/uiState';
 	import { formatMoney } from '$lib/stores/gameState';
 	import { tr } from '$lib/i18n/index';
 	import * as bridge from '$lib/wasm/bridge';
@@ -20,29 +20,29 @@
 	let options: BuildOption[] = $state([]);
 
 	$effect(() => {
-		const parcel = $buildMenuParcel;
-		if (parcel) {
-			options = bridge.getBuildableNodes(parcel.id);
+		const loc = $buildMenuLocation;
+		if (loc) {
+			options = bridge.getBuildableNodes(loc.lon, loc.lat);
 		} else {
 			options = [];
 		}
 	});
 
 	function build(opt: BuildOption) {
-		const parcel = $buildMenuParcel;
-		if (!parcel) return;
+		const loc = $buildMenuLocation;
+		if (!loc) return;
 		bridge.processCommand({
-			BuildNode: { node_type: opt.node_type, parcel: parcel.id }
+			BuildNode: { node_type: opt.node_type, lon: loc.lon, lat: loc.lat }
 		});
 		close();
 	}
 
 	function close() {
-		buildMenuParcel.set(null);
+		buildMenuLocation.set(null);
 	}
 </script>
 
-{#if $buildMenuParcel}
+{#if $buildMenuLocation}
 	<div class="build-menu" role="menu" aria-label={$tr('game.build_infra')}>
 		<div class="build-header">
 			<span>{$tr('game.build_infra')}</span>

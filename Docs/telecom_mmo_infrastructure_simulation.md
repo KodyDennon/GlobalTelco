@@ -83,7 +83,7 @@
 
 ## 6. Simulation Mechanics
 - Event-driven updates to routing graphs.
-- Hex-based land parcels for infrastructure placement.
+- Free placement of infrastructure at exact map coordinates; invisible hex cell grid for terrain/coverage spatial queries.
 - Terrain and geography influence costs, latency, and disaster probabilities.
 - Infrastructure performance feeds into economic and corporate modules.
 

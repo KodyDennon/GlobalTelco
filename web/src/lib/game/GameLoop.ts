@@ -16,7 +16,7 @@ import {
 	buildMode,
 	activePanelGroup,
 	buildEdgeSource,
-	buildMenuParcel,
+	buildMenuLocation,
 	selectedEntityId,
 	selectedEntityType,
 	activeOverlay,
@@ -314,7 +314,7 @@ function handleKeyDown(e: KeyboardEvent) {
 			e.preventDefault();
 			buildMode.update((m) => {
 				if (m === 'node') {
-					buildMenuParcel.set(null);
+					buildMenuLocation.set(null);
 					return null;
 				}
 				buildEdgeSource.set(null);
@@ -329,7 +329,7 @@ function handleKeyDown(e: KeyboardEvent) {
 					buildEdgeSource.set(null);
 					return null;
 				}
-				buildMenuParcel.set(null);
+				buildMenuLocation.set(null);
 				return 'edge';
 			});
 			break;
@@ -354,7 +354,7 @@ function handleKeyDown(e: KeyboardEvent) {
 			// Close panel, cancel build mode, or deselect entity
 			if (get(buildMode)) {
 				buildMode.set(null);
-				buildMenuParcel.set(null);
+				buildMenuLocation.set(null);
 				buildEdgeSource.set(null);
 			} else if (get(selectedEntityId) !== null) {
 				selectedEntityId.set(null);

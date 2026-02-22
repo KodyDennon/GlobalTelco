@@ -17,9 +17,8 @@
 - **Shared Research:** Alliance members may share completed research at 50% of the original license cost (paid to the researching member). Shared research unlocks immediately without additional research time.
 - **Dissolution:** Any member may initiate dissolution. A 30-tick transition period begins during which free routing rates gradually increase to market rates, shared research licenses remain valid but no new sharing occurs, and joint spectrum ownership converts to proportional individual ownership based on original contribution. After 30 ticks, the alliance is fully dissolved.
 
-## 2. Land & Parcel System
-- Hex-based parcels manage ownership, zoning, infrastructure placement, disaster impact, and influence.
-- Leasing, auctions, and public land management handled algorithmically.
+## 2. Spatial & Terrain System
+- Infrastructure placed freely at exact map coordinates (no grid snapping). Invisible hex cell grid manages terrain classification, coverage, demand, disaster impact, and influence.
 - AI agents process auction outcomes, compliance, and infrastructure placement decisions.
 
 ## 3. Conflict & Sabotage
@@ -55,12 +54,12 @@
 - **Anti-Monopoly Threshold:** When any corporation exceeds 60% market share in a region, regulatory intervention triggers automatically.
 - **Price Caps:** The government imposes maximum pricing in the affected region, capping the dominant corporation's rates at 110% of the regional average.
 - **Forced Infrastructure Sharing:** The dominant corporation must allow competitors to use its infrastructure at regulated wholesale rates (cost + 15% margin), enabling new market entrants.
-- **Blocked Acquisitions:** The dominant corporation cannot acquire additional companies, assets, or land parcels in the affected region until market share drops below 50%.
+- **Blocked Acquisitions:** The dominant corporation cannot acquire additional companies or assets in the affected region until market share drops below 50%.
 - **Duration:** Regulatory restrictions persist until the corporation's market share in the region drops below 50%. Restrictions are evaluated and updated every 10 ticks.
 
 ## 5. Fog of War
 - **Default State:** All competitor corporations (AI and player) are hidden by default. Players cannot see competitor infrastructure, finances, research, or strategic actions until intel is obtained.
-- **Geography Visible:** The physical map (terrain, regions, cities, land parcels, zoning) is always fully visible. Only competitor-owned assets and corporate data are hidden.
+- **Geography Visible:** The physical map (terrain, regions, cities, zoning) is always fully visible. Only competitor-owned assets and corporate data are hidden.
 - **Intel Levels:**
   - **None:** Competitor exists on the map but no details are visible. Infrastructure, finances, and strategy are completely unknown. Represented as a named entity with no data.
   - **Basic:** Reveals competitor's infrastructure locations (nodes and edges visible on map), approximate market share (rounded to nearest 10%), number of employees (approximate), and general financial health (Healthy / Struggling / Critical). Does not reveal exact finances, research, pricing, or strategy.

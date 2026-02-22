@@ -1,6 +1,6 @@
 # GlobalTelco: Development Phase Plan
 
-Comprehensive phased implementation plan from scratch to shippable production v1. Each phase builds on the previous. Tech stack: Rust (simulation ECS → WASM + native), Svelte + Three.js + D3.js (frontend), Bun (build), Tauri (desktop), PostgreSQL + Hetzner + Cloudflare (backend).
+Comprehensive phased implementation plan from scratch to shippable production v1. Each phase builds on the previous. Tech stack: Rust (simulation ECS → WASM + native), Svelte + deck.gl + D3.js (frontend), Bun (build), Tauri (desktop), PostgreSQL + Hetzner + Cloudflare (backend).
 
 ---
 
@@ -37,7 +37,7 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] Icosahedral geodesic grid subdivision (configurable resolution)
 - [x] Spatial hash for O(1) coordinate-to-cell lookup
 - [x] Terrain classification from elevation (Urban, Suburban, Rural, Mountainous, Desert, Coastal, Ocean, Tundra, Frozen)
-- [x] Land parcel entity creation with terrain, zoning, cost modifiers
+- [x] Grid cell creation with terrain classification, cost modifiers (invisible spatial index — no player-facing parcels)
 - [x] K-means region clustering (land-aware seeding)
 - [x] City placement from terrain and region data
 - [x] Economic data seeding per region (GDP, population, demand)
@@ -86,8 +86,8 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 ### gt-ai — AI Corporations
 - [x] 4 archetype definitions with weight tuning
 - [x] Strategy selection (Expand/Consolidate/Compete/Survive) based on financial health + archetype
-- [x] AI actions: acquire land, build node, build edge, manage finances, propose contract
-- [x] Parcel scoring algorithm (terrain, demand, proximity, cost, weighted by archetype)
+- [x] AI actions: build node, build edge, manage finances, propose contract
+- [x] Location scoring algorithm (terrain, demand, proximity, cost, weighted by archetype) — AI places nodes at jittered positions near cell centers for organic placement
 - [x] AI proxy for offline multiplayer (policy-only execution)
 
 ### System Implementation (gt-simulation)
@@ -124,19 +124,19 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] Svelte stores: game state (from WASM queries), UI state (active panel, selection), settings
 - [x] Game loop: `requestAnimationFrame` → tick WASM → query state → update stores → render
 
-### Three.js Map Renderer
-- [x] Three.js scene setup in `MapRenderer.svelte` (orthographic camera for 2D mode)
-- [x] Layer 1: Ocean base (dark blue plane)
-- [x] Layer 2: Land masses (terrain-colored polygons from GeoJSON or proc-gen data)
-- [x] Layer 3: Political borders (line geometry for country/region borders)
-- [x] Layer 4: City dots (scaled circles for population centers)
-- [x] Layer 5: Infrastructure icons (sprites for nodes, line geometry for edges)
-- [x] Layer 6: Ownership overlay (semi-transparent company-colored regions)
-- [x] Layer 7: Selection highlight (glow on hovered/selected entities)
-- [x] Layer 8: Labels (text sprites for city/region names at appropriate zoom)
+### deck.gl Map Renderer
+- [x] deck.gl setup in `MapRenderer.ts` (2D map with Mercator projection)
+- [x] Land layer: GeoJSON polygons for countries/continents
+- [x] Political borders: PathLayer for country/region boundaries
+- [x] City dots: ScatterplotLayer scaled by population
+- [x] Infrastructure nodes: ScatterplotLayer with type-based colors
+- [x] Infrastructure edges: ArcLayer connecting nodes
+- [x] Ownership overlay: region-colored fills per corporation
+- [x] Selection/hover highlight via picking
+- [x] Text labels: TextLayer for city/region names at appropriate zoom
 - [x] Zoom level visibility control (World/Country/Region/City)
-- [x] Pan and zoom with mouse/touch
-- [x] Click-to-select entities (raycast to find nearest entity)
+- [x] Pan and zoom with mouse/touch (MapView controller)
+- [x] Click-to-select entities (deck.gl picking system)
 
 ### Minimal UI Panels
 - [x] `MainMenu.svelte` — New Game, Load Game, Settings, Quit
@@ -151,7 +151,7 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] New Game → world generates → map renders with terrain, borders, cities
 - [x] Pan/zoom works smoothly at 60fps
 - [x] Speed controls: pause/resume/2x/4x
-- [x] Click a parcel → selection highlight appears
+- [x] Click on map → selection highlight appears
 - [x] HUD shows live cash and tick counter updating
 - [x] AI corps build infrastructure visible on map over time
 
@@ -163,11 +163,11 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 
 ### Build Interaction
 - [x] Build mode toggle (keyboard shortcut or button)
-- [x] Click parcel in build mode → show build menu (available node types with costs and construction time)
-- [x] Select node type → place on parcel (starts construction, deducts cost)
+- [x] Click anywhere on land in build mode → show build menu (available node types with costs and construction time)
+- [x] Select node type → place at exact (lon, lat) coordinates (starts construction, deducts cost)
 - [x] Edge creation: select source node → select target node → choose edge type → confirm
 - [x] Visual feedback: ghost/preview before confirming, construction-in-progress indicator
-- [x] Validation: parcel ownership, zoning compatibility, sufficient funds, no duplicates
+- [x] Validation: terrain suitability (via nearest grid cell lookup), sufficient funds, no duplicates
 
 ### Management Panels (6 Tabbed Groups)
 - [x] Panel architecture uses 6 tabbed groups for organized access:
@@ -197,7 +197,7 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] `MarketShare.svelte` — Market share pie/bar chart
 
 ### Verification
-- [x] Build mode → click hex → build menu → place tower → construction timer → completes → operational → earning revenue
+- [x] Build mode → click on land → build menu → place tower → construction timer → completes → operational → earning revenue
 - [x] Select two nodes → lay fiber edge → traffic routes through → utilization visible
 - [x] Finance panel → take loan → cash increases → interest accrues
 - [x] D3 charts update live as game progresses
@@ -627,7 +627,7 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 
 ### Performance
 - [ ] Profile simulation tick (target: < 50ms for 10,000+ entities)
-- [ ] Profile Three.js rendering (target: 60fps with 100,000+ visible entities)
+- [ ] Profile deck.gl rendering (target: 60fps with 100,000+ visible entities)
 - [ ] Profile WASM module size (target: < 5MB gzipped)
 - [ ] Memory profiling (target: < 500MB in browser for large worlds)
 - [ ] Optimize network graph routing (target: < 10ms per Dijkstra query)

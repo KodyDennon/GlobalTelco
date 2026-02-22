@@ -6,7 +6,8 @@ pub enum Command {
     // Infrastructure
     BuildNode {
         node_type: crate::types::NodeType,
-        parcel: EntityId,
+        lon: f64,
+        lat: f64,
     },
     BuildEdge {
         edge_type: crate::types::EdgeType,
