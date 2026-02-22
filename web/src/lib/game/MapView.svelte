@@ -19,21 +19,19 @@
 	let container: HTMLElement;
 	let renderer: MapRenderer | null = null;
 	let frameId: number | null = null;
+	let cleanup: (() => void) | null = null;
 
 	function handleEntitySelected(e: CustomEvent) {
 		const { id, type } = e.detail;
-		let currentBuildMode: string | null = null;
-		buildMode.subscribe((m) => (currentBuildMode = m))();
+		const currentBuildMode = get(buildMode);
 
 		if (currentBuildMode === "edge" && type === "node") {
-			let source: number | null = null;
-			buildEdgeSource.subscribe((s) => (source = s))();
+			const source = get(buildEdgeSource);
 
 			if (source === null) {
 				buildEdgeSource.set(id);
 			} else {
-				let edgeType = "FiberLocal";
-				selectedEdgeType.subscribe((t) => (edgeType = t))();
+				const edgeType = get(selectedEdgeType);
 				bridge.processCommand({
 					BuildEdge: { edge_type: edgeType, from: source, to: id },
 				});
@@ -47,8 +45,7 @@
 	}
 
 	function handleMapClicked(e: CustomEvent) {
-		let currentBuildMode: string | null = null;
-		buildMode.subscribe((m) => (currentBuildMode = m))();
+		const currentBuildMode = get(buildMode);
 
 		if (currentBuildMode === "node") {
 			const { lon, lat } = e.detail;
@@ -97,7 +94,7 @@
 				container.addEventListener("mousemove", handleMouseMove);
 				container.addEventListener("mouseleave", handleMouseLeave);
 
-				return () => {
+				cleanup = () => {
 					clearInterval(interval);
 					overlaySub();
 					edgeSrcSub();
@@ -110,8 +107,8 @@
 						"map-clicked",
 						handleMapClicked as EventListener,
 					);
-					container.removeEventListener("mousemove", handleMouseMove);
-					container.removeEventListener(
+					container?.removeEventListener("mousemove", handleMouseMove);
+					container?.removeEventListener(
 						"mouseleave",
 						handleMouseLeave,
 					);
@@ -133,6 +130,7 @@
 	}
 
 	onDestroy(() => {
+		cleanup?.();
 		if (frameId !== null) cancelAnimationFrame(frameId);
 		renderer?.dispose();
 	});

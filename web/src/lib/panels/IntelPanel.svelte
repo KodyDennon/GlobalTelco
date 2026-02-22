@@ -1,14 +1,11 @@
 <script lang="ts">
-	import { getCovertOps, getLobbyingCampaigns, getAllCorporations, getRegions, getPlayerCorpId, processCommand, getCorporationData } from '$lib/wasm/bridge';
-	import type { CovertOpsInfo, LobbyingInfo, CorpSummary, Region } from '$lib/wasm/types';
+	import * as bridge from '$lib/wasm/bridge';
+	import type { CovertOpsInfo, LobbyingInfo } from '$lib/wasm/types';
+	import { worldInfo, playerCorp, allCorporations, regions as regionStore, formatMoney } from '$lib/stores/gameState';
 	import { tr } from '$lib/i18n/index';
 
 	let ops: CovertOpsInfo = $state({ security_level: 0, active_missions: 0, detection_count: 0 });
 	let campaigns: LobbyingInfo[] = $state([]);
-	let corporations: CorpSummary[] = $state([]);
-	let regions: Region[] = $state([]);
-	let playerId = $state(0);
-	let playerCash = $state(0);
 
 	let espionageTarget = $state(0);
 	let sabotageTarget = $state(0);
@@ -17,60 +14,62 @@
 	let lobbyPolicy = $state('');
 	let lobbyBudget = $state(500000);
 
-	function refresh() {
-		playerId = getPlayerCorpId();
-		ops = getCovertOps(playerId);
-		campaigns = getLobbyingCampaigns(playerId);
-		corporations = getAllCorporations();
-		regions = getRegions();
-		const corp = getCorporationData(playerId);
-		playerCash = corp.cash;
-	}
+	// Derived from stores — no polling needed
+	let playerId = $derived($playerCorp?.id ?? 0);
+	let playerCash = $derived($playerCorp?.cash ?? 0);
+	let corporations = $derived($allCorporations);
+	let regions = $derived($regionStore);
 
+	// Reactive: refresh covert ops data when tick changes
 	$effect(() => {
-		refresh();
-		const interval = setInterval(refresh, 2000);
-		return () => clearInterval(interval);
+		const _tick = $worldInfo.tick; // subscribe to tick changes
+		if (playerId > 0) {
+			ops = bridge.getCovertOps(playerId);
+			campaigns = bridge.getLobbyingCampaigns(playerId);
+		}
 	});
+
+	function refresh() {
+		if (playerId > 0) {
+			ops = bridge.getCovertOps(playerId);
+			campaigns = bridge.getLobbyingCampaigns(playerId);
+		}
+	}
 
 	function launchEspionage() {
 		if (!espionageTarget) return;
-		processCommand({ LaunchEspionage: { target: espionageTarget, region: regions[0]?.id || 0 } });
+		bridge.processCommand({ LaunchEspionage: { target: espionageTarget, region: regions[0]?.id || 0 } });
 		espionageTarget = 0;
 		refresh();
 	}
 
 	function launchSabotage() {
 		if (!sabotageTarget) return;
-		processCommand({ LaunchSabotage: { target: sabotageTarget, node: sabotageNode || 0 } });
+		bridge.processCommand({ LaunchSabotage: { target: sabotageTarget, node: sabotageNode || 0 } });
 		sabotageTarget = 0;
 		refresh();
 	}
 
 	function upgradeSecurity() {
 		const newLevel = ops.security_level + 1;
-		processCommand({ UpgradeSecurity: { level: newLevel } });
+		bridge.processCommand({ UpgradeSecurity: { level: newLevel } });
 		refresh();
 	}
 
 	function startLobbying() {
 		if (!lobbyRegion || !lobbyPolicy || lobbyBudget <= 0) return;
-		processCommand({ StartLobbying: { region: lobbyRegion, policy: lobbyPolicy, budget: lobbyBudget } });
+		bridge.processCommand({ StartLobbying: { region: lobbyRegion, policy: lobbyPolicy, budget: lobbyBudget } });
 		lobbyRegion = 0;
 		lobbyPolicy = '';
 		refresh();
 	}
 
 	function cancelLobbying(id: number) {
-		processCommand({ CancelLobbying: { lobby_id: id } });
+		bridge.processCommand({ CancelLobbying: { lobby_id: id } });
 		refresh();
 	}
 
-	function formatMoney(val: number): string {
-		if (Math.abs(val) >= 1_000_000) return `$${(val / 1_000_000).toFixed(1)}M`;
-		if (Math.abs(val) >= 1_000) return `$${(val / 1_000).toFixed(0)}K`;
-		return `$${val}`;
-	}
+
 
 	const aiCorps = $derived(corporations.filter((c) => !c.is_player));
 	const securityCost = $derived((ops.security_level + 1) * 500000);

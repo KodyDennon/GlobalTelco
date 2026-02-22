@@ -130,20 +130,24 @@ export interface VisibleCity {
 	y: number;
 }
 
-export interface Parcel {
-	id: number;
-	cell_index: number;
-	terrain: string;
-	elevation: number;
-	zoning: string;
-	cost_modifier: number;
-	x: number;
-	y: number;
-}
+// GameEvent is a serde-serialized Rust enum: { "VariantName": { ...fields } }
+// e.g. { "DisasterStruck": { region: 5, severity: 0.7, disaster_type: "Earthquake", affected_nodes: 3 } }
+export type GameEvent = Record<string, Record<string, unknown>>;
 
 export interface Notification {
 	tick: number;
-	event: string;
+	event: GameEvent;
+}
+
+// Helper to get the variant name (first key) of a GameEvent
+export function eventType(event: GameEvent): string {
+	return Object.keys(event)[0] ?? 'Unknown';
+}
+
+// Helper to get the fields of a GameEvent
+export function eventData(event: GameEvent): Record<string, unknown> {
+	const key = Object.keys(event)[0];
+	return key ? (event[key] as Record<string, unknown>) : {};
 }
 
 export interface GridCell {
@@ -199,6 +203,8 @@ export interface AllInfraEdge {
 	src_y: number;
 	dst_x: number;
 	dst_y: number;
+	src_cell: number;
+	dst_cell: number;
 }
 
 export interface AllInfrastructure {

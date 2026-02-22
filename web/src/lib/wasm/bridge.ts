@@ -59,11 +59,16 @@ export function newGame(config?: {
 	use_real_earth?: boolean;
 }): void {
 	if (!wasmModule) throw new Error('WASM not initialized');
-	if (config) {
-		const configJson = JSON.stringify(config);
-		bridge = wasmModule.WasmBridge.new_game(configJson);
-	} else {
-		bridge = new wasmModule.WasmBridge();
+	try {
+		if (config) {
+			const configJson = JSON.stringify(config);
+			bridge = wasmModule.WasmBridge.new_game(configJson);
+		} else {
+			bridge = new wasmModule.WasmBridge();
+		}
+	} catch (e) {
+		onBridgeError(e, 'newGame');
+		throw e; // Re-throw — caller needs to know game creation failed
 	}
 }
 
@@ -104,14 +109,14 @@ export function processCommand(command: object): void {
 	}
 }
 
-type CommandNotificationHandler = (notifications: Array<{ tick: number; event: string }>) => void;
+type CommandNotificationHandler = (notifications: Notification[]) => void;
 let commandNotificationHandler: CommandNotificationHandler | null = null;
 
 export function setCommandNotificationHandler(handler: CommandNotificationHandler): void {
 	commandNotificationHandler = handler;
 }
 
-function onCommandNotifications(notifs: Array<{ tick: number; event: string }>): void {
+function onCommandNotifications(notifs: Notification[]): void {
 	if (commandNotificationHandler) {
 		commandNotificationHandler(notifs);
 	}
@@ -308,12 +313,22 @@ export function getDamagedNodes(corpId: number): DamagedNode[] {
 
 export function saveGame(): string {
 	if (!bridge) throw new Error('No game to save');
-	return bridge.save_game();
+	try {
+		return bridge.save_game();
+	} catch (e) {
+		onBridgeError(e, 'saveGame');
+		throw e;
+	}
 }
 
 export function loadGame(data: string): void {
 	if (!wasmModule) throw new Error('WASM not initialized');
-	bridge = wasmModule.WasmBridge.load_game(data);
+	try {
+		bridge = wasmModule.WasmBridge.load_game(data);
+	} catch (e) {
+		onBridgeError(e, 'loadGame');
+		throw e;
+	}
 }
 
 // Phase 10 queries

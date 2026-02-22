@@ -1,47 +1,41 @@
 <script lang="ts">
-	import { getAcquisitionProposals, getAllCorporations, getPlayerCorpId, processCommand, getCorporationData } from '$lib/wasm/bridge';
-	import type { AcquisitionInfo, CorpSummary } from '$lib/wasm/types';
+	import * as bridge from '$lib/wasm/bridge';
+	import type { AcquisitionInfo } from '$lib/wasm/types';
+	import { worldInfo, playerCorp, allCorporations, formatMoney } from '$lib/stores/gameState';
 	import { tr } from '$lib/i18n/index';
 
 	let proposals: AcquisitionInfo[] = $state([]);
-	let corporations: CorpSummary[] = $state([]);
-	let playerId = $state(0);
-	let playerCash = $state(0);
 	let selectedTarget = $state(0);
 	let offerAmount = $state(0);
 
-	function refresh() {
-		proposals = getAcquisitionProposals();
-		corporations = getAllCorporations();
-		playerId = getPlayerCorpId();
-		const corp = getCorporationData(playerId);
-		playerCash = corp.cash;
-	}
+	let playerId = $derived($playerCorp?.id ?? 0);
+	let playerCash = $derived($playerCorp?.cash ?? 0);
+	let corporations = $derived($allCorporations);
 
+	// Reactive: refresh proposals when tick changes
 	$effect(() => {
-		refresh();
-		const interval = setInterval(refresh, 2000);
-		return () => clearInterval(interval);
+		const _tick = $worldInfo.tick;
+		proposals = bridge.getAcquisitionProposals();
 	});
+
+	function refresh() {
+		proposals = bridge.getAcquisitionProposals();
+	}
 
 	function proposeAcquisition() {
 		if (!selectedTarget || offerAmount <= 0) return;
-		processCommand({ ProposeAcquisition: { target: selectedTarget, offer: offerAmount } });
+		bridge.processCommand({ ProposeAcquisition: { target: selectedTarget, offer: offerAmount } });
 		offerAmount = 0;
 		selectedTarget = 0;
 		refresh();
 	}
 
 	function respond(proposalId: number, accept: boolean) {
-		processCommand({ RespondToAcquisition: { proposal: proposalId, accept } });
+		bridge.processCommand({ RespondToAcquisition: { proposal: proposalId, accept } });
 		refresh();
 	}
 
-	function formatMoney(val: number): string {
-		if (Math.abs(val) >= 1_000_000) return `$${(val / 1_000_000).toFixed(1)}M`;
-		if (Math.abs(val) >= 1_000) return `$${(val / 1_000).toFixed(0)}K`;
-		return `$${val}`;
-	}
+
 
 	const aiCorps = $derived(corporations.filter((c) => !c.is_player));
 	const incomingProposals = $derived(proposals.filter((p) => p.target === playerId && p.status === 'Pending'));

@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { playerCorp, formatMoney, regions, cities } from '$lib/stores/gameState';
-	import { closePanelGroup } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
-	import { tr, t } from '$lib/i18n/index';
+	import { tr } from '$lib/i18n/index';
 
 	interface Suggestion {
 		priority: 'critical' | 'warning' | 'info';

@@ -18,6 +18,7 @@ import {
 	type ServerInfo
 } from '$lib/stores/multiplayerState';
 import { worldInfo, notifications } from '$lib/stores/gameState';
+import type { GameEvent } from '$lib/wasm/types';
 import { API_URL, WS_URL } from '$lib/config';
 
 let ws: WebSocket | null = null;
@@ -135,8 +136,7 @@ function handleServerMessage(msg: ServerMessage) {
 		if (events.length > 0) {
 			const notifs = events.map((e) => ({
 				tick,
-				event: Object.keys(e)[0] || 'Unknown',
-				message: JSON.stringify(e)
+				event: e as unknown as GameEvent
 			}));
 			notifications.update((n) => [...notifs, ...n].slice(0, 50));
 		}

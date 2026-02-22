@@ -3,7 +3,7 @@ import { ArcLayer, ScatterplotLayer, TextLayer, PathLayer, IconLayer } from '@de
 
 import * as bridge from '$lib/wasm/bridge';
 import type { GridCell, City, Region, CorpSummary, CellCoverage, TrafficFlows } from '$lib/wasm/types';
-import type { IconName } from '$lib/assets/icons';
+
 import { GridPathfinder, needsTerrainRouting } from './GridPathfinder';
 import { tooltipData } from '$lib/stores/uiState';
 import { icons } from '$lib/assets/icons';
@@ -46,6 +46,25 @@ const ICON_MAPPING = Object.fromEntries(
         }
     ])
 );
+
+// Tier-based sizing: higher tiers = more visually prominent nodes
+const NODE_TIER_SIZE: Record<string, number> = {
+    Local: 24,
+    Regional: 32,
+    National: 40,
+    Continental: 48,
+    Global: 56
+};
+
+const EDGE_TIER_WIDTH: Record<string, number> = {
+    FiberLocal: 2,
+    FiberRegional: 3,
+    FiberNational: 5,
+    Copper: 1,
+    Microwave: 2,
+    Satellite: 4,
+    Submarine: 6
+};
 
 export class MapRenderer {
     private deck: Deck | null = null;
@@ -242,7 +261,8 @@ export class MapRenderer {
                     ...node,
                     position: [node.x, node.y],
                     color: [...color, opacity],
-                    icon: node.node_type.toLowerCase().replace(/_/g, '-')
+                    icon: node.node_type.toLowerCase().replace(/_/g, '-'),
+                    tierSize: NODE_TIER_SIZE[node.network_level] || 32
                 });
             }
         }
@@ -271,9 +291,9 @@ export class MapRenderer {
                 getIcon: (d: any) => d.icon,
                 iconAtlas: null, // We use individual data URIs
                 iconMapping: ICON_MAPPING,
-                getSize: 32,
+                getSize: (d: any) => d.tierSize,
                 sizeMinPixels: 12,
-                sizeMaxPixels: 64,
+                sizeMaxPixels: 72,
                 getColor: (d: any) => d.color,
                 pickable: true,
                 autoHighlight: true,
@@ -390,14 +410,16 @@ export class MapRenderer {
 
         if (this.activeOverlay === 'terrain') {
             const TERRAIN_COLORS: Record<string, [number, number, number]> = {
-                Ocean: [10, 20, 40],
-                OceanDeep: [5, 10, 25],
-                Plains: [40, 60, 40],
-                Forest: [20, 45, 20],
-                Mountain: [60, 60, 65],
+                Urban: [80, 80, 90],
+                Suburban: [65, 70, 65],
+                Rural: [40, 60, 40],
+                Mountainous: [60, 60, 65],
                 Desert: [70, 65, 45],
+                Coastal: [45, 65, 70],
+                OceanShallow: [15, 30, 55],
+                OceanDeep: [5, 10, 25],
                 Tundra: [60, 70, 75],
-                Urban: [80, 80, 90]
+                Frozen: [75, 80, 85],
             };
 
             layers.push(new ScatterplotLayer({
@@ -457,57 +479,81 @@ export class MapRenderer {
     }
 
     private createSelectionLayer() {
-        if (!this.selectedId) return null;
+        if (this.selectedId === null || this.selectedId === undefined) return null;
 
-        // Find the selected object (node, edge, or city)
-        let selectedObject: any = null;
-        let pos: [number, number] = [0, 0];
-        let radius = 20000;
+        const infra = bridge.getAllInfrastructure();
+        const layers: any[] = [];
 
         // Search nodes
-        const infra = bridge.getAllInfrastructure();
         const node = infra.nodes.find(n => n.id === this.selectedId);
         if (node) {
-            pos = [node.x, node.y];
-            radius = 25000;
-        } else {
-            // Search edges
-            const edge = infra.edges.find(e => e.id === this.selectedId);
-            if (edge) {
-                // For edges, maybe we don't draw a ring? 
-                // Or we could draw a line highlight. For now just focus on nodes/cities.
-                return null;
-            } else {
-                // Search cities
-                const city = this.cachedCities.find(c => c.id === this.selectedId);
-                if (city) {
-                    pos = [city.x, city.y];
-                    radius = Math.log10(Math.max(city.population, 10)) * 25000;
-                }
-            }
+            layers.push(new ScatterplotLayer({
+                id: 'selection-highlight',
+                data: [{ position: [node.x, node.y] }],
+                getPosition: (d: any) => d.position,
+                getFillColor: [255, 255, 255, 0],
+                getLineColor: [255, 255, 255, 200],
+                getLineWidth: 2,
+                lineWidthUnits: 'pixels',
+                stroked: true,
+                filled: false,
+                getRadius: 25000,
+                parameters: { depthTest: false }
+            }));
+            return layers;
         }
 
-        if (pos[0] === 0 && pos[1] === 0) return null;
+        // Search edges — highlight with a brighter arc
+        const edge = infra.edges.find(e => e.id === this.selectedId);
+        if (edge) {
+            layers.push(new ArcLayer({
+                id: 'selection-highlight-edge',
+                data: [edge],
+                getSourcePosition: (d: any) => [d.src_x, d.src_y],
+                getTargetPosition: (d: any) => [d.dst_x, d.dst_y],
+                getSourceColor: [255, 255, 100, 220],
+                getTargetColor: [255, 255, 100, 220],
+                getWidth: 6,
+                pickable: false,
+                parameters: { depthTest: false }
+            }));
+            return layers;
+        }
 
-        return new ScatterplotLayer({
-            id: 'selection-highlight',
-            data: [{ position: pos }],
-            getPosition: (d: any) => d.position,
-            getFillColor: [255, 255, 255, 0],
-            getLineColor: [255, 255, 255, 200],
-            getLineWidth: 2,
-            lineWidthUnits: 'pixels',
-            getRadius: radius,
-            parameters: { depthTest: false }
-        });
+        // Search cities
+        const city = this.cachedCities.find(c => c.id === this.selectedId);
+        if (city) {
+            layers.push(new ScatterplotLayer({
+                id: 'selection-highlight',
+                data: [{ position: [city.x, city.y] }],
+                getPosition: (d: any) => d.position,
+                getFillColor: [255, 255, 255, 0],
+                getLineColor: [255, 255, 255, 200],
+                getLineWidth: 2,
+                lineWidthUnits: 'pixels',
+                stroked: true,
+                filled: false,
+                getRadius: Math.log10(Math.max(city.population, 10)) * 25000,
+                parameters: { depthTest: false }
+            }));
+            return layers;
+        }
+
+        return null;
     }
 
     private createLabelsLayer() {
-        if (this.currentZoom < 4) return null;
+        if (this.currentZoom < 2) return null;
+
+        // At lower zoom, only show major cities
+        const minPop = this.currentZoom < 3 ? 500000 : this.currentZoom < 5 ? 100000 : 0;
+        const visibleCities = minPop > 0
+            ? this.cachedCities.filter(c => c.population >= minPop)
+            : this.cachedCities;
 
         return new TextLayer({
             id: 'city-labels',
-            data: this.cachedCities,
+            data: visibleCities,
             getPosition: (d: City) => [d.x, d.y],
             getText: (d: City) => d.name,
             getSize: 12,

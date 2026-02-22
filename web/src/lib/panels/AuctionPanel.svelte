@@ -1,37 +1,32 @@
 <script lang="ts">
-	import { getAuctions, getPlayerCorpId, processCommand, getCorporationData } from '$lib/wasm/bridge';
+	import * as bridge from '$lib/wasm/bridge';
 	import type { AuctionInfo } from '$lib/wasm/types';
+	import { worldInfo, playerCorp, formatMoney } from '$lib/stores/gameState';
 	import { tr } from '$lib/i18n/index';
 
 	let auctions: AuctionInfo[] = $state([]);
-	let playerCash = $state(0);
 	let bidAmounts: Record<number, number> = $state({});
 
-	function refresh() {
-		auctions = getAuctions();
-		const corpId = getPlayerCorpId();
-		const corp = getCorporationData(corpId);
-		playerCash = corp.cash;
-	}
+	let playerCash = $derived($playerCorp?.cash ?? 0);
 
+	// Reactive: refresh auctions when tick changes
 	$effect(() => {
-		refresh();
-		const interval = setInterval(refresh, 2000);
-		return () => clearInterval(interval);
+		const _tick = $worldInfo.tick;
+		auctions = bridge.getAuctions();
 	});
+
+	function refresh() {
+		auctions = bridge.getAuctions();
+	}
 
 	function placeBid(auctionId: number) {
 		const amount = bidAmounts[auctionId] || 0;
 		if (amount <= 0) return;
-		processCommand({ PlaceBid: { auction: auctionId, amount } });
+		bridge.processCommand({ PlaceBid: { auction: auctionId, amount } });
 		refresh();
 	}
 
-	function formatMoney(val: number): string {
-		if (Math.abs(val) >= 1_000_000) return `$${(val / 1_000_000).toFixed(1)}M`;
-		if (Math.abs(val) >= 1_000) return `$${(val / 1_000).toFixed(0)}K`;
-		return `$${val}`;
-	}
+
 </script>
 
 <div class="panel" role="region" aria-label={$tr('panels.auctions')}>

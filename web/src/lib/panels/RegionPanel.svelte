@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { regions, cities, formatMoney, formatPopulation, allCorporations } from '$lib/stores/gameState';
-	import { closePanelGroup } from '$lib/stores/uiState';
+
 	import * as bridge from '$lib/wasm/bridge';
 	import PopulationChart from '$lib/charts/PopulationChart.svelte';
 

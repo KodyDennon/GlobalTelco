@@ -28,6 +28,7 @@ class AudioManager {
 	private muted = false;
 	private currentMusicSource: AudioBufferSourceNode | null = null;
 	private ambient: AmbientMusicGenerator | null = null;
+	private unsubscribers: (() => void)[] = [];
 
 	// Map event types to sound categories
 	private eventSoundMap: Record<string, SoundId> = {
@@ -80,8 +81,10 @@ class AudioManager {
 			this.setSfxVolume(get(sfxVolume));
 
 			// Subscribe to store changes
-			musicVolume.subscribe((v) => this.setMusicVolume(v));
-			sfxVolume.subscribe((v) => this.setSfxVolume(v));
+			this.unsubscribers.push(
+				musicVolume.subscribe((v) => this.setMusicVolume(v)),
+				sfxVolume.subscribe((v) => this.setSfxVolume(v))
+			);
 
 			this.initialized = true;
 			this.startAmbientMusic();
@@ -110,10 +113,16 @@ class AudioManager {
 		}
 	}
 
-	playEventSound(eventType: string): void {
-		// Extract event type from debug format: "EventType { ... }"
-		const match = eventType.match(/^(\w+)/);
-		const eventName = match ? match[1] : eventType;
+	playEventSound(event: string | Record<string, unknown>): void {
+		let eventName: string;
+		if (typeof event === 'string') {
+			// Legacy string format fallback
+			const match = event.match(/^(\w+)/);
+			eventName = match ? match[1] : event;
+		} else {
+			// Structured JSON event: { "VariantName": { ...fields } }
+			eventName = Object.keys(event)[0] ?? '';
+		}
 
 		const soundId = this.eventSoundMap[eventName];
 		if (soundId) {
@@ -212,6 +221,8 @@ class AudioManager {
 
 	dispose(): void {
 		this.stopAmbientMusic();
+		for (const unsub of this.unsubscribers) unsub();
+		this.unsubscribers = [];
 		if (this.currentMusicSource) {
 			this.currentMusicSource.stop();
 			this.currentMusicSource = null;

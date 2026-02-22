@@ -1,4 +1,6 @@
 import * as bridge from '$lib/wasm/bridge';
+import { eventType, eventData } from '$lib/wasm/types';
+import type { GameEvent } from '$lib/wasm/types';
 import {
 	initialized,
 	worldInfo,
@@ -138,24 +140,27 @@ function updateStores() {
 	}
 }
 
-function checkCriticalEvent(event: string): string | null {
+function checkCriticalEvent(event: GameEvent): string | null {
+	const type = eventType(event);
+	const data = eventData(event);
+
 	// Disasters with severity > 0.3
-	if (event.includes('Disaster') && event.includes('severity')) {
-		const match = event.match(/severity:\s*([\d.]+)/);
-		if (match && parseFloat(match[1]) > 0.3) {
-			return 'Major disaster detected!';
+	if (type === 'DisasterStruck') {
+		const severity = data.severity as number;
+		if (severity > 0.3) {
+			return `Major disaster: ${data.disaster_type ?? 'Unknown'}!`;
 		}
 	}
-	// Insolvency warning
-	if (event.includes('Bankruptcy') || event.includes('Insolvency')) {
+	// Insolvency / Bankruptcy
+	if (type === 'InsolvencyWarning' || type === 'BankruptcyDeclared' || type === 'Bankruptcy') {
 		return 'Financial crisis — insolvency warning!';
 	}
 	// Hostile acquisition
-	if (event.includes('HostileAcquisition') || event.includes('hostile_acquisition')) {
-		return 'Hostile acquisition attempt!';
+	if (type === 'AcquisitionProposed') {
+		return 'Acquisition attempt!';
 	}
 	// Espionage detected
-	if (event.includes('EspionageDetected') || event.includes('espionage_detected')) {
+	if (type === 'EspionageDetected' || type === 'SabotageDetected') {
 		return 'Espionage operation detected!';
 	}
 	return null;
@@ -170,7 +175,7 @@ async function performAutoSave(tick: number) {
 	} catch (e) {
 		console.warn('[auto-save] Failed:', e);
 		notifications.update((n) => [
-			{ tick, event: 'AutoSaveFailed' },
+			{ tick, event: { GlobalNotification: { message: 'Auto-save failed', level: 'warning' } } },
 			...n
 		].slice(0, 50));
 	}
@@ -181,26 +186,6 @@ export function start() {
 	running = true;
 	lastTickTime = performance.now();
 	tickAccumulator = 0;
-
-	// Register bridge error handler — pause game on WASM failure
-	bridge.setErrorHandler((error, context) => {
-		console.error(`WASM error in ${context}: ${error}`);
-		if (context === 'tick') {
-			setSpeed(0); // Pause on tick failures
-			notifications.update((n) => [
-				{ tick: 0, event: `WASMError: ${error}` },
-				...n
-			].slice(0, 50));
-		}
-	});
-
-	// Register command notification handler — shows errors immediately when commands fail
-	bridge.setCommandNotificationHandler((notifs) => {
-		notifications.update((n) => [...notifs, ...n].slice(0, 50));
-		for (const notif of notifs) {
-			audioManager.playEventSound(notif.event);
-		}
-	});
 
 	animFrameId = requestAnimationFrame(loop);
 	setupKeyboardShortcuts();
@@ -245,6 +230,25 @@ export function togglePause() {
 
 export async function initGame(config?: object) {
 	await bridge.initWasm();
+
+	// Register handlers before any commands can be issued
+	bridge.setErrorHandler((error, context) => {
+		console.error(`WASM error in ${context}: ${error}`);
+		if (context === 'tick') {
+			setSpeed(0);
+			notifications.update((n) => [
+				{ tick: 0, event: { GlobalNotification: { message: `WASM Error: ${error}`, level: 'error' } } },
+				...n
+			].slice(0, 50));
+		}
+	});
+	bridge.setCommandNotificationHandler((notifs) => {
+		notifications.update((n) => [...notifs, ...n].slice(0, 50));
+		for (const notif of notifs) {
+			audioManager.playEventSound(notif.event);
+		}
+	});
+
 	bridge.newGame(config as any);
 	await audioManager.init();
 	// Start paused so player can orient

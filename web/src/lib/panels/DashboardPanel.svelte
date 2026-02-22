@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { playerCorp, formatMoney, allCorporations } from '$lib/stores/gameState';
-	import { closePanelGroup } from '$lib/stores/uiState';
+
 	import * as bridge from '$lib/wasm/bridge';
 	import type { DebtInfo } from '$lib/wasm/types';
 	import FinanceChart from '$lib/charts/FinanceChart.svelte';

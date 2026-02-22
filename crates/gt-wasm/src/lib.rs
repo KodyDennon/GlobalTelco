@@ -58,7 +58,7 @@ impl WasmBridge {
                 .map(|(tick, event)| {
                     serde_json::json!({
                         "tick": tick,
-                        "event": format!("{:?}", event),
+                        "event": serde_json::to_value(event).unwrap_or(serde_json::Value::Null),
                     })
                 })
                 .collect();
@@ -342,7 +342,7 @@ impl WasmBridge {
             .map(|(tick, event)| {
                 serde_json::json!({
                     "tick": tick,
-                    "event": format!("{:?}", event),
+                    "event": serde_json::to_value(event).unwrap_or(serde_json::Value::Null),
                 })
             })
             .collect();

@@ -4,33 +4,68 @@
 	import { tr } from "$lib/i18n/index";
 	import { autoPauseReason } from "$lib/game/GameLoop";
 	import { setSpeed } from "$lib/game/GameLoop";
+	import { eventType, eventData } from "$lib/wasm/types";
+	import type { GameEvent } from "$lib/wasm/types";
 
 	let expanded = $state(false);
 
-	function getCategory(event: string): string {
-		if (event.includes("Disaster")) return "disaster";
-		// Check error/warning level in GlobalNotification before generic categories
-		if (event.includes('level: "error"') || event.includes('level: "warning"')) return "command-error";
-		if (
-			event.includes("Construction") ||
-			event.includes("Node") ||
-			event.includes("Edge") ||
-			event.includes("Repair")
-		)
-			return "infra";
-		if (
-			event.includes("Revenue") ||
-			event.includes("Cost") ||
-			event.includes("Loan") ||
-			event.includes("Bankruptcy")
-		)
-			return "finance";
-		if (event.includes("Contract")) return "contract";
-		if (event.includes("Research")) return "research";
-		if (event.includes("Regulation") || event.includes("Market"))
-			return "market";
-		if (event.startsWith("GlobalNotification")) return "system";
-		return "info";
+	// Event categories mapped from GameEvent variant names
+	const CATEGORY_MAP: Record<string, string> = {
+		DisasterStruck: 'disaster',
+		InfrastructureDamaged: 'disaster',
+		ConstructionStarted: 'infra',
+		ConstructionCompleted: 'infra',
+		NodeBuilt: 'infra',
+		EdgeBuilt: 'infra',
+		NodeDestroyed: 'infra',
+		RepairStarted: 'infra',
+		RepairCompleted: 'infra',
+		RevenueEarned: 'finance',
+		CostIncurred: 'finance',
+		LoanTaken: 'finance',
+		Bankruptcy: 'finance',
+		InsolvencyWarning: 'finance',
+		BailoutTaken: 'finance',
+		BankruptcyDeclared: 'finance',
+		ContractProposed: 'contract',
+		ContractAccepted: 'contract',
+		ContractExpired: 'contract',
+		ResearchStarted: 'research',
+		ResearchCompleted: 'research',
+		RegulationChanged: 'market',
+		MarketShiftOccurred: 'market',
+		MarketUpdate: 'market',
+		AuctionStarted: 'market',
+		AuctionBidPlaced: 'market',
+		AuctionWon: 'market',
+		AuctionCancelled: 'market',
+		AcquisitionProposed: 'market',
+		AcquisitionAccepted: 'market',
+		AcquisitionRejected: 'market',
+		MergerCompleted: 'market',
+		EspionageCompleted: 'covert',
+		SabotageCompleted: 'covert',
+		EspionageDetected: 'covert',
+		SabotageDetected: 'covert',
+		SecurityUpgraded: 'covert',
+		LobbyingStarted: 'covert',
+		LobbyingSucceeded: 'covert',
+		LobbyingFailed: 'covert',
+		ScandalOccurred: 'covert',
+		AchievementUnlocked: 'info',
+		VictoryAchieved: 'info',
+		InsurancePurchased: 'finance',
+		InsurancePayout: 'finance',
+	};
+
+	function getCategory(event: GameEvent): string {
+		const type = eventType(event);
+		if (type === 'GlobalNotification') {
+			const data = eventData(event);
+			if (data.level === 'error' || data.level === 'warning') return 'command-error';
+			return 'system';
+		}
+		return CATEGORY_MAP[type] ?? 'info';
 	}
 
 	function getCategoryColor(cat: string): string {
@@ -49,6 +84,8 @@
 				return "#8b5cf6";
 			case "market":
 				return "#ec4899";
+			case "covert":
+				return "#f59e0b";
 			case "system":
 				return "#6b7280";
 			default:
@@ -56,22 +93,78 @@
 		}
 	}
 
-	function formatEvent(event: string): string {
-		// Handle GlobalNotification specially to keep the message
-		if (event.startsWith("GlobalNotification")) {
-			try {
-				const msgMatch = event.match(/message:\s*"([^"]+)"/);
-				if (msgMatch) return msgMatch[1];
-			} catch (e) {
-				return event;
-			}
+	// Human-readable labels for event types
+	const EVENT_LABELS: Record<string, string> = {
+		ConstructionStarted: 'Construction started',
+		ConstructionCompleted: 'Construction completed',
+		NodeBuilt: 'Node built',
+		EdgeBuilt: 'Link built',
+		NodeDestroyed: 'Node destroyed',
+		RevenueEarned: 'Revenue earned',
+		CostIncurred: 'Cost incurred',
+		LoanTaken: 'Loan taken',
+		Bankruptcy: 'Bankruptcy',
+		CorporationFounded: 'Corporation founded',
+		CorporationMerged: 'Corporation merged',
+		ContractProposed: 'Contract proposed',
+		ContractAccepted: 'Contract accepted',
+		ContractExpired: 'Contract expired',
+		ResearchStarted: 'Research started',
+		ResearchCompleted: 'Research completed',
+		DisasterStruck: 'Disaster struck',
+		InfrastructureDamaged: 'Infrastructure damaged',
+		RepairStarted: 'Repair started',
+		RepairCompleted: 'Repair completed',
+		InsurancePurchased: 'Insurance purchased',
+		InsurancePayout: 'Insurance payout',
+		RegulationChanged: 'Regulation changed',
+		MarketShiftOccurred: 'Market shift',
+		MarketUpdate: 'Market update',
+		InsolvencyWarning: 'Insolvency warning',
+		BailoutTaken: 'Bailout taken',
+		BankruptcyDeclared: 'Bankruptcy declared',
+		AuctionStarted: 'Auction started',
+		AuctionBidPlaced: 'Bid placed',
+		AuctionWon: 'Auction won',
+		AuctionCancelled: 'Auction cancelled',
+		AcquisitionProposed: 'Acquisition proposed',
+		AcquisitionAccepted: 'Acquisition accepted',
+		AcquisitionRejected: 'Acquisition rejected',
+		MergerCompleted: 'Merger completed',
+		EspionageCompleted: 'Espionage completed',
+		SabotageCompleted: 'Sabotage completed',
+		EspionageDetected: 'Espionage detected',
+		SabotageDetected: 'Sabotage detected',
+		SecurityUpgraded: 'Security upgraded',
+		LobbyingStarted: 'Lobbying started',
+		LobbyingSucceeded: 'Lobbying succeeded',
+		LobbyingFailed: 'Lobbying failed',
+		ScandalOccurred: 'Scandal!',
+		AchievementUnlocked: 'Achievement unlocked',
+		VictoryAchieved: 'Victory!',
+	};
+
+	function formatEvent(event: GameEvent): string {
+		const type = eventType(event);
+		const data = eventData(event);
+
+		if (type === 'GlobalNotification') {
+			return (data.message as string) ?? 'System notification';
 		}
 
-		// Clean up Rust debug format for other events
-		return event
-			.replace(/\{[^}]*\}/g, "")
-			.replace(/([A-Z])/g, " $1")
-			.trim();
+		const label = EVENT_LABELS[type] ?? type.replace(/([A-Z])/g, ' $1').trim();
+
+		// Add context from event data
+		if (data.tech) return `${label}: ${data.tech}`;
+		if (data.disaster_type) return `${label}: ${data.disaster_type}`;
+		if (data.description) return `${label}: ${data.description}`;
+		if (data.name) return `${label}: ${data.name}`;
+		if (data.achievement) return `${label}: ${data.achievement}`;
+		if (data.effect) return `${label}: ${data.effect}`;
+		if (data.policy) return `${label}: ${data.policy}`;
+		if (data.victory_type) return `${label}: ${data.victory_type}`;
+
+		return label;
 	}
 
 	let recentNotifs = $derived($notifications.slice(0, expanded ? 20 : 3));
@@ -89,7 +182,9 @@
 		if (cat === "command-error" || cat === "disaster") {
 			const text = formatEvent(latest.event);
 			const id = ++toastId;
-			const level = latest.event.includes('"error"') ? "error" : "warning";
+			const type = eventType(latest.event);
+			const data = eventData(latest.event);
+			const level = (type === 'GlobalNotification' && data.level === 'error') ? 'error' : 'warning';
 			// Use untrack to avoid tracking `toasts` read — prevents infinite reactive loop
 			toasts = [...untrack(() => toasts), { id, text, level }];
 			setTimeout(() => {
