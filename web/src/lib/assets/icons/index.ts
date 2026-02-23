@@ -6,6 +6,7 @@ import dataCenter from './infrastructure/data-center.svg?raw';
 import satelliteGround from './infrastructure/satellite-ground.svg?raw';
 import submarineLanding from './infrastructure/submarine-landing.svg?raw';
 import wirelessRelay from './infrastructure/wireless-relay.svg?raw';
+import backboneRouter from './infrastructure/backbone-router.svg?raw';
 
 // City tier icons
 import hamlet from './cities/hamlet.svg?raw';
@@ -51,6 +52,7 @@ export const icons = {
 	'satellite-ground': satelliteGround,
 	'submarine-landing': submarineLanding,
 	'wireless-relay': wirelessRelay,
+	'backbone-router': backboneRouter,
 
 	// City tiers — keyed by population bracket
 	hamlet,
@@ -99,6 +101,7 @@ export const infrastructureIcons: IconName[] = [
 	'satellite-ground',
 	'submarine-landing',
 	'wireless-relay',
+	'backbone-router',
 ];
 
 /** All city tier icon names */

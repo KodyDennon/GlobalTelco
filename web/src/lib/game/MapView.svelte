@@ -211,6 +211,7 @@
 		height: 100%;
 		position: absolute;
 		inset: 0;
+		background: #030810;
 	}
 
 	.map-container :global(canvas) {

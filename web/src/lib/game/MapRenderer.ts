@@ -1,15 +1,16 @@
 import { Deck } from '@deck.gl/core';
-import { ArcLayer, ScatterplotLayer, TextLayer, PathLayer, IconLayer } from '@deck.gl/layers';
+import { BitmapLayer, LineLayer, ScatterplotLayer, TextLayer, PathLayer, IconLayer } from '@deck.gl/layers';
 
 import * as bridge from '$lib/wasm/bridge';
-import type { GridCell, City, Region, CorpSummary, CellCoverage, TrafficFlows } from '$lib/wasm/types';
+import type { GridCell, City, Region, CellCoverage } from '$lib/wasm/types';
 
 import { GridPathfinder, needsTerrainRouting } from './GridPathfinder';
 import { tooltipData, selectedEdgeType } from '$lib/stores/uiState';
 import { get } from 'svelte/store';
 import { icons } from '$lib/assets/icons';
 
-// Premium Dark Mode / Neon colors
+// ── Color palettes ──────────────────────────────────────────────────────────
+
 const CORP_COLORS = [
     [16, 185, 129], // Emerald
     [59, 130, 246], // Blue
@@ -21,60 +22,180 @@ const CORP_COLORS = [
     [249, 115, 22]  // Orange
 ];
 
-const EDGE_STYLES: Record<string, { color: [number, number, number], width: number, dashed?: boolean }> = {
+const EDGE_STYLES: Record<string, { color: [number, number, number], width: number }> = {
     FiberLocal: { color: [34, 211, 160], width: 2 },
     FiberRegional: { color: [96, 165, 250], width: 3 },
     FiberNational: { color: [129, 140, 248], width: 5 },
     Copper: { color: [217, 119, 6], width: 1 },
-    Microwave: { color: [34, 211, 238], width: 2, dashed: true },
-    Satellite: { color: [251, 191, 36], width: 3, dashed: true },
+    Microwave: { color: [34, 211, 238], width: 2 },
+    Satellite: { color: [251, 191, 36], width: 3 },
     Submarine: { color: [59, 130, 246], width: 5 }
 };
 
-// Helper to convert raw SVG to data URI for Deck.gl IconLayer (UTF-8 safe)
-function svgToDataUri(svg: string): string {
-    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+// Night-earth satellite palette for terrain
+const SATELLITE_COLORS: Record<string, [number, number, number]> = {
+    Urban:        [55, 55, 72],
+    Suburban:     [42, 45, 52],
+    Rural:        [24, 42, 26],
+    Mountainous:  [48, 42, 35],
+    Desert:       [62, 52, 32],
+    Coastal:      [28, 48, 58],
+    Tundra:       [48, 56, 64],
+    Frozen:       [62, 70, 78],
+    OceanShallow: [12, 24, 52],
+    OceanDeep:    [6, 12, 32],
+    Ocean:        [6, 12, 32],
+};
+
+// Brighter terrain colors for the terrain overlay toggle
+const TERRAIN_OVERLAY_COLORS: Record<string, [number, number, number]> = {
+    Urban:        [110, 110, 135],
+    Suburban:     [85, 95, 85],
+    Rural:        [50, 95, 50],
+    Mountainous:  [95, 85, 72],
+    Desert:       [125, 108, 68],
+    Coastal:      [55, 100, 115],
+    OceanShallow: [22, 55, 100],
+    OceanDeep:    [8, 18, 50],
+    Ocean:        [8, 18, 50],
+    Tundra:       [85, 100, 115],
+    Frozen:       [110, 120, 130],
+};
+
+// Tier-based sizing: keyed by Rust NetworkLevel enum Debug names
+const NODE_TIER_SIZE: Record<string, number> = {
+    Local: 24, Regional: 32, National: 40, Continental: 48, GlobalBackbone: 56
+};
+
+const NETWORK_TIER_LABEL: Record<string, string> = {
+    Local: 'T1', Regional: 'T2', National: 'T3', Continental: 'T4', GlobalBackbone: 'T5'
+};
+
+// ── Icon atlas builder ──────────────────────────────────────────────────────
+
+// Convert Rust CamelCase enum variant to kebab-case icon key
+function toIconKey(camelCase: string): string {
+    return camelCase.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
 }
 
-const ICON_MAPPING = Object.fromEntries(
-    Object.entries(icons).map(([name, svg]) => [
-        name,
-        {
-            url: svgToDataUri(svg as string),
-            width: 64,
-            height: 64,
-            mask: false
-        }
-    ])
-);
+const ICON_SIZE = 64;
+const ICONS_PER_ROW = 8;
 
-// Tier-based sizing: higher tiers = more visually prominent nodes
-const NODE_TIER_SIZE: Record<string, number> = {
-    Local: 24,
-    Regional: 32,
-    National: 40,
-    Continental: 48,
-    Global: 56
-};
+/** Build a single Canvas spritesheet from all SVG icons at init time.
+ *  Returns { canvas, mapping } where mapping is suitable for deck.gl IconLayer iconMapping. */
+function buildIconAtlas(): { canvas: HTMLCanvasElement; mapping: Record<string, { x: number; y: number; width: number; height: number; mask: boolean }> } {
+    const names = Object.keys(icons);
+    const cols = ICONS_PER_ROW;
+    const rows = Math.ceil(names.length / cols);
+    const canvas = document.createElement('canvas');
+    canvas.width = cols * ICON_SIZE;
+    canvas.height = rows * ICON_SIZE;
+    const ctx = canvas.getContext('2d')!;
 
-const EDGE_TIER_WIDTH: Record<string, number> = {
-    FiberLocal: 2,
-    FiberRegional: 3,
-    FiberNational: 5,
-    Copper: 1,
-    Microwave: 2,
-    Satellite: 4,
-    Submarine: 6
-};
+    const mapping: Record<string, { x: number; y: number; width: number; height: number; mask: boolean }> = {};
 
-// Tier badge labels for nodes
-const NETWORK_TIER_LABEL: Record<string, string> = {
-    Local: 'T1',
-    Regional: 'T2',
-    National: 'T3',
-    Continental: 'T4',
-    Global: 'T5'
-};
+    // We'll draw synchronously using SVG data URIs as Image sources
+    // But Image loading is async — so we return immediately with a blank canvas
+    // and fill it in as images load. deck.gl will re-render when the atlas updates.
+    const promises: Promise<void>[] = [];
+
+    for (let i = 0; i < names.length; i++) {
+        const name = names[i];
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const x = col * ICON_SIZE;
+        const y = row * ICON_SIZE;
+
+        mapping[name] = { x, y, width: ICON_SIZE, height: ICON_SIZE, mask: false };
+
+        const svg = (icons as Record<string, string>)[name];
+        const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+
+        promises.push(new Promise<void>((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                ctx.drawImage(img, x, y, ICON_SIZE, ICON_SIZE);
+                URL.revokeObjectURL(url);
+                resolve();
+            };
+            img.onerror = () => {
+                // Draw a fallback colored square
+                ctx.fillStyle = '#666';
+                ctx.fillRect(x + 8, y + 8, ICON_SIZE - 16, ICON_SIZE - 16);
+                URL.revokeObjectURL(url);
+                resolve();
+            };
+            img.src = url;
+        }));
+    }
+
+    // The atlas will be populated async but we return immediately.
+    // deck.gl will pick up the canvas content on next render cycle.
+    Promise.all(promises).then(() => {
+        // Canvas is now fully painted — deck.gl will use it on next setProps
+    });
+
+    return { canvas, mapping };
+}
+
+// ── Terrain bitmap builder ──────────────────────────────────────────────────
+
+/** Pre-render all grid cells onto an equirectangular Canvas image.
+ *  Each cell becomes a filled circle of terrain color.
+ *  Returns a canvas suitable for BitmapLayer `image`. */
+function buildTerrainBitmap(
+    cells: GridCell[],
+    cellRadiusKm: number,
+    colorPalette: Record<string, [number, number, number]>
+): HTMLCanvasElement {
+    // Canvas resolution: 1px per ~0.5 degrees gives a 720x340 canvas
+    // For better quality, use 2px per degree → 720x340
+    const PIXELS_PER_DEG = 2;
+    const W = 360 * PIXELS_PER_DEG; // 720
+    const H = 170 * PIXELS_PER_DEG; // 340 (for lat -85 to 85)
+    const LAT_MIN = -85;
+    const LAT_MAX = 85;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d')!;
+
+    // Fill with deep ocean base color
+    const oceanColor = colorPalette['OceanDeep'] || colorPalette['Ocean'] || [6, 12, 32];
+    ctx.fillStyle = `rgb(${oceanColor[0]},${oceanColor[1]},${oceanColor[2]})`;
+    ctx.fillRect(0, 0, W, H);
+
+    // Convert cell radius from km to approximate pixel radius
+    // At equator: 1 degree ≈ 111km, so cellRadiusKm / 111 = degrees, * PIXELS_PER_DEG = pixels
+    const baseDegRadius = cellRadiusKm / 111;
+    const basePixelRadius = baseDegRadius * PIXELS_PER_DEG * 1.3; // 1.3 = overlap factor for gapless coverage
+
+    for (const cell of cells) {
+        if (Math.abs(cell.lat) > 85) continue;
+
+        const color = colorPalette[cell.terrain] || oceanColor;
+
+        // Convert lon/lat to pixel coordinates
+        const px = ((cell.lon + 180) / 360) * W;
+        const py = ((LAT_MAX - cell.lat) / (LAT_MAX - LAT_MIN)) * H;
+
+        // At higher latitudes, longitude degrees are "compressed" — expand the radius
+        const latScale = 1 / Math.max(Math.cos(cell.lat * Math.PI / 180), 0.15);
+        const rX = basePixelRadius * latScale;
+        const rY = basePixelRadius;
+
+        ctx.fillStyle = `rgb(${color[0]},${color[1]},${color[2]})`;
+        ctx.beginPath();
+        ctx.ellipse(px, py, rX, rY, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    return canvas;
+}
+
+// ── MapRenderer class ───────────────────────────────────────────────────────
 
 export class MapRenderer {
     private deck: Deck | null = null;
@@ -94,11 +215,31 @@ export class MapRenderer {
     private currentZoom: number = 2;
     private edgeTargetIds: Set<number> = new Set();
 
+    private cellRadiusM: number = 120000;
+    private cellSpacingKm: number = 120;
+
+    // Pre-built assets
+    private terrainCanvas: HTMLCanvasElement | null = null;
+    private terrainOverlayCanvas: HTMLCanvasElement | null = null;
+    private iconAtlas: HTMLCanvasElement | null = null;
+    private iconMapping: Record<string, { x: number; y: number; width: number; height: number; mask: boolean }> = {};
+    private iconAtlasReady = false;
+
     constructor(container: HTMLElement, quality: 'low' | 'medium' | 'high' = 'medium') {
         this.quality = quality;
         this.container = container;
 
-        // Initialize Deck.gl
+        // Build icon atlas immediately
+        const { canvas: atlasCanvas, mapping } = buildIconAtlas();
+        this.iconAtlas = atlasCanvas;
+        this.iconMapping = mapping;
+
+        // Mark atlas ready after a tick (images load async)
+        setTimeout(() => {
+            this.iconAtlasReady = true;
+            this.renderLayers();
+        }, 500);
+
         this.deck = new Deck({
             parent: container as HTMLDivElement,
             initialViewState: {
@@ -113,9 +254,8 @@ export class MapRenderer {
             },
             controller: true,
             layers: [],
-            getTooltip: () => null, // We handle this manually in Svelte using UI State
+            getTooltip: () => null,
             onClick: (info) => {
-                // If clicked on nothing (ocean/background), deselect
                 if (!info.object) {
                     window.dispatchEvent(new CustomEvent('entity-selected', { detail: { id: null, type: null } }));
                 }
@@ -133,6 +273,21 @@ export class MapRenderer {
         this.cachedCities = bridge.getCities();
         this.cachedRegions = bridge.getRegions();
         this.cachedCells = cells;
+
+        const worldInfo = bridge.getWorldInfo();
+        if (worldInfo.cell_spacing_km && worldInfo.cell_spacing_km > 0) {
+            this.cellSpacingKm = worldInfo.cell_spacing_km;
+            this.cellRadiusM = worldInfo.cell_spacing_km * 1000 * 0.85;
+        } else if (cells.length > 0) {
+            const surfaceArea = 4 * Math.PI * 6371 * 6371;
+            const areaPerCell = surfaceArea / cells.length;
+            this.cellSpacingKm = Math.sqrt(areaPerCell);
+            this.cellRadiusM = this.cellSpacingKm * 1000 * 0.85;
+        }
+
+        // Pre-render terrain bitmap (smooth, no dots)
+        this.terrainCanvas = buildTerrainBitmap(cells, this.cellSpacingKm, SATELLITE_COLORS);
+        this.terrainOverlayCanvas = buildTerrainBitmap(cells, this.cellSpacingKm, TERRAIN_OVERLAY_COLORS);
 
         this.pathfinder.init(cells);
         this.renderLayers();
@@ -157,47 +312,49 @@ export class MapRenderer {
         this.deck.setProps({ layers });
     }
 
+    // ── Terrain: smooth bitmap ──────────────────────────────────────────────
+
     private createLandLayer() {
-        // We can use a ScatterplotLayer to render the hex cells as a base map
-        // For a more performant approach with many cells, we could use GridCellLayer or SolidPolygonLayer
-        return new ScatterplotLayer({
+        if (!this.terrainCanvas) return null;
+
+        return new BitmapLayer({
             id: 'land-layer',
-            data: this.cachedCells.filter(c => c.terrain !== 'Ocean' && c.terrain !== 'OceanDeep' && Math.abs(c.lat) <= 85),
-            getPosition: (d: GridCell) => [d.lon, d.lat],
-            getFillColor: [20, 30, 45, 200], // Dark base color
-            getRadius: 80000, // Roughly cell size in meters
+            image: this.terrainCanvas as any,
+            bounds: [-180, -85, 180, 85] as [number, number, number, number],
             pickable: true,
             onClick: (info: any) => {
-                // Deselect active entity
                 window.dispatchEvent(new CustomEvent('entity-selected', { detail: { id: null, type: null } }));
-
                 if (info.coordinate) {
-                    // Dispatch map click with exact coordinates (free placement)
                     const [lon, lat] = info.coordinate;
-                    const event = new CustomEvent('map-clicked', { detail: { lon, lat } });
-                    window.dispatchEvent(event);
+                    window.dispatchEvent(new CustomEvent('map-clicked', { detail: { lon, lat } }));
                 }
             }
         });
     }
 
+    // ── Borders: very subtle ────────────────────────────────────────────────
+
     private createBordersLayer() {
         if (bridge.isRealEarth()) return null;
 
-        const borderData = this.cachedRegions.filter(r => r.boundary_polygon?.length > 2).map(r => ({
-            polygon: r.boundary_polygon.map(p => [p[0], p[1]]),
-            name: r.name
-        }));
+        const borderData = this.cachedRegions
+            .filter(r => r.boundary_polygon?.length > 2)
+            .map(r => ({
+                polygon: r.boundary_polygon.map(p => [p[0], p[1]]),
+                name: r.name
+            }));
 
         return new PathLayer({
             id: 'region-borders',
             data: borderData,
             getPath: (d: any) => d.polygon,
-            getColor: [100, 110, 140, 150],
-            getWidth: 2,
+            getColor: [80, 95, 130, 80],
+            getWidth: 1,
             widthUnits: 'pixels'
         });
     }
+
+    // ── Infrastructure ──────────────────────────────────────────────────────
 
     private createInfrastructureLayers() {
         const corps = bridge.getAllCorporations();
@@ -273,22 +430,22 @@ export class MapRenderer {
                     ...node,
                     position: [node.x, node.y],
                     color: [...color, opacity],
-                    icon: node.node_type.toLowerCase().replace(/_/g, '-'),
+                    icon: toIconKey(node.node_type),
                     tierSize: NODE_TIER_SIZE[node.network_level] || 32,
                     tierLabel: NETWORK_TIER_LABEL[node.network_level] || ''
                 });
             }
         }
 
-        return [
-            new ArcLayer({
+        const layers: any[] = [
+            new LineLayer({
                 id: 'infra-edges',
                 data: edgesData,
                 getSourcePosition: (d: any) => d.sourcePosition,
                 getTargetPosition: (d: any) => d.targetPosition,
-                getSourceColor: (d: any) => d.color,
-                getTargetColor: (d: any) => d.color,
+                getColor: (d: any) => d.color,
                 getWidth: (d: any) => d.width,
+                widthUnits: 'pixels',
                 pickable: true,
                 autoHighlight: true,
                 onClick: ({ object }: any) => {
@@ -296,14 +453,18 @@ export class MapRenderer {
                         window.dispatchEvent(new CustomEvent('entity-selected', { detail: { id: object.id, type: 'edge' } }));
                     }
                 }
-            }),
-            new IconLayer({
+            })
+        ];
+
+        // Only add icon layer when atlas is ready
+        if (this.iconAtlasReady && this.iconAtlas) {
+            layers.push(new IconLayer({
                 id: 'infra-nodes',
                 data: nodesData,
                 getPosition: (d: any) => d.position,
                 getIcon: (d: any) => d.icon,
-                iconAtlas: null, // We use individual data URIs
-                iconMapping: ICON_MAPPING,
+                iconAtlas: this.iconAtlas as any,
+                iconMapping: this.iconMapping,
                 getSize: (d: any) => d.tierSize,
                 sizeMinPixels: 12,
                 sizeMaxPixels: 72,
@@ -312,13 +473,32 @@ export class MapRenderer {
                 autoHighlight: true,
                 onClick: ({ object }: any) => {
                     if (object) {
-                        const event = new CustomEvent('entity-selected', { detail: { id: object.id, type: 'node' } });
-                        window.dispatchEvent(event);
+                        window.dispatchEvent(new CustomEvent('entity-selected', { detail: { id: object.id, type: 'node' } }));
                     }
                 }
-            }),
-            // Tier badge labels (visible at zoom > 5)
-            ...(this.currentZoom > 5 ? [new TextLayer({
+            }));
+        } else {
+            // Fallback: colored dots while atlas loads
+            layers.push(new ScatterplotLayer({
+                id: 'infra-nodes-fallback',
+                data: nodesData,
+                getPosition: (d: any) => d.position,
+                getFillColor: (d: any) => d.color,
+                getRadius: (d: any) => d.tierSize * 500,
+                radiusMinPixels: 6,
+                radiusMaxPixels: 24,
+                pickable: true,
+                onClick: ({ object }: any) => {
+                    if (object) {
+                        window.dispatchEvent(new CustomEvent('entity-selected', { detail: { id: object.id, type: 'node' } }));
+                    }
+                }
+            }));
+        }
+
+        // Tier badge labels (visible at zoom > 5)
+        if (this.currentZoom > 5) {
+            layers.push(new TextLayer({
                 id: 'node-tier-labels',
                 data: nodesData,
                 getPosition: (d: any) => d.position,
@@ -329,9 +509,13 @@ export class MapRenderer {
                 fontFamily: 'Inter, sans-serif',
                 fontWeight: 'bold',
                 parameters: { depthTest: false }
-            })] : [])
-        ];
+            }));
+        }
+
+        return layers;
     }
+
+    // ── Cities ──────────────────────────────────────────────────────────────
 
     private createCitiesLayer() {
         const gtgCities = this.cachedCities.filter(c => Math.abs(c.y) <= 85).map(c => {
@@ -343,26 +527,32 @@ export class MapRenderer {
             return { ...c, tier };
         });
 
-        return [
+        const layers: any[] = [
+            // City glow — warm light halo
             new ScatterplotLayer({
                 id: 'cities-glow',
                 data: gtgCities,
                 getPosition: (d: any) => [d.x, d.y],
-                getFillColor: [255, 230, 150, 100], // Glow color
-                getRadius: (d: any) => Math.log10(Math.max(d.population, 10)) * 15000,
+                getFillColor: [255, 210, 120, 140],
+                getRadius: (d: any) => Math.log10(Math.max(d.population, 10)) * 22000,
+                radiusMinPixels: 3,
                 pickable: false,
                 parameters: {
                     blend: true,
-                    blendFunc: [WebGLRenderingContext.SRC_ALPHA, WebGLRenderingContext.ONE], // Additive blending
+                    blendFunc: [WebGLRenderingContext.SRC_ALPHA, WebGLRenderingContext.ONE],
                 }
-            }),
-            new IconLayer({
+            })
+        ];
+
+        // City icons with atlas
+        if (this.iconAtlasReady && this.iconAtlas) {
+            layers.push(new IconLayer({
                 id: 'cities-icons',
                 data: gtgCities,
                 getPosition: (d: any) => [d.x, d.y],
                 getIcon: (d: any) => d.tier,
-                iconAtlas: null,
-                iconMapping: ICON_MAPPING,
+                iconAtlas: this.iconAtlas as any,
+                iconMapping: this.iconMapping,
                 getSize: (d: any) => Math.log10(Math.max(d.population, 10)) * 8,
                 sizeMinPixels: 16,
                 sizeMaxPixels: 48,
@@ -374,19 +564,51 @@ export class MapRenderer {
                         window.dispatchEvent(new CustomEvent('entity-selected', { detail: { id: object.id, type: 'city' } }));
                     }
                 }
-            })
-        ];
+            }));
+        } else {
+            // Fallback dots
+            layers.push(new ScatterplotLayer({
+                id: 'cities-dots-fallback',
+                data: gtgCities,
+                getPosition: (d: any) => [d.x, d.y],
+                getFillColor: [255, 220, 150, 255],
+                getRadius: (d: any) => Math.log10(Math.max(d.population, 10)) * 8000,
+                radiusMinPixels: 4,
+                radiusMaxPixels: 16,
+                pickable: true,
+                onClick: ({ object }: any) => {
+                    if (object) {
+                        window.dispatchEvent(new CustomEvent('entity-selected', { detail: { id: object.id, type: 'city' } }));
+                    }
+                }
+            }));
+        }
+
+        return layers;
     }
 
+    // ── Overlays ────────────────────────────────────────────────────────────
+
     private createOverlayLayers() {
-        const layers = [];
+        const layers: any[] = [];
+        const overlayRadius = this.cellRadiusM * 1.05;
+
+        if (this.activeOverlay === 'terrain') {
+            if (this.terrainOverlayCanvas) {
+                layers.push(new BitmapLayer({
+                    id: 'overlay-terrain',
+                    image: this.terrainOverlayCanvas as any,
+                    bounds: [-180, -85, 180, 85] as [number, number, number, number],
+                    pickable: false
+                }));
+            }
+            return layers;
+        }
 
         if (this.activeOverlay === 'demand') {
-            // Cell-based demand rendering using city cell positions
             const demandCells: { position: [number, number]; color: [number, number, number, number] }[] = [];
             for (const city of this.cachedCities) {
                 const intensity = Math.min(1.0, city.telecom_demand / 500);
-                // Gradient: blue → purple → red
                 const r = Math.floor(59 + intensity * 196);
                 const g = Math.floor(130 * (1 - intensity));
                 const b = Math.floor(246 * (1 - intensity));
@@ -402,14 +624,14 @@ export class MapRenderer {
                 data: demandCells,
                 getPosition: (d: any) => d.position,
                 getFillColor: (d: any) => d.color,
-                getRadius: 80000 * 1.05,
+                getRadius: overlayRadius,
+                radiusMinPixels: 6,
                 pickable: false,
                 parameters: { depthTest: false }
             }));
         }
 
         if (this.activeOverlay === 'disaster') {
-            // Cell-based disaster risk rendering using city cells + region risk
             const regionRiskMap = new Map<number, number>();
             for (const r of this.cachedRegions) {
                 regionRiskMap.set(r.id, r.disaster_risk);
@@ -418,7 +640,6 @@ export class MapRenderer {
             for (const city of this.cachedCities) {
                 const risk = regionRiskMap.get(city.region_id) ?? 0;
                 const intensity = Math.min(1.0, risk * 5);
-                // Gradient: green → yellow → red
                 const r = Math.floor(intensity * 255);
                 const g = Math.floor((1 - intensity) * 200);
                 for (const cp of city.cell_positions) {
@@ -433,7 +654,8 @@ export class MapRenderer {
                 data: riskCells,
                 getPosition: (d: any) => d.position,
                 getFillColor: (d: any) => d.color,
-                getRadius: 80000 * 1.05,
+                getRadius: overlayRadius,
+                radiusMinPixels: 6,
                 pickable: false,
                 parameters: { depthTest: false }
             }));
@@ -448,46 +670,19 @@ export class MapRenderer {
                     getPosition: (d: CellCoverage) => [d.lon, d.lat],
                     getFillColor: (d: CellCoverage) => {
                         const intensity = Math.min(1.0, d.signal_strength / 100);
-                        const color: [number, number, number, number] = [Math.floor((1 - intensity) * 255), Math.floor(intensity * 200), 50, 150];
-                        return color;
+                        return [Math.floor((1 - intensity) * 255), Math.floor(intensity * 200), 50, 150] as [number, number, number, number];
                     },
-                    getRadius: 80000 * 1.05,
+                    getRadius: overlayRadius,
+                    radiusMinPixels: 6,
                     pickable: false,
                     parameters: { depthTest: false }
                 }));
             }
         }
 
-        if (this.activeOverlay === 'terrain') {
-            const TERRAIN_COLORS: Record<string, [number, number, number]> = {
-                Urban: [80, 80, 90],
-                Suburban: [65, 70, 65],
-                Rural: [40, 60, 40],
-                Mountainous: [60, 60, 65],
-                Desert: [70, 65, 45],
-                Coastal: [45, 65, 70],
-                OceanShallow: [15, 30, 55],
-                OceanDeep: [5, 10, 25],
-                Tundra: [60, 70, 75],
-                Frozen: [75, 80, 85],
-            };
-
-            layers.push(new ScatterplotLayer({
-                id: 'overlay-terrain',
-                data: this.cachedCells,
-                getPosition: (d: GridCell) => [d.lon, d.lat],
-                getFillColor: (d: GridCell) => {
-                    const color = TERRAIN_COLORS[d.terrain] || [50, 50, 50];
-                    return [...color, 255] as [number, number, number, number];
-                },
-                getRadius: 85000,
-                pickable: false
-            }));
-        }
-
         if (this.activeOverlay === 'ownership') {
             if (bridge.isInitialized()) {
-                const coverageData = bridge.getCellCoverage(); // Use dominant owner from coverage
+                const coverageData = bridge.getCellCoverage();
                 layers.push(new ScatterplotLayer({
                     id: 'overlay-ownership',
                     data: coverageData.filter(d => d.dominant_owner !== null),
@@ -498,7 +693,8 @@ export class MapRenderer {
                         const baseColor = CORP_COLORS[idx % CORP_COLORS.length];
                         return [...baseColor, 180] as [number, number, number, number];
                     },
-                    getRadius: 85000,
+                    getRadius: overlayRadius,
+                    radiusMinPixels: 6,
                     pickable: false
                 }));
             }
@@ -506,6 +702,8 @@ export class MapRenderer {
 
         return layers;
     }
+
+    // ── Public API ──────────────────────────────────────────────────────────
 
     updateInfrastructure() {
         if (!bridge.isInitialized()) return;
@@ -536,16 +734,21 @@ export class MapRenderer {
         this.renderLayers();
     }
 
+    setOverlay(overlayType: string) {
+        this.activeOverlay = overlayType;
+        this.renderLayers();
+    }
+
+    // ── Selection highlight ─────────────────────────────────────────────────
+
     private createSelectionLayer() {
         if (this.selectedId === null || this.selectedId === undefined) return null;
 
         const infra = bridge.getAllInfrastructure();
-        const layers: any[] = [];
 
-        // Search nodes
         const node = infra.nodes.find(n => n.id === this.selectedId);
         if (node) {
-            layers.push(new ScatterplotLayer({
+            return new ScatterplotLayer({
                 id: 'selection-highlight',
                 data: [{ position: [node.x, node.y] }],
                 getPosition: (d: any) => d.position,
@@ -557,31 +760,27 @@ export class MapRenderer {
                 filled: false,
                 getRadius: 25000,
                 parameters: { depthTest: false }
-            }));
-            return layers;
+            });
         }
 
-        // Search edges — highlight with a brighter arc
         const edge = infra.edges.find(e => e.id === this.selectedId);
         if (edge) {
-            layers.push(new ArcLayer({
+            return new LineLayer({
                 id: 'selection-highlight-edge',
                 data: [edge],
                 getSourcePosition: (d: any) => [d.src_x, d.src_y],
                 getTargetPosition: (d: any) => [d.dst_x, d.dst_y],
-                getSourceColor: [255, 255, 100, 220],
-                getTargetColor: [255, 255, 100, 220],
+                getColor: [255, 255, 100, 220],
                 getWidth: 6,
+                widthUnits: 'pixels',
                 pickable: false,
                 parameters: { depthTest: false }
-            }));
-            return layers;
+            });
         }
 
-        // Search cities
         const city = this.cachedCities.find(c => c.id === this.selectedId);
         if (city) {
-            layers.push(new ScatterplotLayer({
+            return new ScatterplotLayer({
                 id: 'selection-highlight',
                 data: [{ position: [city.x, city.y] }],
                 getPosition: (d: any) => d.position,
@@ -593,12 +792,13 @@ export class MapRenderer {
                 filled: false,
                 getRadius: Math.log10(Math.max(city.population, 10)) * 25000,
                 parameters: { depthTest: false }
-            }));
-            return layers;
+            });
         }
 
         return null;
     }
+
+    // ── Edge build highlights ───────────────────────────────────────────────
 
     private createEdgeBuildHighlights() {
         if (this.currentEdgeSourceId === null) return null;
@@ -606,7 +806,6 @@ export class MapRenderer {
         const infra = bridge.getAllInfrastructure();
         const layers: any[] = [];
 
-        // Source node highlight: bright pulsing ring
         const sourceNode = infra.nodes.find(n => n.id === this.currentEdgeSourceId);
         if (sourceNode) {
             layers.push(new ScatterplotLayer({
@@ -624,7 +823,6 @@ export class MapRenderer {
             }));
         }
 
-        // Valid target highlights: green rings around compatible nodes
         if (this.edgeTargetIds.size > 0) {
             const validTargets = infra.nodes
                 .filter(n => this.edgeTargetIds.has(n.id))
@@ -651,10 +849,11 @@ export class MapRenderer {
         return layers;
     }
 
+    // ── Labels ──────────────────────────────────────────────────────────────
+
     private createLabelsLayer() {
         if (this.currentZoom < 0.8) return null;
 
-        // Progressive population filtering: only show major cities at low zoom
         const minPop = this.currentZoom < 1.5 ? 5000000
             : this.currentZoom < 2 ? 1000000
             : this.currentZoom < 3 ? 500000
@@ -687,13 +886,15 @@ export class MapRenderer {
             getPosition: (d: Region) => [d.center_lon, d.center_lat],
             getText: (d: Region) => d.name,
             getSize: 18,
-            getColor: [255, 255, 255, 100],
+            getColor: [255, 255, 255, 80],
             getAlignmentBaseline: 'center',
             fontFamily: 'Inter, sans-serif',
             fontWeight: 'bold',
             parameters: { depthTest: false }
         });
     }
+
+    // ── Pathfinding preview ─────────────────────────────────────────────────
 
     private createPathfindingPreviewLayer() {
         if (this.currentEdgeSourceId === null || !this.hoveredEntity || this.hoveredEntity.type !== 'node') {
@@ -709,7 +910,6 @@ export class MapRenderer {
         const srcCell = sourceNode.cell_index;
         const tgtCell = targetNode.cell_index;
 
-        // Use terrain-aware pathfinding if both nodes have cell associations
         if (srcCell !== undefined && tgtCell !== undefined) {
             const edgeType = get(selectedEdgeType);
             if (needsTerrainRouting(edgeType)) {
@@ -717,96 +917,83 @@ export class MapRenderer {
                 return new PathLayer({
                     id: 'pathfinding-preview',
                     data: [{ path }],
-                    getPath: d => d.path,
-                    getColor: [234, 179, 8, 200], // Yellow pulsing preview
+                    getPath: (d: any) => d.path,
+                    getColor: [234, 179, 8, 200],
                     getWidth: 3,
                     widthUnits: 'pixels',
                     dashJustified: true,
                     pickable: false,
                     getDashArray: [4, 2],
-                    // extensions: [new PathStyleExtension({dash: true})] // requires additional import if we want true dashes
                 });
             }
         }
 
-        // Fallback or straight line edges (Microwave, Satellite)
-        return new ArcLayer({
-            id: 'pathfinding-preview-arc',
+        return new LineLayer({
+            id: 'pathfinding-preview-line',
             data: [{ source: [sourceNode.x, sourceNode.y], target: [targetNode.x, targetNode.y] }],
-            getSourcePosition: d => d.source,
-            getTargetPosition: d => d.target,
-            getSourceColor: [234, 179, 8, 200],
-            getTargetColor: [234, 179, 8, 200],
+            getSourcePosition: (d: any) => d.source,
+            getTargetPosition: (d: any) => d.target,
+            getColor: [234, 179, 8, 200],
             getWidth: 3,
             widthUnits: 'pixels',
             pickable: false
         });
     }
 
-    setOverlay(overlayType: string) {
-        this.activeOverlay = overlayType;
-        this.renderLayers();
-    }
+    // ── Tooltip / mouse handling ────────────────────────────────────────────
 
     handleMouseMove(e: MouseEvent) {
-        if (this.deck) {
-            const pickInfo = this.deck.pickObject({ x: e.offsetX, y: e.offsetY, radius: 2 });
-            let type: string | null = null;
-            let object: any = null;
+        if (!this.deck) return;
 
-            if (pickInfo && pickInfo.object && pickInfo.layer) {
-                if (pickInfo.layer.id === 'infra-nodes') type = 'node';
-                else if (pickInfo.layer.id === 'infra-edges') type = 'edge';
-                else if (pickInfo.layer.id === 'cities-icons') type = 'city';
+        const pickInfo = this.deck.pickObject({ x: e.offsetX, y: e.offsetY, radius: 2 });
+        let type: string | null = null;
+        let object: any = null;
 
-                if (type) {
-                    object = pickInfo.object;
-                }
+        if (pickInfo && pickInfo.object && pickInfo.layer) {
+            if (pickInfo.layer.id === 'infra-nodes' || pickInfo.layer.id === 'infra-nodes-fallback') type = 'node';
+            else if (pickInfo.layer.id === 'infra-edges') type = 'edge';
+            else if (pickInfo.layer.id === 'cities-icons' || pickInfo.layer.id === 'cities-dots-fallback') type = 'city';
+
+            if (type) object = pickInfo.object;
+        }
+
+        if (type && object) {
+            if (!this.hoveredEntity || this.hoveredEntity.object.id !== object.id) {
+                this.hoveredEntity = { type, object };
+                this.renderLayers();
             }
 
-            if (type && object) {
-                if (!this.hoveredEntity || this.hoveredEntity.object.id !== object.id) {
-                    this.hoveredEntity = { type, object };
-                    this.renderLayers(); // re-render to show preview
-                }
-
-                // Show context-aware tooltip with rich info
-                let content = '';
-                if (type === 'city') {
-                    const sat = object.infrastructure_satisfaction !== undefined
-                        ? `\nSatisfaction: ${Math.round(object.infrastructure_satisfaction * 100)}%`
-                        : '';
-                    const demand = object.telecom_demand !== undefined
-                        ? `\nDemand: ${Math.round(object.telecom_demand)}`
-                        : '';
-                    content = `${object.name}\nPopulation: ${object.population.toLocaleString()}${demand}${sat}`;
-                }
-                if (type === 'node') {
-                    const health = object.health !== undefined ? `\nHealth: ${Math.round(object.health * 100)}%` : '';
-                    const throughput = object.max_throughput ? `\nThroughput: ${Math.round(object.max_throughput)}` : '';
-                    const owner = object.owner_name ? `\nOwner: ${object.owner_name}` : '';
-                    const building = object.under_construction ? ' (building...)' : '';
-                    content = `${object.node_type}${building}\nUtil: ${Math.round((object.utilization || 0) * 100)}%${health}${throughput}${owner}`;
-                }
-                if (type === 'edge') {
-                    const bw = object.bandwidth ? `\nBandwidth: ${Math.round(object.bandwidth)}` : '';
-                    const load = object.current_load !== undefined ? `\nLoad: ${Math.round(object.current_load)}` : '';
-                    const health = object.health !== undefined ? `\nHealth: ${Math.round(object.health * 100)}%` : '';
-                    content = `${object.edge_type}\nLength: ${Math.round(object.length_km || 0)}km${bw}${load}${health}`;
-                }
-
-                tooltipData.set({
-                    x: e.clientX,
-                    y: e.clientY,
-                    content
-                });
-            } else {
-                if (this.hoveredEntity) {
-                    this.hoveredEntity = null;
-                    this.renderLayers();
-                }
-                tooltipData.set(null);
+            let content = '';
+            if (type === 'city') {
+                const sat = object.infrastructure_satisfaction !== undefined
+                    ? `\nSatisfaction: ${Math.round(object.infrastructure_satisfaction * 100)}%`
+                    : '';
+                const demand = object.telecom_demand !== undefined
+                    ? `\nDemand: ${Math.round(object.telecom_demand)}`
+                    : '';
+                content = `${object.name}\nPopulation: ${object.population.toLocaleString()}${demand}${sat}`;
             }
+            if (type === 'node') {
+                const health = object.health !== undefined ? `\nHealth: ${Math.round(object.health * 100)}%` : '';
+                const throughput = object.max_throughput ? `\nThroughput: ${Math.round(object.max_throughput)}` : '';
+                const owner = object.owner_name ? `\nOwner: ${object.owner_name}` : '';
+                const building = object.under_construction ? ' (building...)' : '';
+                content = `${object.node_type}${building}\nUtil: ${Math.round((object.utilization || 0) * 100)}%${health}${throughput}${owner}`;
+            }
+            if (type === 'edge') {
+                const bw = object.bandwidth ? `\nBandwidth: ${Math.round(object.bandwidth)}` : '';
+                const load = object.current_load !== undefined ? `\nLoad: ${Math.round(object.current_load)}` : '';
+                const health = object.health !== undefined ? `\nHealth: ${Math.round(object.health * 100)}%` : '';
+                content = `${object.edge_type}\nLength: ${Math.round(object.length_km || 0)}km${bw}${load}${health}`;
+            }
+
+            tooltipData.set({ x: e.clientX, y: e.clientY, content });
+        } else {
+            if (this.hoveredEntity) {
+                this.hoveredEntity = null;
+                this.renderLayers();
+            }
+            tooltipData.set(null);
         }
     }
 
