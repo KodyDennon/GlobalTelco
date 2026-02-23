@@ -3,6 +3,7 @@
 	import { cities, formatMoney, formatPopulation } from '$lib/stores/gameState';
 	import * as bridge from '$lib/wasm/bridge';
 	import type { InfraNode } from '$lib/wasm/types';
+	import { tooltip } from '$lib/ui/tooltip';
 
 	let entityData: any = $state(null);
 	let isPlayerOwned = $state(false);
@@ -97,7 +98,7 @@
 			{#if !isPlayerOwned && entityData.entityType === 'node' && entityData.owner_name}
 				<span class="owner-tag">{entityData.owner_name}</span>
 			{/if}
-			<button class="close-btn" onclick={close}>x</button>
+			<button class="close-btn" onclick={close} aria-label="Close info panel" use:tooltip={'Close this panel'}>x</button>
 		</div>
 
 		<div class="panel-body">
@@ -193,12 +194,12 @@
 				{#if isPlayerOwned && !entityData.under_construction}
 					<div class="action-buttons">
 						{#if entityData.health < 0.95}
-							<button class="action-btn repair" onclick={repairNode} title="Repair to full health">Repair</button>
-							<button class="action-btn emergency" onclick={emergencyRepair} title="Instant repair (3x cost)">Emergency</button>
+							<button class="action-btn repair" onclick={repairNode} use:tooltip={() => `Repair to full health\nCurrent: ${(entityData.health * 100).toFixed(0)}%`}>Repair</button>
+							<button class="action-btn emergency" onclick={emergencyRepair} use:tooltip={'Instant repair at 3x normal cost\nCompletes immediately instead of over time'}>Emergency</button>
 						{/if}
-						<button class="action-btn upgrade" onclick={upgradeNode} title="Upgrade throughput +50% (cost: {formatMoney(Math.floor((entityData.construction_cost ?? 0) / 2))})">Upgrade</button>
-						<button class="action-btn insurance" onclick={toggleInsurance} title="Purchase disaster insurance">Insure</button>
-						<button class="action-btn decommission" onclick={decommissionNode} title="Decommission (recover 20% cost)">Decom</button>
+						<button class="action-btn upgrade" onclick={upgradeNode} use:tooltip={() => `Upgrade throughput by +50%\nCost: ${formatMoney(Math.floor((entityData.construction_cost ?? 0) / 2))}\nCurrent throughput: ${entityData.max_throughput.toFixed(0)}`}>Upgrade</button>
+						<button class="action-btn insurance" onclick={toggleInsurance} use:tooltip={'Purchase disaster insurance\nCovers repair costs if this node is damaged by a disaster'}>Insure</button>
+						<button class="action-btn decommission" onclick={decommissionNode} use:tooltip={() => `Decommission this ${entityData.node_type}\nRecover 20% of build cost (${formatMoney(Math.floor((entityData.construction_cost ?? 0) * 0.2))})`}>Decom</button>
 					</div>
 				{/if}
 			{/if}

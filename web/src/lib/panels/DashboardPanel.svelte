@@ -1,17 +1,20 @@
 <script lang="ts">
-	import { playerCorp, formatMoney, allCorporations } from '$lib/stores/gameState';
+	import { playerCorp, formatMoney, allCorporations, worldInfo } from '$lib/stores/gameState';
 	import { showConfirm } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
 	import type { DebtInfo } from '$lib/wasm/types';
 	import FinanceChart from '$lib/charts/FinanceChart.svelte';
 	import MarketShareChart from '$lib/charts/MarketShareChart.svelte';
 	import { tr } from '$lib/i18n/index';
+	import { tooltip } from '$lib/ui/tooltip';
 
 	let debts: DebtInfo[] = $state([]);
 	let showLoanDialog = $state(false);
 	let loanAmount = $state(1_000_000);
 
+	// Refresh debts when corp changes or each tick (so new loans/repayments show immediately)
 	$effect(() => {
+		const _tick = $worldInfo.tick;
 		const corp = $playerCorp;
 		if (corp) {
 			debts = bridge.getDebtInstruments(corp.id);
@@ -102,7 +105,7 @@
 	<div class="section">
 		<div class="section-header">
 			<h3>{$tr('panels.loans', { count: debts.length })}</h3>
-			<button class="action-btn" onclick={() => (showLoanDialog = !showLoanDialog)}>+ Take Loan</button>
+			<button class="action-btn" onclick={() => (showLoanDialog = !showLoanDialog)} use:tooltip={() => `Take a loan to fund expansion\nYour credit rating: ${$playerCorp?.credit_rating ?? '---'}\nBetter ratings = lower interest`}>+ Take Loan</button>
 		</div>
 
 		{#if showLoanDialog}
@@ -112,7 +115,7 @@
 					<input type="range" min={100000} max={50000000} step={100000} bind:value={loanAmount} />
 					<span class="mono">{formatMoney(loanAmount)}</span>
 				</label>
-				<button class="confirm-btn" onclick={takeLoan}>{$tr('panels.confirm_loan')}</button>
+				<button class="confirm-btn" onclick={takeLoan} use:tooltip={() => `Confirm loan of ${formatMoney(loanAmount)}\nInterest rate depends on credit rating (${$playerCorp?.credit_rating ?? '---'})`}>{$tr('panels.confirm_loan')}</button>
 			</div>
 		{/if}
 
@@ -122,7 +125,7 @@
 					<span class="mono">{formatMoney(debt.principal)}</span>
 					<span class="muted">{(debt.interest_rate * 100).toFixed(1)}% rate | {debt.remaining_ticks} ticks left</span>
 				</div>
-				<button class="small-btn" onclick={() => repayLoan(debt.id)}>{$tr('panels.repay')}</button>
+				<button class="small-btn" onclick={() => repayLoan(debt.id)} use:tooltip={() => `Repay full principal: ${formatMoney(debt.principal)}\n${debt.remaining_ticks} ticks remaining at ${(debt.interest_rate * 100).toFixed(1)}% rate`}>{$tr('panels.repay')}</button>
 			</div>
 		{/each}
 	</div>

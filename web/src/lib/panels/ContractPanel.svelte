@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { playerCorp, formatMoney, allCorporations } from '$lib/stores/gameState';
-
 	import * as bridge from '$lib/wasm/bridge';
 	import type { ContractInfo } from '$lib/wasm/types';
 	import { tr } from '$lib/i18n/index';
+	import { tooltip } from '$lib/ui/tooltip';
 
 	let contracts: ContractInfo[] = $state([]);
 	let showProposeForm = $state(false);
@@ -67,7 +67,7 @@
 	<div class="section">
 		<div class="section-hdr">
 			<h3>Propose Contract</h3>
-			<button class="action-btn" onclick={() => (showProposeForm = !showProposeForm)}>
+			<button class="action-btn" onclick={() => (showProposeForm = !showProposeForm)} use:tooltip={'Propose a bandwidth contract with another corporation\nContracts provide recurring revenue'}>
 				{showProposeForm ? 'Cancel' : '+ Propose'}
 			</button>
 		</div>
@@ -80,7 +80,7 @@
 					{/each}
 				</select>
 				<input type="text" bind:value={proposeTerms} placeholder="bandwidth:1000,price:5000,duration:100" />
-				<button class="confirm-btn" onclick={proposeContract} disabled={!proposeTarget}>Send Proposal</button>
+				<button class="confirm-btn" onclick={proposeContract} disabled={!proposeTarget} use:tooltip={'Send contract proposal\nThe target corporation will accept or reject based on their strategy'}>Send Proposal</button>
 			</div>
 		{/if}
 	</div>
@@ -103,8 +103,8 @@
 						</div>
 					</div>
 					<div class="contract-actions">
-						<button class="accept-btn" onclick={() => acceptContract(contract.id)}>{$tr('panels.accept')}</button>
-						<button class="reject-btn" onclick={() => rejectContract(contract.id)}>{$tr('panels.reject')}</button>
+						<button class="accept-btn" onclick={() => acceptContract(contract.id)} use:tooltip={() => `Accept contract from ${contract.from_name}\n${formatMoney(contract.price_per_tick)}/tick for ${contract.capacity.toFixed(0)} bandwidth`}>{$tr('panels.accept')}</button>
+						<button class="reject-btn" onclick={() => rejectContract(contract.id)} use:tooltip={'Reject this proposal — no penalty'}>{$tr('panels.reject')}</button>
 					</div>
 				</div>
 			{/each}

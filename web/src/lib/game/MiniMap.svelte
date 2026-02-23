@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { viewport, zoomLevel } from '$lib/stores/uiState';
 	import { regions } from '$lib/stores/gameState';
+	import { tooltip } from '$lib/ui/tooltip';
 
 	const CANVAS_W = 200;
 	const CANVAS_H = 150;
@@ -121,7 +122,7 @@
 	});
 </script>
 
-<div class="minimap-container" role="navigation" aria-label="Mini map">
+<div class="minimap-container" role="navigation" aria-label="Mini map" use:tooltip={'Click to navigate the map'}>
 	<canvas
 		bind:this={canvas}
 		width={CANVAS_W}

@@ -5,7 +5,8 @@ import * as bridge from '$lib/wasm/bridge';
 import type { GridCell, City, Region, CorpSummary, CellCoverage, TrafficFlows } from '$lib/wasm/types';
 
 import { GridPathfinder, needsTerrainRouting } from './GridPathfinder';
-import { tooltipData } from '$lib/stores/uiState';
+import { tooltipData, selectedEdgeType } from '$lib/stores/uiState';
+import { get } from 'svelte/store';
 import { icons } from '$lib/assets/icons';
 
 // Premium Dark Mode / Neon colors
@@ -91,6 +92,7 @@ export class MapRenderer {
     private selectedId: number | null = null;
     private currentEdgeSourceId: number | null = null;
     private currentZoom: number = 2;
+    private edgeTargetIds: Set<number> = new Set();
 
     constructor(container: HTMLElement, quality: 'low' | 'medium' | 'high' = 'medium') {
         this.quality = quality;
@@ -148,6 +150,7 @@ export class MapRenderer {
             this.createLabelsLayer(),
             this.createRegionLabelsLayer(),
             this.createSelectionLayer(),
+            this.createEdgeBuildHighlights(),
             this.createPathfindingPreviewLayer()
         ].filter(Boolean).flat() as any[];
 
@@ -517,6 +520,14 @@ export class MapRenderer {
 
     highlightEdgeSource(nodeId: number | null) {
         this.currentEdgeSourceId = nodeId;
+        if (nodeId === null) {
+            this.edgeTargetIds.clear();
+        }
+        this.renderLayers();
+    }
+
+    setEdgeTargets(targets: Array<{ target_id: number }>) {
+        this.edgeTargetIds = new Set(targets.map(t => t.target_id));
         this.renderLayers();
     }
 
@@ -589,6 +600,57 @@ export class MapRenderer {
         return null;
     }
 
+    private createEdgeBuildHighlights() {
+        if (this.currentEdgeSourceId === null) return null;
+
+        const infra = bridge.getAllInfrastructure();
+        const layers: any[] = [];
+
+        // Source node highlight: bright pulsing ring
+        const sourceNode = infra.nodes.find(n => n.id === this.currentEdgeSourceId);
+        if (sourceNode) {
+            layers.push(new ScatterplotLayer({
+                id: 'edge-source-ring',
+                data: [{ position: [sourceNode.x, sourceNode.y] }],
+                getPosition: (d: any) => d.position,
+                getFillColor: [59, 130, 246, 40],
+                getLineColor: [59, 130, 246, 255],
+                getLineWidth: 3,
+                lineWidthUnits: 'pixels',
+                stroked: true,
+                filled: true,
+                getRadius: 35000,
+                parameters: { depthTest: false }
+            }));
+        }
+
+        // Valid target highlights: green rings around compatible nodes
+        if (this.edgeTargetIds.size > 0) {
+            const validTargets = infra.nodes
+                .filter(n => this.edgeTargetIds.has(n.id))
+                .map(n => ({ position: [n.x, n.y], id: n.id }));
+
+            if (validTargets.length > 0) {
+                layers.push(new ScatterplotLayer({
+                    id: 'edge-valid-targets',
+                    data: validTargets,
+                    getPosition: (d: any) => d.position,
+                    getFillColor: [16, 185, 129, 30],
+                    getLineColor: [16, 185, 129, 200],
+                    getLineWidth: 2,
+                    lineWidthUnits: 'pixels',
+                    stroked: true,
+                    filled: true,
+                    getRadius: 25000,
+                    pickable: false,
+                    parameters: { depthTest: false }
+                }));
+            }
+        }
+
+        return layers;
+    }
+
     private createLabelsLayer() {
         if (this.currentZoom < 0.8) return null;
 
@@ -649,7 +711,7 @@ export class MapRenderer {
 
         // Use terrain-aware pathfinding if both nodes have cell associations
         if (srcCell !== undefined && tgtCell !== undefined) {
-            const edgeType = 'FiberLocal'; // hardcode for preview right now, could pull from uiState
+            const edgeType = get(selectedEdgeType);
             if (needsTerrainRouting(edgeType)) {
                 const path = this.pathfinder.findPath(srcCell, tgtCell, edgeType);
                 return new PathLayer({
@@ -708,11 +770,30 @@ export class MapRenderer {
                     this.renderLayers(); // re-render to show preview
                 }
 
-                // Show Svelte glassmorphism tooltip
+                // Show context-aware tooltip with rich info
                 let content = '';
-                if (type === 'city') content = `🏙️ ${object.name}\nPop: ${object.population.toLocaleString()}`;
-                if (type === 'node') content = `📡 ${object.node_type}\nStatus: ${object.status || 'Active'}\nUtil: ${Math.round((object.utilization || 0) * 100)}%`;
-                if (type === 'edge') content = `🔗 ${object.edge_type}\nLength: ${Math.round(object.length_km || 0)}km`;
+                if (type === 'city') {
+                    const sat = object.infrastructure_satisfaction !== undefined
+                        ? `\nSatisfaction: ${Math.round(object.infrastructure_satisfaction * 100)}%`
+                        : '';
+                    const demand = object.telecom_demand !== undefined
+                        ? `\nDemand: ${Math.round(object.telecom_demand)}`
+                        : '';
+                    content = `${object.name}\nPopulation: ${object.population.toLocaleString()}${demand}${sat}`;
+                }
+                if (type === 'node') {
+                    const health = object.health !== undefined ? `\nHealth: ${Math.round(object.health * 100)}%` : '';
+                    const throughput = object.max_throughput ? `\nThroughput: ${Math.round(object.max_throughput)}` : '';
+                    const owner = object.owner_name ? `\nOwner: ${object.owner_name}` : '';
+                    const building = object.under_construction ? ' (building...)' : '';
+                    content = `${object.node_type}${building}\nUtil: ${Math.round((object.utilization || 0) * 100)}%${health}${throughput}${owner}`;
+                }
+                if (type === 'edge') {
+                    const bw = object.bandwidth ? `\nBandwidth: ${Math.round(object.bandwidth)}` : '';
+                    const load = object.current_load !== undefined ? `\nLoad: ${Math.round(object.current_load)}` : '';
+                    const health = object.health !== undefined ? `\nHealth: ${Math.round(object.health * 100)}%` : '';
+                    content = `${object.edge_type}\nLength: ${Math.round(object.length_km || 0)}km${bw}${load}${health}`;
+                }
 
                 tooltipData.set({
                     x: e.clientX,

@@ -78,6 +78,75 @@ export const activeOverlay = writable<OverlayType>('none');
 export const tooltipData = writable<{ x: number; y: number; content: string } | null>(null);
 export const selectedEdgeType = writable<string>('FiberLocal');
 
+// Edge target data when source is selected in edge build mode
+export const edgeTargets = writable<Array<{
+	target_id: number;
+	target_type: string;
+	x: number;
+	y: number;
+	distance_km: number;
+	cost: number;
+	affordable: boolean;
+}>>([]);
+
+// Tier compatibility matrix — matches Rust EdgeType::allowed_tier_connections()
+// Keys: "T{from}-T{to}" where from <= to (sorted by tier value)
+const TIER_MAP: Record<string, number> = {
+	CellTower: 1, WirelessRelay: 1,
+	CentralOffice: 2, ExchangePoint: 2,
+	DataCenter: 3,
+	BackboneRouter: 4,
+	SatelliteGround: 5, SubmarineLanding: 5,
+};
+
+const EDGE_ALLOWED_TIERS: Record<string, [number, number][]> = {
+	Copper:         [[1,1],[1,2]],
+	FiberLocal:     [[1,1],[1,2],[2,2]],
+	Microwave:      [[1,1],[1,2],[2,2],[2,3]],
+	FiberRegional:  [[2,2],[2,3],[3,3]],
+	FiberNational:  [[3,3],[3,4],[4,4]],
+	Satellite:      [[3,5],[4,5],[5,5]],
+	Submarine:      [[5,5]],
+};
+
+/** Check if an edge type can connect two node types. */
+export function canEdgeConnect(edgeType: string, fromType: string, toType: string): boolean {
+	const tFrom = TIER_MAP[fromType];
+	const tTo = TIER_MAP[toType];
+	if (tFrom === undefined || tTo === undefined) return false;
+	const lo = Math.min(tFrom, tTo);
+	const hi = Math.max(tFrom, tTo);
+	const allowed = EDGE_ALLOWED_TIERS[edgeType];
+	if (!allowed) return false;
+	return allowed.some(([a, b]) => a === lo && b === hi);
+}
+
+/** Get all edge types that can connect two node types. */
+export function getCompatibleEdgeTypes(fromType: string, toType: string): string[] {
+	return Object.keys(EDGE_ALLOWED_TIERS).filter(et => canEdgeConnect(et, fromType, toType));
+}
+
+/** Get all edge types compatible with a source node type. */
+export function getEdgeTypesForSource(sourceType: string): string[] {
+	const sTier = TIER_MAP[sourceType];
+	if (sTier === undefined) return [];
+	const result = new Set<string>();
+	for (const [edgeType, pairs] of Object.entries(EDGE_ALLOWED_TIERS)) {
+		for (const [lo, hi] of pairs) {
+			if (lo === sTier || hi === sTier) {
+				result.add(edgeType);
+				break;
+			}
+		}
+	}
+	return [...result];
+}
+
+/** Get the tier number for a node type (1-5). */
+export function getNodeTier(nodeType: string): number {
+	return TIER_MAP[nodeType] ?? 0;
+}
+
 // Confirmation dialog state
 export const confirmDialog = writable<{
 	visible: boolean;

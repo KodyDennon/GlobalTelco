@@ -5,6 +5,7 @@
 	import type { InfraNode, InfraEdge, InfrastructureList, TrafficFlows } from '$lib/wasm/types';
 	import NetworkDiagram from '$lib/charts/NetworkDiagram.svelte';
 	import { tr } from '$lib/i18n/index';
+	import { tooltip } from '$lib/ui/tooltip';
 
 	let infra: InfrastructureList = $state({ nodes: [], edges: [] });
 	let traffic: TrafficFlows = $state({ edge_flows: [], node_flows: [], total_served: 0, total_dropped: 0, total_demand: 0, player_served: 0, player_dropped: 0, top_congested: [] });
@@ -44,15 +45,12 @@
 
 	let operationalNodes = $derived(infra.nodes.filter((n) => !n.under_construction));
 	let constructingNodes = $derived(infra.nodes.filter((n) => n.under_construction));
-	let totalRevenue = $derived(
-		operationalNodes.reduce((s, n) => s + n.max_throughput * n.utilization * 5, 0)
-	);
 	let totalMaintenance = $derived(operationalNodes.reduce((s, n) => s + n.maintenance_cost, 0));
 </script>
 
 <div class="panel" aria-label={$tr('panels.infrastructure')}>
 	<div class="section" style="padding-top: 8px;">
-		<button class="action-btn" class:active={$buildMode === 'edge'} onclick={toggleConnectMode}>
+		<button class="action-btn" class:active={$buildMode === 'edge'} onclick={toggleConnectMode} use:tooltip={$buildMode === 'edge' ? 'Cancel edge building mode and return to normal' : 'Enter edge building mode — click two nodes to connect them with a link'}>
 			{$buildMode === 'edge' ? 'Cancel Connect' : 'Connect Nodes'}
 		</button>
 	</div>
@@ -151,8 +149,8 @@
 					</div>
 				</div>
 				<div class="node-actions">
-					<button class="tiny-btn" onclick={(e) => { e.stopPropagation(); upgradeNode(node.id); }} title="Upgrade">U</button>
-					<button class="tiny-btn danger" onclick={(e) => { e.stopPropagation(); decommission(node.id); }} title="Decommission">X</button>
+					<button class="tiny-btn" onclick={(e) => { e.stopPropagation(); upgradeNode(node.id); }} use:tooltip={() => `Upgrade ${node.node_type}\n+50% throughput`}>U</button>
+					<button class="tiny-btn danger" onclick={(e) => { e.stopPropagation(); decommission(node.id); }} use:tooltip={() => `Decommission ${node.node_type}\nRecover 20% of build cost`}>X</button>
 				</div>
 			</div>
 		{/each}

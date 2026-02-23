@@ -6,6 +6,7 @@
 	import { setSpeed } from "$lib/game/GameLoop";
 	import { eventType, eventData } from "$lib/wasm/types";
 	import type { GameEvent } from "$lib/wasm/types";
+	import { tooltip } from "$lib/ui/tooltip";
 
 	let expanded = $state(false);
 
@@ -209,13 +210,13 @@
 	<div class="pause-banner" role="alert">
 		<span class="pause-icon">||</span>
 		<span class="pause-text">PAUSED: {$autoPauseReason}</span>
-		<button class="resume-btn" onclick={() => setSpeed(1)}>Resume</button>
+		<button class="resume-btn" onclick={() => setSpeed(1)} use:tooltip={'Resume game at normal speed (1x)'}>Resume</button>
 	</div>
 {/if}
 
 {#if hasNotifs}
 	<div class="feed" class:expanded role="log" aria-live="polite">
-		<button class="feed-header" onclick={() => (expanded = !expanded)}>
+		<button class="feed-header" onclick={() => (expanded = !expanded)} use:tooltip={expanded ? 'Click to collapse event feed' : 'Click to expand and see more events'}>
 			<span class="feed-title">{$tr("game.events")}</span>
 			<span class="feed-count">{$notifications.length}</span>
 			<span class="toggle">{expanded ? "v" : "^"}</span>

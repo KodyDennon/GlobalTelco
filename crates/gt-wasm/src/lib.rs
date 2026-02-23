@@ -517,6 +517,8 @@ impl WasmBridge {
     }
 
     pub fn get_buildable_edges(&self, source_id: u64) -> String {
+        use gt_common::types::EdgeType;
+
         let player_id = self.world.player_corp_id().unwrap_or(0);
         let fin = self.world.financials.get(&player_id);
         let cash = fin.map(|f| f.cash).unwrap_or(0);
@@ -529,6 +531,18 @@ impl WasmBridge {
             .cloned()
             .unwrap_or_default();
 
+        // Use the cheapest common edge type (Copper) for the base cost estimate,
+        // but also include per-type costs for accurate UI display.
+        let edge_types_costs: &[(EdgeType, i64)] = &[
+            (EdgeType::Copper, 10_000),
+            (EdgeType::FiberLocal, 20_000),
+            (EdgeType::FiberRegional, 40_000),
+            (EdgeType::FiberNational, 80_000),
+            (EdgeType::Microwave, 20_000),
+            (EdgeType::Satellite, 0),     // flat cost
+            (EdgeType::Submarine, 200_000),
+        ];
+
         let targets: Vec<serde_json::Value> = player_nodes
             .iter()
             .filter(|&&nid| nid != source_id && !self.world.constructions.contains_key(&nid))
@@ -536,18 +550,31 @@ impl WasmBridge {
                 let node = self.world.infra_nodes.get(&nid)?;
                 let pos = self.world.positions.get(&nid)?;
                 let src_pos = self.world.positions.get(&source_id)?;
-                let dx = pos.x - src_pos.x;
-                let dy = pos.y - src_pos.y;
-                let dist_km = (dx * dx + dy * dy).sqrt() * 111.0; // rough deg to km
-                let cost = (dist_km * 10_000.0) as i64;
+
+                // Haversine distance (matches cmd_build_edge)
+                let dlat = (src_pos.y - pos.y).to_radians();
+                let dlon = (src_pos.x - pos.x).to_radians();
+                let lat1 = src_pos.y.to_radians();
+                let lat2 = pos.y.to_radians();
+                let a = (dlat / 2.0).sin().powi(2)
+                    + lat1.cos() * lat2.cos() * (dlon / 2.0).sin().powi(2);
+                let c = 2.0 * a.sqrt().asin();
+                let dist_km = 6371.0 * c;
+
+                // Use cheapest applicable cost for the summary estimate
+                let min_cost = edge_types_costs.iter().map(|(et, cpk)| {
+                    if *et == EdgeType::Satellite { 5_000_000i64 }
+                    else { (*cpk as f64 * dist_km) as i64 }
+                }).min().unwrap_or(0);
+
                 Some(serde_json::json!({
                     "target_id": nid,
                     "target_type": format!("{:?}", node.node_type),
                     "x": pos.x,
                     "y": pos.y,
                     "distance_km": dist_km,
-                    "cost": cost,
-                    "affordable": cash >= cost,
+                    "cost": min_cost,
+                    "affordable": cash >= min_cost,
                 }))
             })
             .collect();

@@ -4,6 +4,7 @@
 	import { tr } from '$lib/i18n/index';
 	import * as bridge from '$lib/wasm/bridge';
 	import type { BuildOption } from '$lib/wasm/types';
+	import { tooltip } from '$lib/ui/tooltip';
 
 	// Node type → tier label
 	const NODE_TIER_LABEL: Record<string, string> = {
@@ -58,6 +59,7 @@
 					onclick={() => build(opt)}
 					disabled={!opt.affordable}
 					role="menuitem"
+					use:tooltip={() => `${opt.label} — ${NODE_TIER_LABEL[opt.node_type] ?? opt.network_level}\nCost: ${formatMoney(opt.cost)}\nBuild time: ${opt.build_ticks} ticks${!opt.affordable ? '\nInsufficient funds!' : ''}`}
 				>
 					<div class="opt-info">
 						<span class="opt-name">{opt.label}</span>

@@ -852,17 +852,30 @@ impl GameWorld {
             }
             Command::HireEmployee { corporation, .. } => {
                 if let Some(wf) = self.workforces.get_mut(&corporation) {
+                    // Per-employee cost = total salary budget / current headcount
+                    let per_employee = if wf.employee_count > 0 {
+                        wf.salary_per_tick / wf.employee_count as Money
+                    } else {
+                        wf.salary_per_tick
+                    };
                     wf.employee_count += 1;
                     if let Some(fin) = self.financials.get_mut(&corporation) {
-                        fin.cost_per_tick += wf.salary_per_tick / wf.employee_count as Money;
+                        fin.cost_per_tick += per_employee;
                     }
+                    // Scale total salary budget to match new headcount
+                    wf.salary_per_tick += per_employee;
                 }
             }
             Command::FireEmployee { entity } => {
                 // entity here refers to the corporation
                 if let Some(wf) = self.workforces.get_mut(&entity) {
                     if wf.employee_count > 1 {
+                        let per_employee = wf.salary_per_tick / wf.employee_count as Money;
                         wf.employee_count -= 1;
+                        wf.salary_per_tick -= per_employee;
+                        if let Some(fin) = self.financials.get_mut(&entity) {
+                            fin.cost_per_tick -= per_employee;
+                        }
                     }
                 }
             }
@@ -2106,6 +2119,28 @@ impl GameWorld {
             None => return,
         };
 
+        // If no specific node given, pick a random node owned by target
+        let actual_node = if node == 0 {
+            self.corp_infra_nodes
+                .get(&target)
+                .and_then(|nodes| {
+                    if nodes.is_empty() { None }
+                    else {
+                        // Use tick as a simple deterministic "random" index
+                        let idx = self.tick as usize % nodes.len();
+                        nodes.iter().nth(idx).copied()
+                    }
+                })
+                .unwrap_or(0)
+        } else {
+            node
+        };
+
+        // Must have a valid target node
+        if actual_node == 0 {
+            return;
+        }
+
         let target_security = self
             .covert_ops
             .get(&target)
@@ -2131,7 +2166,7 @@ impl GameWorld {
 
         let region = self
             .positions
-            .get(&node)
+            .get(&actual_node)
             .and_then(|p| p.region_id)
             .unwrap_or(0);
 

@@ -2,6 +2,7 @@
 	import { chatMessages } from '$lib/stores/multiplayerState';
 	import { tr } from '$lib/i18n/index';
 	import * as wsClient from '$lib/multiplayer/WebSocketClient';
+	import { tooltip } from '$lib/ui/tooltip';
 
 	let collapsed = $state(false);
 	let inputText = $state('');
@@ -30,7 +31,7 @@
 </script>
 
 <div class="chat-overlay" class:collapsed>
-	<button class="chat-header" type="button" onclick={() => (collapsed = !collapsed)}>
+	<button class="chat-header" type="button" onclick={() => (collapsed = !collapsed)} use:tooltip={() => collapsed ? 'Expand chat' : 'Collapse chat'}>
 		<span>{$tr('game.chat')}</span>
 		<span class="toggle">{collapsed ? '+' : '-'}</span>
 	</button>

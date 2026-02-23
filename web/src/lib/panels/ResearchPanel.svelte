@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { playerCorp, formatMoney } from '$lib/stores/gameState';
-
 	import * as bridge from '$lib/wasm/bridge';
 	import type { ResearchInfo } from '$lib/wasm/types';
+	import { tooltip } from '$lib/ui/tooltip';
 
 	let allTechs: ResearchInfo[] = $state([]);
 	let activeCategory = $state('all');
@@ -43,13 +43,12 @@
 		if (tech.completed) return false;
 		if (tech.researcher !== null) return false;
 		if (activeResearch) return false;
-		// Check prerequisites
+		// Check prerequisites — player must have completed or licensed each prereq
 		for (const prereq of tech.prerequisites) {
 			const prereqTech = allTechs.find((t) => t.name === prereq);
-			if (!prereqTech || !prereqTech.completed || prereqTech.researcher !== playerCorpId) {
-				// Check if licensed
-				return false;
-			}
+			if (!prereqTech || !prereqTech.completed) return false;
+			// If completed by another corp, player needs a license (backend validates access)
+			// Allow the button to show — backend will reject if no license exists
 		}
 		return true;
 	}
@@ -101,7 +100,7 @@
 					<span>{(activeResearch.progress_pct * 100).toFixed(1)}%</span>
 					<span>{formatMoney(activeResearch.total_cost - activeResearch.progress)} remaining</span>
 				</div>
-				<button class="btn cancel-research" onclick={cancelResearch}>Cancel Research</button>
+				<button class="btn cancel-research" onclick={cancelResearch} use:tooltip={'Cancel current research\nProgress will be lost — R&D budget returns to general funds'}>Cancel Research</button>
 			</div>
 		</div>
 	{/if}
@@ -164,7 +163,7 @@
 				</div>
 				<div class="tech-actions">
 					{#if researchable}
-						<button class="btn research" onclick={() => startResearch(tech.name)}>
+						<button class="btn research" onclick={() => startResearch(tech.name)} use:tooltip={() => `Start researching ${tech.name}\nCost: ${formatMoney(tech.total_cost)}\n${tech.throughput_bonus > 0 ? `+${(tech.throughput_bonus * 100).toFixed(0)}% throughput\n` : ''}${tech.cost_reduction > 0 ? `-${(tech.cost_reduction * 100).toFixed(0)}% costs\n` : ''}${tech.reliability_bonus > 0 ? `+${(tech.reliability_bonus * 100).toFixed(0)}% reliability` : ''}`}>
 							Research
 						</button>
 					{/if}

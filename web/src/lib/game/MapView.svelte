@@ -13,6 +13,9 @@
 		activeOverlay,
 		tooltipData,
 		selectedEdgeType,
+		edgeTargets,
+		canEdgeConnect,
+		getCompatibleEdgeTypes,
 	} from "$lib/stores/uiState";
 	import * as bridge from "$lib/wasm/bridge";
 
@@ -29,19 +32,63 @@
 			const source = get(buildEdgeSource);
 
 			if (source === null) {
+				// First click: set source, load valid targets
 				buildEdgeSource.set(id);
+				loadEdgeTargets(id);
 			} else {
+				// Second click: build the edge
 				const edgeType = get(selectedEdgeType);
 				bridge.processCommand({
 					BuildEdge: { edge_type: edgeType, from: source, to: id },
 				});
 				buildEdgeSource.set(null);
+				edgeTargets.set([]);
 			}
 			return;
 		}
 
 		selectedEntityId.set(id);
 		selectedEntityType.set(type);
+	}
+
+	function loadEdgeTargets(sourceId: number) {
+		const targets = bridge.getBuildableEdges(sourceId);
+		edgeTargets.set(targets);
+
+		// Find source node type from infrastructure data
+		const allInfra = bridge.getAllInfrastructure();
+		const sourceNode = allInfra.nodes.find(n => n.id === sourceId);
+		if (!sourceNode) return;
+
+		// Auto-select best edge type for the source node
+		if (targets.length > 0) {
+			const currentEdge = get(selectedEdgeType);
+			// If current edge type can't connect to ANY target, auto-switch
+			const hasValidTarget = targets.some(t =>
+				canEdgeConnect(currentEdge, sourceNode.node_type, t.target_type)
+			);
+			if (!hasValidTarget) {
+				// Find the first compatible edge type
+				const compatTypes = targets.reduce((types: Set<string>, t) => {
+					for (const et of getCompatibleEdgeTypes(sourceNode.node_type, t.target_type)) {
+						types.add(et);
+					}
+					return types;
+				}, new Set<string>());
+				if (compatTypes.size > 0) {
+					selectedEdgeType.set([...compatTypes][0]);
+				}
+			}
+		}
+
+		// Filter targets to only those compatible with selected edge type
+		updateMapTargets(sourceNode.node_type, targets);
+	}
+
+	function updateMapTargets(sourceType: string, targets: typeof $edgeTargets) {
+		const edgeType = get(selectedEdgeType);
+		const validTargets = targets.filter(t => canEdgeConnect(edgeType, sourceType, t.target_type));
+		renderer?.setEdgeTargets(validTargets);
 	}
 
 	function handleMapClicked(e: CustomEvent) {
@@ -83,6 +130,25 @@
 				// Subscribe to edge source for highlight
 				const edgeSrcSub = buildEdgeSource.subscribe((sourceId) => {
 					renderer?.highlightEdgeSource(sourceId);
+					if (sourceId === null) {
+						edgeTargets.set([]);
+						renderer?.setEdgeTargets([]);
+					}
+				});
+
+				// Subscribe to edge type changes to update target highlighting
+				const edgeTypeSub = selectedEdgeType.subscribe(() => {
+					const source = get(buildEdgeSource);
+					if (source !== null) {
+						const targets = get(edgeTargets);
+						if (targets.length > 0) {
+							const allInfra = bridge.getAllInfrastructure();
+							const sourceNode = allInfra.nodes.find(n => n.id === source);
+							if (sourceNode) {
+								updateMapTargets(sourceNode.node_type, targets);
+							}
+						}
+					}
 				});
 
 				// Subscribe to selection changes to render selection ring on map
@@ -98,6 +164,7 @@
 					clearInterval(interval);
 					overlaySub();
 					edgeSrcSub();
+					edgeTypeSub();
 					selectionSub();
 					window.removeEventListener(
 						"entity-selected",

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
+	import { tooltip } from '$lib/ui/tooltip';
 
 	interface Props {
 		title: string;
@@ -86,7 +87,7 @@
 			onpointerup={onPointerUp}
 		>
 			<span class="panel-title">{title}</span>
-			<button class="close-btn" onclick={onclose} aria-label="Close panel">&#x2715;</button>
+			<button class="close-btn" onclick={onclose} aria-label="Close panel" use:tooltip={'Close this panel'}>&#x2715;</button>
 		</div>
 
 		{#if tabs.length > 1}

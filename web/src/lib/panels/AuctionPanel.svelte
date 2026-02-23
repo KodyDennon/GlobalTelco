@@ -3,6 +3,7 @@
 	import type { AuctionInfo } from '$lib/wasm/types';
 	import { worldInfo, playerCorp, formatMoney } from '$lib/stores/gameState';
 	import { tr } from '$lib/i18n/index';
+	import { tooltip } from '$lib/ui/tooltip';
 
 	let auctions: AuctionInfo[] = $state([]);
 	let bidAmounts: Record<number, number> = $state({});
@@ -58,6 +59,7 @@
 							onclick={() => placeBid(auction.id)}
 							disabled={!bidAmounts[auction.id] || bidAmounts[auction.id] > playerCash}
 							aria-label={$tr('panels.place_bid')}
+							use:tooltip={() => `Place bid of ${formatMoney(bidAmounts[auction.id] || 0)}\nCurrent highest: ${formatMoney(auction.highest_bid)}\nEnds at tick ${auction.end_tick}`}
 						>
 							{$tr('panels.place_bid')}
 						</button>

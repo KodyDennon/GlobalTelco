@@ -3,6 +3,7 @@
 	import { showConfirm } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
 	import { tr } from '$lib/i18n/index';
+	import { tooltip } from '$lib/ui/tooltip';
 
 	function hire() {
 		const corp = $playerCorp;
@@ -51,8 +52,8 @@
 	<div class="section">
 		<h3>{$tr('panels.staffing')}</h3>
 		<div class="action-row">
-			<button class="action-btn hire" onclick={hire}>{$tr('panels.hire')}</button>
-			<button class="action-btn fire" onclick={fire} disabled={($playerCorp?.employee_count ?? 0) <= 1}>{$tr('panels.fire')}</button>
+			<button class="action-btn hire" onclick={hire} use:tooltip={() => `Hire a technician\nCurrent staff: ${$playerCorp?.employee_count ?? 0}\nMore employees = faster maintenance, research, and construction`}>{$tr('panels.hire')}</button>
+			<button class="action-btn fire" onclick={fire} disabled={($playerCorp?.employee_count ?? 0) <= 1} use:tooltip={() => `Fire an employee to reduce salary costs\nCurrent staff: ${$playerCorp?.employee_count ?? 0}${($playerCorp?.employee_count ?? 0) <= 1 ? '\nCannot fire last employee' : ''}`}>{$tr('panels.fire')}</button>
 		</div>
 		<p class="hint">{$tr('panels.staffing_hint')}</p>
 	</div>

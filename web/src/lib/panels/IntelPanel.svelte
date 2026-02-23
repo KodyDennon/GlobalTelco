@@ -3,6 +3,7 @@
 	import type { CovertOpsInfo, LobbyingInfo } from '$lib/wasm/types';
 	import { worldInfo, playerCorp, allCorporations, regions as regionStore, formatMoney } from '$lib/stores/gameState';
 	import { tr } from '$lib/i18n/index';
+	import { tooltip } from '$lib/ui/tooltip';
 
 	let ops: CovertOpsInfo = $state({ security_level: 0, active_missions: 0, detection_count: 0 });
 	let campaigns: LobbyingInfo[] = $state([]);
@@ -89,7 +90,7 @@
 		<div class="security-row">
 			<span>{$tr('panels.security_level')}: <strong>{ops.security_level}</strong></span>
 			<span>{$tr('panels.active_missions')}: <strong>{ops.active_missions}</strong></span>
-			<button onclick={upgradeSecurity} disabled={playerCash < securityCost} aria-label={$tr('panels.upgrade')}>
+			<button onclick={upgradeSecurity} disabled={playerCash < securityCost} aria-label={$tr('panels.upgrade')} use:tooltip={() => `Upgrade security to level ${ops.security_level + 1}\nCost: ${formatMoney(securityCost)}\nReduces enemy espionage and sabotage success rate`}>
 				{$tr('panels.upgrade')} ({formatMoney(securityCost)})
 			</button>
 		</div>
@@ -104,7 +105,7 @@
 					<option value={corp.id}>{corp.name}</option>
 				{/each}
 			</select>
-			<button onclick={launchEspionage} disabled={!espionageTarget} aria-label={$tr('panels.launch')}>{$tr('panels.launch')}</button>
+			<button onclick={launchEspionage} disabled={!espionageTarget} aria-label={$tr('panels.launch')} use:tooltip={'Launch espionage mission\nReveals target\'s infrastructure, finances, and strategies\nRisk of detection depends on their security level'}>{$tr('panels.launch')}</button>
 		</div>
 	</section>
 
@@ -117,7 +118,7 @@
 					<option value={corp.id}>{corp.name}</option>
 				{/each}
 			</select>
-			<button onclick={launchSabotage} disabled={!sabotageTarget} aria-label={$tr('panels.launch')}>{$tr('panels.launch')}</button>
+			<button onclick={launchSabotage} disabled={!sabotageTarget} aria-label={$tr('panels.launch')} use:tooltip={'Launch sabotage mission\nDamages a random node of the target corporation\nHigh risk of detection — may trigger retaliation'}>{$tr('panels.launch')}</button>
 		</div>
 	</section>
 
@@ -137,7 +138,7 @@
 				{/each}
 			</select>
 			<input type="number" bind:value={lobbyBudget} placeholder={$tr('panels.budget')} aria-label={$tr('panels.budget')} min="100000" step="100000" />
-			<button onclick={startLobbying} disabled={!lobbyRegion || !lobbyPolicy || lobbyBudget > playerCash} aria-label={$tr('panels.start_campaign')}>
+			<button onclick={startLobbying} disabled={!lobbyRegion || !lobbyPolicy || lobbyBudget > playerCash} aria-label={$tr('panels.start_campaign')} use:tooltip={() => `Start lobbying campaign\nBudget: ${formatMoney(lobbyBudget)}\nInfluence regional policy to benefit your operations`}>
 				{$tr('panels.start_campaign')}
 			</button>
 		</div>

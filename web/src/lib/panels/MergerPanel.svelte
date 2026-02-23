@@ -3,6 +3,7 @@
 	import type { AcquisitionInfo } from '$lib/wasm/types';
 	import { worldInfo, playerCorp, allCorporations, formatMoney } from '$lib/stores/gameState';
 	import { tr } from '$lib/i18n/index';
+	import { tooltip } from '$lib/ui/tooltip';
 
 	let proposals: AcquisitionInfo[] = $state([]);
 	let selectedTarget = $state(0);
@@ -53,7 +54,7 @@
 				{/each}
 			</select>
 			<input type="number" bind:value={offerAmount} placeholder={$tr('panels.offer_amount')} aria-label={$tr('panels.offer_amount')} min="1" />
-			<button onclick={proposeAcquisition} disabled={!selectedTarget || offerAmount <= 0 || offerAmount > playerCash}>
+			<button onclick={proposeAcquisition} disabled={!selectedTarget || offerAmount <= 0 || offerAmount > playerCash} use:tooltip={() => `Propose acquisition for ${formatMoney(offerAmount)}\nThe target may accept, reject, or counter-offer\nYour cash: ${formatMoney(playerCash)}`}>
 				{$tr('panels.propose')}
 			</button>
 		</div>
@@ -69,8 +70,8 @@
 						<span class="offer">{$tr('panels.offers')} {formatMoney(proposal.offer)}</span>
 					</div>
 					<div class="actions">
-						<button class="accept" onclick={() => respond(proposal.id, true)}>{$tr('panels.accept')}</button>
-						<button class="reject" onclick={() => respond(proposal.id, false)}>{$tr('panels.reject')}</button>
+						<button class="accept" onclick={() => respond(proposal.id, true)} use:tooltip={() => `Accept acquisition from ${proposal.acquirer_name}\nOffer: ${formatMoney(proposal.offer)}\nYour corporation will be merged into theirs`}>{$tr('panels.accept')}</button>
+						<button class="reject" onclick={() => respond(proposal.id, false)} use:tooltip={'Reject this acquisition offer\nNo penalty for rejecting'}>{$tr('panels.reject')}</button>
 					</div>
 				</div>
 			{/each}
