@@ -1,0 +1,32 @@
+[Unit]
+Description=GlobalTelco Game Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=globaltelco
+Group=globaltelco
+WorkingDirectory=/opt/globaltelco
+ExecStart=/opt/globaltelco/gt-server
+Restart=always
+RestartSec=5
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+# Environment
+EnvironmentFile=/opt/globaltelco/.env
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/globaltelco
+PrivateTmp=yes
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=20G
+
+[Install]
+WantedBy=multi-user.target
