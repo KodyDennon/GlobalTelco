@@ -7,7 +7,7 @@
 	import Credits from '$lib/menu/Credits.svelte';
 	import WorldBrowser from '$lib/menu/WorldBrowser.svelte';
 	import { goto } from '$app/navigation';
-	import { initGame, start, loadFromSave, setSpeed } from '$lib/game/GameLoop';
+	import { initGame, initMultiplayer, start, loadFromSave, setSpeed } from '$lib/game/GameLoop';
 	import { initWasm } from '$lib/wasm/bridge';
 
 	type Screen = 'splash' | 'main' | 'newGame' | 'loadGame' | 'settings' | 'multiplayer' | 'credits';
@@ -34,10 +34,22 @@
 
 	async function handleMultiplayerJoin(_worldId: string) {
 		try {
-			console.log('[MP] Joining world, initializing game...', _worldId);
-			await initGame();
-			console.log('[MP] Game initialized, starting loop (paused)...');
-			setSpeed(0); // Server drives ticks in multiplayer — don't tick locally
+			console.log('[MP] Joining world, waiting for snapshot...', _worldId);
+			// Wait for full world snapshot from server (auto-requested on WorldJoined)
+			const snapshot = await new Promise<{ tick: number; state_json: string }>((resolve, reject) => {
+				const timeout = setTimeout(() => {
+					window.removeEventListener('mp-snapshot', handler);
+					reject(new Error('Snapshot timeout (15s)'));
+				}, 15000);
+				const handler = (e: Event) => {
+					clearTimeout(timeout);
+					resolve((e as CustomEvent).detail);
+				};
+				window.addEventListener('mp-snapshot', handler, { once: true });
+			});
+			console.log('[MP] Snapshot received, tick:', snapshot.tick, 'size:', snapshot.state_json.length);
+			await initMultiplayer(snapshot.state_json);
+			console.log('[MP] Game initialized from snapshot, starting loop (paused)...');
 			start();
 			console.log('[MP] Navigating to /game');
 			goto('/game');

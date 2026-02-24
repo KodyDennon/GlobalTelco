@@ -7,6 +7,7 @@ set -euo pipefail
 #   ORACLE_IP=<ip> ./deploy/deploy.sh              # Full deploy (build + upload + install)
 #   ORACLE_IP=<ip> ./deploy/deploy.sh --upload-only # Skip build, just upload + restart
 #   ORACLE_IP=<ip> ./deploy/deploy.sh --setup-only  # First-time server setup (no binary)
+#   ORACLE_IP=<ip> ./deploy/deploy.sh --force-env   # Replace server .env with local version
 #
 # Required env vars:
 #   ORACLE_IP    — Public IP of your Oracle Cloud instance
@@ -48,11 +49,13 @@ scp_to() {
 
 SKIP_BUILD=false
 SETUP_ONLY=false
+FORCE_ENV=false
 
 for arg in "$@"; do
     case $arg in
         --upload-only) SKIP_BUILD=true ;;
         --setup-only) SETUP_ONLY=true ;;
+        --force-env) FORCE_ENV=true ;;
     esac
 done
 
@@ -119,6 +122,15 @@ deploy_binary() {
     scp_to "$SCRIPT_DIR/nginx.conf" "/tmp/globaltelco-nginx.conf"
     scp_to "$SCRIPT_DIR/nginx-pre-ssl.conf" "/tmp/globaltelco-nginx-pre-ssl.conf"
 
+    # Handle .env file before the main install script
+    if [[ "$FORCE_ENV" == true ]]; then
+        echo ">>> Replacing server .env with local version (--force-env)..."
+        ssh_run "sudo bash -c 'mv /tmp/gt-server.env /opt/globaltelco/.env && chown globaltelco:globaltelco /opt/globaltelco/.env && chmod 600 /opt/globaltelco/.env'"
+    else
+        echo ">>> Installing .env (only if not already present)..."
+        ssh_run "sudo bash -c 'if [[ ! -f /opt/globaltelco/.env ]]; then mv /tmp/gt-server.env /opt/globaltelco/.env && chown globaltelco:globaltelco /opt/globaltelco/.env && chmod 600 /opt/globaltelco/.env && echo \"Installed .env (first deploy)\"; else rm /tmp/gt-server.env && echo \"Keeping existing .env\"; fi'"
+    fi
+
     echo ">>> Installing on server..."
     ssh_run "sudo bash -s" <<'INSTALL_SCRIPT'
 # Stop service if running
@@ -128,17 +140,6 @@ systemctl stop globaltelco 2>/dev/null || true
 mv /tmp/gt-server /opt/globaltelco/gt-server
 chmod +x /opt/globaltelco/gt-server
 chown globaltelco:globaltelco /opt/globaltelco/gt-server
-
-# Install env file (only if not already present on server)
-if [[ ! -f /opt/globaltelco/.env ]]; then
-    mv /tmp/gt-server.env /opt/globaltelco/.env
-    chown globaltelco:globaltelco /opt/globaltelco/.env
-    chmod 600 /opt/globaltelco/.env
-    echo "Installed .env (first deploy)"
-else
-    rm /tmp/gt-server.env
-    echo "Keeping existing .env (edit on server or delete to replace)"
-fi
 
 # Install systemd service
 mv /tmp/gt-server.service /etc/systemd/system/globaltelco.service
@@ -198,4 +199,10 @@ echo "  WebSocket:      wss://$DOMAIN/ws"
 echo "  REST API:       https://$DOMAIN/api"
 echo ""
 echo "  Server logs:    ssh $SSH_OPTS $REMOTE 'sudo journalctl -u globaltelco -f'"
+echo ""
+if [[ "$FORCE_ENV" == true ]]; then
+    echo "  .env: Replaced with local version"
+else
+    echo "  .env: Preserved existing (use --force-env to replace)"
+fi
 echo ""

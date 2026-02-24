@@ -269,6 +269,38 @@ export async function initGame(config?: object) {
 	updateStores();
 }
 
+export async function initMultiplayer(saveData: string) {
+	loadingStage.set(0);
+	await bridge.initWasm();
+	loadingStage.set(1);
+
+	bridge.setErrorHandler((error, context) => {
+		console.error(`WASM error in ${context}: ${error}`);
+		if (context === 'tick') {
+			setSpeed(0);
+			notifications.update((n) => [
+				{ tick: 0, event: { GlobalNotification: { message: `WASM Error: ${error}`, level: 'error' } } },
+				...n
+			].slice(0, 50));
+		}
+	});
+	bridge.setCommandNotificationHandler((notifs) => {
+		notifications.update((n) => [...notifs, ...n].slice(0, 50));
+		for (const notif of notifs) {
+			audioManager.playEventSound(notif.event);
+		}
+	});
+
+	bridge.loadGame(saveData);
+	loadingStage.set(2);
+	await audioManager.init();
+	loadingStage.set(3);
+	// Server drives ticks in multiplayer
+	setSpeed(0);
+	initialized.set(true);
+	updateStores();
+}
+
 export async function quickSave(): Promise<void> {
 	if (!bridge.isInitialized()) return;
 	const data = bridge.saveGame();

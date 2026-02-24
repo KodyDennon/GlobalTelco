@@ -123,6 +123,8 @@ function handleServerMessage(msg: ServerMessage) {
 		console.log('[WS] WorldJoined received:', joined);
 		worldId.set(joined.world_id as string);
 		corpId.set(joined.corp_id as number);
+		// Auto-request full world snapshot so client can populate WASM
+		requestSnapshot(joined.world_id as string);
 	} else if ('TickUpdate' in msg) {
 		const update = msg.TickUpdate as Record<string, unknown>;
 		const tick = update.tick as number;
@@ -160,6 +162,15 @@ function handleServerMessage(msg: ServerMessage) {
 			ticks_elapsed: summary.ticks_elapsed as number,
 			actions: (summary.actions as Array<{ tick: number; description: string }>) || []
 		});
+	} else if ('Snapshot' in msg) {
+		const snapshot = msg.Snapshot as Record<string, unknown>;
+		console.log('[WS] Snapshot received, tick:', snapshot.tick);
+		window.dispatchEvent(new CustomEvent('mp-snapshot', {
+			detail: {
+				tick: snapshot.tick as number,
+				state_json: snapshot.state_json as string,
+			}
+		}));
 	} else if ('Error' in msg) {
 		const error = msg.Error as Record<string, unknown>;
 		console.error(`Server error [${error.code}]: ${error.message}`);
@@ -209,6 +220,10 @@ export function leaveWorld() {
 
 export function sendCommand(worldIdStr: string, command: Record<string, unknown>) {
 	sendMessage({ GameCommand: { world_id: worldIdStr, command } });
+}
+
+export function requestSnapshot(id: string) {
+	sendMessage({ RequestSnapshot: { world_id: id } });
 }
 
 export function sendChat(message: string) {

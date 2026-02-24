@@ -80,6 +80,9 @@ export class MapRenderer {
     private iconMapping: Record<string, IconMapping> = {};
     private iconAtlasReady = false;
 
+    // Promise that resolves when MapLibre GL style is loaded
+    private mapReadyPromise: Promise<void>;
+
     constructor(container: HTMLElement, quality: 'low' | 'medium' | 'high' = 'medium') {
         this.quality = quality;
         this.container = container;
@@ -125,13 +128,21 @@ export class MapRenderer {
 
         // Globe projection toggle based on zoom level
         const setProjectionForZoom = (zoom: number) => {
+            if (!this.map || !this.map.isStyleLoaded()) return;
             if (zoom < 2.5) {
-                this.map!.setProjection({ type: 'globe' } as any);
+                this.map.setProjection({ type: 'globe' } as any);
             } else {
-                this.map!.setProjection({ type: 'mercator' } as any);
+                this.map.setProjection({ type: 'mercator' } as any);
             }
         };
-        setProjectionForZoom(2); // Initial projection based on starting zoom
+
+        // Defer initial projection until style is loaded
+        this.mapReadyPromise = new Promise<void>((resolve) => {
+            this.map!.once('style.load', () => {
+                setProjectionForZoom(2);
+                resolve();
+            });
+        });
 
         this.map.on('zoom', () => {
             setProjectionForZoom(this.map!.getZoom());
@@ -227,6 +238,9 @@ export class MapRenderer {
 
     async buildMap(): Promise<void> {
         if (!bridge.isInitialized()) return;
+
+        // Wait for MapLibre GL style to finish loading before querying WASM data
+        await this.mapReadyPromise;
 
         const cells = bridge.getGridCells();
         this.cachedCities = bridge.getCities();

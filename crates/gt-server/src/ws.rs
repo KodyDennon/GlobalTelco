@@ -858,12 +858,17 @@ async fn handle_client_message(
 
             let w = world.world.lock().await;
             let tick = w.current_tick();
-            // Serialize a summary of the world state
-            let state_json = serde_json::to_string(&serde_json::json!({
-                "tick": tick,
-                "config": world.config,
-            }))
-            .unwrap_or_default();
+            // Serialize the full ECS world state so clients can load it
+            let state_json = match w.save_game() {
+                Ok(json) => json,
+                Err(e) => {
+                    error!("Failed to serialize world snapshot: {e}");
+                    return Some(ServerMessage::Error {
+                        code: ErrorCode::InternalError,
+                        message: "Failed to serialize world snapshot".to_string(),
+                    });
+                }
+            };
 
             Some(ServerMessage::Snapshot { tick, state_json })
         }
