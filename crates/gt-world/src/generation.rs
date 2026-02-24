@@ -37,10 +37,10 @@ impl WorldGenerator {
     }
 
     pub fn generate(&self) -> GeneratedWorld {
-        // Real Earth mode: use actual geography data (unchanged)
+        // Real Earth mode: fixed subdivision 6 (~40k cells) for proper scale.
+        // map_size is ignored — real earth always uses the same resolution.
         if self.config.use_real_earth {
-            let subdivisions = self.config.map_size.grid_subdivisions();
-            let grid = GeodesicGrid::new(subdivisions);
+            let grid = GeodesicGrid::new(6);
             return crate::real_earth::generate_real_earth(&grid, self.config.seed);
         }
 
