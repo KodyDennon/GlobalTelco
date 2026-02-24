@@ -8,6 +8,19 @@ export default defineConfig({
 		// that cannot be meaningfully split further
 		chunkSizeWarningLimit: 1100,
 		rollupOptions: {
+			// Stub Node.js built-ins that @loaders.gl/worker-utils imports
+			plugins: [
+				{
+					name: 'stub-node-builtins',
+					resolveId(id: string) {
+						if (id === 'child_process') return '\0child_process';
+					},
+					load(id: string) {
+						if (id === '\0child_process')
+							return 'export const spawn = () => {}; export default {};';
+					}
+				}
+			],
 			output: {
 				manualChunks(id) {
 					if (id.includes('@deck.gl')) return 'deckgl';
