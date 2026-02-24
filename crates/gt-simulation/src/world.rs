@@ -51,6 +51,11 @@ pub struct GameWorld {
     pub achievements: HashMap<EntityId, AchievementTracker>,
     pub victory_state: Option<VictoryConditions>,
 
+    // Intel levels: (spy_corp, target_corp) → intel level (0..3)
+    // 0 = infra positions only (default), 1 = basic financials (ranges),
+    // 2 = detailed financials (exact), 3 = operational data (utilization, health, throughput)
+    pub intel_levels: HashMap<(EntityId, EntityId), u8>,
+
     // Mappings for fast lookup
     pub cell_to_parcel: HashMap<usize, EntityId>,
     pub cell_to_region: HashMap<usize, EntityId>,
@@ -118,6 +123,7 @@ impl GameWorld {
             lobbying_campaigns: HashMap::new(),
             achievements: HashMap::new(),
             victory_state: None,
+            intel_levels: HashMap::new(),
             cell_to_parcel: HashMap::new(),
             cell_to_region: HashMap::new(),
             cell_to_city: HashMap::new(),
@@ -675,6 +681,25 @@ impl GameWorld {
 
     pub fn current_tick(&self) -> Tick {
         self.tick
+    }
+
+    /// Get the intel level that `spy_corp` has against `target_corp`.
+    /// Returns 0 (no intel) by default.
+    pub fn get_intel_level(&self, spy_corp: EntityId, target_corp: EntityId) -> u8 {
+        self.intel_levels
+            .get(&(spy_corp, target_corp))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Get a snapshot of all intel levels for a specific spy corp.
+    /// Returns a map of target_corp -> intel_level for all targets where level > 0.
+    pub fn get_intel_levels_for_corp(&self, spy_corp: EntityId) -> HashMap<EntityId, u8> {
+        self.intel_levels
+            .iter()
+            .filter(|&(&(spy, _), _)| spy == spy_corp)
+            .map(|(&(_, target), &level)| (target, level))
+            .collect()
     }
 
     pub fn speed(&self) -> GameSpeed {

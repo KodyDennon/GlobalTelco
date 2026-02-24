@@ -6,10 +6,60 @@ use tracing::debug;
 use tracing::warn;
 
 use gt_common::protocol::{CorpDelta, ServerMessage};
+use gt_common::types::EntityId;
+use gt_simulation::world::GameWorld;
 
 use crate::state::{AppState, WorldInstance};
 #[cfg(feature = "postgres")]
 use crate::state::SharedDb;
+
+/// Build a full CorpDelta for a given corporation, including operational data.
+/// The per-player filtering in ws.rs will scrub fields based on intel level.
+fn build_corp_delta(w: &GameWorld, corp_id: EntityId) -> Option<CorpDelta> {
+    let fin = w.financials.get(&corp_id)?;
+    let node_ids = w.corp_infra_nodes.get(&corp_id);
+    let node_count = node_ids.map(|n| n.len() as u32);
+
+    // Compute operational stats across all nodes
+    let (avg_util, avg_hp, total_tp) = if let Some(ids) = node_ids {
+        if ids.is_empty() {
+            (0.0, 1.0, 0.0)
+        } else {
+            let mut sum_util = 0.0;
+            let mut sum_health = 0.0;
+            let mut sum_throughput = 0.0;
+            let mut count = 0usize;
+            for &nid in ids {
+                if let Some(cap) = w.capacities.get(&nid) {
+                    sum_util += cap.utilization();
+                }
+                if let Some(h) = w.healths.get(&nid) {
+                    sum_health += h.condition;
+                }
+                if let Some(node) = w.infra_nodes.get(&nid) {
+                    sum_throughput += node.max_throughput;
+                }
+                count += 1;
+            }
+            let n = count.max(1) as f64;
+            (sum_util / n, sum_health / n, sum_throughput)
+        }
+    } else {
+        (0.0, 1.0, 0.0)
+    };
+
+    Some(CorpDelta {
+        corp_id,
+        cash: Some(fin.cash),
+        revenue: Some(fin.revenue_per_tick),
+        cost: Some(fin.cost_per_tick),
+        debt: Some(fin.debt),
+        node_count,
+        avg_utilization: Some(avg_util),
+        avg_health: Some(avg_hp),
+        total_throughput: Some(total_tp),
+    })
+}
 
 /// Snapshot interval: save world state every N ticks
 #[cfg(feature = "postgres")]
@@ -47,19 +97,12 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>, db: SharedDb) {
                 let events: Vec<gt_common::events::GameEvent> =
                     w.event_queue.drain().into_iter().map(|(_, e)| e).collect();
 
-                // Collect corp deltas for connected players
-                let players = world.players.read().await;
+                // Collect corp deltas for ALL corporations (filtering happens per-player in ws.rs)
                 let mut deltas = Vec::new();
-                for (_, &corp_id) in players.iter() {
-                    if let Some(fin) = w.financials.get(&corp_id) {
-                        deltas.push(CorpDelta {
-                            corp_id,
-                            cash: Some(fin.cash),
-                            revenue: Some(fin.revenue_per_tick),
-                            cost: Some(fin.cost_per_tick),
-                            debt: Some(fin.debt),
-                            node_count: w.corp_infra_nodes.get(&corp_id).map(|n| n.len() as u32),
-                        });
+                let corp_ids: Vec<EntityId> = w.corporations.keys().copied().collect();
+                for corp_id in corp_ids {
+                    if let Some(delta) = build_corp_delta(&w, corp_id) {
+                        deltas.push(delta);
                     }
                 }
 
@@ -135,18 +178,12 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>) {
                 let events: Vec<gt_common::events::GameEvent> =
                     w.event_queue.drain().into_iter().map(|(_, e)| e).collect();
 
-                let players = world.players.read().await;
+                // Collect corp deltas for ALL corporations (filtering happens per-player in ws.rs)
                 let mut deltas = Vec::new();
-                for (_, &corp_id) in players.iter() {
-                    if let Some(fin) = w.financials.get(&corp_id) {
-                        deltas.push(CorpDelta {
-                            corp_id,
-                            cash: Some(fin.cash),
-                            revenue: Some(fin.revenue_per_tick),
-                            cost: Some(fin.cost_per_tick),
-                            debt: Some(fin.debt),
-                            node_count: w.corp_infra_nodes.get(&corp_id).map(|n| n.len() as u32),
-                        });
+                let corp_ids: Vec<EntityId> = w.corporations.keys().copied().collect();
+                for corp_id in corp_ids {
+                    if let Some(delta) = build_corp_delta(&w, corp_id) {
+                        deltas.push(delta);
                     }
                 }
 

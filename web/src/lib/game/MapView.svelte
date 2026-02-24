@@ -19,6 +19,7 @@
 		getCompatibleEdgeTypes,
 	} from "$lib/stores/uiState";
 	import * as bridge from "$lib/wasm/bridge";
+	import { injectEventEffectStyles } from './EventEffects';
 
 	let container: HTMLElement;
 	let renderer: MapRenderer | null = null;
@@ -102,11 +103,55 @@
 	}
 
 	onMount(() => {
+		injectEventEffectStyles();
+
 		const unsub = initialized.subscribe(async (init) => {
 			if (init && container && !renderer) {
 				renderer = new MapRenderer(container, get(mapQuality));
 				await renderer.buildMap();
 				renderer.updateInfrastructure();
+
+				// Map navigation from keyboard
+				const handleMapPan = (e: Event) => {
+					const { direction } = (e as CustomEvent).detail;
+					const map = (renderer as any)?.map;
+					if (!map) return;
+					const offset = 100; // pixels
+					const offsets: Record<string, [number, number]> = {
+						up: [0, -offset],
+						down: [0, offset],
+						left: [-offset, 0],
+						right: [offset, 0],
+					};
+					const [dx, dy] = offsets[direction] ?? [0, 0];
+					map.panBy([dx, dy], { duration: 200 });
+				};
+
+				const handleMapZoom = (e: Event) => {
+					const { direction } = (e as CustomEvent).detail;
+					const map = (renderer as any)?.map;
+					if (!map) return;
+					if (direction === 'in') map.zoomIn({ duration: 200 });
+					else map.zoomOut({ duration: 200 });
+				};
+
+				const handleMapResetView = () => {
+					const map = (renderer as any)?.map;
+					if (!map) return;
+					map.flyTo({ center: [0, 20], zoom: 2, pitch: 0, duration: 1000 });
+				};
+
+				const handleMapTogglePitch = () => {
+					const map = (renderer as any)?.map;
+					if (!map) return;
+					const currentPitch = map.getPitch();
+					map.easeTo({ pitch: currentPitch > 10 ? 0 : 45, duration: 500 });
+				};
+
+				window.addEventListener('map-pan', handleMapPan);
+				window.addEventListener('map-zoom', handleMapZoom);
+				window.addEventListener('map-reset-view', handleMapResetView);
+				window.addEventListener('map-toggle-pitch', handleMapTogglePitch);
 
 				// Update map every 500ms (roughly per-tick at 1x speed, responsive at higher speeds)
 				const interval = setInterval(() => {
@@ -175,6 +220,10 @@
 						"map-clicked",
 						handleMapClicked as EventListener,
 					);
+					window.removeEventListener('map-pan', handleMapPan);
+					window.removeEventListener('map-zoom', handleMapZoom);
+					window.removeEventListener('map-reset-view', handleMapResetView);
+					window.removeEventListener('map-toggle-pitch', handleMapTogglePitch);
 					container?.removeEventListener("mousemove", handleMouseMove);
 					container?.removeEventListener(
 						"mouseleave",

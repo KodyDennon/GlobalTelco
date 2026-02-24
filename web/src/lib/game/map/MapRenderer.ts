@@ -7,6 +7,7 @@ import maplibregl from 'maplibre-gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { BitmapLayer, LineLayer, ScatterplotLayer, TextLayer, PathLayer, IconLayer } from '@deck.gl/layers';
 import type { Layer } from '@deck.gl/core';
+import { CollisionFilterExtension } from '@deck.gl/extensions';
 import { get } from 'svelte/store';
 
 import * as bridge from '$lib/wasm/bridge';
@@ -14,6 +15,7 @@ import type { City, Region, GridCell, CellCoverage } from '$lib/wasm/types';
 
 import { GridPathfinder, needsTerrainRouting } from '../GridPathfinder';
 import { selectedEdgeType } from '$lib/stores/uiState';
+import { annotations, routePlans, createAnnotationLayers } from '../AnnotationLayer';
 
 import { createLandLayer } from './layers/landLayer';
 import { createBordersLayer } from './layers/bordersLayer';
@@ -24,6 +26,7 @@ import { buildTerrainBitmap } from './terrainBitmap';
 import { CORP_COLORS, SATELLITE_COLORS, TERRAIN_OVERLAY_COLORS } from './constants';
 import { satelliteMapStyle, procgenMapStyle } from './tileConfig';
 import { handleMapMouseMove, type TooltipHit } from './tooltip';
+import { createWeatherLayers } from '../WeatherLayer';
 
 // ── MapRenderer class ───────────────────────────────────────────────────────
 
@@ -49,6 +52,26 @@ export class MapRenderer {
 
     private cellRadiusM: number = 120000;
     private cellSpacingKm: number = 120;
+
+    // Animation loop state
+    private currentTime: number = 0;
+    private animationFrameId: number | null = null;
+    private pitch: number = 0;
+    private animationFrameCounter: number = 0;
+
+    // Hovered node tracking
+    private hoveredNodeId: number | null = null;
+
+    // Weather/atmosphere state
+    private gameTick: number = 0;
+    private weatherEnabled: boolean = true;
+    private dayNightCycle: boolean = true;
+
+    // Custom event listener references (for cleanup)
+    private mapPanHandler: ((e: Event) => void) | null = null;
+    private mapZoomHandler: ((e: Event) => void) | null = null;
+    private mapResetViewHandler: ((e: Event) => void) | null = null;
+    private mapTogglePitchHandler: ((e: Event) => void) | null = null;
 
     // Pre-built assets
     private terrainCanvas: HTMLCanvasElement | null = null;
@@ -85,7 +108,6 @@ export class MapRenderer {
             minZoom: 0.5,
             maxZoom: 10,
             maxPitch: 60,
-            antialias: true,
             attributionControl: false,
         });
 
@@ -99,6 +121,25 @@ export class MapRenderer {
         // Track zoom changes
         this.map.on('zoom', () => {
             this.currentZoom = this.map!.getZoom();
+        });
+
+        // Globe projection toggle based on zoom level
+        const setProjectionForZoom = (zoom: number) => {
+            if (zoom < 2.5) {
+                this.map!.setProjection({ type: 'globe' } as any);
+            } else {
+                this.map!.setProjection({ type: 'mercator' } as any);
+            }
+        };
+        setProjectionForZoom(2); // Initial projection based on starting zoom
+
+        this.map.on('zoom', () => {
+            setProjectionForZoom(this.map!.getZoom());
+        });
+
+        // Track pitch changes
+        this.map.on('pitch', () => {
+            this.pitch = this.map!.getPitch();
         });
 
         // Handle clicks on empty map area (no deck.gl pick)
@@ -124,6 +165,62 @@ export class MapRenderer {
                 detail: { lon: e.lngLat.lng, lat: e.lngLat.lat }
             }));
         });
+
+        // ── Animation loop for TripsLayer ────────────────────────────────
+        const animate = () => {
+            this.currentTime += 0.005;
+            this.animationFrameCounter++;
+            // Re-render every 3 frames to avoid excessive re-renders
+            if (this.animationFrameCounter % 3 === 0) {
+                this.renderLayers();
+            }
+            this.animationFrameId = requestAnimationFrame(animate);
+        };
+        this.animationFrameId = requestAnimationFrame(animate);
+
+        // ── Map navigation event handlers (dispatched by KeyboardManager) ─
+        this.mapPanHandler = (e: Event) => {
+            if (!this.map) return;
+            const { direction } = (e as CustomEvent).detail;
+            const panOffset = 100; // pixels
+            const offsets: Record<string, [number, number]> = {
+                up: [0, -panOffset],
+                down: [0, panOffset],
+                left: [-panOffset, 0],
+                right: [panOffset, 0],
+            };
+            const offset = offsets[direction];
+            if (offset) {
+                this.map.panBy(offset, { duration: 200 });
+            }
+        };
+
+        this.mapZoomHandler = (e: Event) => {
+            if (!this.map) return;
+            const { direction } = (e as CustomEvent).detail;
+            if (direction === 'in') {
+                this.map.zoomIn({ duration: 200 });
+            } else if (direction === 'out') {
+                this.map.zoomOut({ duration: 200 });
+            }
+        };
+
+        this.mapResetViewHandler = () => {
+            if (!this.map) return;
+            this.map.flyTo({ center: [0, 20], zoom: 2, pitch: 0, bearing: 0, duration: 1000 });
+        };
+
+        this.mapTogglePitchHandler = () => {
+            if (!this.map) return;
+            const currentPitch = this.map.getPitch();
+            const targetPitch = currentPitch > 10 ? 0 : 45;
+            this.map.easeTo({ pitch: targetPitch, duration: 500 });
+        };
+
+        window.addEventListener('map-pan', this.mapPanHandler);
+        window.addEventListener('map-zoom', this.mapZoomHandler);
+        window.addEventListener('map-reset-view', this.mapResetViewHandler);
+        window.addEventListener('map-toggle-pitch', this.mapTogglePitchHandler);
     }
 
     // ── Map initialization ──────────────────────────────────────────────────
@@ -163,6 +260,7 @@ export class MapRenderer {
         const layers: (Layer | Layer[] | null)[] = [
             createLandLayer(this.terrainCanvas, this.isRealEarth),
             createBordersLayer(this.cachedRegions, this.isRealEarth),
+            ...this.createOceanDepthLayers(),
             ...this.createOverlayLayers(),
             ...createInfraLayers({
                 iconAtlas: this.iconAtlas,
@@ -170,10 +268,20 @@ export class MapRenderer {
                 iconAtlasReady: this.iconAtlasReady,
                 activeOverlay: this.activeOverlay,
                 currentZoom: this.currentZoom,
+                currentTime: this.currentTime,
+                pitch: this.pitch,
+                hoveredNodeId: this.hoveredNodeId,
             }),
             this.createCitiesLayer(),
             this.createLabelsLayer(),
             this.createRegionLabelsLayer(),
+            ...createAnnotationLayers(get(annotations), get(routePlans)),
+            ...createWeatherLayers({
+                enabled: this.weatherEnabled,
+                dayNightCycle: this.dayNightCycle,
+                gameTick: this.gameTick,
+                currentZoom: this.currentZoom,
+            }),
             this.createSelectionLayer(),
             ...this.createEdgeBuildHighlights(),
             this.createPathfindingPreviewLayer(),
@@ -254,6 +362,41 @@ export class MapRenderer {
         }
 
         return layers;
+    }
+
+    // ── Ocean depth shading (procgen worlds only) ─────────────────────────
+
+    private createOceanDepthLayers(): Layer[] {
+        if (this.isRealEarth) return [];
+        if (this.cachedCells.length === 0) return [];
+
+        // Ocean depth color mapping by terrain type
+        const OCEAN_DEPTH_COLORS: Record<string, [number, number, number, number]> = {
+            OceanDeep: [8, 20, 50, 200],       // Deep ocean — very dark blue
+            Ocean:     [15, 40, 80, 180],       // Medium depth
+            OceanShallow: [25, 65, 120, 160],   // Shallow / continental shelf
+        };
+
+        const oceanCells: { position: [number, number]; color: [number, number, number, number] }[] = [];
+        for (const cell of this.cachedCells) {
+            const color = OCEAN_DEPTH_COLORS[cell.terrain];
+            if (color) {
+                oceanCells.push({ position: [cell.lon, cell.lat], color });
+            }
+        }
+
+        if (oceanCells.length === 0) return [];
+
+        return [new ScatterplotLayer({
+            id: 'ocean-depth',
+            data: oceanCells,
+            getPosition: (d: any) => d.position,
+            getFillColor: (d: any) => d.color,
+            getRadius: this.cellRadiusM * 1.05,
+            radiusMinPixels: 4,
+            pickable: false,
+            parameters: { depthTest: false }
+        })];
     }
 
     // ── Overlays ────────────────────────────────────────────────────────────
@@ -401,8 +544,11 @@ export class MapRenderer {
             getAlignmentBaseline: 'bottom',
             getPixelOffset: [0, -10],
             fontFamily: 'Inter, sans-serif',
+            extensions: [new CollisionFilterExtension()],
+            collisionEnabled: true,
+            getCollisionPriority: (d: City) => d.population,
             parameters: { depthTest: false }
-        });
+        } as any);
     }
 
     private createRegionLabelsLayer(): Layer | null {
@@ -617,6 +763,20 @@ export class MapRenderer {
         this.renderLayers();
     }
 
+    setGameTick(tick: number): void {
+        this.gameTick = tick;
+    }
+
+    setWeatherEnabled(enabled: boolean): void {
+        this.weatherEnabled = enabled;
+        this.renderLayers();
+    }
+
+    setDayNightCycle(enabled: boolean): void {
+        this.dayNightCycle = enabled;
+        this.renderLayers();
+    }
+
     handleMouseMove(e: MouseEvent): void {
         if (!this.overlay) return;
 
@@ -626,9 +786,40 @@ export class MapRenderer {
             this.hoveredEntity,
             () => this.renderLayers()
         );
+
+        // Track hovered node ID for infraLayer highlights
+        if (this.hoveredEntity && this.hoveredEntity.type === 'node') {
+            this.hoveredNodeId = this.hoveredEntity.object?.id ?? null;
+        } else {
+            this.hoveredNodeId = null;
+        }
     }
 
     dispose(): void {
+        // Cancel animation frame
+        if (this.animationFrameId !== null) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+
+        // Remove custom event listeners
+        if (this.mapPanHandler) {
+            window.removeEventListener('map-pan', this.mapPanHandler);
+            this.mapPanHandler = null;
+        }
+        if (this.mapZoomHandler) {
+            window.removeEventListener('map-zoom', this.mapZoomHandler);
+            this.mapZoomHandler = null;
+        }
+        if (this.mapResetViewHandler) {
+            window.removeEventListener('map-reset-view', this.mapResetViewHandler);
+            this.mapResetViewHandler = null;
+        }
+        if (this.mapTogglePitchHandler) {
+            window.removeEventListener('map-toggle-pitch', this.mapTogglePitchHandler);
+            this.mapTogglePitchHandler = null;
+        }
+
         if (this.overlay) {
             this.overlay.finalize();
             this.overlay = null;

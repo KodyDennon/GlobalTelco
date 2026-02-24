@@ -183,6 +183,13 @@ pub struct CorpDelta {
     pub cost: Option<Money>,
     pub debt: Option<Money>,
     pub node_count: Option<u32>,
+    // Operational data (intel level 3 only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_utilization: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_health: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_throughput: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

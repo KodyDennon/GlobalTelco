@@ -33,6 +33,87 @@
 	import { isMultiplayer } from "$lib/stores/multiplayerState";
 	import { showPerfMonitor } from "$lib/stores/settings";
 	import { loadingStage, showWelcome, setSpeed } from "./GameLoop";
+	import { KeyboardManager, createDefaultBindings, hotkeyOverlayVisible } from "./KeyboardManager";
+	import { EventEffectManager } from "./EventEffects";
+	import { ScreenshotManager } from "./ScreenshotMode";
+	import { AudioManager } from "$lib/audio/AudioManager";
+	import { SpatialAudioController } from "$lib/audio/SpatialAudio";
+	import { onMount, onDestroy } from "svelte";
+
+	let gameViewEl: HTMLElement = $state(null!);
+	let keyboardManager: KeyboardManager | null = null;
+	let effectManager: EventEffectManager | null = null;
+	let screenshotManager: ScreenshotManager | null = null;
+	let audioManager: AudioManager | null = null;
+	let spatialAudio: SpatialAudioController | null = null;
+
+	onMount(() => {
+		// Keyboard shortcuts
+		keyboardManager = new KeyboardManager();
+		createDefaultBindings(keyboardManager);
+
+		// Bind screenshot (F12) — screenshots need the map container
+		keyboardManager.bind('f12', () => {
+			const mapContainer = gameViewEl?.querySelector('.map-container') as HTMLElement;
+			if (mapContainer && screenshotManager) {
+				screenshotManager.captureScreenshot(mapContainer, $playerCorp?.name);
+			}
+		});
+
+		keyboardManager.attach();
+
+		// Event effects (CSS-based visual effects for game events)
+		if (gameViewEl) {
+			effectManager = new EventEffectManager(gameViewEl);
+		}
+
+		// Screenshot manager
+		screenshotManager = new ScreenshotManager();
+
+		// Audio (lazy init on first interaction — browser requirement)
+		audioManager = new AudioManager();
+		spatialAudio = new SpatialAudioController(audioManager);
+
+		// Init audio on first click (browsers require user gesture)
+		const initAudio = () => {
+			audioManager?.init();
+			window.removeEventListener('click', initAudio);
+			window.removeEventListener('keydown', initAudio);
+		};
+		window.addEventListener('click', initAudio, { once: true });
+		window.addEventListener('keydown', initAudio, { once: true });
+
+		// Listen for game events to trigger effects + audio
+		const handleGameEvent = (e: Event) => {
+			const detail = (e as CustomEvent).detail;
+			if (detail?.event) {
+				effectManager?.triggerEffect(detail.event);
+				// Play SFX for specific events
+				if (detail.event.type === 'EarthquakeStruck' || detail.event.type === 'Earthquake') {
+					audioManager?.playSfx('earthquake');
+				} else if (detail.event.type === 'StormStruck' || detail.event.type === 'Storm') {
+					audioManager?.playSfx('storm');
+				} else if (detail.event.type === 'ConstructionComplete') {
+					audioManager?.playSfx('build');
+				} else if (detail.event.type === 'ResearchComplete') {
+					audioManager?.playSfx('research_complete');
+				} else if (detail.event.type === 'ContractSigned') {
+					audioManager?.playSfx('contract_signed');
+				}
+			}
+		};
+		window.addEventListener('game-event', handleGameEvent);
+
+		return () => {
+			window.removeEventListener('game-event', handleGameEvent);
+		};
+	});
+
+	onDestroy(() => {
+		keyboardManager?.dispose();
+		effectManager?.dispose();
+		audioManager?.dispose();
+	});
 
 	// Lazy-load panels only when needed
 	const panelComponents: Record<string, () => Promise<any>> = {
@@ -134,7 +215,7 @@
 </script>
 
 {#if $initialized}
-	<div class="game-view">
+	<div class="game-view" bind:this={gameViewEl}>
 		<MapView />
 		<HUD />
 		<InfoPanel />
@@ -190,6 +271,44 @@
 					<PanelComponent />
 				{/if}
 			</FloatingPanel>
+		{/if}
+		{#if $hotkeyOverlayVisible}
+			<div class="hotkey-overlay" role="dialog">
+				<div class="hotkey-card">
+					<h3 class="hotkey-title">Keyboard Shortcuts</h3>
+					<div class="hotkey-grid">
+						<div class="hotkey-section">
+							<h4>Game</h4>
+							<div class="hk"><kbd>Space</kbd> Pause / Resume</div>
+							<div class="hk"><kbd>1-4</kbd> Set Speed</div>
+							<div class="hk"><kbd>Ctrl+S</kbd> Quick Save</div>
+						</div>
+						<div class="hotkey-section">
+							<h4>Build</h4>
+							<div class="hk"><kbd>B</kbd> Node Build Mode</div>
+							<div class="hk"><kbd>E</kbd> Edge Build Mode</div>
+							<div class="hk"><kbd>Esc</kbd> Cancel</div>
+						</div>
+						<div class="hotkey-section">
+							<h4>Overlays</h4>
+							<div class="hk"><kbd>T</kbd> Terrain</div>
+							<div class="hk"><kbd>O</kbd> Ownership</div>
+							<div class="hk"><kbd>D</kbd> Demand</div>
+							<div class="hk"><kbd>C</kbd> Coverage</div>
+							<div class="hk"><kbd>R</kbd> Risk</div>
+							<div class="hk"><kbd>G</kbd> Congestion</div>
+							<div class="hk"><kbd>F</kbd> Traffic Flow</div>
+						</div>
+						<div class="hotkey-section">
+							<h4>Panels</h4>
+							<div class="hk"><kbd>F1-F6</kbd> Panel Groups</div>
+							<div class="hk"><kbd>Tab</kbd> Next Tab</div>
+							<div class="hk"><kbd>Q</kbd> Close Panel</div>
+						</div>
+					</div>
+					<button class="hotkey-close" onclick={() => hotkeyOverlayVisible.set(false)}>Close</button>
+				</div>
+			</div>
 		{/if}
 	</div>
 {:else}
@@ -266,5 +385,85 @@
 		font-size: 12px;
 		color: #6b7280;
 		margin: 12px 0 0;
+	}
+
+	.hotkey-overlay {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.7);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 100;
+	}
+
+	.hotkey-card {
+		background: rgba(17, 24, 39, 0.98);
+		border: 1px solid rgba(55, 65, 81, 0.6);
+		border-radius: 12px;
+		padding: 24px 32px;
+		max-width: 600px;
+		width: 90vw;
+		max-height: 80vh;
+		overflow-y: auto;
+	}
+
+	.hotkey-title {
+		font-size: 18px;
+		font-weight: 700;
+		color: #f3f4f6;
+		margin: 0 0 16px;
+		text-align: center;
+	}
+
+	.hotkey-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 16px;
+	}
+
+	.hotkey-section h4 {
+		font-size: 13px;
+		font-weight: 600;
+		color: #9ca3af;
+		margin: 0 0 8px;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.hk {
+		font-size: 12px;
+		color: #d1d5db;
+		margin: 4px 0;
+	}
+
+	.hk :global(kbd) {
+		display: inline-block;
+		background: rgba(55, 65, 81, 0.5);
+		border: 1px solid rgba(75, 85, 99, 0.5);
+		border-radius: 4px;
+		padding: 1px 6px;
+		font-family: monospace;
+		font-size: 11px;
+		color: #e5e7eb;
+		margin-right: 6px;
+		min-width: 20px;
+		text-align: center;
+	}
+
+	.hotkey-close {
+		display: block;
+		margin: 16px auto 0;
+		background: rgba(55, 65, 81, 0.5);
+		color: #d1d5db;
+		border: 1px solid rgba(75, 85, 99, 0.4);
+		padding: 8px 24px;
+		border-radius: 6px;
+		font-size: 13px;
+		cursor: pointer;
+	}
+
+	.hotkey-close:hover {
+		background: rgba(75, 85, 99, 0.5);
 	}
 </style>

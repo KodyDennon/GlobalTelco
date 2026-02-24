@@ -1,8 +1,13 @@
-import { LineLayer, ScatterplotLayer, TextLayer, IconLayer } from '@deck.gl/layers';
+import { LineLayer, ScatterplotLayer, TextLayer, IconLayer, ColumnLayer } from '@deck.gl/layers';
+import { TripsLayer } from '@deck.gl/geo-layers';
+import { CollisionFilterExtension } from '@deck.gl/extensions';
 import type { Layer } from '@deck.gl/core';
 
 import * as bridge from '$lib/wasm/bridge';
+import type { AllInfraNode, AllInfraEdge } from '$lib/wasm/types';
 import { CORP_COLORS, EDGE_STYLES, NODE_TIER_SIZE, NETWORK_TIER_LABEL, toIconKey } from '../constants';
+
+// ── Types ────────────────────────────────────────────────────────────────────
 
 export interface IconMapping {
     x: number;
@@ -12,10 +17,202 @@ export interface IconMapping {
     mask: boolean;
 }
 
+// ── Constants ────────────────────────────────────────────────────────────────
+
+/** Network tier numeric rank for LOD filtering and column heights. */
+const TIER_RANK: Record<string, number> = {
+    Local: 1,
+    Regional: 2,
+    National: 3,
+    Continental: 4,
+    GlobalBackbone: 5,
+};
+
+/** Column extrusion height (meters) by network tier for 2.5D view. */
+const COLUMN_HEIGHT: Record<string, number> = {
+    Local: 200,
+    Regional: 500,
+    National: 1000,
+    Continental: 2000,
+    GlobalBackbone: 3000,
+};
+
+/** Coverage radius (meters) for wireless node types when hovered. */
+const COVERAGE_RADIUS: Record<string, number> = {
+    CellTower: 15000,
+    WirelessRelay: 8000,
+    SatelliteGround: 200000,
+};
+
+/** Node types considered wireless for coverage display. */
+const WIRELESS_TYPES = new Set(Object.keys(COVERAGE_RADIUS));
+
+/** Minimum tier rank visible at each zoom bracket. */
+function minTierForZoom(zoom: number): number {
+    if (zoom < 3) return 4;   // zoom 0-3: T4+ only (Continental, GlobalBackbone)
+    if (zoom < 5) return 3;   // zoom 3-5: T3+ (National and above)
+    return 1;                  // zoom 5+: everything
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Get the corp color for an owner ID. Falls back to grey if unknown. */
+function getCorpColor(ownerId: number, corpIndex: Map<number, number>): [number, number, number] {
+    const idx = corpIndex.get(ownerId);
+    if (idx !== undefined) return CORP_COLORS[idx % CORP_COLORS.length];
+    return [160, 160, 160];
+}
+
+/** Compute tinted node color based on health and construction state. */
+function getNodeDisplayColor(
+    node: AllInfraNode,
+    baseColor: [number, number, number],
+    isCongestion: boolean,
+    isTraffic: boolean,
+    trafficNodeFlowMap: Map<number, number> | null,
+): [number, number, number, number] {
+    // Overlay modes take priority
+    if (isCongestion) {
+        const util = node.utilization || 0;
+        return [
+            Math.floor(Math.min(1, util * 2) * 255),
+            Math.floor(Math.max(0, 1 - util) * 200),
+            0,
+            255,
+        ];
+    }
+    if (isTraffic && trafficNodeFlowMap) {
+        const util = trafficNodeFlowMap.get(node.id);
+        if (util !== undefined) {
+            return [
+                Math.floor(Math.min(1, util * 2) * 255),
+                Math.floor(Math.max(0, 1 - util) * 200),
+                0,
+                180,
+            ];
+        }
+        return [100, 100, 100, 30];
+    }
+
+    // Construction / health states
+    if (node.under_construction) {
+        return [baseColor[0], baseColor[1], baseColor[2], 150];
+    }
+    const health = node.health ?? 1;
+    if (health <= 0) {
+        // Offline
+        return [100, 100, 100, 150];
+    }
+    if (health < 0.2) {
+        // Damaged — red tint
+        return [239, 68, 68, 220];
+    }
+    if (health < 0.5) {
+        // Degraded — amber tint
+        return [245, 158, 11, 220];
+    }
+    return [baseColor[0], baseColor[1], baseColor[2], 255];
+}
+
+// ── Trip path generation for TripsLayer ──────────────────────────────────────
+
+interface TripDatum {
+    path: [number, number][];
+    timestamps: number[];
+    color: [number, number, number, number];
+}
+
+/** Generate animated trip paths for high-traffic edges. */
+function buildTrips(
+    edges: ProcessedEdge[],
+    currentTime: number,
+): TripDatum[] {
+    const trips: TripDatum[] = [];
+    for (const edge of edges) {
+        const util = edge.utilization;
+        if (util <= 0.7) continue; // only high traffic gets particles
+
+        // Create a path from source to target with midpoint for smoother arcs
+        const srcLon = edge.src_x;
+        const srcLat = edge.src_y;
+        const dstLon = edge.dst_x;
+        const dstLat = edge.dst_y;
+        const midLon = (srcLon + dstLon) / 2;
+        const midLat = (srcLat + dstLat) / 2;
+
+        const path: [number, number][] = [
+            [srcLon, srcLat],
+            [midLon, midLat],
+            [dstLon, dstLat],
+        ];
+
+        // Duration proportional to inverse utilization (busier = more frequent particles)
+        const duration = 200; // trip loop duration in time units
+        const t0 = 0;
+        const t1 = duration * 0.5;
+        const t2 = duration;
+
+        trips.push({
+            path,
+            timestamps: [t0, t1, t2],
+            color: [255, 255, 255, 200],
+        });
+    }
+    return trips;
+}
+
+// ── Processed data types ─────────────────────────────────────────────────────
+
+interface ProcessedNode {
+    id: number;
+    position: [number, number];
+    color: [number, number, number, number];
+    icon: string;
+    tierSize: number;
+    tierLabel: string;
+    network_level: string;
+    node_type: string;
+    under_construction: boolean;
+    health: number;
+    utilization: number;
+    owner: number;
+    owner_name: string;
+    tierRank: number;
+    x: number;
+    y: number;
+}
+
+interface ProcessedEdge {
+    id: number;
+    sourcePosition: [number, number];
+    targetPosition: [number, number];
+    color: [number, number, number, number];
+    width: number;
+    edge_type: string;
+    utilization: number;
+    bandwidth: number;
+    source: number;
+    target: number;
+    src_x: number;
+    src_y: number;
+    dst_x: number;
+    dst_y: number;
+    tierRank: number;
+}
+
+// ── Main export ──────────────────────────────────────────────────────────────
+
 /**
- * Creates infrastructure edge (LineLayer) and node (IconLayer with ScatterplotLayer fallback) layers,
- * plus tier badge labels (TextLayer at zoom > 5).
- * Supports congestion and traffic overlay color modes.
+ * Creates all infrastructure visualization layers:
+ * - Edge lines (with congestion/traffic overlay coloring)
+ * - Animated TripsLayer for high-traffic edges
+ * - Pulsing glow for medium-traffic edges
+ * - Node icons (IconLayer) or 2.5D columns (ColumnLayer at high pitch)
+ * - Construction pulsing rings, degraded/damaged tinting
+ * - Hover glow, connected-edge highlights, coverage radius circles
+ * - Infrastructure labels at high zoom with collision deconfliction
+ * - LOD filtering by zoom level
+ * - Tier badge labels
  */
 export function createInfraLayers(opts: {
     iconAtlas: HTMLCanvasElement | null;
@@ -23,19 +220,61 @@ export function createInfraLayers(opts: {
     iconAtlasReady: boolean;
     activeOverlay: string;
     currentZoom: number;
+    currentTime: number;
+    pitch: number;
+    hoveredNodeId: number | null;
 }): Layer[] {
-    const { iconAtlas, iconMapping, iconAtlasReady, activeOverlay, currentZoom } = opts;
+    const {
+        iconAtlas,
+        iconMapping,
+        iconAtlasReady,
+        activeOverlay,
+        currentZoom,
+        currentTime,
+        pitch,
+        hoveredNodeId,
+    } = opts;
 
+    // ── Gather raw data ──────────────────────────────────────────────────────
     const corps = bridge.getAllCorporations();
-    const edgesData: any[] = [];
-    const nodesData: any[] = [];
+    const corpIndex = new Map<number, number>();
+    for (let i = 0; i < corps.length; i++) {
+        corpIndex.set(corps[i].id, i);
+    }
+
     const isCongestion = activeOverlay === 'congestion';
     const isTraffic = activeOverlay === 'traffic';
-    let trafficFlows: any = null;
+
+    let trafficEdgeFlowMap: Map<number, { utilization: number; color: [number, number, number]; opacity: number }> | null = null;
+    let trafficNodeFlowMap: Map<number, number> | null = null;
 
     if (isTraffic && bridge.isInitialized()) {
-        trafficFlows = bridge.getTrafficFlows();
+        const trafficFlows = bridge.getTrafficFlows();
+        trafficEdgeFlowMap = new Map();
+        trafficNodeFlowMap = new Map();
+        for (const f of trafficFlows.edge_flows) {
+            let color: [number, number, number];
+            let opacity: number;
+            if (f.utilization > 1.0) { color = [255, 34, 34]; opacity = 153; }
+            else if (f.utilization > 0.8) { color = [255, Math.floor((1 - (f.utilization - 0.8) / 0.2) * 80), 0]; opacity = 127; }
+            else if (f.utilization > 0.5) { color = [0, 255, 255]; opacity = 100; }
+            else { color = [59, 130, 246]; opacity = 50; }
+            trafficEdgeFlowMap.set(f.id, { utilization: f.utilization, color, opacity });
+        }
+        for (const f of trafficFlows.node_flows) {
+            trafficNodeFlowMap.set(f.id, f.utilization);
+        }
     }
+
+    // ── LOD: minimum tier for current zoom ───────────────────────────────────
+    const minTier = minTierForZoom(currentZoom);
+
+    // ── Process all infrastructure through a single pass ─────────────────────
+    // Use getAllInfrastructure for unified owner info, but fall back to per-corp
+    // iteration to preserve existing corp-color semantics.
+
+    const allEdges: ProcessedEdge[] = [];
+    const allNodes: ProcessedNode[] = [];
 
     for (let i = 0; i < corps.length; i++) {
         const corp = corps[i];
@@ -43,8 +282,15 @@ export function createInfraLayers(opts: {
         const infra = bridge.getInfrastructureList(corp.id);
 
         for (const edge of infra.edges) {
+            const tierRank = Math.max(
+                TIER_RANK[edge.edge_type] || 1,
+                // Estimate edge tier from type name
+                edgeTierRank(edge.edge_type),
+            );
+            if (tierRank < minTier) continue; // LOD cull
+
             const style = EDGE_STYLES[edge.edge_type] || { color: baseColor, width: 2 };
-            let color: [number, number, number] | number[] = style.color;
+            let color: [number, number, number] = style.color;
             let opacity = 255;
 
             if (isCongestion) {
@@ -52,136 +298,437 @@ export function createInfraLayers(opts: {
                 color = [
                     Math.floor(Math.min(1, util * 2) * 255),
                     Math.floor(Math.max(0, 1 - util) * 200),
-                    0
+                    0,
                 ];
-            } else if (isTraffic && trafficFlows) {
-                const flow = trafficFlows.edge_flows.find((f: any) => f.id === edge.id);
+            } else if (isTraffic && trafficEdgeFlowMap) {
+                const flow = trafficEdgeFlowMap.get(edge.id);
                 if (flow) {
-                    const util = flow.utilization;
-                    if (util > 1.0) { color = [255, 34, 34]; opacity = 153; }
-                    else if (util > 0.8) { color = [255, Math.floor((1 - (util - 0.8) / 0.2) * 80), 0]; opacity = 127; }
-                    else if (util > 0.5) { color = [0, 255, 255]; opacity = 100; }
-                    else { color = [59, 130, 246]; opacity = 50; }
+                    color = flow.color;
+                    opacity = flow.opacity;
                 } else {
                     color = [100, 100, 100]; opacity = 20;
                 }
             }
 
-            edgesData.push({
-                ...edge,
+            // Medium traffic: wider, brighter glow
+            const util = edge.utilization || 0;
+            let width = style.width;
+            if (!isCongestion && !isTraffic && util > 0.3 && util <= 0.7) {
+                width = style.width * 1.8;
+                opacity = Math.min(255, opacity + 40);
+            }
+
+            allEdges.push({
+                id: edge.id,
                 sourcePosition: [edge.src_x, edge.src_y],
                 targetPosition: [edge.dst_x, edge.dst_y],
-                color: [...color, opacity],
-                width: style.width
+                color: [color[0], color[1], color[2], opacity],
+                width,
+                edge_type: edge.edge_type,
+                utilization: edge.utilization || 0,
+                bandwidth: edge.bandwidth || 0,
+                source: edge.source,
+                target: edge.target,
+                src_x: edge.src_x,
+                src_y: edge.src_y,
+                dst_x: edge.dst_x,
+                dst_y: edge.dst_y,
+                tierRank,
             });
         }
 
         for (const node of infra.nodes) {
-            let color: [number, number, number] | number[] = baseColor;
-            let opacity = 255;
+            const tierRank = TIER_RANK[node.network_level] || 1;
+            if (tierRank < minTier) continue; // LOD cull
 
-            if (isCongestion) {
-                const util = node.utilization || 0;
-                color = [
-                    Math.floor(Math.min(1, util * 2) * 255),
-                    Math.floor(Math.max(0, 1 - util) * 200),
-                    0
-                ];
-            } else if (isTraffic && trafficFlows) {
-                const flow = trafficFlows.node_flows.find((f: any) => f.id === node.id);
-                if (flow) {
-                    const util = flow.utilization;
-                    color = [Math.floor(Math.min(1, util * 2) * 255), Math.floor(Math.max(0, 1 - util) * 200), 0];
-                    opacity = 180;
-                } else {
-                    color = [100, 100, 100]; opacity = 30;
-                }
-            }
+            const nodeColor = getNodeDisplayColor(
+                { ...node, owner: corp.id, owner_name: corp.name } as AllInfraNode,
+                baseColor,
+                isCongestion,
+                isTraffic,
+                trafficNodeFlowMap,
+            );
 
-            nodesData.push({
-                ...node,
+            allNodes.push({
+                id: node.id,
                 position: [node.x, node.y],
-                color: [...color, opacity],
+                color: nodeColor,
                 icon: toIconKey(node.node_type),
                 tierSize: NODE_TIER_SIZE[node.network_level] || 32,
-                tierLabel: NETWORK_TIER_LABEL[node.network_level] || ''
+                tierLabel: NETWORK_TIER_LABEL[node.network_level] || '',
+                network_level: node.network_level,
+                node_type: node.node_type,
+                under_construction: node.under_construction,
+                health: node.health ?? 1,
+                utilization: node.utilization || 0,
+                owner: corp.id,
+                owner_name: corp.name,
+                tierRank,
+                x: node.x,
+                y: node.y,
             });
         }
     }
 
-    const layers: Layer[] = [
-        new LineLayer({
-            id: 'infra-edges',
-            data: edgesData,
-            getSourcePosition: (d: any) => d.sourcePosition,
-            getTargetPosition: (d: any) => d.targetPosition,
-            getColor: (d: any) => d.color,
-            getWidth: (d: any) => d.width,
-            widthUnits: 'pixels',
-            pickable: true,
-            autoHighlight: true,
-            onClick: ({ object }: any) => {
-                if (object) {
-                    window.dispatchEvent(new CustomEvent('entity-selected', { detail: { id: object.id, type: 'edge' } }));
-                }
-            }
-        })
-    ];
+    // ── Build layer array ────────────────────────────────────────────────────
+    const layers: Layer[] = [];
 
-    // Icon layer when atlas is ready, otherwise fallback colored dots
-    if (iconAtlasReady && iconAtlas) {
-        layers.push(new IconLayer({
-            id: 'infra-nodes',
-            data: nodesData,
-            getPosition: (d: any) => d.position,
-            getIcon: (d: any) => d.icon,
-            iconAtlas: iconAtlas as any,
-            iconMapping: iconMapping,
-            getSize: (d: any) => d.tierSize,
-            sizeMinPixels: 12,
-            sizeMaxPixels: 72,
-            getColor: (d: any) => d.color,
-            pickable: true,
-            autoHighlight: true,
-            onClick: ({ object }: any) => {
-                if (object) {
-                    window.dispatchEvent(new CustomEvent('entity-selected', { detail: { id: object.id, type: 'node' } }));
-                }
+    // ── 1. Edge lines ────────────────────────────────────────────────────────
+    layers.push(new LineLayer({
+        id: 'infra-edges',
+        data: allEdges,
+        getSourcePosition: (d: ProcessedEdge) => d.sourcePosition,
+        getTargetPosition: (d: ProcessedEdge) => d.targetPosition,
+        getColor: (d: ProcessedEdge) => d.color,
+        getWidth: (d: ProcessedEdge) => d.width,
+        widthUnits: 'pixels',
+        pickable: true,
+        autoHighlight: true,
+        onClick: ({ object }: any) => {
+            if (object) {
+                window.dispatchEvent(new CustomEvent('entity-selected', {
+                    detail: { id: object.id, type: 'edge' },
+                }));
             }
-        }));
-    } else {
-        layers.push(new ScatterplotLayer({
-            id: 'infra-nodes-fallback',
-            data: nodesData,
-            getPosition: (d: any) => d.position,
-            getFillColor: (d: any) => d.color,
-            getRadius: (d: any) => d.tierSize * 500,
-            radiusMinPixels: 6,
-            radiusMaxPixels: 24,
-            pickable: true,
-            onClick: ({ object }: any) => {
-                if (object) {
-                    window.dispatchEvent(new CustomEvent('entity-selected', { detail: { id: object.id, type: 'node' } }));
-                }
-            }
+        },
+    }));
+
+    // ── 2. Medium-traffic pulsing glow edges (0.3 < util <= 0.7) ─────────────
+    const mediumTrafficEdges = allEdges.filter(e => {
+        const u = e.utilization;
+        return u > 0.3 && u <= 0.7;
+    });
+    if (mediumTrafficEdges.length > 0) {
+        // Pulse factor oscillates between 0.4 and 1.0
+        const pulse = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(currentTime * 0.003));
+        layers.push(new LineLayer({
+            id: 'infra-edges-medium-glow',
+            data: mediumTrafficEdges,
+            getSourcePosition: (d: ProcessedEdge) => d.sourcePosition,
+            getTargetPosition: (d: ProcessedEdge) => d.targetPosition,
+            getColor: (d: ProcessedEdge) => [
+                Math.min(255, d.color[0] + 60),
+                Math.min(255, d.color[1] + 60),
+                Math.min(255, d.color[2] + 60),
+                Math.floor(80 * pulse),
+            ],
+            getWidth: (d: ProcessedEdge) => d.width * 2.5,
+            widthUnits: 'pixels',
+            pickable: false,
+            parameters: {
+                blend: true,
+                blendFunc: [WebGLRenderingContext.SRC_ALPHA, WebGLRenderingContext.ONE],
+            },
         }));
     }
 
-    // Tier badge labels (visible at zoom > 5)
+    // ── 3. TripsLayer animated data flow for high-traffic edges ───────────────
+    const trips = buildTrips(allEdges, currentTime);
+    if (trips.length > 0) {
+        const tripDuration = 200;
+        const loopTime = currentTime % tripDuration;
+
+        layers.push(new TripsLayer({
+            id: 'infra-edge-trips',
+            data: trips,
+            getPath: (d: TripDatum) => d.path,
+            getTimestamps: (d: TripDatum) => d.timestamps,
+            getColor: (d: TripDatum) => d.color,
+            getWidth: 4,
+            widthMinPixels: 2,
+            widthMaxPixels: 8,
+            currentTime: loopTime,
+            trailLength: 80,
+            fadeTrail: true,
+            pickable: false,
+            parameters: {
+                blend: true,
+                blendFunc: [WebGLRenderingContext.SRC_ALPHA, WebGLRenderingContext.ONE],
+            },
+        } as any));
+    }
+
+    // ── 4. Construction pulsing rings ────────────────────────────────────────
+    const constructionNodes = allNodes.filter(n => n.under_construction);
+    if (constructionNodes.length > 0) {
+        // Animated radius: oscillates between 0.7x and 1.3x base
+        const pulseRadius = 0.7 + 0.6 * (0.5 + 0.5 * Math.sin(currentTime * 0.005));
+        layers.push(new ScatterplotLayer({
+            id: 'infra-construction-rings',
+            data: constructionNodes,
+            getPosition: (d: ProcessedNode) => d.position,
+            getFillColor: [59, 130, 246, 0],
+            getLineColor: [59, 130, 246, 160],
+            getLineWidth: 2,
+            lineWidthUnits: 'pixels',
+            stroked: true,
+            filled: false,
+            getRadius: (d: ProcessedNode) => d.tierSize * 800 * pulseRadius,
+            radiusMinPixels: 10,
+            radiusMaxPixels: 40,
+            pickable: false,
+            parameters: { depthTest: false },
+        }));
+    }
+
+    // ── 5. Node rendering: 2.5D columns (pitch > 10) or flat icons ───────────
+    const use3D = pitch > 10;
+
+    if (use3D) {
+        // ColumnLayer for extruded 2.5D nodes
+        layers.push(new ColumnLayer({
+            id: 'infra-nodes-columns',
+            data: allNodes,
+            diskResolution: 12,
+            radius: 8000,
+            extruded: true,
+            getPosition: (d: ProcessedNode) => d.position,
+            getFillColor: (d: ProcessedNode) => d.color,
+            getElevation: (d: ProcessedNode) => COLUMN_HEIGHT[d.network_level] || 200,
+            pickable: true,
+            autoHighlight: true,
+            onClick: ({ object }: any) => {
+                if (object) {
+                    window.dispatchEvent(new CustomEvent('entity-selected', {
+                        detail: { id: object.id, type: 'node' },
+                    }));
+                }
+            },
+        } as any));
+
+        // Billboard icons on top of columns
+        if (iconAtlasReady && iconAtlas) {
+            layers.push(new IconLayer({
+                id: 'infra-nodes-column-icons',
+                data: allNodes,
+                getPosition: (d: ProcessedNode) => d.position,
+                getIcon: (d: ProcessedNode) => d.icon,
+                iconAtlas: iconAtlas as any,
+                iconMapping: iconMapping,
+                getSize: (d: ProcessedNode) => d.tierSize * 0.8,
+                sizeMinPixels: 10,
+                sizeMaxPixels: 48,
+                getColor: [255, 255, 255, 230],
+                // Elevate icon above column top
+                getPixelOffset: [0, -20],
+                pickable: false,
+                billboard: true,
+            }));
+        }
+    } else {
+        // Flat icon layer (default)
+        if (iconAtlasReady && iconAtlas) {
+            layers.push(new IconLayer({
+                id: 'infra-nodes',
+                data: allNodes,
+                getPosition: (d: ProcessedNode) => d.position,
+                getIcon: (d: ProcessedNode) => d.icon,
+                iconAtlas: iconAtlas as any,
+                iconMapping: iconMapping,
+                getSize: (d: ProcessedNode) => d.tierSize,
+                sizeMinPixels: 12,
+                sizeMaxPixels: 72,
+                getColor: (d: ProcessedNode) => d.color,
+                pickable: true,
+                autoHighlight: true,
+                onClick: ({ object }: any) => {
+                    if (object) {
+                        window.dispatchEvent(new CustomEvent('entity-selected', {
+                            detail: { id: object.id, type: 'node' },
+                        }));
+                    }
+                },
+            }));
+        } else {
+            // Fallback colored dots when atlas not ready
+            layers.push(new ScatterplotLayer({
+                id: 'infra-nodes-fallback',
+                data: allNodes,
+                getPosition: (d: ProcessedNode) => d.position,
+                getFillColor: (d: ProcessedNode) => d.color,
+                getRadius: (d: ProcessedNode) => d.tierSize * 500,
+                radiusMinPixels: 6,
+                radiusMaxPixels: 24,
+                pickable: true,
+                onClick: ({ object }: any) => {
+                    if (object) {
+                        window.dispatchEvent(new CustomEvent('entity-selected', {
+                            detail: { id: object.id, type: 'node' },
+                        }));
+                    }
+                },
+            }));
+        }
+    }
+
+    // ── 6. Hover effects ─────────────────────────────────────────────────────
+    if (hoveredNodeId !== null) {
+        const hoveredNode = allNodes.find(n => n.id === hoveredNodeId);
+        if (hoveredNode) {
+            const hoverColor = getCorpColor(hoveredNode.owner, corpIndex);
+
+            // Bright glow ring around hovered node
+            layers.push(new ScatterplotLayer({
+                id: 'infra-hover-glow',
+                data: [hoveredNode],
+                getPosition: (d: ProcessedNode) => d.position,
+                getFillColor: [...hoverColor, 40],
+                getLineColor: [...hoverColor, 200],
+                getLineWidth: 3,
+                lineWidthUnits: 'pixels',
+                stroked: true,
+                filled: true,
+                getRadius: hoveredNode.tierSize * 1200,
+                radiusMinPixels: 20,
+                radiusMaxPixels: 60,
+                pickable: false,
+                parameters: {
+                    depthTest: false,
+                    blend: true,
+                    blendFunc: [WebGLRenderingContext.SRC_ALPHA, WebGLRenderingContext.ONE],
+                },
+            }));
+
+            // Find directly connected edges
+            const connectedEdges = allEdges.filter(
+                e => e.source === hoveredNodeId || e.target === hoveredNodeId,
+            );
+
+            if (connectedEdges.length > 0) {
+                // Highlight connected edges in bright accent color
+                layers.push(new LineLayer({
+                    id: 'infra-hover-edges',
+                    data: connectedEdges,
+                    getSourcePosition: (d: ProcessedEdge) => d.sourcePosition,
+                    getTargetPosition: (d: ProcessedEdge) => d.targetPosition,
+                    getColor: [255, 255, 100, 200],
+                    getWidth: 4,
+                    widthUnits: 'pixels',
+                    pickable: false,
+                    parameters: { depthTest: false },
+                }));
+
+                // Find connected neighbor node IDs
+                const neighborIds = new Set<number>();
+                for (const e of connectedEdges) {
+                    if (e.source === hoveredNodeId) neighborIds.add(e.target);
+                    else neighborIds.add(e.source);
+                }
+                neighborIds.delete(hoveredNodeId);
+
+                const neighborNodes = allNodes.filter(n => neighborIds.has(n.id));
+                if (neighborNodes.length > 0) {
+                    layers.push(new ScatterplotLayer({
+                        id: 'infra-hover-neighbors',
+                        data: neighborNodes,
+                        getPosition: (d: ProcessedNode) => d.position,
+                        getFillColor: [255, 255, 255, 0],
+                        getLineColor: [255, 255, 100, 120],
+                        getLineWidth: 2,
+                        lineWidthUnits: 'pixels',
+                        stroked: true,
+                        filled: false,
+                        getRadius: (d: ProcessedNode) => d.tierSize * 800,
+                        radiusMinPixels: 10,
+                        radiusMaxPixels: 40,
+                        pickable: false,
+                        parameters: { depthTest: false },
+                    }));
+                }
+            }
+
+            // Coverage radius for wireless nodes
+            const coverageR = COVERAGE_RADIUS[hoveredNode.node_type];
+            if (coverageR) {
+                layers.push(new ScatterplotLayer({
+                    id: 'infra-hover-coverage',
+                    data: [hoveredNode],
+                    getPosition: (d: ProcessedNode) => d.position,
+                    getFillColor: [59, 130, 246, 25],
+                    getLineColor: [59, 130, 246, 140],
+                    getLineWidth: 2,
+                    lineWidthUnits: 'pixels',
+                    stroked: true,
+                    filled: true,
+                    getRadius: coverageR,
+                    radiusMinPixels: 30,
+                    pickable: false,
+                    parameters: { depthTest: false },
+                }));
+            }
+        }
+    }
+
+    // ── 7. Tier badge labels (visible at zoom > 5) ───────────────────────────
     if (currentZoom > 5) {
         layers.push(new TextLayer({
             id: 'node-tier-labels',
-            data: nodesData,
-            getPosition: (d: any) => d.position,
-            getText: (d: any) => d.tierLabel,
+            data: allNodes,
+            getPosition: (d: ProcessedNode) => d.position,
+            getText: (d: ProcessedNode) => d.tierLabel,
             getSize: 10,
             getColor: [255, 255, 255, 180],
             getPixelOffset: [14, -14],
             fontFamily: 'Inter, sans-serif',
             fontWeight: 'bold',
-            parameters: { depthTest: false }
+            parameters: { depthTest: false },
         }));
     }
 
+    // ── 8. Infrastructure labels at high zoom (owner + type) ─────────────────
+    if (currentZoom > 7) {
+        layers.push(new TextLayer({
+            id: 'infra-owner-labels',
+            data: allNodes,
+            getPosition: (d: ProcessedNode) => d.position,
+            getText: (d: ProcessedNode) => `${d.owner_name}\n${d.node_type}`,
+            getSize: 11,
+            getColor: (d: ProcessedNode) => {
+                const c = getCorpColor(d.owner, corpIndex);
+                return [c[0], c[1], c[2], 220];
+            },
+            getPixelOffset: [0, 18],
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: 'normal',
+            getTextAnchor: 'middle',
+            getAlignmentBaseline: 'top',
+            parameters: { depthTest: false },
+            extensions: [new CollisionFilterExtension()],
+            collisionEnabled: true,
+            getCollisionPriority: (d: ProcessedNode) => d.tierRank,
+            collisionTestProps: {
+                sizeScale: 2,
+            },
+        } as any));
+    }
+
     return layers;
+}
+
+// ── Edge tier estimation ─────────────────────────────────────────────────────
+
+/**
+ * Estimate tier rank for an edge type based on name convention.
+ * FiberLocal/Copper = T1-T2, FiberRegional/Microwave = T2-T3,
+ * FiberNational = T3, Submarine/Satellite = T4-T5.
+ */
+function edgeTierRank(edgeType: string): number {
+    switch (edgeType) {
+        case 'Copper':
+            return 1;
+        case 'FiberLocal':
+            return 1;
+        case 'Microwave':
+            return 2;
+        case 'FiberRegional':
+            return 2;
+        case 'FiberNational':
+            return 3;
+        case 'Satellite':
+            return 4;
+        case 'Submarine':
+            return 5;
+        default:
+            return 1;
+    }
 }

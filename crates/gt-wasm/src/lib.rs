@@ -991,4 +991,119 @@ impl WasmBridge {
             .collect();
         serde_json::to_string(&cells).unwrap_or_default()
     }
+
+    /// Generate a low-detail world preview for the new-game screen.
+    /// Takes a WorldConfig JSON, runs a fast generation, returns preview data JSON.
+    pub fn create_world_preview(config_json: &str) -> Result<String, JsValue> {
+        let config: WorldConfig = serde_json::from_str(config_json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid config: {}", e)))?;
+
+        if config.use_real_earth {
+            // Real earth doesn't need a procgen preview
+            return Ok(serde_json::json!({
+                "is_real_earth": true,
+                "cells": [],
+                "width": 0,
+                "height": 0,
+            }).to_string());
+        }
+
+        let gen = gt_world::WorldGenerator::new(config);
+        let world = gen.generate();
+
+        // Build preview: cell terrain colors + positions
+        let preview_cells: Vec<serde_json::Value> = world.grid.cells.iter().enumerate().map(|(i, cell)| {
+            let terrain = &world.terrains[i];
+            let elevation = world.elevations[i];
+            serde_json::json!({
+                "lat": cell.lat,
+                "lon": cell.lon,
+                "terrain": format!("{:?}", terrain),
+                "elevation": elevation,
+            })
+        }).collect();
+
+        let city_previews: Vec<serde_json::Value> = world.cities.iter().map(|city| {
+            let cell = &world.grid.cells[city.cell_index];
+            serde_json::json!({
+                "name": city.name,
+                "lat": cell.lat,
+                "lon": cell.lon,
+                "population": city.population,
+            })
+        }).collect();
+
+        let result = serde_json::json!({
+            "is_real_earth": false,
+            "cell_count": world.grid.cell_count(),
+            "cells": preview_cells,
+            "cities": city_previews,
+            "region_count": world.regions.len(),
+        });
+        Ok(result.to_string())
+    }
+
+    /// Export the current game world's geography as GeoJSON for MapLibre rendering.
+    /// Returns a GeoJSON FeatureCollection with region polygons, city points, etc.
+    pub fn get_world_geojson(&self) -> String {
+        let mut features: Vec<serde_json::Value> = Vec::new();
+
+        // Region polygons
+        for (&id, region) in &self.world.regions {
+            if region.boundary_polygon.is_empty() {
+                continue;
+            }
+            // Convert boundary to GeoJSON coordinates [lon, lat]
+            let coords: Vec<Vec<f64>> = region.boundary_polygon.iter()
+                .map(|&(lat, lon)| vec![lon, lat])
+                .collect();
+            // Close the polygon ring
+            let mut ring = coords;
+            if let Some(first) = ring.first().cloned() {
+                ring.push(first);
+            }
+
+            features.push(serde_json::json!({
+                "type": "Feature",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [ring],
+                },
+                "properties": {
+                    "id": id,
+                    "name": region.name,
+                    "type": "region",
+                    "population": region.population,
+                    "gdp": region.gdp,
+                    "development": region.development,
+                },
+            }));
+        }
+
+        // City points
+        for (&id, city) in &self.world.cities {
+            if let Some(pos) = self.world.positions.get(&id) {
+                features.push(serde_json::json!({
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [pos.x, pos.y],
+                    },
+                    "properties": {
+                        "id": id,
+                        "name": city.name,
+                        "type": "city",
+                        "population": city.population,
+                        "development": city.development,
+                    },
+                }));
+            }
+        }
+
+        let geojson = serde_json::json!({
+            "type": "FeatureCollection",
+            "features": features,
+        });
+        serde_json::to_string(&geojson).unwrap_or_default()
+    }
 }

@@ -44,9 +44,9 @@ pub fn generate_elevation(
     // Assign plate velocity vectors (random direction on tangent plane)
     let mut plate_velocities: Vec<(f64, f64, f64)> = Vec::with_capacity(num_plates);
     for _ in 0..num_plates {
-        let vx = rng.gen_range(-1.0..1.0);
-        let vy = rng.gen_range(-1.0..1.0);
-        let vz = rng.gen_range(-1.0..1.0);
+        let vx: f64 = rng.gen_range(-1.0..1.0);
+        let vy: f64 = rng.gen_range(-1.0..1.0);
+        let vz: f64 = rng.gen_range(-1.0..1.0);
         let len = (vx * vx + vy * vy + vz * vz).sqrt().max(0.01);
         plate_velocities.push((vx / len, vy / len, vz / len));
     }
@@ -55,7 +55,7 @@ pub fn generate_elevation(
     for i in 0..n {
         let my_plate = plate_assignments[i];
         let mut is_boundary = false;
-        let mut convergent_strength = 0.0;
+        let mut convergent_strength: f64 = 0.0;
 
         for &ni in &grid.cells[i].neighbor_indices {
             let neighbor_plate = plate_assignments[ni];

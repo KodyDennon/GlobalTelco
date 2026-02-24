@@ -138,7 +138,7 @@ export function createAnnotationLayers(
 				id: 'route-plan-paths',
 				data: validRoutes,
 				getPath: (d: RoutePlan) =>
-					d.waypoints.map((wp) => [wp.lon, wp.lat]),
+					d.waypoints.map((wp) => [wp.lon, wp.lat]) as any,
 				getColor: ROUTE_COLOR,
 				getWidth: 3,
 				widthUnits: 'pixels' as const,

@@ -45,6 +45,13 @@ pub fn run(world: &mut GameWorld) {
             match mission.mission_type {
                 MissionType::Espionage => {
                     if success {
+                        // Increment intel level (capped at 3)
+                        let key = (corp_id, mission.target);
+                        let current = world.intel_levels.get(&key).copied().unwrap_or(0);
+                        if current < 3 {
+                            world.intel_levels.insert(key, current + 1);
+                        }
+
                         world.event_queue.push(
                             tick,
                             gt_common::events::GameEvent::EspionageCompleted {

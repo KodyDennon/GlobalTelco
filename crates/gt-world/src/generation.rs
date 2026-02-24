@@ -88,7 +88,7 @@ impl WorldGenerator {
         );
 
         // Step 5: Generate political boundaries
-        let (mut regions, _countries) = politics::generate_politics(
+        let (regions, _countries) = politics::generate_politics(
             &voronoi,
             &terrains,
             &elevations,
@@ -186,7 +186,6 @@ fn place_cities_enhanced(
     seed: u64,
     city_density: f64,
 ) -> Vec<City> {
-    use rand::Rng;
     use rand::SeedableRng;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed.wrapping_add(5555));

@@ -189,23 +189,47 @@ fn sanitize_chat(message: &str) -> Option<String> {
     }
 }
 
-/// Filter a TickUpdate for per-player data visibility.
+/// Round a money value to an approximate range for intel level 1 (basic financials).
+/// Returns the value rounded to the nearest "bucket" so the player gets a rough idea
+/// but not exact numbers. Uses significant-digit rounding:
+/// - Values < 10,000 → round to nearest 1,000
+/// - Values < 1,000,000 → round to nearest 100,000
+/// - Values >= 1,000,000 → round to nearest 1,000,000
+fn approximate_money(value: i64) -> i64 {
+    let abs = value.unsigned_abs();
+    let bucket = if abs < 10_000 {
+        1_000
+    } else if abs < 1_000_000 {
+        100_000
+    } else {
+        1_000_000
+    };
+    let rounded = ((abs + bucket / 2) / bucket) * bucket;
+    if value >= 0 {
+        rounded as i64
+    } else {
+        -(rounded as i64)
+    }
+}
+
+/// Filter a TickUpdate for per-player data visibility using graduated intel levels.
+///
+/// Intel levels (per spy_corp → target_corp pair):
+///   0 = Infrastructure positions only (node_count visible, financials/ops hidden)
+///   1 = Basic financials (revenue, cost, cash, debt as approximate ranges)
+///   2 = Detailed financials (exact revenue, cost, cash, debt numbers)
+///   3 = Full operational data (utilization, health, throughput) + exact financials
 ///
 /// Rules:
 /// - Spectators see ALL data (no filtering).
-/// - All infrastructure positions/types are visible to ALL players.
-/// - Competitor FINANCIAL data (revenue, cash, profit, debt) is HIDDEN unless the
-///   player has intel on that competitor.
-/// - Competitor OPERATIONAL data (utilization, health, throughput) is HIDDEN unless
-///   the player has intel on that competitor.
-///
-/// Intel is tracked via the espionage system in the ECS. For now, we check the
-/// `intel_levels` map on GameWorld: if the player's corp has an intel entry for the
-/// target corp, financial/operational data is revealed.
+/// - A player's OWN corp data is always fully visible.
+/// - Competitor data is filtered based on the player's intel level against that competitor.
+/// - Intel levels are populated by the espionage system (covert_ops).
 fn filter_tick_update_for_player(
     update: &ServerMessage,
     player_corp_id: Option<EntityId>,
     is_spectator: bool,
+    intel_levels: &std::collections::HashMap<EntityId, u8>,
 ) -> ServerMessage {
     // Spectators see everything
     if is_spectator {
@@ -223,20 +247,58 @@ fn filter_tick_update_for_player(
                 .map(|delta| {
                     // Player's own corp data is always fully visible
                     if Some(delta.corp_id) == player_corp_id {
-                        delta.clone()
-                    } else {
-                        // Competitor corp: hide financial data by default.
-                        // Infrastructure positions/types flow through events and
-                        // are visible to all, but financial specifics are scrubbed.
-                        CorpDelta {
-                            corp_id: delta.corp_id,
-                            // Node count is infrastructure info -- visible to all
-                            node_count: delta.node_count,
-                            // Financial data hidden for competitors
-                            cash: None,
-                            revenue: None,
-                            cost: None,
-                            debt: None,
+                        return delta.clone();
+                    }
+
+                    // Look up intel level for this competitor
+                    let intel = intel_levels.get(&delta.corp_id).copied().unwrap_or(0);
+
+                    match intel {
+                        0 => {
+                            // Level 0: infrastructure positions only (node_count visible)
+                            CorpDelta {
+                                corp_id: delta.corp_id,
+                                node_count: delta.node_count,
+                                cash: None,
+                                revenue: None,
+                                cost: None,
+                                debt: None,
+                                avg_utilization: None,
+                                avg_health: None,
+                                total_throughput: None,
+                            }
+                        }
+                        1 => {
+                            // Level 1: basic financials (approximate ranges)
+                            CorpDelta {
+                                corp_id: delta.corp_id,
+                                node_count: delta.node_count,
+                                cash: delta.cash.map(approximate_money),
+                                revenue: delta.revenue.map(approximate_money),
+                                cost: delta.cost.map(approximate_money),
+                                debt: delta.debt.map(approximate_money),
+                                avg_utilization: None,
+                                avg_health: None,
+                                total_throughput: None,
+                            }
+                        }
+                        2 => {
+                            // Level 2: exact financials, no operational data
+                            CorpDelta {
+                                corp_id: delta.corp_id,
+                                node_count: delta.node_count,
+                                cash: delta.cash,
+                                revenue: delta.revenue,
+                                cost: delta.cost,
+                                debt: delta.debt,
+                                avg_utilization: None,
+                                avg_health: None,
+                                total_throughput: None,
+                            }
+                        }
+                        _ => {
+                            // Level 3+: full data (exact financials + operational)
+                            delta.clone()
                         }
                     }
                 })
@@ -621,11 +683,25 @@ async fn handle_client_message(
                 let tx = forward_tx.clone();
                 let player_corp_id = p.corp_id;
                 let is_spectator = p.is_spectator;
+                let world_ref = Arc::clone(&world);
                 tokio::spawn(async move {
                     while let Ok(msg) = rx.recv().await {
-                        // Apply per-player data visibility filtering
+                        // Snapshot this player's intel levels from the world state.
+                        // The lock is held only for the brief HashMap scan (microseconds).
+                        let intel = if let Some(my_corp) = player_corp_id {
+                            if !is_spectator {
+                                let w = world_ref.world.lock().await;
+                                w.get_intel_levels_for_corp(my_corp)
+                            } else {
+                                std::collections::HashMap::new()
+                            }
+                        } else {
+                            std::collections::HashMap::new()
+                        };
+
+                        // Apply per-player graduated data visibility filtering
                         let filtered =
-                            filter_tick_update_for_player(&msg, player_corp_id, is_spectator);
+                            filter_tick_update_for_player(&msg, player_corp_id, is_spectator, &intel);
                         if tx.send(filtered).await.is_err() {
                             break;
                         }
