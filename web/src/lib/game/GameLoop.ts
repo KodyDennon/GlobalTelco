@@ -36,6 +36,7 @@ let tickAccumulator = 0;
 let currentSpeed = 1; // ticks per second
 let lastAutoSaveTick = 0;
 const AUTO_SAVE_INTERVAL = 50; // ticks between auto-saves
+let mpCleanupFns: Array<() => void> = [];
 
 // Performance profiling stores
 export const simTickTime = writable<number>(0);
@@ -205,6 +206,9 @@ export function stop() {
 	}
 	teardownKeyboardShortcuts();
 	audioManager.dispose();
+	// Clean up multiplayer event listeners
+	for (const fn of mpCleanupFns) fn();
+	mpCleanupFns = [];
 }
 
 export function setSpeed(speed: number) {
@@ -295,10 +299,66 @@ export async function initMultiplayer(saveData: string) {
 	loadingStage.set(2);
 	await audioManager.init();
 	loadingStage.set(3);
-	// Server drives ticks in multiplayer
+	// Server drives ticks in multiplayer — no local tick advancement
 	setSpeed(0);
 	initialized.set(true);
 	updateStores();
+
+	// Listen for corp delta updates from WebSocket TickUpdate messages
+	const handleCorpDeltas = (e: Event) => {
+		const { deltas } = (e as CustomEvent).detail;
+		if (!Array.isArray(deltas)) return;
+		for (const delta of deltas) {
+			const corpId = delta.corp_id as number;
+			// Update player corp store if this delta is for the player
+			const info = bridge.getWorldInfo();
+			if (corpId === info.player_corp_id) {
+				playerCorp.update((corp) => {
+					if (!corp) return corp;
+					return {
+						...corp,
+						cash: delta.cash ?? corp.cash,
+						revenue_per_tick: delta.revenue ?? corp.revenue_per_tick,
+						cost_per_tick: delta.cost ?? corp.cost_per_tick,
+						debt: delta.debt ?? corp.debt,
+						infrastructure_count: delta.node_count ?? corp.infrastructure_count,
+					};
+				});
+			}
+			// Update allCorporations store
+			allCorporations.update((corps) =>
+				corps.map((c) => {
+					if (c.id !== corpId) return c;
+					return {
+						...c,
+						cash: delta.cash ?? c.cash,
+						revenue: delta.revenue ?? c.revenue,
+						cost: delta.cost ?? c.cost,
+					};
+				})
+			);
+		}
+	};
+
+	// Listen for full snapshot reloads (sent periodically by server via WS)
+	const handleSnapshotReload = (e: Event) => {
+		const { state_json, tick } = (e as CustomEvent).detail;
+		try {
+			bridge.loadGame(state_json);
+			updateStores();
+			console.log(`[MP] Reloaded snapshot at tick ${tick}`);
+		} catch (err) {
+			console.error('[MP] Failed to reload snapshot:', err);
+		}
+	};
+
+	window.addEventListener('mp-corp-deltas', handleCorpDeltas);
+	window.addEventListener('mp-snapshot', handleSnapshotReload);
+
+	mpCleanupFns.push(
+		() => window.removeEventListener('mp-corp-deltas', handleCorpDeltas),
+		() => window.removeEventListener('mp-snapshot', handleSnapshotReload),
+	);
 }
 
 export async function quickSave(): Promise<void> {

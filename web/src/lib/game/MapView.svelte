@@ -17,6 +17,8 @@
 		edgeTargets,
 		canEdgeConnect,
 		getCompatibleEdgeTypes,
+		viewport,
+		zoomLevel,
 	} from "$lib/stores/uiState";
 	import * as bridge from "$lib/wasm/bridge";
 	import { injectEventEffectStyles } from './EventEffects';
@@ -111,6 +113,27 @@
 				await renderer.buildMap();
 				renderer.updateInfrastructure();
 
+				// Track viewport bounds for minimap
+				const updateViewportBounds = () => {
+					const map = (renderer as any)?.map;
+					if (!map) return;
+					const bounds = map.getBounds();
+					viewport.set({
+						minX: bounds.getWest(),
+						minY: bounds.getSouth(),
+						maxX: bounds.getEast(),
+						maxY: bounds.getNorth(),
+					});
+					zoomLevel.set(map.getZoom());
+				};
+				const mapRef = (renderer as any)?.map;
+				if (mapRef) {
+					mapRef.on('moveend', updateViewportBounds);
+					mapRef.on('zoomend', updateViewportBounds);
+					// Set initial viewport
+					updateViewportBounds();
+				}
+
 				// Map navigation from keyboard
 				const handleMapPan = (e: Event) => {
 					const { direction } = (e as CustomEvent).detail;
@@ -148,10 +171,19 @@
 					map.easeTo({ pitch: currentPitch > 10 ? 0 : 45, duration: 500 });
 				};
 
+				// Minimap click navigation
+				const handleMinimapNavigate = (e: Event) => {
+					const { lon, lat } = (e as CustomEvent).detail;
+					const map = (renderer as any)?.map;
+					if (!map) return;
+					map.flyTo({ center: [lon, lat], duration: 400 });
+				};
+
 				window.addEventListener('map-pan', handleMapPan);
 				window.addEventListener('map-zoom', handleMapZoom);
 				window.addEventListener('map-reset-view', handleMapResetView);
 				window.addEventListener('map-toggle-pitch', handleMapTogglePitch);
+				window.addEventListener('minimap-navigate', handleMinimapNavigate);
 
 				// Update map every 500ms (roughly per-tick at 1x speed, responsive at higher speeds)
 				const interval = setInterval(() => {
@@ -224,6 +256,7 @@
 					window.removeEventListener('map-zoom', handleMapZoom);
 					window.removeEventListener('map-reset-view', handleMapResetView);
 					window.removeEventListener('map-toggle-pitch', handleMapTogglePitch);
+					window.removeEventListener('minimap-navigate', handleMinimapNavigate);
 					container?.removeEventListener("mousemove", handleMouseMove);
 					container?.removeEventListener(
 						"mouseleave",

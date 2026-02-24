@@ -106,6 +106,7 @@ async fn main() {
                 HeaderName::from_static("sec-websocket-key"),
                 HeaderName::from_static("sec-websocket-version"),
                 HeaderName::from_static("sec-websocket-protocol"),
+                HeaderName::from_static("x-admin-key"),
             ])
     } else {
         info!("CORS open (no CORS_ORIGIN set — dev mode)");

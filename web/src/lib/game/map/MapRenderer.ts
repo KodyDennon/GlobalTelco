@@ -114,12 +114,11 @@ export class MapRenderer {
             attributionControl: false,
         });
 
-        // Create deck.gl overlay and add to map
+        // Create deck.gl overlay (added to map after style loads)
         this.overlay = new MapboxOverlay({
             interleaved: false,
             layers: [],
         });
-        this.map.addControl(this.overlay as any);
 
         // Track zoom changes
         this.map.on('zoom', () => {
@@ -129,17 +128,14 @@ export class MapRenderer {
         // Globe projection toggle based on zoom level
         const setProjectionForZoom = (zoom: number) => {
             if (!this.map || !this.map.isStyleLoaded()) return;
-            if (zoom < 2.5) {
-                this.map.setProjection({ type: 'globe' } as any);
-            } else {
-                this.map.setProjection({ type: 'mercator' } as any);
-            }
+            this.map.setProjection({ type: zoom < 2.5 ? 'globe' : 'mercator' } as any);
         };
 
-        // Defer initial projection until style is loaded
+        // Defer overlay + projection until style is loaded
         this.mapReadyPromise = new Promise<void>((resolve) => {
             this.map!.once('style.load', () => {
-                setProjectionForZoom(2);
+                this.map!.addControl(this.overlay as any);
+                setProjectionForZoom(this.map!.getZoom());
                 resolve();
             });
         });
@@ -322,9 +318,9 @@ export class MapRenderer {
                 id: 'cities-glow',
                 data: gtgCities,
                 getPosition: (d: any) => [d.x, d.y],
-                getFillColor: [255, 210, 120, 140],
-                getRadius: (d: any) => Math.log10(Math.max(d.population, 10)) * 22000,
-                radiusMinPixels: 3,
+                getFillColor: [255, 210, 120, 90],
+                getRadius: (d: any) => Math.log10(Math.max(d.population, 10)) * 8000,
+                radiusMinPixels: 2,
                 pickable: false,
                 parameters: {
                     blend: true,
@@ -379,38 +375,12 @@ export class MapRenderer {
     }
 
     // ── Ocean depth shading (procgen worlds only) ─────────────────────────
+    // Ocean depth is rendered as part of the terrain bitmap (buildTerrainBitmap)
+    // which already paints OceanShallow/OceanDeep/Ocean cells with distinct colors.
+    // No separate layer needed — the bitmap provides smooth, gapless coverage.
 
     private createOceanDepthLayers(): Layer[] {
-        if (this.isRealEarth) return [];
-        if (this.cachedCells.length === 0) return [];
-
-        // Ocean depth color mapping by terrain type
-        const OCEAN_DEPTH_COLORS: Record<string, [number, number, number, number]> = {
-            OceanDeep: [8, 20, 50, 200],       // Deep ocean — very dark blue
-            Ocean:     [15, 40, 80, 180],       // Medium depth
-            OceanShallow: [25, 65, 120, 160],   // Shallow / continental shelf
-        };
-
-        const oceanCells: { position: [number, number]; color: [number, number, number, number] }[] = [];
-        for (const cell of this.cachedCells) {
-            const color = OCEAN_DEPTH_COLORS[cell.terrain];
-            if (color) {
-                oceanCells.push({ position: [cell.lon, cell.lat], color });
-            }
-        }
-
-        if (oceanCells.length === 0) return [];
-
-        return [new ScatterplotLayer({
-            id: 'ocean-depth',
-            data: oceanCells,
-            getPosition: (d: any) => d.position,
-            getFillColor: (d: any) => d.color,
-            getRadius: this.cellRadiusM * 1.05,
-            radiusMinPixels: 4,
-            pickable: false,
-            parameters: { depthTest: false }
-        })];
+        return [];
     }
 
     // ── Overlays ────────────────────────────────────────────────────────────

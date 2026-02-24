@@ -330,7 +330,7 @@ pub fn build_edge(
 
     let edge_id = world.allocate_entity();
     world.infra_edges.insert(edge_id, edge);
-    world.network.add_edge(from, to);
+    world.network.add_edge_with_id(from, to, edge_id);
 
     if let Some(f) = world.financials.get_mut(&corp_id) {
         f.cash -= cost;

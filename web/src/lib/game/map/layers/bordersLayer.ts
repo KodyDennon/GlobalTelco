@@ -23,8 +23,8 @@ export function createBordersLayer(
         id: 'region-borders',
         data: borderData,
         getPath: (d: any) => d.polygon,
-        getColor: [80, 95, 130, 80],
-        getWidth: 1,
+        getColor: [140, 160, 200, 120],
+        getWidth: 1.5,
         widthUnits: 'pixels'
     });
 }

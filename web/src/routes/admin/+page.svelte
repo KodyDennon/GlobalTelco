@@ -44,7 +44,17 @@
 	let showCreateWorld = $state(false);
 	let newWorldName = $state("");
 	let newWorldMaxPlayers = $state(8);
+	let newWorldType = $state<"procgen" | "real_earth">("procgen");
+	let newWorldEra = $state("Internet");
+	let newWorldDifficulty = $state("Normal");
+	let newWorldMapSize = $state("Medium");
+	let newWorldAiCorps = $state(4);
+	let newWorldSeed = $state(Math.floor(Math.random() * 1_000_000));
 	let createWorldLoading = $state(false);
+
+	const ERA_OPTIONS = ["Telegraph", "Telephone", "EarlyDigital", "Internet", "Modern", "NearFuture"];
+	const DIFFICULTY_OPTIONS = ["Easy", "Normal", "Hard", "Expert"];
+	const MAP_SIZE_OPTIONS = ["Small", "Medium", "Large", "Huge"];
 
 	// ── Broadcast form ────────────────────────────────────────────────────
 	let showBroadcast = $state(false);
@@ -176,9 +186,18 @@
 		if (!newWorldName.trim()) return;
 		createWorldLoading = true;
 		try {
-			await createWorld($adminKey, newWorldName.trim(), newWorldMaxPlayers);
+			await createWorld($adminKey, newWorldName.trim(), newWorldMaxPlayers, {
+				seed: newWorldSeed,
+				starting_era: newWorldEra,
+				difficulty: newWorldDifficulty,
+				map_size: newWorldMapSize,
+				ai_corporations: newWorldAiCorps,
+				use_real_earth: newWorldType === "real_earth",
+			});
 			newWorldName = "";
 			newWorldMaxPlayers = 8;
+			newWorldType = "procgen";
+			newWorldSeed = Math.floor(Math.random() * 1_000_000);
 			showCreateWorld = false;
 			await Promise.allSettled([loadWorlds(), loadHealth()]);
 		} catch {
@@ -346,30 +365,54 @@
 				</div>
 
 				{#if showCreateWorld}
-					<div class="inline-form">
-						<input
-							type="text"
-							class="input-field input-inline"
-							placeholder="World name..."
-							bind:value={newWorldName}
-						/>
-						<label class="inline-label">
-							Max players:
-							<input
-								type="number"
-								class="input-field input-number"
-								min="1"
-								max="64"
-								bind:value={newWorldMaxPlayers}
-							/>
-						</label>
-						<button
-							class="btn btn-small btn-success"
-							onclick={handleCreateWorld}
-							disabled={createWorldLoading || !newWorldName.trim()}
-						>
-							{createWorldLoading ? "Creating..." : "Create"}
-						</button>
+					<div class="create-world-form">
+						<div class="form-row">
+							<label class="form-label">World Name
+								<input type="text" class="input-field" placeholder="My World..." bind:value={newWorldName} />
+							</label>
+						</div>
+						<div class="form-row">
+							<span class="form-label">World Type</span>
+							<div class="type-toggle">
+								<button class="type-btn" class:type-btn-active={newWorldType === "procgen"} onclick={() => (newWorldType = "procgen")}>Procedural</button>
+								<button class="type-btn" class:type-btn-active={newWorldType === "real_earth"} onclick={() => (newWorldType = "real_earth")}>Real Earth</button>
+							</div>
+						</div>
+						<div class="form-grid">
+							<label class="form-label">Era
+								<select class="input-field" bind:value={newWorldEra}>
+									{#each ERA_OPTIONS as era}<option value={era}>{era}</option>{/each}
+								</select>
+							</label>
+							<label class="form-label">Difficulty
+								<select class="input-field" bind:value={newWorldDifficulty}>
+									{#each DIFFICULTY_OPTIONS as diff}<option value={diff}>{diff}</option>{/each}
+								</select>
+							</label>
+							<label class="form-label">Map Size
+								<select class="input-field" bind:value={newWorldMapSize}>
+									{#each MAP_SIZE_OPTIONS as size}<option value={size}>{size}</option>{/each}
+								</select>
+							</label>
+							<label class="form-label">Max Players
+								<input type="number" class="input-field" min="1" max="64" bind:value={newWorldMaxPlayers} />
+							</label>
+							<label class="form-label">AI Corps
+								<input type="number" class="input-field" min="0" max="20" bind:value={newWorldAiCorps} />
+							</label>
+							<label class="form-label">Seed
+								<div class="seed-row">
+									<input type="number" class="input-field seed-input" bind:value={newWorldSeed} />
+									<button class="btn btn-small" onclick={() => (newWorldSeed = Math.floor(Math.random() * 1_000_000))}>Rand</button>
+								</div>
+							</label>
+						</div>
+						<div class="form-actions">
+							<button class="btn btn-small btn-success" onclick={handleCreateWorld} disabled={createWorldLoading || !newWorldName.trim()}>
+								{createWorldLoading ? "Creating..." : "Create World"}
+							</button>
+							<button class="btn btn-small" onclick={() => (showCreateWorld = false)}>Cancel</button>
+						</div>
 					</div>
 				{/if}
 
@@ -771,6 +814,85 @@
 	.separator {
 		color: #4b5563;
 		margin: 0 2px;
+	}
+
+	/* ── Create World Form ───────────────────────────────────────────── */
+
+	.create-world-form {
+		margin-bottom: 12px;
+		padding: 16px;
+		background: rgba(31, 41, 55, 0.4);
+		border: 1px solid rgba(55, 65, 81, 0.3);
+		border-radius: 8px;
+	}
+
+	.form-row {
+		margin-bottom: 12px;
+	}
+
+	.form-label {
+		display: block;
+		font-size: 0.75rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: #9ca3af;
+		margin-bottom: 4px;
+	}
+
+	.form-grid {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 12px;
+		margin-bottom: 14px;
+	}
+
+	.type-toggle {
+		display: flex;
+		gap: 0;
+		border: 1px solid rgba(55, 65, 81, 0.5);
+		border-radius: 6px;
+		overflow: hidden;
+		width: fit-content;
+		margin-top: 4px;
+	}
+
+	.type-btn {
+		padding: 7px 18px;
+		font-size: 0.8rem;
+		font-weight: 600;
+		background: rgba(17, 24, 39, 0.6);
+		color: #9ca3af;
+		border: none;
+		cursor: pointer;
+		font-family: inherit;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.type-btn:hover {
+		background: rgba(55, 65, 81, 0.5);
+	}
+
+	.type-btn-active {
+		background: rgba(16, 185, 129, 0.2);
+		color: #10b981;
+	}
+
+	.seed-row {
+		display: flex;
+		gap: 6px;
+		align-items: center;
+	}
+
+	.seed-input {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.form-actions {
+		display: flex;
+		gap: 8px;
+		padding-top: 4px;
 	}
 
 	/* ── Inline Form ─────────────────────────────────────────────────── */

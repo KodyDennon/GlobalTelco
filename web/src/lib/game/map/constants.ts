@@ -24,34 +24,34 @@ export const EDGE_STYLES: Record<string, { color: [number, number, number]; widt
     Submarine:     { color: [59, 130, 246], width: 5 },
 };
 
-/** Night-earth satellite palette for terrain — dark, muted tones. */
+/** Night-earth satellite palette for terrain — high contrast against #030810 background. */
 export const SATELLITE_COLORS: Record<string, [number, number, number]> = {
-    Urban:        [55, 55, 72],
-    Suburban:     [42, 45, 52],
-    Rural:        [24, 42, 26],
-    Mountainous:  [48, 42, 35],
-    Desert:       [62, 52, 32],
-    Coastal:      [28, 48, 58],
-    Tundra:       [48, 56, 64],
-    Frozen:       [62, 70, 78],
-    OceanShallow: [12, 24, 52],
-    OceanDeep:    [6, 12, 32],
-    Ocean:        [6, 12, 32],
+    Urban:        [130, 125, 148],
+    Suburban:     [100, 110, 105],
+    Rural:        [55, 105, 58],
+    Mountainous:  [115, 100, 82],
+    Desert:       [155, 130, 85],
+    Coastal:      [65, 115, 130],
+    Tundra:       [110, 125, 140],
+    Frozen:       [145, 155, 170],
+    OceanShallow: [18, 42, 82],
+    OceanDeep:    [8, 18, 42],
+    Ocean:        [8, 18, 42],
 };
 
 /** Brighter terrain colors for the terrain overlay toggle. */
 export const TERRAIN_OVERLAY_COLORS: Record<string, [number, number, number]> = {
-    Urban:        [110, 110, 135],
-    Suburban:     [85, 95, 85],
-    Rural:        [50, 95, 50],
-    Mountainous:  [95, 85, 72],
-    Desert:       [125, 108, 68],
-    Coastal:      [55, 100, 115],
-    OceanShallow: [22, 55, 100],
-    OceanDeep:    [8, 18, 50],
-    Ocean:        [8, 18, 50],
-    Tundra:       [85, 100, 115],
-    Frozen:       [110, 120, 130],
+    Urban:        [160, 155, 180],
+    Suburban:     [120, 135, 120],
+    Rural:        [70, 140, 70],
+    Mountainous:  [140, 120, 95],
+    Desert:       [180, 155, 95],
+    Coastal:      [80, 140, 155],
+    OceanShallow: [25, 60, 110],
+    OceanDeep:    [10, 22, 55],
+    Ocean:        [10, 22, 55],
+    Tundra:       [120, 140, 155],
+    Frozen:       [155, 165, 180],
 };
 
 /** Node icon size by network tier — keyed by Rust NetworkLevel Debug names. */

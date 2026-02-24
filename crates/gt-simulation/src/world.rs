@@ -13,6 +13,7 @@ use crate::systems;
 pub struct GameWorld {
     config: WorldConfig,
     tick: Tick,
+    #[serde(default)]
     speed: GameSpeed,
     next_entity_id: EntityId,
     player_corp_id: Option<EntityId>,
@@ -658,7 +659,7 @@ impl GameWorld {
                 let edge_maintenance = edge.maintenance_cost;
                 let edge_id = self.allocate_entity();
                 self.infra_edges.insert(edge_id, edge);
-                self.network.add_edge(hub_id, spoke_id);
+                self.network.add_edge_with_id(hub_id, spoke_id, edge_id);
 
                 if let Some(fin) = self.financials.get_mut(&corp_id) {
                     fin.cost_per_tick += edge_maintenance;
@@ -1431,7 +1432,7 @@ impl GameWorld {
 
         let edge_id = self.allocate_entity();
         self.infra_edges.insert(edge_id, edge);
-        self.network.add_edge(from_node, to_node);
+        self.network.add_edge_with_id(from_node, to_node, edge_id);
 
         if let Some(fin) = self.financials.get_mut(&corp_id) {
             fin.cost_per_tick += maintenance;

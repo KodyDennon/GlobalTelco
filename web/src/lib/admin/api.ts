@@ -160,16 +160,31 @@ export async function setWorldSpeed(key: string, worldId: string, speed: string)
 	return res.json();
 }
 
+/** World configuration for creating new worlds. */
+export interface CreateWorldConfig {
+	seed?: number;
+	starting_era?: string;
+	difficulty?: string;
+	map_size?: string;
+	ai_corporations?: number;
+	use_real_earth?: boolean;
+}
+
 /** Create a new world (admin). */
 export async function createWorld(
 	key: string,
 	name: string,
-	maxPlayers: number
+	maxPlayers: number,
+	config?: CreateWorldConfig
 ): Promise<{ world_id: string; name: string }> {
+	const body: Record<string, unknown> = { name, max_players: maxPlayers };
+	if (config) {
+		body.config = config;
+	}
 	const res = await fetch(`${API_URL}/api/admin/worlds`, {
 		method: 'POST',
 		headers: adminHeaders(key),
-		body: JSON.stringify({ name, max_players: maxPlayers })
+		body: JSON.stringify(body)
 	});
 	if (!res.ok) throw new Error(`Create world failed: ${res.status}`);
 	return res.json();

@@ -406,9 +406,10 @@ impl Era {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub enum GameSpeed {
     Paused,
+    #[default]
     Normal,
     Fast,
     VeryFast,
