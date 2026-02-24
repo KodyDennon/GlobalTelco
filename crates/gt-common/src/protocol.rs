@@ -77,14 +77,20 @@ pub enum AuthRequest {
     Login {
         username: String,
         password: String,
+        #[serde(default)]
+        spectator: bool,
     },
     Register {
         username: String,
         password: String,
         email: String,
+        #[serde(default)]
+        spectator: bool,
     },
     Token {
         access_token: String,
+        #[serde(default)]
+        spectator: bool,
     },
     TokenRefresh {
         refresh_token: String,
@@ -338,6 +344,7 @@ mod tests {
         let auth = ClientMessage::Auth(AuthRequest::Login {
             username: "player1".to_string(),
             password: "secret".to_string(),
+            spectator: false,
         });
         let bytes = serialize_msgpack(&auth).unwrap();
         assert!(!bytes.is_empty());

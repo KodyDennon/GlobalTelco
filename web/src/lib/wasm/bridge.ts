@@ -22,7 +22,9 @@ import type {
 	LobbyingInfo,
 	AchievementsInfo,
 	VictoryInfo,
-	TrafficFlows
+	TrafficFlows,
+	WorldConfig,
+	WorldPreviewData
 } from './types';
 
 let wasmModule: any = null;
@@ -50,14 +52,7 @@ export async function initWasm(): Promise<void> {
 	wasmModule = wasm;
 }
 
-export function newGame(config?: {
-	seed?: number;
-	starting_era?: string;
-	difficulty?: string;
-	map_size?: string;
-	ai_corporations?: number;
-	use_real_earth?: boolean;
-}): void {
+export function newGame(config?: Partial<WorldConfig>): void {
 	if (!wasmModule) throw new Error('WASM not initialized');
 	try {
 		if (config) {
@@ -401,6 +396,35 @@ export function getTrafficFlows(): TrafficFlows {
 		onBridgeError(e, 'getTrafficFlows');
 		return { edge_flows: [], node_flows: [], total_served: 0, total_dropped: 0, total_demand: 0, player_served: 0, player_dropped: 0, top_congested: [] };
 	}
+}
+
+// World preview and GeoJSON generation for procgen worlds
+
+export function createWorldPreview(config: Partial<WorldConfig>): WorldPreviewData | null {
+	if (!wasmModule) return null;
+	try {
+		// Try calling the WASM preview method if it exists
+		if (typeof wasmModule.WasmBridge.create_world_preview === 'function') {
+			const configJson = JSON.stringify(config);
+			const json = wasmModule.WasmBridge.create_world_preview(configJson);
+			return JSON.parse(json);
+		}
+	} catch (e) {
+		onBridgeError(e, 'createWorldPreview');
+	}
+	return null;
+}
+
+export function getWorldGeoJSON(): any {
+	try {
+		if (bridge && typeof bridge.get_world_geojson === 'function') {
+			const json = bridge.get_world_geojson();
+			return JSON.parse(json);
+		}
+	} catch (e) {
+		onBridgeError(e, 'getWorldGeoJSON');
+	}
+	return null;
 }
 
 export function isInitialized(): boolean {

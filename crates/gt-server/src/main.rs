@@ -7,7 +7,7 @@ mod tick;
 mod ws;
 
 use std::sync::Arc;
-use axum::http::{header, HeaderValue, Method};
+use axum::http::{header, HeaderName, HeaderValue, Method};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing::info;
@@ -41,6 +41,11 @@ async fn main() {
             "in-memory (no DATABASE_URL set)"
         }
     );
+    if let Some(ref tile_dir) = config.tile_dir {
+        info!("Tile directory: {}", tile_dir);
+    } else {
+        info!("Tile serving: disabled (no TILE_DIR set)");
+    }
 
     // Connect to PostgreSQL if DATABASE_URL is set
     #[cfg(feature = "postgres")]
@@ -93,7 +98,15 @@ async fn main() {
         CorsLayer::new()
             .allow_origin(origin.parse::<HeaderValue>().expect("Invalid CORS_ORIGIN value"))
             .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
-            .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
+            .allow_headers([
+                header::AUTHORIZATION,
+                header::CONTENT_TYPE,
+                header::UPGRADE,
+                header::CONNECTION,
+                HeaderName::from_static("sec-websocket-key"),
+                HeaderName::from_static("sec-websocket-version"),
+                HeaderName::from_static("sec-websocket-protocol"),
+            ])
     } else {
         info!("CORS open (no CORS_ORIGIN set — dev mode)");
         CorsLayer::new()
@@ -103,7 +116,7 @@ async fn main() {
     };
 
     // Build router
-    let app = routes::create_router(Arc::clone(&state))
+    let app = routes::create_router(Arc::clone(&state), config.tile_dir.clone())
         .layer(cors)
         .layer(TraceLayer::new_for_http());
 

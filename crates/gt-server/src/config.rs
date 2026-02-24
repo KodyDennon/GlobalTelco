@@ -9,6 +9,9 @@ pub struct ServerConfig {
     pub database_url: Option<String>,
     pub default_world_name: String,
     pub default_max_players: u32,
+    /// Directory containing satellite tile files in `{z}/{y}/{x}.jpg` format.
+    /// When set, the server serves tiles at `GET /tiles/{z}/{y}/{x}`.
+    pub tile_dir: Option<String>,
 }
 
 impl ServerConfig {
@@ -32,6 +35,7 @@ impl ServerConfig {
             database_url: std::env::var("DATABASE_URL").ok(),
             default_world_name: env_or("GT_DEFAULT_WORLD", "Default World"),
             default_max_players: env_or("GT_MAX_PLAYERS", "8").parse().unwrap_or(8),
+            tile_dir: std::env::var("TILE_DIR").ok().filter(|s| !s.is_empty()),
         }
     }
 

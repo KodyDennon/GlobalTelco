@@ -18,6 +18,16 @@ pub struct GeodesicGrid {
 }
 
 impl GeodesicGrid {
+    /// Create a GeodesicGrid from pre-built cells (used by VoronoiGrid conversion).
+    pub fn from_cells(cells: Vec<GridCell>) -> Self {
+        let mut grid = Self {
+            cells,
+            spatial_hash: HashMap::new(),
+        };
+        grid.build_spatial_hash();
+        grid
+    }
+
     pub fn new(subdivisions: u32) -> Self {
         let (vertices, faces) = icosahedron();
         let (vertices, faces) = subdivide(vertices, faces, subdivisions);

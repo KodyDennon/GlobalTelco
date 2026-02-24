@@ -1,6 +1,7 @@
 <script lang="ts">
+	import 'maplibre-gl/dist/maplibre-gl.css';
 	import { onMount, onDestroy } from "svelte";
-	import { MapRenderer } from "./MapRenderer";
+	import { MapRenderer } from "./map";
 	import { initialized } from "$lib/stores/gameState";
 	import { mapQuality } from "$lib/stores/settings";
 	import { get } from "svelte/store";

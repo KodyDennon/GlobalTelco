@@ -354,6 +354,33 @@ export interface VictoryInfo {
 	victory_type: string | null;
 }
 
+// World configuration types for new game setup
+
+export interface WorldConfig {
+	seed: number;
+	starting_era: string;
+	difficulty: string;
+	map_size: string;
+	ai_corporations: number;
+	use_real_earth: boolean;
+	corp_name: string;
+	continent_count: number;
+	ocean_percentage: number;
+	terrain_roughness: number;
+	climate_variation: number;
+	city_density: number;
+}
+
+export type WorldPreset = 'real_earth' | 'pangaea' | 'archipelago' | 'continents' | 'random';
+
+export interface WorldPreviewData {
+	cells: Array<{ lat: number; lon: number; terrain: string }>;
+	continentCount: number;
+	oceanPercent: number;
+	cityCount: number;
+	regionCount: number;
+}
+
 // Traffic flow types
 export interface EdgeFlow {
 	id: number;

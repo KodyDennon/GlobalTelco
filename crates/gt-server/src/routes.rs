@@ -7,6 +7,7 @@ use axum::response::IntoResponse;
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
+use tower_http::services::ServeDir;
 use uuid::Uuid;
 
 use gt_common::types::{GameSpeed, WorldConfig};
@@ -19,8 +20,8 @@ use crate::ws;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 
-pub fn create_router(state: Arc<AppState>) -> Router {
-    Router::new()
+pub fn create_router(state: Arc<AppState>, tile_dir: Option<String>) -> Router {
+    let mut router = Router::new()
         // Health check
         .route("/health", get(health))
         // Auth REST endpoints
@@ -46,8 +47,27 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/admin/worlds", post(admin_create_world))
         .route("/api/admin/worlds/{world_id}", delete(admin_delete_world))
         .route("/api/admin/worlds/{world_id}/speed", post(admin_set_speed))
-        .route("/api/admin/broadcast", post(admin_broadcast))
-        .with_state(state)
+        .route("/api/admin/broadcast", post(admin_broadcast));
+
+    // Mount tile serving if TILE_DIR is configured
+    if let Some(ref dir) = tile_dir {
+        let serve_dir = ServeDir::new(dir)
+            .append_index_html_on_directories(false);
+        router = router.nest_service("/tiles", serve_dir);
+    } else {
+        router = router.route("/tiles/{*path}", get(tiles_not_configured));
+    }
+
+    router.with_state(state)
+}
+
+/// Returns 404 when tile serving is not configured
+async fn tiles_not_configured() -> impl IntoResponse {
+    (
+        StatusCode::NOT_FOUND,
+        [("content-type", "application/json")],
+        r#"{"error":"Tile serving not configured. Set TILE_DIR environment variable."}"#,
+    )
 }
 
 /// Extractor for authenticated user claims

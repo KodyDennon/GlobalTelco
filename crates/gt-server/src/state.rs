@@ -24,6 +24,7 @@ pub struct ConnectedPlayer {
     pub username: String,
     pub is_guest: bool,
     pub is_admin: bool,
+    pub is_spectator: bool,
     pub world_id: Option<Uuid>,
     pub corp_id: Option<EntityId>,
 }

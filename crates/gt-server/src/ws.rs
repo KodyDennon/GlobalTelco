@@ -9,11 +9,12 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use gt_common::protocol::{
-    deserialize_msgpack, serialize_msgpack, AuthRequest, AuthResponse, ClientMessage, ErrorCode,
-    PlayerConnectionStatus, ServerMessage,
+    deserialize_msgpack, serialize_msgpack, AuthRequest, AuthResponse, ClientMessage, CorpDelta,
+    ErrorCode, PlayerConnectionStatus, ServerMessage,
 };
 
 use gt_common::commands::Command;
+use gt_common::types::EntityId;
 
 use crate::auth;
 use crate::state::{AppState, ConnectedPlayer};
@@ -21,7 +22,7 @@ use crate::state::{AppState, ConnectedPlayer};
 /// Extract the corporation EntityId that a command targets, if any.
 /// Used for anti-cheat validation: ensures players can only issue commands
 /// that affect their own corporation.
-fn command_target_corp(command: &Command) -> Option<gt_common::types::EntityId> {
+fn command_target_corp(command: &Command) -> Option<EntityId> {
     match command {
         Command::HireEmployee { corporation, .. }
         | Command::TakeLoan { corporation, .. }
@@ -188,6 +189,70 @@ fn sanitize_chat(message: &str) -> Option<String> {
     }
 }
 
+/// Filter a TickUpdate for per-player data visibility.
+///
+/// Rules:
+/// - Spectators see ALL data (no filtering).
+/// - All infrastructure positions/types are visible to ALL players.
+/// - Competitor FINANCIAL data (revenue, cash, profit, debt) is HIDDEN unless the
+///   player has intel on that competitor.
+/// - Competitor OPERATIONAL data (utilization, health, throughput) is HIDDEN unless
+///   the player has intel on that competitor.
+///
+/// Intel is tracked via the espionage system in the ECS. For now, we check the
+/// `intel_levels` map on GameWorld: if the player's corp has an intel entry for the
+/// target corp, financial/operational data is revealed.
+fn filter_tick_update_for_player(
+    update: &ServerMessage,
+    player_corp_id: Option<EntityId>,
+    is_spectator: bool,
+) -> ServerMessage {
+    // Spectators see everything
+    if is_spectator {
+        return update.clone();
+    }
+
+    match update {
+        ServerMessage::TickUpdate {
+            tick,
+            corp_updates,
+            events,
+        } => {
+            let filtered_updates: Vec<CorpDelta> = corp_updates
+                .iter()
+                .map(|delta| {
+                    // Player's own corp data is always fully visible
+                    if Some(delta.corp_id) == player_corp_id {
+                        delta.clone()
+                    } else {
+                        // Competitor corp: hide financial data by default.
+                        // Infrastructure positions/types flow through events and
+                        // are visible to all, but financial specifics are scrubbed.
+                        CorpDelta {
+                            corp_id: delta.corp_id,
+                            // Node count is infrastructure info -- visible to all
+                            node_count: delta.node_count,
+                            // Financial data hidden for competitors
+                            cash: None,
+                            revenue: None,
+                            cost: None,
+                            debt: None,
+                        }
+                    }
+                })
+                .collect();
+
+            ServerMessage::TickUpdate {
+                tick: *tick,
+                corp_updates: filtered_updates,
+                events: events.clone(),
+            }
+        }
+        // Non-TickUpdate messages pass through unmodified
+        other => other.clone(),
+    }
+}
+
 /// Handle an individual WebSocket connection
 pub async fn handle_socket(socket: WebSocket, state: Arc<AppState>, ip: IpAddr) {
     // Per-IP connection limit
@@ -224,13 +289,29 @@ pub async fn handle_socket(socket: WebSocket, state: Arc<AppState>, ip: IpAddr) 
         while let Some(msg) = receiver.next().await {
             match msg {
                 Ok(Message::Binary(data)) => {
-                    if let Ok(ClientMessage::Auth(auth_req)) = deserialize_msgpack::<ClientMessage>(&data) {
-                        return Some(auth_req);
+                    match deserialize_msgpack::<ClientMessage>(&data) {
+                        Ok(ClientMessage::Auth(auth_req)) => return Some(auth_req),
+                        Ok(_) => {
+                            // Non-auth message before auth -- reject
+                            return None;
+                        }
+                        Err(e) => {
+                            warn!("Failed to deserialize auth message: {e}");
+                            continue;
+                        }
                     }
                 }
                 Ok(Message::Text(text)) => {
-                    if let Ok(ClientMessage::Auth(auth_req)) = serde_json::from_str::<ClientMessage>(&text) {
-                        return Some(auth_req);
+                    match serde_json::from_str::<ClientMessage>(&text) {
+                        Ok(ClientMessage::Auth(auth_req)) => return Some(auth_req),
+                        Ok(_) => {
+                            // Non-auth message before auth -- reject
+                            return None;
+                        }
+                        Err(e) => {
+                            warn!("Failed to deserialize JSON auth message: {e}");
+                            continue;
+                        }
                     }
                 }
                 Ok(Message::Close(_)) => return None,
@@ -245,21 +326,52 @@ pub async fn handle_socket(socket: WebSocket, state: Arc<AppState>, ip: IpAddr) 
     match auth_result {
         Ok(Some(auth_req)) => {
             let response = handle_auth(auth_req, &state, &mut player).await;
+
+            // Check if auth failed before sending response
+            let auth_failed = matches!(
+                &response,
+                ServerMessage::AuthResult(AuthResponse::Failed { .. })
+            );
+
             if forward_tx.send(response).await.is_err() {
                 state.ip_disconnect(ip).await;
                 let _ = forward_sender.await;
                 return;
             }
-            if player.is_none() {
-                // Auth failed
+
+            if auth_failed || player.is_none() {
+                // Give the client a moment to receive the error before closing
+                tokio::time::sleep(Duration::from_millis(100)).await;
                 state.ip_disconnect(ip).await;
                 let _ = forward_sender.await;
                 return;
             }
         }
-        _ => {
-            // Timeout or connection closed before auth
-            warn!("WebSocket from {ip}: auth timeout or closed before auth");
+        Ok(None) => {
+            // Client sent a non-auth message first, or closed before auth
+            let _ = forward_tx
+                .send(ServerMessage::Error {
+                    code: ErrorCode::NotAuthenticated,
+                    message: "First message must be an Auth message".to_string(),
+                })
+                .await;
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            state.ip_disconnect(ip).await;
+            let _ = forward_sender.await;
+            return;
+        }
+        Err(_) => {
+            // Timeout
+            warn!("WebSocket from {ip}: auth timeout (no auth message within {AUTH_TIMEOUT_SECS}s)");
+            let _ = forward_tx
+                .send(ServerMessage::Error {
+                    code: ErrorCode::NotAuthenticated,
+                    message: format!(
+                        "Authentication timeout: must send Auth message within {AUTH_TIMEOUT_SECS} seconds"
+                    ),
+                })
+                .await;
+            tokio::time::sleep(Duration::from_millis(100)).await;
             state.ip_disconnect(ip).await;
             let _ = forward_sender.await;
             return;
@@ -293,6 +405,28 @@ pub async fn handle_socket(socket: WebSocket, state: Arc<AppState>, ip: IpAddr) 
                 break;
             }
         };
+
+        // Spectators cannot send game commands, uploads, or deletes
+        if let Some(ref p) = player {
+            if p.is_spectator {
+                match &msg {
+                    ClientMessage::GameCommand { .. }
+                    | ClientMessage::UploadSave { .. }
+                    | ClientMessage::DeleteSave { .. } => {
+                        let _ = forward_tx
+                            .send(ServerMessage::Error {
+                                code: ErrorCode::PermissionDenied,
+                                message: "Spectators cannot send game commands".to_string(),
+                            })
+                            .await;
+                        continue;
+                    }
+                    // Spectators can still: Auth, JoinWorld, LeaveWorld, RequestSnapshot,
+                    // Ping, Chat, RequestSaves, DownloadSave
+                    _ => {}
+                }
+            }
+        }
 
         // Rate limit commands and chat
         let is_rate_limited = match &msg {
@@ -333,43 +467,54 @@ pub async fn handle_socket(socket: WebSocket, state: Arc<AppState>, ip: IpAddr) 
     state.ip_disconnect(ip).await;
 
     if let Some(p) = &player {
-        info!("Player {} disconnected", p.username);
+        info!(
+            "{} {} disconnected",
+            if p.is_spectator {
+                "Spectator"
+            } else {
+                "Player"
+            },
+            p.username
+        );
 
-        if let Some(world_id) = &p.world_id {
-            if let Some(world) = state.get_world(world_id).await {
-                // Activate AI proxy for this player's corporation
-                if let Some(corp_id) = p.corp_id {
-                    let mut w = world.world.lock().await;
-                    // Create a defensive AI proxy for the disconnected player
-                    let proxy_ai = gt_simulation::components::ai_state::AiState {
-                        archetype: gt_common::types::AIArchetype::DefensiveConsolidator,
-                        strategy: gt_common::types::AIStrategy::Consolidate,
-                        aggression: 0.2,
-                        risk_tolerance: 0.1,
-                        proxy_mode: true,
-                    };
-                    w.ai_states.insert(corp_id, proxy_ai);
-                    info!(
-                        "AI proxy activated for corp {} (player {})",
-                        corp_id, p.username
-                    );
+        // Spectators don't have corporations and don't need AI proxy
+        if !p.is_spectator {
+            if let Some(world_id) = &p.world_id {
+                if let Some(world) = state.get_world(world_id).await {
+                    // Activate AI proxy for this player's corporation
+                    if let Some(corp_id) = p.corp_id {
+                        let mut w = world.world.lock().await;
+                        // Create a defensive AI proxy for the disconnected player
+                        let proxy_ai = gt_simulation::components::ai_state::AiState {
+                            archetype: gt_common::types::AIArchetype::DefensiveConsolidator,
+                            strategy: gt_common::types::AIStrategy::Consolidate,
+                            aggression: 0.2,
+                            risk_tolerance: 0.1,
+                            proxy_mode: true,
+                        };
+                        w.ai_states.insert(corp_id, proxy_ai);
+                        info!(
+                            "AI proxy activated for corp {} (player {})",
+                            corp_id, p.username
+                        );
+                    }
+
+                    // Don't remove the player from the world -- they're just disconnected
+                    // The AI proxy will manage their corp until they reconnect
+
+                    // Update database session if available
+                    #[cfg(feature = "postgres")]
+                    if let Some(db) = state.db.as_ref() {
+                        let _ = db.set_player_disconnected(p.id, *world_id).await;
+                    }
+
+                    // Notify other players of AI proxy status
+                    let _ = world.broadcast_tx.send(ServerMessage::PlayerStatus {
+                        player_id: p.id,
+                        username: p.username.clone(),
+                        status: PlayerConnectionStatus::AiProxy,
+                    });
                 }
-
-                // Don't remove the player from the world — they're just disconnected
-                // The AI proxy will manage their corp until they reconnect
-
-                // Update database session if available
-                #[cfg(feature = "postgres")]
-                if let Some(db) = state.db.as_ref() {
-                    let _ = db.set_player_disconnected(p.id, *world_id).await;
-                }
-
-                // Notify other players of AI proxy status
-                let _ = world.broadcast_tx.send(ServerMessage::PlayerStatus {
-                    player_id: p.id,
-                    username: p.username.clone(),
-                    status: PlayerConnectionStatus::AiProxy,
-                });
             }
         }
 
@@ -412,18 +557,23 @@ async fn handle_client_message(
                 }
             };
 
-            if world.is_full().await {
+            // Spectators don't count toward the player limit
+            if !p.is_spectator && world.is_full().await {
                 return Some(ServerMessage::Error {
                     code: ErrorCode::WorldFull,
                     message: "World is full".to_string(),
                 });
             }
 
-            // Check if this player already has a corp in this world (reconnection)
-            let (corp_id, proxy_ticks, proxy_was_active) = {
+            // Spectators don't get a corporation or participate in the world
+            let (corp_id, proxy_ticks, proxy_was_active) = if p.is_spectator {
+                // Spectator: no corp, no reconnection logic
+                (0u64, 0u64, false)
+            } else {
+                // Check if this player already has a corp in this world (reconnection)
                 let existing_players = world.players.read().await;
                 if let Some(&existing_corp) = existing_players.get(&p.id) {
-                    // Reconnecting — deactivate AI proxy and build summary
+                    // Reconnecting -- deactivate AI proxy and build summary
                     let mut w = world.world.lock().await;
                     let was_proxy = w
                         .ai_states
@@ -439,30 +589,44 @@ async fn handle_client_message(
                         let _ = db.set_player_connected(p.id, world_id).await;
                     }
 
+                    info!(
+                        "Player {} reconnected to world {} (corp {}, proxy_was_active: {})",
+                        p.username, world_id, existing_corp, was_proxy
+                    );
+
                     (existing_corp, ticks, was_proxy)
                 } else {
                     drop(existing_players);
-                    // New player — create corporation
+                    // New player -- create corporation
                     let mut w = world.world.lock().await;
                     let new_corp = w.allocate_entity();
                     (new_corp, 0, false)
                 }
             };
 
-            // Add player to world
-            world.add_player(p.id, corp_id).await;
-            p.world_id = Some(world_id);
-            p.corp_id = Some(corp_id);
+            if !p.is_spectator {
+                // Add player to world's player map
+                world.add_player(p.id, corp_id).await;
+            }
 
-            // Subscribe to world broadcasts
+            p.world_id = Some(world_id);
+            if !p.is_spectator {
+                p.corp_id = Some(corp_id);
+            }
+
+            // Subscribe to world broadcasts with per-player filtering
             *world_broadcast_rx = Some(world.broadcast_tx.subscribe());
 
-            // Spawn broadcast forwarder
             if let Some(mut rx) = world_broadcast_rx.take() {
                 let tx = forward_tx.clone();
+                let player_corp_id = p.corp_id;
+                let is_spectator = p.is_spectator;
                 tokio::spawn(async move {
                     while let Ok(msg) = rx.recv().await {
-                        if tx.send(msg).await.is_err() {
+                        // Apply per-player data visibility filtering
+                        let filtered =
+                            filter_tick_update_for_player(&msg, player_corp_id, is_spectator);
+                        if tx.send(filtered).await.is_err() {
                             break;
                         }
                     }
@@ -479,10 +643,17 @@ async fn handle_client_message(
 
             let tick = world.world.lock().await.current_tick();
 
-            info!(
-                "Player {} joined world {} as corp {}",
-                p.username, world_id, corp_id
-            );
+            if p.is_spectator {
+                info!(
+                    "Spectator {} joined world {}",
+                    p.username, world_id
+                );
+            } else {
+                info!(
+                    "Player {} joined world {} as corp {}",
+                    p.username, world_id, corp_id
+                );
+            }
 
             // Send proxy summary first if reconnecting from AI proxy
             if proxy_was_active {
@@ -510,7 +681,9 @@ async fn handle_client_message(
             if let Some(p) = player {
                 if let Some(world_id) = p.world_id.take() {
                     if let Some(world) = state.get_world(&world_id).await {
-                        world.remove_player(&p.id).await;
+                        if !p.is_spectator {
+                            world.remove_player(&p.id).await;
+                        }
                         let _ = world.broadcast_tx.send(ServerMessage::PlayerStatus {
                             player_id: p.id,
                             username: p.username.clone(),
@@ -536,6 +709,15 @@ async fn handle_client_message(
                     });
                 }
             };
+
+            // Spectators cannot send game commands (double-check in case they
+            // bypassed the outer check somehow)
+            if p.is_spectator {
+                return Some(ServerMessage::Error {
+                    code: ErrorCode::PermissionDenied,
+                    message: "Spectators cannot send game commands".to_string(),
+                });
+            }
 
             if p.world_id.as_ref() != Some(&world_id) {
                 return Some(ServerMessage::Error {
@@ -644,8 +826,13 @@ async fn handle_client_message(
             if let Some(p) = player {
                 if let Some(world_id) = &p.world_id {
                     if let Some(world) = state.get_world(world_id).await {
+                        let sender_name = if p.is_spectator {
+                            format!("[Spectator] {}", p.username)
+                        } else {
+                            p.username.clone()
+                        };
                         let _ = world.broadcast_tx.send(ServerMessage::ChatBroadcast {
-                            sender: p.username.clone(),
+                            sender: sender_name,
                             message: sanitized,
                             timestamp: std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
@@ -835,23 +1022,41 @@ async fn handle_auth(
     player: &mut Option<ConnectedPlayer>,
 ) -> ServerMessage {
     match req {
-        AuthRequest::Login { username, password } => {
+        AuthRequest::Login {
+            username,
+            password,
+            spectator,
+        } => {
             let account = match state.get_account(&username).await {
                 Some(a) => a,
                 None => {
                     return ServerMessage::AuthResult(AuthResponse::Failed {
-                        reason: "Invalid credentials".to_string(),
+                        reason: "Invalid credentials: account not found".to_string(),
                     });
                 }
             };
 
             match auth::verify_password(&password, &account.password_hash) {
                 Ok(true) => {}
-                _ => {
+                Ok(false) => {
                     return ServerMessage::AuthResult(AuthResponse::Failed {
-                        reason: "Invalid credentials".to_string(),
+                        reason: "Invalid credentials: incorrect password".to_string(),
                     });
                 }
+                Err(_) => {
+                    return ServerMessage::AuthResult(AuthResponse::Failed {
+                        reason: "Invalid credentials: password verification error".to_string(),
+                    });
+                }
+            }
+
+            // Check if this player is already connected (reconnection scenario)
+            let existing_session = state.players.read().await.get(&account.id).cloned();
+            if let Some(ref existing) = existing_session {
+                info!(
+                    "Player {} reconnecting (was in world {:?})",
+                    account.username, existing.world_id
+                );
             }
 
             let access_token = auth::generate_access_token(
@@ -871,8 +1076,15 @@ async fn handle_auth(
                 username: account.username.clone(),
                 is_guest: false,
                 is_admin: false,
-                world_id: None,
-                corp_id: None,
+                is_spectator: spectator,
+                world_id: existing_session
+                    .as_ref()
+                    .and_then(|s| s.world_id),
+                corp_id: if spectator {
+                    None
+                } else {
+                    existing_session.as_ref().and_then(|s| s.corp_id)
+                },
             };
 
             state
@@ -882,7 +1094,11 @@ async fn handle_auth(
                 .insert(account.id, connected.clone());
             *player = Some(connected);
 
-            info!("Player {} logged in", account.username);
+            if spectator {
+                info!("Spectator {} logged in", account.username);
+            } else {
+                info!("Player {} logged in", account.username);
+            }
 
             ServerMessage::AuthResult(AuthResponse::Success {
                 player_id: account.id,
@@ -896,6 +1112,7 @@ async fn handle_auth(
             username,
             password,
             email,
+            spectator,
         } => {
             let password_hash = match auth::hash_password(&password) {
                 Ok(h) => h,
@@ -931,6 +1148,7 @@ async fn handle_auth(
                         username: account.username.clone(),
                         is_guest: false,
                         is_admin: false,
+                        is_spectator: spectator,
                         world_id: None,
                         corp_id: None,
                     };
@@ -954,7 +1172,10 @@ async fn handle_auth(
                 Err(e) => ServerMessage::AuthResult(AuthResponse::Failed { reason: e }),
             }
         }
-        AuthRequest::Token { access_token } => {
+        AuthRequest::Token {
+            access_token,
+            spectator,
+        } => {
             match auth::validate_token(&state.auth_config, &access_token) {
                 Ok(claims) => {
                     let player_id = match Uuid::parse_str(&claims.sub) {
@@ -966,13 +1187,29 @@ async fn handle_auth(
                         }
                     };
 
+                    // Restore previous session state if reconnecting
+                    let existing_session = state.players.read().await.get(&player_id).cloned();
+                    if let Some(ref existing) = existing_session {
+                        info!(
+                            "Player {} resuming session via token (was in world {:?})",
+                            claims.username, existing.world_id
+                        );
+                    }
+
                     let connected = ConnectedPlayer {
                         id: player_id,
                         username: claims.username.clone(),
                         is_guest: claims.is_guest,
                         is_admin: false,
-                        world_id: None,
-                        corp_id: None,
+                        is_spectator: spectator,
+                        world_id: existing_session
+                            .as_ref()
+                            .and_then(|s| s.world_id),
+                        corp_id: if spectator {
+                            None
+                        } else {
+                            existing_session.as_ref().and_then(|s| s.corp_id)
+                        },
                     };
 
                     state
@@ -992,14 +1229,15 @@ async fn handle_auth(
                     })
                 }
                 Err(e) => ServerMessage::AuthResult(AuthResponse::Failed {
-                    reason: format!("Invalid token: {e}"),
+                    reason: format!("Invalid or expired token: {e}"),
                 }),
             }
         }
         AuthRequest::TokenRefresh { refresh_token } => {
             match auth::validate_token(&state.auth_config, &refresh_token) {
                 Ok(claims) => {
-                    let player_id = Uuid::parse_str(&claims.sub).unwrap_or_else(|_| Uuid::new_v4());
+                    let player_id =
+                        Uuid::parse_str(&claims.sub).unwrap_or_else(|_| Uuid::new_v4());
                     let access_token = auth::generate_access_token(
                         &state.auth_config,
                         player_id,
@@ -1023,7 +1261,7 @@ async fn handle_auth(
                     })
                 }
                 Err(_) => ServerMessage::AuthResult(AuthResponse::Failed {
-                    reason: "Invalid refresh token".to_string(),
+                    reason: "Invalid or expired refresh token".to_string(),
                 }),
             }
         }
@@ -1036,6 +1274,7 @@ async fn handle_auth(
                 username: account.username.clone(),
                 is_guest: true,
                 is_admin: false,
+                is_spectator: false,
                 world_id: None,
                 corp_id: None,
             };

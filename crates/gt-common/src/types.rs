@@ -437,7 +437,28 @@ pub struct WorldConfig {
     pub use_real_earth: bool,
     #[serde(default)]
     pub corp_name: Option<String>,
+    /// Number of continents to generate (1-8). Default 4.
+    #[serde(default = "default_continent_count")]
+    pub continent_count: u8,
+    /// Fraction of world covered by ocean (0.3-0.9). Default 0.7.
+    #[serde(default = "default_ocean_percentage")]
+    pub ocean_percentage: f64,
+    /// Roughness of terrain elevation (0.0-1.0). Default 0.5.
+    #[serde(default = "default_terrain_roughness")]
+    pub terrain_roughness: f64,
+    /// Variation in climate zones (0.0-1.0). Default 0.5.
+    #[serde(default = "default_climate_variation")]
+    pub climate_variation: f64,
+    /// Density of city placement (0.0-1.0). Default 0.5.
+    #[serde(default = "default_city_density")]
+    pub city_density: f64,
 }
+
+fn default_continent_count() -> u8 { 4 }
+fn default_ocean_percentage() -> f64 { 0.7 }
+fn default_terrain_roughness() -> f64 { 0.5 }
+fn default_climate_variation() -> f64 { 0.5 }
+fn default_city_density() -> f64 { 0.5 }
 
 impl Default for WorldConfig {
     fn default() -> Self {
@@ -449,6 +470,11 @@ impl Default for WorldConfig {
             ai_corporations: 4,
             use_real_earth: false,
             corp_name: None,
+            continent_count: 4,
+            ocean_percentage: 0.7,
+            terrain_roughness: 0.5,
+            climate_variation: 0.5,
+            city_density: 0.5,
         }
     }
 }
