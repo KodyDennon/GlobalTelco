@@ -269,3 +269,65 @@ pub fn lobby(
         world.lobbying_campaigns.insert(campaign_id, campaign);
     }
 }
+
+// ─── Co-ownership Proposal Evaluation ───────────────────────────────────────
+
+/// AI evaluates pending co-ownership proposals targeting this corp.
+/// Defensive/Budget types accept; Aggressive types reject unless profitable.
+pub fn evaluate_co_ownership_proposals(
+    world: &mut GameWorld,
+    corp_id: EntityId,
+    ai: &AiState,
+    _tick: Tick,
+) {
+    // Find proposals targeting this AI corp
+    let proposals: Vec<(EntityId, EntityId, EntityId, f64)> = world
+        .co_ownership_proposals
+        .iter()
+        .filter(|(_, (_, target, _))| *target == corp_id)
+        .map(|(&node, &(proposer, target, share))| (node, proposer, target, share))
+        .collect();
+
+    for (node_id, _proposer, _target, share_pct) in proposals {
+        // Decision based on archetype and share size
+        let accept = match ai.archetype {
+            // Defensive and Budget operators like shared risk
+            AIArchetype::DefensiveConsolidator | AIArchetype::BudgetOperator => share_pct <= 0.5,
+            // Tech innovators accept small shares for access to infrastructure
+            AIArchetype::TechInnovator => share_pct <= 0.3,
+            // Aggressive expanders generally reject co-ownership
+            AIArchetype::AggressiveExpander => false,
+        };
+
+        if accept {
+            // Apply co-ownership
+            if let Some(ownership) = world.ownerships.get_mut(&node_id) {
+                if !ownership.co_owners.iter().any(|(id, _)| *id == corp_id) {
+                    ownership.co_owners.push((corp_id, share_pct));
+                }
+            }
+            world.co_ownership_proposals.remove(&node_id);
+
+            world.event_queue.push(
+                _tick,
+                gt_common::events::GameEvent::CoOwnershipEstablished {
+                    node: node_id,
+                    partner: corp_id,
+                    share_pct,
+                },
+            );
+        } else {
+            world.co_ownership_proposals.remove(&node_id);
+            world.event_queue.push(
+                _tick,
+                gt_common::events::GameEvent::GlobalNotification {
+                    message: format!(
+                        "Co-ownership proposal for node {} was rejected",
+                        node_id
+                    ),
+                    level: "info".to_string(),
+                },
+            );
+        }
+    }
+}

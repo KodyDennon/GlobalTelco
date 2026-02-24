@@ -733,15 +733,54 @@ async fn handle_client_message(
 
             // Send proxy summary first if reconnecting from AI proxy
             if proxy_was_active {
+                // Gather actual corp state for a meaningful summary
+                let actions = {
+                    let w = world.world.lock().await;
+                    let mut summary_actions = Vec::new();
+
+                    summary_actions.push(gt_common::protocol::ProxyAction {
+                        tick: proxy_ticks,
+                        description: format!("{} ticks elapsed while you were away", proxy_ticks),
+                    });
+
+                    if let Some(fin) = w.financials.get(&corp_id) {
+                        summary_actions.push(gt_common::protocol::ProxyAction {
+                            tick: proxy_ticks,
+                            description: format!(
+                                "Current cash: ${:.0}, revenue: ${:.0}/tick, costs: ${:.0}/tick",
+                                fin.cash, fin.revenue_per_tick, fin.cost_per_tick
+                            ),
+                        });
+                        if fin.debt > 0 {
+                            summary_actions.push(gt_common::protocol::ProxyAction {
+                                tick: proxy_ticks,
+                                description: format!("Outstanding debt: ${:.0}", fin.debt),
+                            });
+                        }
+                    }
+
+                    if let Some(node_ids) = w.corp_infra_nodes.get(&corp_id) {
+                        let total = node_ids.len();
+                        let damaged = node_ids.iter()
+                            .filter(|nid| w.healths.get(nid).map(|h| h.condition < 0.9).unwrap_or(false))
+                            .count();
+                        let mut desc = format!("Infrastructure: {} nodes", total);
+                        if damaged > 0 {
+                            desc.push_str(&format!(", {} damaged", damaged));
+                        }
+                        summary_actions.push(gt_common::protocol::ProxyAction {
+                            tick: proxy_ticks,
+                            description: desc,
+                        });
+                    }
+
+                    summary_actions
+                };
+
                 let _ = forward_tx
                     .send(ServerMessage::ProxySummary {
                         ticks_elapsed: proxy_ticks,
-                        actions: vec![gt_common::protocol::ProxyAction {
-                            tick: proxy_ticks,
-                            description:
-                                "AI proxy maintained your corporation while you were away"
-                                    .to_string(),
-                        }],
+                        actions,
                     })
                     .await;
             }

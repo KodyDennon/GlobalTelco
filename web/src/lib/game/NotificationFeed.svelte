@@ -57,6 +57,13 @@
 		VictoryAchieved: 'info',
 		InsurancePurchased: 'finance',
 		InsurancePayout: 'finance',
+		BuyoutCompleted: 'market',
+		CoOwnershipEstablished: 'infra',
+		SubsidiaryCreated: 'finance',
+		UpgradeVotePassed: 'infra',
+		UpgradeVoteRejected: 'infra',
+		CorporationFounded: 'info',
+		CorporationMerged: 'market',
 	};
 
 	function getCategory(event: GameEvent): string {
@@ -143,6 +150,11 @@
 		ScandalOccurred: 'Scandal!',
 		AchievementUnlocked: 'Achievement unlocked',
 		VictoryAchieved: 'Victory!',
+		BuyoutCompleted: 'Buyout completed',
+		CoOwnershipEstablished: 'Co-ownership established',
+		SubsidiaryCreated: 'Subsidiary created',
+		UpgradeVotePassed: 'Upgrade vote passed',
+		UpgradeVoteRejected: 'Upgrade vote rejected',
 	};
 
 	function formatEvent(event: GameEvent): string {

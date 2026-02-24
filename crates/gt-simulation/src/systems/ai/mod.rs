@@ -48,6 +48,8 @@ pub fn run(world: &mut GameWorld) {
 
     for (corp_id, ai_state) in ai_corps {
         if ai_state.proxy_mode {
+            // Proxy mode: only do basic maintenance (repair damaged nodes)
+            run_proxy_maintenance(world, corp_id, tick);
             continue;
         }
 
@@ -57,6 +59,64 @@ pub fn run(world: &mut GameWorld) {
         };
 
         run_corporation(world, corp_id, &ai_state, &financial, tick);
+    }
+}
+
+// ─── Proxy Maintenance (disconnected player corps) ──────────────────────────
+
+fn run_proxy_maintenance(world: &mut GameWorld, corp_id: EntityId, tick: Tick) {
+    // Proxy only does basic upkeep: repair damaged nodes if affordable
+    let node_ids: Vec<EntityId> = world
+        .corp_infra_nodes
+        .get(&corp_id)
+        .cloned()
+        .unwrap_or_default();
+
+    let cash = world.financials.get(&corp_id).map(|f| f.cash).unwrap_or(0);
+    if cash <= 0 {
+        return;
+    }
+
+    for nid in node_ids {
+        let needs_repair = world
+            .healths
+            .get(&nid)
+            .map(|h| h.condition < 0.5)
+            .unwrap_or(false);
+        if !needs_repair {
+            continue;
+        }
+
+        // Estimate repair cost (20% of construction cost)
+        let repair_cost = world
+            .infra_nodes
+            .get(&nid)
+            .map(|n| (n.construction_cost as f64 * 0.2) as i64)
+            .unwrap_or(0);
+
+        let current_cash = world.financials.get(&corp_id).map(|f| f.cash).unwrap_or(0);
+        if current_cash < repair_cost {
+            continue;
+        }
+
+        // Apply repair
+        if let Some(fin) = world.financials.get_mut(&corp_id) {
+            fin.cash -= repair_cost;
+        }
+        if let Some(h) = world.healths.get_mut(&nid) {
+            h.condition = (h.condition + 0.5).min(1.0);
+        }
+        if let Some(cap) = world.capacities.get_mut(&nid) {
+            cap.current_load = (cap.current_load - cap.max_throughput * 0.4).max(0.0);
+        }
+
+        world.event_queue.push(
+            tick,
+            gt_common::events::GameEvent::RepairStarted {
+                entity: nid,
+                cost: repair_cost,
+            },
+        );
     }
 }
 
@@ -102,6 +162,9 @@ fn run_corporation(
 
     // 9. Lobbying
     diplomacy::lobby(world, corp_id, ai, fin, tick);
+
+    // 10. Evaluate co-ownership proposals
+    diplomacy::evaluate_co_ownership_proposals(world, corp_id, ai, tick);
 }
 
 // ─── Strategy Selection ──────────────────────────────────────────────────────

@@ -52,6 +52,11 @@ pub struct GameWorld {
     pub achievements: HashMap<EntityId, AchievementTracker>,
     pub victory_state: Option<VictoryConditions>,
 
+    // Co-ownership proposals: node_id → (proposer_corp, target_corp, share_pct)
+    // Pending until target corp accepts or rejects
+    #[serde(default)]
+    pub co_ownership_proposals: HashMap<EntityId, (EntityId, EntityId, f64)>,
+
     // Intel levels: (spy_corp, target_corp) → intel level (0..3)
     // 0 = infra positions only (default), 1 = basic financials (ranges),
     // 2 = detailed financials (exact), 3 = operational data (utilization, health, throughput)
@@ -125,6 +130,7 @@ impl GameWorld {
             lobbying_campaigns: HashMap::new(),
             achievements: HashMap::new(),
             victory_state: None,
+            co_ownership_proposals: HashMap::new(),
             intel_levels: HashMap::new(),
             cell_to_parcel: HashMap::new(),
             cell_to_region: HashMap::new(),
@@ -2309,27 +2315,58 @@ impl GameWorld {
             return;
         }
 
-        // Add co-owner to ownership component
-        if let Some(ownership) = self.ownerships.get_mut(&node) {
-            // Check if already a co-owner
+        // Check if already a co-owner
+        if let Some(ownership) = self.ownerships.get(&node) {
             if ownership.co_owners.iter().any(|(id, _)| *id == target_corp) {
                 return;
             }
-            ownership.co_owners.push((target_corp, share_pct));
         }
 
-        self.event_queue.push(
-            self.tick,
-            gt_common::events::GameEvent::CoOwnershipEstablished {
-                node,
-                partner: target_corp,
-                share_pct,
-            },
-        );
+        // Check if there's already a pending proposal for this node
+        if self.co_ownership_proposals.contains_key(&node) {
+            return;
+        }
+
+        // Store pending proposal — target corp must accept before it takes effect
+        self.co_ownership_proposals.insert(node, (corp_id, target_corp, share_pct));
     }
 
-    fn cmd_respond_co_ownership(&mut self, _proposal: EntityId, _accept: bool) {
-        // AI responds to co-ownership proposals — handled in AI system
+    fn cmd_respond_co_ownership(&mut self, proposal_node: EntityId, accept: bool) {
+        // Look up pending proposal by node ID
+        let (_proposer, target, share_pct) = match self.co_ownership_proposals.remove(&proposal_node) {
+            Some(p) => p,
+            None => return,
+        };
+
+        // Verify the responding corp is the target of the proposal
+        // (In single-player the player_corp_id may be the target for AI-initiated proposals,
+        //  or the AI system calls this for proposals the player made to AI corps)
+        if accept {
+            // Apply co-ownership
+            if let Some(ownership) = self.ownerships.get_mut(&proposal_node) {
+                if !ownership.co_owners.iter().any(|(id, _)| *id == target) {
+                    ownership.co_owners.push((target, share_pct));
+                }
+            }
+
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::CoOwnershipEstablished {
+                    node: proposal_node,
+                    partner: target,
+                    share_pct,
+                },
+            );
+        } else {
+            // Rejected — proposal already removed, just emit notification
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::GlobalNotification {
+                    message: format!("Co-ownership proposal for node {} was rejected", proposal_node),
+                    level: "info".to_string(),
+                },
+            );
+        }
     }
 
     fn cmd_propose_buyout(&mut self, node: EntityId, target_corp: EntityId, price: Money) {
@@ -2376,9 +2413,41 @@ impl GameWorld {
         );
     }
 
-    fn cmd_vote_upgrade(&mut self, node: EntityId, _approve: bool) {
-        // For player voting on co-owned upgrade — simplified: just upgrade if player approves
-        if _approve {
+    fn cmd_vote_upgrade(&mut self, node: EntityId, approve: bool) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+
+        // Verify the voting corp has ownership stake in this node
+        let has_majority = if let Some(ownership) = self.ownerships.get(&node) {
+            if ownership.owner == corp_id {
+                // Primary owner — majority by default (owns 1.0 - sum of co-owner shares)
+                let co_owner_total: f64 = ownership.co_owners.iter().map(|(_, s)| *s).sum();
+                (1.0 - co_owner_total) > 0.5
+            } else {
+                // Co-owner — check their share
+                ownership.co_owners.iter()
+                    .find(|(id, _)| *id == corp_id)
+                    .map(|(_, share)| *share > 0.5)
+                    .unwrap_or(false)
+            }
+        } else {
+            return;
+        };
+
+        if !has_majority {
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::GlobalNotification {
+                    message: "Upgrade vote failed: insufficient ownership stake (need >50%)".to_string(),
+                    level: "warning".to_string(),
+                },
+            );
+            return;
+        }
+
+        if approve {
             self.cmd_upgrade_node(node);
             self.event_queue.push(
                 self.tick,
