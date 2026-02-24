@@ -168,10 +168,16 @@ mv /tmp/gt-server /opt/globaltelco/gt-server
 chmod +x /opt/globaltelco/gt-server
 chown globaltelco:globaltelco /opt/globaltelco/gt-server
 
-# Install env file — always update with CORS_ORIGIN
-mv /tmp/gt-server.env /opt/globaltelco/.env
-chown globaltelco:globaltelco /opt/globaltelco/.env
-chmod 600 /opt/globaltelco/.env
+# Install env file (only if not already present on server)
+if [[ ! -f /opt/globaltelco/.env ]]; then
+    mv /tmp/gt-server.env /opt/globaltelco/.env
+    chown globaltelco:globaltelco /opt/globaltelco/.env
+    chmod 600 /opt/globaltelco/.env
+    echo "Installed .env (first deploy)"
+else
+    rm /tmp/gt-server.env
+    echo "Keeping existing .env (edit on server or delete to replace)"
+fi
 
 # Install systemd service
 mv /tmp/gt-server.service /etc/systemd/system/globaltelco.service
