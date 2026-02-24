@@ -137,11 +137,9 @@ function handleServerMessage(msg: ServerMessage) {
 			return info;
 		});
 		// Apply corporation deltas from server to keep stores in sync
-		if (corpUpdates.length > 0) {
-			window.dispatchEvent(new CustomEvent('mp-corp-deltas', {
-				detail: { tick, deltas: corpUpdates }
-			}));
-		}
+		window.dispatchEvent(new CustomEvent('mp-corp-deltas', {
+			detail: { tick, deltas: corpUpdates }
+		}));
 		if (events.length > 0) {
 			const notifs = events.map((e) => ({
 				tick,
@@ -153,11 +151,7 @@ function handleServerMessage(msg: ServerMessage) {
 				window.dispatchEvent(new CustomEvent('game-event', { detail: notif }));
 			}
 		}
-		// Request full snapshot periodically to stay in full sync
-		const wId = get(worldId);
-		if (wId && tick > 0 && tick % 50 === 0) {
-			requestSnapshot(wId);
-		}
+		// Server now auto-pushes snapshots every 5 ticks — no client polling needed
 	} else if ('ChatBroadcast' in msg) {
 		const chat = msg.ChatBroadcast as Record<string, unknown>;
 		addChatMessage({

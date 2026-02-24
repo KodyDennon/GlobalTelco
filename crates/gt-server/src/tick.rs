@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use tokio::time::{interval, Duration};
-use tracing::debug;
-#[cfg(feature = "postgres")]
-use tracing::warn;
+use tracing::{debug, warn};
 
 use gt_common::protocol::{CorpDelta, ServerMessage};
 use gt_common::types::EntityId;
@@ -61,9 +59,13 @@ fn build_corp_delta(w: &GameWorld, corp_id: EntityId) -> Option<CorpDelta> {
     })
 }
 
-/// Snapshot interval: save world state every N ticks
+/// Snapshot interval: persist world state to database every N ticks
 #[cfg(feature = "postgres")]
-const SNAPSHOT_INTERVAL_TICKS: u64 = 100;
+const DB_SNAPSHOT_INTERVAL_TICKS: u64 = 100;
+
+/// Client snapshot interval: push full state to clients every N ticks
+/// so their local WASM stays in sync for map rendering + queries.
+const CLIENT_SNAPSHOT_INTERVAL_TICKS: u64 = 5;
 
 /// Start the tick loop for a specific world
 #[cfg(feature = "postgres")]
@@ -83,7 +85,7 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>, db: SharedDb) {
             }
 
             // Advance the simulation
-            let (tick, events, corp_deltas, snapshot_data) = {
+            let (tick, events, corp_deltas, db_snapshot, client_snapshot) = {
                 let mut w = world.world.lock().await;
 
                 // Check if paused
@@ -106,12 +108,12 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>, db: SharedDb) {
                     }
                 }
 
-                // Periodic snapshot for database persistence
-                let snap = if tick % SNAPSHOT_INTERVAL_TICKS == 0 && db.is_some() {
+                // Periodic binary snapshot for database persistence
+                let db_snap = if tick % DB_SNAPSHOT_INTERVAL_TICKS == 0 && db.is_some() {
                     match w.save_game_binary() {
                         Ok(data) => Some(data),
                         Err(e) => {
-                            warn!("Failed to serialize snapshot: {e}");
+                            warn!("Failed to serialize binary snapshot: {e}");
                             None
                         }
                     }
@@ -119,11 +121,24 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>, db: SharedDb) {
                     None
                 };
 
-                (tick, events, deltas, snap)
+                // Periodic JSON snapshot pushed to clients for WASM state sync
+                let client_snap = if tick % CLIENT_SNAPSHOT_INTERVAL_TICKS == 0 {
+                    match w.save_game() {
+                        Ok(json) => Some(json),
+                        Err(e) => {
+                            warn!("Failed to serialize client snapshot: {e}");
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
+
+                (tick, events, deltas, db_snap, client_snap)
             };
 
             // Save snapshot to database
-            if let (Some(db_ref), Some(data)) = (db.as_ref(), snapshot_data) {
+            if let (Some(db_ref), Some(data)) = (db.as_ref(), db_snapshot) {
                 let world_id = world.id;
                 let db = Arc::clone(db_ref);
                 // Save in background to not block the tick loop
@@ -136,12 +151,18 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>, db: SharedDb) {
                 });
             }
 
-            // Broadcast tick update to all connected clients
-            if !corp_deltas.is_empty() || !events.is_empty() {
-                let _ = world.broadcast_tx.send(ServerMessage::TickUpdate {
+            // Broadcast tick update to all connected clients (unconditionally)
+            let _ = world.broadcast_tx.send(ServerMessage::TickUpdate {
+                tick,
+                corp_updates: corp_deltas,
+                events,
+            });
+
+            // Push full world snapshot to clients periodically
+            if let Some(state_json) = client_snapshot {
+                let _ = world.broadcast_tx.send(ServerMessage::Snapshot {
                     tick,
-                    corp_updates: corp_deltas,
-                    events,
+                    state_json,
                 });
             }
 
@@ -165,7 +186,7 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>) {
                 continue;
             }
 
-            let (tick, events, corp_deltas) = {
+            let (tick, events, corp_deltas, client_snapshot) = {
                 let mut w = world.world.lock().await;
 
                 if w.speed() == gt_common::types::GameSpeed::Paused {
@@ -187,14 +208,34 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>) {
                     }
                 }
 
-                (tick, events, deltas)
+                // Periodic JSON snapshot pushed to clients for WASM state sync
+                let client_snap = if tick % CLIENT_SNAPSHOT_INTERVAL_TICKS == 0 {
+                    match w.save_game() {
+                        Ok(json) => Some(json),
+                        Err(e) => {
+                            warn!("Failed to serialize client snapshot: {e}");
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
+
+                (tick, events, deltas, client_snap)
             };
 
-            if !corp_deltas.is_empty() || !events.is_empty() {
-                let _ = world.broadcast_tx.send(ServerMessage::TickUpdate {
+            // Broadcast tick update unconditionally
+            let _ = world.broadcast_tx.send(ServerMessage::TickUpdate {
+                tick,
+                corp_updates: corp_deltas,
+                events,
+            });
+
+            // Push full world snapshot to clients periodically
+            if let Some(state_json) = client_snapshot {
+                let _ = world.broadcast_tx.send(ServerMessage::Snapshot {
                     tick,
-                    corp_updates: corp_deltas,
-                    events,
+                    state_json,
                 });
             }
 

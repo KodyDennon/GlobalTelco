@@ -2,6 +2,7 @@
 	import { playerCorp, formatMoney, allCorporations, worldInfo } from '$lib/stores/gameState';
 	import { showConfirm } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
+	import { gameCommand } from '$lib/game/commandRouter';
 	import type { DebtInfo } from '$lib/wasm/types';
 	import FinanceChart from '$lib/charts/FinanceChart.svelte';
 	import MarketShareChart from '$lib/charts/MarketShareChart.svelte';
@@ -27,7 +28,7 @@
 		const corpId = corp.id;
 		const amount = loanAmount;
 		showConfirm(`Take a loan of ${formatMoney(amount)}? Interest rates depend on your credit rating.`, () => {
-			bridge.processCommand({ TakeLoan: { corporation: corpId, amount } });
+			gameCommand({ TakeLoan: { corporation: corpId, amount } });
 			showLoanDialog = false;
 			debts = bridge.getDebtInstruments(corpId);
 		});
@@ -38,7 +39,7 @@
 		if (!corp) return;
 		const debt = debts.find((d) => d.id === debtId);
 		if (!debt) return;
-		bridge.processCommand({ RepayLoan: { loan: debtId, amount: debt.principal } });
+		gameCommand({ RepayLoan: { loan: debtId, amount: debt.principal } });
 		debts = bridge.getDebtInstruments(corp.id);
 	}
 
@@ -137,7 +138,7 @@
 			<input type="range" min={0} max={5000000} step={50000} value={500000}
 				oninput={(e) => {
 					const val = Number((e.target as HTMLInputElement).value);
-					bridge.processCommand({ SetBudget: { corporation: $playerCorp?.id ?? 0, category: 'maintenance', amount: val } });
+					gameCommand({ SetBudget: { corporation: $playerCorp?.id ?? 0, category: 'maintenance', amount: val } });
 				}} />
 			<span class="policy-val mono">Auto</span>
 		</div>
@@ -145,7 +146,7 @@
 			<span class="policy-label">Expansion Priority</span>
 			<select class="policy-select"
 				onchange={(e) => {
-					bridge.processCommand({ SetPolicy: { corporation: $playerCorp?.id ?? 0, policy: 'expansion_priority', value: (e.target as HTMLSelectElement).value } });
+					gameCommand({ SetPolicy: { corporation: $playerCorp?.id ?? 0, policy: 'expansion_priority', value: (e.target as HTMLSelectElement).value } });
 				}}>
 				<option value="balanced">Balanced</option>
 				<option value="aggressive">Aggressive</option>
@@ -156,7 +157,7 @@
 			<span class="policy-label">Pricing Strategy</span>
 			<select class="policy-select"
 				onchange={(e) => {
-					bridge.processCommand({ SetPolicy: { corporation: $playerCorp?.id ?? 0, policy: 'pricing_strategy', value: (e.target as HTMLSelectElement).value } });
+					gameCommand({ SetPolicy: { corporation: $playerCorp?.id ?? 0, policy: 'pricing_strategy', value: (e.target as HTMLSelectElement).value } });
 				}}>
 				<option value="market">Market Rate</option>
 				<option value="undercut">Undercut (-10%)</option>

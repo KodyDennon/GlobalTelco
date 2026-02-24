@@ -37,6 +37,7 @@ let currentSpeed = 1; // ticks per second
 let lastAutoSaveTick = 0;
 const AUTO_SAVE_INTERVAL = 50; // ticks between auto-saves
 let mpCleanupFns: Array<() => void> = [];
+let isMultiplayerMode = false; // true when game is server-driven
 
 // Performance profiling stores
 export const simTickTime = writable<number>(0);
@@ -73,7 +74,9 @@ function loop(timestamp: number) {
 	const delta = timestamp - lastTickTime;
 	lastTickTime = timestamp;
 
-	if (currentSpeed > 0) {
+	// In multiplayer, the server drives all simulation ticks.
+	// The client never ticks locally — it only renders server state.
+	if (!isMultiplayerMode && currentSpeed > 0) {
 		tickAccumulator += delta;
 		const interval = getTickInterval();
 
@@ -86,7 +89,9 @@ function loop(timestamp: number) {
 		}
 	}
 
-	updateStores();
+	if (!isMultiplayerMode) {
+		updateStores();
+	}
 	animFrameId = requestAnimationFrame(loop);
 }
 
@@ -274,19 +279,13 @@ export async function initGame(config?: object) {
 }
 
 export async function initMultiplayer(saveData: string) {
+	isMultiplayerMode = true;
 	loadingStage.set(0);
 	await bridge.initWasm();
 	loadingStage.set(1);
 
 	bridge.setErrorHandler((error, context) => {
 		console.error(`WASM error in ${context}: ${error}`);
-		if (context === 'tick') {
-			setSpeed(0);
-			notifications.update((n) => [
-				{ tick: 0, event: { GlobalNotification: { message: `WASM Error: ${error}`, level: 'error' } } },
-				...n
-			].slice(0, 50));
-		}
 	});
 	bridge.setCommandNotificationHandler((notifs) => {
 		notifications.update((n) => [...notifs, ...n].slice(0, 50));
@@ -300,14 +299,18 @@ export async function initMultiplayer(saveData: string) {
 	await audioManager.init();
 	loadingStage.set(3);
 	// Server drives ticks in multiplayer — no local tick advancement
-	setSpeed(0);
+	currentSpeed = 0;
 	initialized.set(true);
 	updateStores();
 
 	// Listen for corp delta updates from WebSocket TickUpdate messages
 	const handleCorpDeltas = (e: Event) => {
-		const { deltas } = (e as CustomEvent).detail;
+		const { deltas, tick } = (e as CustomEvent).detail;
 		if (!Array.isArray(deltas)) return;
+
+		// Update tick in worldInfo
+		worldInfo.update((info) => info ? { ...info, tick } : info);
+
 		for (const delta of deltas) {
 			const corpId = delta.corp_id as number;
 			// Update player corp store if this delta is for the player
@@ -340,13 +343,14 @@ export async function initMultiplayer(saveData: string) {
 		}
 	};
 
-	// Listen for full snapshot reloads (sent periodically by server via WS)
+	// Listen for full snapshot reloads (pushed by server every 5 ticks)
 	const handleSnapshotReload = (e: Event) => {
 		const { state_json, tick } = (e as CustomEvent).detail;
 		try {
 			bridge.loadGame(state_json);
+			// Full store refresh from WASM after loading server state
 			updateStores();
-			console.log(`[MP] Reloaded snapshot at tick ${tick}`);
+			console.log(`[MP] Synced snapshot at tick ${tick}`);
 		} catch (err) {
 			console.error('[MP] Failed to reload snapshot:', err);
 		}
@@ -358,6 +362,7 @@ export async function initMultiplayer(saveData: string) {
 	mpCleanupFns.push(
 		() => window.removeEventListener('mp-corp-deltas', handleCorpDeltas),
 		() => window.removeEventListener('mp-snapshot', handleSnapshotReload),
+		() => { isMultiplayerMode = false; },
 	);
 }
 

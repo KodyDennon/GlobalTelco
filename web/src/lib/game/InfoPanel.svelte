@@ -2,6 +2,7 @@
 	import { selectedEntityId, selectedEntityType, showConfirm } from '$lib/stores/uiState';
 	import { cities, formatMoney, formatPopulation } from '$lib/stores/gameState';
 	import * as bridge from '$lib/wasm/bridge';
+	import { gameCommand } from '$lib/game/commandRouter';
 	import type { InfraNode } from '$lib/wasm/types';
 	import { tooltip } from '$lib/ui/tooltip';
 
@@ -60,24 +61,24 @@
 
 	function repairNode() {
 		if (!entityData) return;
-		bridge.processCommand({ RepairNode: { entity: entityData.id } });
+		gameCommand({ RepairNode: { entity: entityData.id } });
 	}
 
 	function emergencyRepair() {
 		if (!entityData) return;
-		bridge.processCommand({ EmergencyRepair: { entity: entityData.id } });
+		gameCommand({ EmergencyRepair: { entity: entityData.id } });
 	}
 
 	function upgradeNode() {
 		if (!entityData) return;
-		bridge.processCommand({ UpgradeNode: { entity: entityData.id } });
+		gameCommand({ UpgradeNode: { entity: entityData.id } });
 	}
 
 	function decommissionNode() {
 		if (!entityData) return;
 		const id = entityData.id;
 		showConfirm('Decommission this node? You will recover 20% of the build cost.', () => {
-			bridge.processCommand({ DecommissionNode: { entity: id } });
+			gameCommand({ DecommissionNode: { entity: id } });
 			close();
 		});
 	}
@@ -85,7 +86,7 @@
 	function toggleInsurance() {
 		if (!entityData) return;
 		// Toggle based on current state (we don't have insured field yet, so just purchase)
-		bridge.processCommand({ PurchaseInsurance: { node: entityData.id } });
+		gameCommand({ PurchaseInsurance: { node: entityData.id } });
 	}
 </script>
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { playerCorp, formatMoney } from '$lib/stores/gameState';
 	import * as bridge from '$lib/wasm/bridge';
+	import { gameCommand } from '$lib/game/commandRouter';
 	import type { ResearchInfo } from '$lib/wasm/types';
 	import { tooltip } from '$lib/ui/tooltip';
 
@@ -54,15 +55,15 @@
 	}
 
 	function startResearch(techName: string) {
-		bridge.processCommand({ StartResearch: { corporation: playerCorpId, tech: techName } });
+		gameCommand({ StartResearch: { corporation: playerCorpId, tech: techName } });
 	}
 
 	function cancelResearch() {
-		bridge.processCommand({ CancelResearch: { corporation: playerCorpId } });
+		gameCommand({ CancelResearch: { corporation: playerCorpId } });
 	}
 
 	function setBudget() {
-		bridge.processCommand({
+		gameCommand({
 			SetBudget: { corporation: playerCorpId, category: 'research', amount: rdBudget }
 		});
 	}

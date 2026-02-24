@@ -21,6 +21,7 @@
 		zoomLevel,
 	} from "$lib/stores/uiState";
 	import * as bridge from "$lib/wasm/bridge";
+	import { gameCommand } from '$lib/game/commandRouter';
 	import { injectEventEffectStyles } from './EventEffects';
 
 	let container: HTMLElement;
@@ -42,7 +43,7 @@
 			} else {
 				// Second click: build the edge
 				const edgeType = get(selectedEdgeType);
-				bridge.processCommand({
+				gameCommand({
 					BuildEdge: { edge_type: edgeType, from: source, to: id },
 				});
 				buildEdgeSource.set(null);

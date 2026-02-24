@@ -3,6 +3,7 @@
 	import { formatMoney } from '$lib/stores/gameState';
 	import { tr } from '$lib/i18n/index';
 	import * as bridge from '$lib/wasm/bridge';
+	import { gameCommand } from '$lib/game/commandRouter';
 	import type { BuildOption } from '$lib/wasm/types';
 	import { tooltip } from '$lib/ui/tooltip';
 
@@ -32,7 +33,7 @@
 	function build(opt: BuildOption) {
 		const loc = $buildMenuLocation;
 		if (!loc) return;
-		bridge.processCommand({
+		gameCommand({
 			BuildNode: { node_type: opt.node_type, lon: loc.lon, lat: loc.lat }
 		});
 		close();

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as bridge from '$lib/wasm/bridge';
+	import { gameCommand } from '$lib/game/commandRouter';
 	import type { AcquisitionInfo } from '$lib/wasm/types';
 	import { worldInfo, playerCorp, allCorporations, formatMoney } from '$lib/stores/gameState';
 	import { tr } from '$lib/i18n/index';
@@ -25,14 +26,14 @@
 
 	function proposeAcquisition() {
 		if (!selectedTarget || offerAmount <= 0) return;
-		bridge.processCommand({ ProposeAcquisition: { target: selectedTarget, offer: offerAmount } });
+		gameCommand({ ProposeAcquisition: { target: selectedTarget, offer: offerAmount } });
 		offerAmount = 0;
 		selectedTarget = 0;
 		refresh();
 	}
 
 	function respond(proposalId: number, accept: boolean) {
-		bridge.processCommand({ RespondToAcquisition: { proposal: proposalId, accept } });
+		gameCommand({ RespondToAcquisition: { proposal: proposalId, accept } });
 		refresh();
 	}
 

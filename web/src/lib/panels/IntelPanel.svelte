@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as bridge from '$lib/wasm/bridge';
+	import { gameCommand } from '$lib/game/commandRouter';
 	import type { CovertOpsInfo, LobbyingInfo } from '$lib/wasm/types';
 	import { worldInfo, playerCorp, allCorporations, regions as regionStore, formatMoney } from '$lib/stores/gameState';
 	import { tr } from '$lib/i18n/index';
@@ -39,34 +40,34 @@
 
 	function launchEspionage() {
 		if (!espionageTarget) return;
-		bridge.processCommand({ LaunchEspionage: { target: espionageTarget, region: regions[0]?.id || 0 } });
+		gameCommand({ LaunchEspionage: { target: espionageTarget, region: regions[0]?.id || 0 } });
 		espionageTarget = 0;
 		refresh();
 	}
 
 	function launchSabotage() {
 		if (!sabotageTarget) return;
-		bridge.processCommand({ LaunchSabotage: { target: sabotageTarget, node: sabotageNode || 0 } });
+		gameCommand({ LaunchSabotage: { target: sabotageTarget, node: sabotageNode || 0 } });
 		sabotageTarget = 0;
 		refresh();
 	}
 
 	function upgradeSecurity() {
 		const newLevel = ops.security_level + 1;
-		bridge.processCommand({ UpgradeSecurity: { level: newLevel } });
+		gameCommand({ UpgradeSecurity: { level: newLevel } });
 		refresh();
 	}
 
 	function startLobbying() {
 		if (!lobbyRegion || !lobbyPolicy || lobbyBudget <= 0) return;
-		bridge.processCommand({ StartLobbying: { region: lobbyRegion, policy: lobbyPolicy, budget: lobbyBudget } });
+		gameCommand({ StartLobbying: { region: lobbyRegion, policy: lobbyPolicy, budget: lobbyBudget } });
 		lobbyRegion = 0;
 		lobbyPolicy = '';
 		refresh();
 	}
 
 	function cancelLobbying(id: number) {
-		bridge.processCommand({ CancelLobbying: { lobby_id: id } });
+		gameCommand({ CancelLobbying: { lobby_id: id } });
 		refresh();
 	}
 

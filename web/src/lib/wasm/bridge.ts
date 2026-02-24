@@ -104,6 +104,7 @@ export function processCommand(command: object): void {
 	}
 }
 
+
 type CommandNotificationHandler = (notifications: Notification[]) => void;
 let commandNotificationHandler: CommandNotificationHandler | null = null;
 

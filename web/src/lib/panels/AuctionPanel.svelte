@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as bridge from '$lib/wasm/bridge';
+	import { gameCommand } from '$lib/game/commandRouter';
 	import type { AuctionInfo } from '$lib/wasm/types';
 	import { worldInfo, playerCorp, formatMoney } from '$lib/stores/gameState';
 	import { tr } from '$lib/i18n/index';
@@ -23,7 +24,7 @@
 	function placeBid(auctionId: number) {
 		const amount = bidAmounts[auctionId] || 0;
 		if (amount <= 0) return;
-		bridge.processCommand({ PlaceBid: { auction: auctionId, amount } });
+		gameCommand({ PlaceBid: { auction: auctionId, amount } });
 		refresh();
 	}
 

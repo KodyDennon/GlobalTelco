@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { playerCorp, formatMoney, allCorporations } from '$lib/stores/gameState';
 	import * as bridge from '$lib/wasm/bridge';
+	import { gameCommand } from '$lib/game/commandRouter';
 	import type { ContractInfo } from '$lib/wasm/types';
 	import { tr } from '$lib/i18n/index';
 	import { tooltip } from '$lib/ui/tooltip';
@@ -18,19 +19,19 @@
 	});
 
 	function acceptContract(id: number) {
-		bridge.processCommand({ AcceptContract: { contract: id } });
+		gameCommand({ AcceptContract: { contract: id } });
 		if ($playerCorp) contracts = bridge.getContracts($playerCorp.id);
 	}
 
 	function rejectContract(id: number) {
-		bridge.processCommand({ RejectContract: { contract: id } });
+		gameCommand({ RejectContract: { contract: id } });
 		if ($playerCorp) contracts = bridge.getContracts($playerCorp.id);
 	}
 
 	function proposeContract() {
 		const corp = $playerCorp;
 		if (!corp || !proposeTarget) return;
-		bridge.processCommand({
+		gameCommand({
 			ProposeContract: { from: corp.id, to: proposeTarget, terms: proposeTerms }
 		});
 		showProposeForm = false;

@@ -2,6 +2,7 @@
 	import { playerCorp, formatMoney } from '$lib/stores/gameState';
 	import { closePanelGroup, selectedEntityId, selectedEntityType, buildMode, buildEdgeSource, showConfirm } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
+	import { gameCommand } from '$lib/game/commandRouter';
 	import type { InfraNode, InfraEdge, InfrastructureList, TrafficFlows } from '$lib/wasm/types';
 	import NetworkDiagram from '$lib/charts/NetworkDiagram.svelte';
 	import { tr } from '$lib/i18n/index';
@@ -24,12 +25,12 @@
 	}
 
 	function upgradeNode(id: number) {
-		bridge.processCommand({ UpgradeNode: { entity: id } });
+		gameCommand({ UpgradeNode: { entity: id } });
 	}
 
 	function decommission(id: number) {
 		showConfirm('Decommission this node? You will recover 20% of the build cost.', () => {
-			bridge.processCommand({ DecommissionNode: { entity: id } });
+			gameCommand({ DecommissionNode: { entity: id } });
 		});
 	}
 

@@ -2,13 +2,14 @@
 	import { playerCorp, formatMoney } from '$lib/stores/gameState';
 	import { showConfirm } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
+	import { gameCommand } from '$lib/game/commandRouter';
 	import { tr } from '$lib/i18n/index';
 	import { tooltip } from '$lib/ui/tooltip';
 
 	function hire() {
 		const corp = $playerCorp;
 		if (!corp) return;
-		bridge.processCommand({ HireEmployee: { corporation: corp.id, role: 'technician' } });
+		gameCommand({ HireEmployee: { corporation: corp.id, role: 'technician' } });
 	}
 
 	function fire() {
@@ -17,7 +18,7 @@
 		if ((corp.employee_count ?? 0) <= 1) return;
 		const corpId = corp.id;
 		showConfirm('Fire an employee? This will reduce your workforce by 1.', () => {
-			bridge.processCommand({ FireEmployee: { entity: corpId } });
+			gameCommand({ FireEmployee: { entity: corpId } });
 		});
 	}
 

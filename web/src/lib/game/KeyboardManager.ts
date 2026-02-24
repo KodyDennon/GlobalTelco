@@ -1,4 +1,5 @@
 import * as bridge from '$lib/wasm/bridge';
+import { gameCommand } from '$lib/game/commandRouter';
 import { get } from 'svelte/store';
 import {
 	buildMode,
@@ -184,7 +185,7 @@ function decommissionSelected(): void {
 	showConfirm(
 		`Decommission infrastructure #${entityId}? This cannot be undone.`,
 		() => {
-			bridge.processCommand({ DecommissionNode: { node_id: entityId } });
+			gameCommand({ DecommissionNode: { node_id: entityId } });
 			selectedEntityId.set(null);
 			selectedEntityType.set(null);
 		}
