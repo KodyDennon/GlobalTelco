@@ -22,16 +22,14 @@ const ICONS_PER_ROW = 8;
 /**
  * Build a single Canvas spritesheet from all SVG icons.
  *
- * Returns the canvas element and a mapping record suitable for deck.gl
- * IconLayer `iconMapping` prop. Icons are rasterized from SVG data URIs
- * asynchronously — the canvas is returned immediately with content
- * populated as each image loads. deck.gl picks up the painted content
- * on its next render cycle.
+ * Returns a Promise that resolves when all icons have been rasterized onto
+ * the canvas. The mapping is available immediately (synchronous layout),
+ * but the canvas content is only complete after the returned promise resolves.
  */
-export function buildIconAtlas(): {
+export async function buildIconAtlas(): Promise<{
     canvas: HTMLCanvasElement;
     mapping: Record<string, IconMapping>;
-} {
+}> {
     const names = Object.keys(icons);
     const cols = ICONS_PER_ROW;
     const rows = Math.ceil(names.length / cols);
@@ -75,10 +73,7 @@ export function buildIconAtlas(): {
         }));
     }
 
-    // Canvas is populated asynchronously — deck.gl will use it on next setProps.
-    Promise.all(promises).then(() => {
-        // Atlas fully painted. No action needed — canvas is already the live reference.
-    });
+    await Promise.all(promises);
 
     return { canvas, mapping };
 }

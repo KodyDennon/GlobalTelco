@@ -244,10 +244,18 @@ export function togglePause() {
 	}
 }
 
+/** Yield to the browser so the loading screen can repaint between stages. */
+function yieldToUI(): Promise<void> {
+	return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
 export async function initGame(config?: object) {
 	loadingStage.set(0);
 	await bridge.initWasm();
 	loadingStage.set(1);
+
+	// Yield so the loading screen renders "Generating World..."
+	await yieldToUI();
 
 	// Register handlers before any commands can be issued
 	bridge.setErrorHandler((error, context) => {
@@ -269,8 +277,16 @@ export async function initGame(config?: object) {
 
 	bridge.newGame(config as any);
 	loadingStage.set(2);
+
+	// Yield so the loading screen renders "Initializing Audio..."
+	await yieldToUI();
+
 	await audioManager.init();
 	loadingStage.set(3);
+
+	// Yield so the loading screen renders "Preparing Map..."
+	await yieldToUI();
+
 	// Start paused so player can orient
 	setSpeed(0);
 	showWelcome.set(true);
@@ -283,6 +299,7 @@ export async function initMultiplayer(saveData: string) {
 	loadingStage.set(0);
 	await bridge.initWasm();
 	loadingStage.set(1);
+	await yieldToUI();
 
 	bridge.setErrorHandler((error, context) => {
 		console.error(`WASM error in ${context}: ${error}`);
@@ -296,8 +313,10 @@ export async function initMultiplayer(saveData: string) {
 
 	bridge.loadGame(saveData);
 	loadingStage.set(2);
+	await yieldToUI();
 	await audioManager.init();
 	loadingStage.set(3);
+	await yieldToUI();
 	// Server drives ticks in multiplayer — no local tick advancement
 	currentSpeed = 0;
 	initialized.set(true);

@@ -22,7 +22,7 @@ import { createBordersLayer } from './layers/bordersLayer';
 import { createInfraLayers } from './layers/infraLayer';
 import type { IconMapping } from './iconAtlas';
 import { buildIconAtlas } from './iconAtlas';
-import { buildTerrainBitmap } from './terrainBitmap';
+import { buildTerrainBitmapAsync, disposeTerrainWorker } from './terrainBitmap';
 import { CORP_COLORS, SATELLITE_COLORS, TERRAIN_OVERLAY_COLORS } from './constants';
 import { satelliteMapStyle, procgenMapStyle } from './tileConfig';
 import { handleMapMouseMove, type TooltipHit } from './tooltip';
@@ -83,23 +83,15 @@ export class MapRenderer {
     // Promise that resolves when MapLibre GL style is loaded
     private mapReadyPromise: Promise<void>;
 
+    // Whether buildMap has completed
+    private mapBuilt = false;
+
     constructor(container: HTMLElement, quality: 'low' | 'medium' | 'high' = 'medium') {
         this.quality = quality;
         this.container = container;
 
         // Determine world type before creating map
         this.isRealEarth = bridge.isInitialized() && bridge.isRealEarth();
-
-        // Build icon atlas immediately
-        const { canvas: atlasCanvas, mapping } = buildIconAtlas();
-        this.iconAtlas = atlasCanvas;
-        this.iconMapping = mapping;
-
-        // Mark atlas ready after a tick (images load async)
-        setTimeout(() => {
-            this.iconAtlasReady = true;
-            this.renderLayers();
-        }, 500);
 
         // Create MapLibre GL map
         const style = this.isRealEarth ? satelliteMapStyle : procgenMapStyle;
@@ -173,18 +165,6 @@ export class MapRenderer {
             }));
         });
 
-        // ── Animation loop for TripsLayer ────────────────────────────────
-        const animate = () => {
-            this.currentTime += 0.005;
-            this.animationFrameCounter++;
-            // Re-render every 3 frames to avoid excessive re-renders
-            if (this.animationFrameCounter % 3 === 0) {
-                this.renderLayers();
-            }
-            this.animationFrameId = requestAnimationFrame(animate);
-        };
-        this.animationFrameId = requestAnimationFrame(animate);
-
         // ── Map navigation event handlers (dispatched by KeyboardManager) ─
         this.mapPanHandler = (e: Event) => {
             if (!this.map) return;
@@ -228,6 +208,9 @@ export class MapRenderer {
         window.addEventListener('map-zoom', this.mapZoomHandler);
         window.addEventListener('map-reset-view', this.mapResetViewHandler);
         window.addEventListener('map-toggle-pitch', this.mapTogglePitchHandler);
+
+        // NOTE: Animation loop is NOT started here. It starts after buildMap()
+        // completes, so we don't waste frames rendering empty layers.
     }
 
     // ── Map initialization ──────────────────────────────────────────────────
@@ -238,6 +221,7 @@ export class MapRenderer {
         // Wait for MapLibre GL style to finish loading before querying WASM data
         await this.mapReadyPromise;
 
+        // Query WASM for cell/city/region data
         const cells = bridge.getGridCells();
         this.cachedCities = bridge.getCities();
         this.cachedRegions = bridge.getRegions();
@@ -254,18 +238,51 @@ export class MapRenderer {
             this.cellRadiusM = this.cellSpacingKm * 1000 * 0.85;
         }
 
-        // Pre-render terrain bitmaps (used for procgen land layer and terrain overlay)
-        this.terrainCanvas = buildTerrainBitmap(cells, this.cellSpacingKm, SATELLITE_COLORS);
-        this.terrainOverlayCanvas = buildTerrainBitmap(cells, this.cellSpacingKm, TERRAIN_OVERLAY_COLORS);
+        // Run terrain bitmap (worker), icon atlas, and pathfinder init in parallel.
+        // Each is independent — terrain runs in a Web Worker, icons load async
+        // images, pathfinder is fast CPU work.
+        const [terrainResult, iconResult] = await Promise.all([
+            buildTerrainBitmapAsync(cells, this.cellSpacingKm, SATELLITE_COLORS, this.quality),
+            buildIconAtlas(),
+        ]);
 
+        this.terrainCanvas = terrainResult;
+        this.iconAtlas = iconResult.canvas;
+        this.iconMapping = iconResult.mapping;
+        this.iconAtlasReady = true;
+
+        // Pathfinder init is fast (<10ms) — runs after await to avoid race conditions
         this.pathfinder.init(cells);
+
+        // Mark map as ready and do initial render
+        this.mapBuilt = true;
         this.renderLayers();
+
+        // Start the animation loop now that we have content to render
+        this.startAnimationLoop();
+    }
+
+    // ── Animation loop (started after buildMap) ─────────────────────────────
+
+    private startAnimationLoop(): void {
+        if (this.animationFrameId !== null) return; // already running
+
+        const animate = () => {
+            this.currentTime += 0.005;
+            this.animationFrameCounter++;
+            // Re-render every 3 frames to avoid excessive re-renders
+            if (this.animationFrameCounter % 3 === 0) {
+                this.renderLayers();
+            }
+            this.animationFrameId = requestAnimationFrame(animate);
+        };
+        this.animationFrameId = requestAnimationFrame(animate);
     }
 
     // ── Layer assembly ──────────────────────────────────────────────────────
 
     private renderLayers(): void {
-        if (!this.overlay) return;
+        if (!this.overlay || !this.mapBuilt) return;
 
         const layers: (Layer | Layer[] | null)[] = [
             createLandLayer(this.terrainCanvas, this.isRealEarth),
@@ -496,7 +513,8 @@ export class MapRenderer {
                     },
                     getRadius: overlayRadius,
                     radiusMinPixels: 6,
-                    pickable: false
+                    pickable: false,
+                    parameters: { depthTest: false }
                 }));
             }
         }
@@ -744,6 +762,23 @@ export class MapRenderer {
 
     setOverlay(overlayType: string): void {
         this.activeOverlay = overlayType;
+
+        // Lazy-build the terrain overlay bitmap on first use
+        if (overlayType === 'terrain' && !this.terrainOverlayCanvas && this.cachedCells.length > 0) {
+            buildTerrainBitmapAsync(
+                this.cachedCells,
+                this.cellSpacingKm,
+                TERRAIN_OVERLAY_COLORS,
+                this.quality
+            ).then((canvas) => {
+                this.terrainOverlayCanvas = canvas;
+                // Re-render now that the overlay bitmap is ready
+                if (this.activeOverlay === 'terrain') {
+                    this.renderLayers();
+                }
+            });
+        }
+
         this.renderLayers();
     }
 
@@ -812,5 +847,8 @@ export class MapRenderer {
             this.map.remove();
             this.map = null;
         }
+
+        // Clean up the terrain worker
+        disposeTerrainWorker();
     }
 }

@@ -1,66 +1,162 @@
 // ── Terrain bitmap builder ──────────────────────────────────────────────────
-// Pre-renders all grid cells onto a high-resolution equirectangular Canvas
-// using Gaussian-splat interpolation with edge-aware blur that preserves
-// sharp land/ocean boundaries. Produces smooth, satellite-style terrain.
+// Renders grid cells onto an equirectangular Canvas using Gaussian-splat
+// interpolation with edge-aware blur. Heavy computation is offloaded to a
+// Web Worker so the main thread stays responsive during initialization.
 
 import type { GridCell } from '$lib/wasm/types';
 
-// ── Internal constants ──────────────────────────────────────────────────────
+// ── Resolution scaling ──────────────────────────────────────────────────────
+// Pixels-per-degree controls the bitmap resolution and directly affects
+// computation time (quadratic scaling). Quality tiers:
+//   low    → 4 ppd → 1440×680  (~1M pixels)   — fastest, ~0.5s in worker
+//   medium → 6 ppd → 2160×1020 (~2.2M pixels)  — balanced, ~1.5s in worker
+//   high   → 8 ppd → 2880×1360 (~3.9M pixels)  — best quality, ~3s in worker
 
-/** Pixels per degree of longitude/latitude. 8 = 2880x1360 canvas. */
-const PIXELS_PER_DEG = 8;
+const PPD_BY_QUALITY: Record<string, number> = {
+    low: 4,
+    medium: 6,
+    high: 8,
+};
 
-/** Canvas dimensions covering -180..180 lon, -85..85 lat. */
-const W = 360 * PIXELS_PER_DEG; // 2880
-const H = 170 * PIXELS_PER_DEG; // 1360
+/** Resolve pixels-per-degree for a given quality tier. */
+export function getPixelsPerDeg(quality: 'low' | 'medium' | 'high' = 'medium'): number {
+    return PPD_BY_QUALITY[quality] ?? 6;
+}
 
-/** Latitude bounds (we clip polar regions). */
+// ── Worker pool (singleton) ─────────────────────────────────────────────────
+// A single reusable worker handles all terrain bitmap requests. Requests are
+// serialized (one at a time) which is fine since we only build bitmaps at
+// init and on overlay toggle.
+
+let workerInstance: Worker | null = null;
+let workerSupported: boolean | null = null;
+
+function getWorker(): Worker | null {
+    if (workerSupported === false) return null;
+
+    if (workerInstance) return workerInstance;
+
+    try {
+        workerInstance = new Worker(
+            new URL('./terrainBitmap.worker.ts', import.meta.url),
+            { type: 'module' }
+        );
+        workerSupported = true;
+        return workerInstance;
+    } catch {
+        // Workers unavailable (SSR, restricted context, etc.)
+        workerSupported = false;
+        return null;
+    }
+}
+
+/** Clean up the worker when the application unmounts. */
+export function disposeTerrainWorker(): void {
+    if (workerInstance) {
+        workerInstance.terminate();
+        workerInstance = null;
+    }
+}
+
+// ── Public API ──────────────────────────────────────────────────────────────
+
+/**
+ * Build a terrain bitmap asynchronously using a Web Worker.
+ *
+ * The heavy Gaussian-splat computation runs entirely off the main thread.
+ * The pixel buffer is transferred back (zero-copy) and painted onto a
+ * canvas on the main thread.
+ *
+ * Falls back to synchronous computation if Web Workers are unavailable.
+ */
+export async function buildTerrainBitmapAsync(
+    cells: GridCell[],
+    cellSpacingKm: number,
+    colorPalette: Record<string, [number, number, number]>,
+    quality: 'low' | 'medium' | 'high' = 'medium'
+): Promise<HTMLCanvasElement> {
+    const pixelsPerDeg = getPixelsPerDeg(quality);
+    const worker = getWorker();
+
+    if (worker) {
+        // Worker path: offload computation
+        const cellData = cells.map(c => ({
+            lat: c.lat,
+            lon: c.lon,
+            terrain: c.terrain
+        }));
+
+        const result = await new Promise<{ pixels: Uint8ClampedArray; width: number; height: number }>((resolve, reject) => {
+            const onMessage = (e: MessageEvent) => {
+                worker.removeEventListener('message', onMessage);
+                worker.removeEventListener('error', onError);
+                resolve(e.data);
+            };
+            const onError = (e: ErrorEvent) => {
+                worker.removeEventListener('message', onMessage);
+                worker.removeEventListener('error', onError);
+                reject(new Error(`Terrain worker error: ${e.message}`));
+            };
+
+            worker.addEventListener('message', onMessage);
+            worker.addEventListener('error', onError);
+
+            worker.postMessage({
+                cells: cellData,
+                cellSpacingKm,
+                colorPalette,
+                pixelsPerDeg,
+            });
+        });
+
+        return pixelsToCanvas(result.pixels, result.width, result.height);
+    }
+
+    // Fallback: synchronous computation on main thread
+    return buildTerrainBitmapSync(cells, cellSpacingKm, colorPalette, pixelsPerDeg);
+}
+
+// ── Canvas creation (main thread only) ──────────────────────────────────────
+
+function pixelsToCanvas(pixels: Uint8ClampedArray, w: number, h: number): HTMLCanvasElement {
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d')!;
+    const imageData = new ImageData(pixels, w, h);
+    ctx.putImageData(imageData, 0, 0);
+    return canvas;
+}
+
+// ── Synchronous fallback ────────────────────────────────────────────────────
+// Used when Web Workers are unavailable. Identical algorithm to the worker.
+
+const OCEAN_TYPES = new Set(['OceanShallow', 'OceanDeep', 'Ocean']);
 const LAT_MIN = -85;
 const LAT_MAX = 85;
 
-/** Ocean terrain types — used for edge-aware blur boundary detection. */
-const OCEAN_TYPES = new Set(['OceanShallow', 'OceanDeep', 'Ocean']);
-
-/**
- * Render grid cells onto a high-resolution equirectangular canvas using
- * Gaussian-splat interpolation with edge-aware blur for clean coastlines.
- *
- * @param cells - Array of grid cells with lat, lon, terrain fields
- * @param cellRadiusKm - Approximate radius of each cell in kilometres
- * @param colorPalette - Terrain type to RGB color mapping
- * @returns A canvas element suitable as a BitmapLayer image
- */
-export function buildTerrainBitmap(
+function buildTerrainBitmapSync(
     cells: GridCell[],
-    cellRadiusKm: number,
-    colorPalette: Record<string, [number, number, number]>
+    cellSpacingKm: number,
+    colorPalette: Record<string, [number, number, number]>,
+    pixelsPerDeg: number
 ): HTMLCanvasElement {
-    // Accumulation buffers: weighted R/G/B and total weight per pixel
+    const W = 360 * pixelsPerDeg;
+    const H = 170 * pixelsPerDeg;
     const totalPixels = W * H;
+
     const weightR = new Float32Array(totalPixels);
     const weightG = new Float32Array(totalPixels);
     const weightB = new Float32Array(totalPixels);
     const weightSum = new Float32Array(totalPixels);
-
-    // Track whether each pixel is "ocean" or "land" for edge-aware blur.
-    // 1.0 = land weight, -1.0 = ocean weight, blended by Gaussian.
     const landWeight = new Float32Array(totalPixels);
 
-    // Ocean base color — used as fallback where no cell data reaches
     const oceanColor = colorPalette['OceanDeep'] || colorPalette['Ocean'] || [8, 18, 42];
-
-    // Convert cell radius from km to degrees, then to pixels.
-    const cellRadiusDeg = cellRadiusKm / 111;
-
-    // Splat radius in pixels — generous overlap so cells blend.
-    const baseSplatPx = cellRadiusDeg * PIXELS_PER_DEG * 1.8;
-
-    // Gaussian sigma — controls falloff softness.
+    const cellRadiusDeg = cellSpacingKm / 111;
+    const baseSplatPx = cellRadiusDeg * pixelsPerDeg * 1.8;
     const sigma = baseSplatPx * 0.45;
     const sigmaSquared2 = 2.0 * sigma * sigma;
     const invSigmaSquared2 = 1.0 / sigmaSquared2;
-
-    // ── Pass 1: Gaussian splat each cell ────────────────────────────────────
 
     for (const cell of cells) {
         if (Math.abs(cell.lat) > 85) continue;
@@ -71,17 +167,14 @@ export function buildTerrainBitmap(
         const b = color[2];
         const isOcean = OCEAN_TYPES.has(cell.terrain);
 
-        // Convert cell position to pixel coordinates
         const cx = ((cell.lon + 180) / 360) * W;
         const cy = ((LAT_MAX - cell.lat) / (LAT_MAX - LAT_MIN)) * H;
 
-        // At higher latitudes, longitude degrees are narrower
         const cosLat = Math.cos(cell.lat * (Math.PI / 180));
         const latScale = 1.0 / Math.max(cosLat, 0.15);
         const splatRx = baseSplatPx * latScale;
         const splatRy = baseSplatPx;
 
-        // Pixel bounding box for this splat
         const x0 = Math.max(0, Math.floor(cx - splatRx) - 1);
         const x1 = Math.min(W - 1, Math.ceil(cx + splatRx) + 1);
         const y0 = Math.max(0, Math.floor(cy - splatRy) - 1);
@@ -113,11 +206,7 @@ export function buildTerrainBitmap(
         }
     }
 
-    // ── Pass 2: Normalize accumulated colors ────────────────────────────────
-    // Also build a land/ocean mask for edge-aware blur.
-
     const pixels = new Uint8ClampedArray(totalPixels * 4);
-    // Mask: true = land pixel, false = ocean pixel
     const isLandMask = new Uint8Array(totalPixels);
 
     for (let i = 0; i < totalPixels; i++) {
@@ -129,7 +218,6 @@ export function buildTerrainBitmap(
             pixels[pi + 1] = (weightG[i] * invW + 0.5) | 0;
             pixels[pi + 2] = (weightB[i] * invW + 0.5) | 0;
             pixels[pi + 3] = 255;
-            // Positive landWeight means more land than ocean influence
             isLandMask[i] = landWeight[i] > 0 ? 1 : 0;
         } else {
             pixels[pi] = oceanColor[0];
@@ -140,30 +228,11 @@ export function buildTerrainBitmap(
         }
     }
 
-    // ── Pass 3: Edge-aware blur ─────────────────────────────────────────────
-    // Single pass of a gentle blur that ONLY blends pixels of the same type
-    // (land with land, ocean with ocean). This smooths terrain transitions
-    // without bleeding ocean blue into coastlines or vice versa.
-
     const blurRadius = Math.max(1, Math.round(baseSplatPx * 0.15));
     edgeAwareBlur(pixels, isLandMask, W, H, blurRadius);
 
-    // ── Pass 4: Render to canvas ────────────────────────────────────────────
-
-    const canvas = document.createElement('canvas');
-    canvas.width = W;
-    canvas.height = H;
-    const ctx = canvas.getContext('2d')!;
-
-    const imageData = new ImageData(pixels, W, H);
-    ctx.putImageData(imageData, 0, 0);
-
-    return canvas;
+    return pixelsToCanvas(pixels, W, H);
 }
-
-// ── Edge-aware blur ─────────────────────────────────────────────────────────
-// Only blurs pixels of the same terrain class (land/ocean). Preserves sharp
-// coastline boundaries while smoothing within each region.
 
 function edgeAwareBlur(
     pixels: Uint8ClampedArray,
@@ -172,7 +241,6 @@ function edgeAwareBlur(
     h: number,
     radius: number
 ): void {
-    // Work on a copy so reads don't see partially-written values
     const src = new Uint8ClampedArray(pixels);
 
     for (let y = 0; y < h; y++) {
@@ -189,7 +257,6 @@ function edgeAwareBlur(
             for (let ny = y0; ny <= y1; ny++) {
                 for (let nx = x0; nx <= x1; nx++) {
                     const nIdx = ny * w + nx;
-                    // Only blend pixels of the same type
                     if (mask[nIdx] !== centerType) continue;
                     const pi = nIdx * 4;
                     sumR += src[pi];

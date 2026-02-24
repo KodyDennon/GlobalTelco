@@ -4,7 +4,7 @@
 	import { regions, cities } from '$lib/stores/gameState';
 	import { tooltip } from '$lib/ui/tooltip';
 	import * as bridge from '$lib/wasm/bridge';
-	import { buildTerrainBitmap } from './map/terrainBitmap';
+	import { buildTerrainBitmapAsync } from './map/terrainBitmap';
 	import { SATELLITE_COLORS } from './map/constants';
 
 	const CANVAS_W = 200;
@@ -77,7 +77,7 @@
 	}
 
 	/** Build terrain bitmap at minimap resolution. */
-	function buildTerrainBackground() {
+	async function buildTerrainBackground() {
 		if (!bridge.isInitialized()) return;
 
 		try {
@@ -87,8 +87,8 @@
 			const worldInfo = bridge.getWorldInfo();
 			const cellSpacingKm = worldInfo.cell_spacing_km > 0 ? worldInfo.cell_spacing_km : 120;
 
-			// Build full terrain bitmap using existing builder
-			const fullBitmap = buildTerrainBitmap(cells, cellSpacingKm, SATELLITE_COLORS);
+			// Build terrain bitmap at low quality (minimap is only 200x150)
+			const fullBitmap = await buildTerrainBitmapAsync(cells, cellSpacingKm, SATELLITE_COLORS, 'low');
 
 			// Scale down to minimap size using an offscreen canvas
 			// The terrain bitmap uses equirectangular projection (lat -85 to 85)
