@@ -152,7 +152,7 @@ PUBLIC_WS_URL=wss://globaltelco.gameservers.kodydennon.com/ws
 
 ## Server Environment Variables
 
-Stored at `/opt/globaltelco/.env` on the server. Source of truth: `deploy/.env.production`.
+Stored at `/opt/globaltelco/.env` on the server. Source of truth: `.env` (project root).
 
 | Variable | Description | Default |
 |----------|-------------|---------|
