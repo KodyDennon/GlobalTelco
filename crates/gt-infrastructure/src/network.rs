@@ -6,6 +6,7 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NetworkGraph {
     adjacency: HashMap<EntityId, Vec<EntityId>>,
+    #[serde(with = "gt_common::serde_helpers::entity_pair_map")]
     edge_map: HashMap<(EntityId, EntityId), EntityId>,
     dirty_nodes: HashSet<EntityId>,
     #[serde(skip)]

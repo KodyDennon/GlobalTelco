@@ -2,6 +2,7 @@ pub mod commands;
 pub mod config;
 pub mod events;
 pub mod protocol;
+pub mod serde_helpers;
 pub mod types;
 
 pub use commands::Command;

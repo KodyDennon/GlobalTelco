@@ -652,11 +652,6 @@
 		min-width: 0;
 	}
 
-	.input-number {
-		width: 70px;
-		flex: none;
-	}
-
 	/* ── Dashboard ───────────────────────────────────────────────────── */
 
 	.dashboard {

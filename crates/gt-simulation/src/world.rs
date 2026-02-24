@@ -55,6 +55,7 @@ pub struct GameWorld {
     // Intel levels: (spy_corp, target_corp) → intel level (0..3)
     // 0 = infra positions only (default), 1 = basic financials (ranges),
     // 2 = detailed financials (exact), 3 = operational data (utilization, health, throughput)
+    #[serde(with = "gt_common::serde_helpers::entity_pair_map")]
     pub intel_levels: HashMap<(EntityId, EntityId), u8>,
 
     // Mappings for fast lookup
@@ -2587,6 +2588,28 @@ mod tests {
         let result = GameWorld::load_game_binary(&[99, 0, 0, 0, 0]);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Unsupported save version"));
+    }
+
+    #[test]
+    fn test_save_game_json_roundtrip() {
+        let config = WorldConfig {
+            map_size: MapSize::Small,
+            ai_corporations: 1,
+            ..WorldConfig::default()
+        };
+        let mut world = GameWorld::new(config);
+        for _ in 0..10 {
+            world.tick();
+        }
+
+        // This was previously broken due to tuple-keyed HashMaps
+        let json = world.save_game().expect("JSON save should succeed");
+        assert!(!json.is_empty());
+
+        let loaded = GameWorld::load_game(&json).expect("JSON load should succeed");
+        assert_eq!(world.current_tick(), loaded.current_tick());
+        assert_eq!(world.regions.len(), loaded.regions.len());
+        assert_eq!(world.corporations.len(), loaded.corporations.len());
     }
 
     #[test]
