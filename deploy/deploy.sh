@@ -76,10 +76,13 @@ fi
 mkdir -p /opt/globaltelco
 chown globaltelco:globaltelco /opt/globaltelco
 
-# Install nginx
+# Install nginx + certbot
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq nginx > /dev/null
+apt-get install -y -qq nginx certbot python3-certbot-nginx > /dev/null
+
+# Create certbot webroot
+mkdir -p /var/www/certbot
 
 # Open firewall ports (Ubuntu iptables)
 iptables -I INPUT -p tcp --dport 80 -j ACCEPT
@@ -153,6 +156,7 @@ deploy_binary() {
     scp_to "$SCRIPT_DIR/.env.production" "/tmp/gt-server.env"
     scp_to "$SCRIPT_DIR/gt-server.service" "/tmp/gt-server.service"
     scp_to "$SCRIPT_DIR/nginx.conf" "/tmp/globaltelco-nginx.conf"
+    scp_to "$SCRIPT_DIR/nginx-pre-ssl.conf" "/tmp/globaltelco-nginx-pre-ssl.conf"
 
     echo ">>> Installing on server..."
     ssh_run "sudo bash -s" <<'INSTALL_SCRIPT'
@@ -164,24 +168,29 @@ mv /tmp/gt-server /opt/globaltelco/gt-server
 chmod +x /opt/globaltelco/gt-server
 chown globaltelco:globaltelco /opt/globaltelco/gt-server
 
-# Install env file (only if not already present or if newer)
-if [[ ! -f /opt/globaltelco/.env ]]; then
-    mv /tmp/gt-server.env /opt/globaltelco/.env
-    chown globaltelco:globaltelco /opt/globaltelco/.env
-    chmod 600 /opt/globaltelco/.env
-else
-    echo "Keeping existing .env (use --force-env to overwrite)"
-    rm /tmp/gt-server.env
-fi
+# Install env file — always update with CORS_ORIGIN
+mv /tmp/gt-server.env /opt/globaltelco/.env
+chown globaltelco:globaltelco /opt/globaltelco/.env
+chmod 600 /opt/globaltelco/.env
 
 # Install systemd service
 mv /tmp/gt-server.service /etc/systemd/system/globaltelco.service
 systemctl daemon-reload
 systemctl enable globaltelco
 
-# Install nginx config
-mv /tmp/globaltelco-nginx.conf /etc/nginx/sites-available/globaltelco
-ln -sf /etc/nginx/sites-available/globaltelco /etc/nginx/sites-enabled/globaltelco
+# Store both nginx configs
+mv /tmp/globaltelco-nginx-pre-ssl.conf /etc/nginx/sites-available/globaltelco-pre-ssl
+mv /tmp/globaltelco-nginx.conf /etc/nginx/sites-available/globaltelco-ssl
+
+# Choose nginx config based on whether SSL certs exist
+DOMAIN="globaltelco.gameservers.kodydennon.com"
+if [[ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
+    echo "SSL certs found — using HTTPS config"
+    ln -sf /etc/nginx/sites-available/globaltelco-ssl /etc/nginx/sites-enabled/globaltelco
+else
+    echo "No SSL certs yet — using HTTP-only config (run certbot after deploy)"
+    ln -sf /etc/nginx/sites-available/globaltelco-pre-ssl /etc/nginx/sites-enabled/globaltelco
+fi
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 
@@ -217,13 +226,17 @@ echo "║  Deploy complete!                                ║"
 echo "╚══════════════════════════════════════════════════╝"
 echo ""
 DOMAIN="globaltelco.gameservers.kodydennon.com"
-echo "  Health check:  curl http://$DOMAIN:3001/health"
-echo "  WebSocket:     ws://$DOMAIN:3001/ws"
-echo "  REST API:      http://$DOMAIN:3001/api"
+echo "  Health (HTTP):  curl http://$DOMAIN/health"
+echo "  Health (HTTPS): curl https://$DOMAIN/health"
+echo "  WebSocket:      wss://$DOMAIN/ws"
+echo "  REST API:       https://$DOMAIN/api"
 echo ""
-echo "  Server logs:   ssh $SSH_OPTS $REMOTE 'sudo journalctl -u globaltelco -f'"
+echo "  Server logs:    ssh $SSH_OPTS $REMOTE 'sudo journalctl -u globaltelco -f'"
 echo ""
-echo "  Frontend env vars to set:"
-echo "    PUBLIC_API_URL=http://$DOMAIN:3001"
-echo "    PUBLIC_WS_URL=ws://$DOMAIN:3001/ws"
+echo "  Frontend env vars to set on Vercel:"
+echo "    PUBLIC_API_URL=https://$DOMAIN"
+echo "    PUBLIC_WS_URL=wss://$DOMAIN/ws"
+echo ""
+echo "  SSL setup (run once on server):"
+echo "    sudo certbot --nginx -d $DOMAIN --non-interactive --agree-tos -m your@email.com"
 echo ""
