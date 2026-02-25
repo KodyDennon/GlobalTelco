@@ -5,8 +5,14 @@
 //!   Phase B: Aggregation Ring — connect aggregation nodes around cities
 //!   Phase C: Access Layer — deploy cell towers in unserved city cells
 //!   Phase D: Redundancy — build alternate backbone links for resilience
+//!   Phase E: FTTH Auto-Management — tiered FTTH deployment based on NAP count
 //!
 //! Each archetype has variations in priorities and node type preferences.
+//!
+//! FTTH tiers:
+//!   Small (1-50 NAPs): no auto-management (player/AI handles manually)
+//!   Medium (50-200): auto-connect drop cables from existing NAPs
+//!   Large (200+): auto-place FDHs and NAPs in underserved areas
 
 use crate::components::*;
 use crate::world::GameWorld;
@@ -50,6 +56,9 @@ pub fn execute(
         // Network is mature — upgrade existing infrastructure
         upgrade_existing(world, corp_id, fin);
     }
+
+    // Phase E: Tiered FTTH auto-management based on NAP count
+    manage_ftth(world, corp_id, fin, &corp_nodes, tick);
 
     // Tech innovator always prioritizes research alongside building
     if ai.archetype == AIArchetype::TechInnovator {
@@ -494,6 +503,311 @@ fn upgrade_existing(world: &mut GameWorld, corp_id: EntityId, fin: &Financial) {
                     health.condition = 1.0;
                 }
                 break;
+            }
+        }
+    }
+}
+
+// ─── Phase E: Tiered FTTH Auto-Management ───────────────────────────────────
+
+/// FTTH auto-deployment based on corporation NAP count (tiered management).
+///
+/// - Small (1-50 NAPs): no auto-management — player/AI handles manually
+/// - Medium (50-200 NAPs): auto-connect drop cables from existing NAPs to nearby buildings
+/// - Large (200+): auto-place FDHs and NAPs in underserved areas within policy budget
+///
+/// This models the "tiered management" concept where larger corps have departments
+/// that handle routine FTTH expansion automatically.
+fn manage_ftth(
+    world: &mut GameWorld,
+    corp_id: EntityId,
+    fin: &Financial,
+    corp_nodes: &[EntityId],
+    tick: Tick,
+) {
+    // Count operational NAPs owned by this corp
+    let nap_count = corp_nodes
+        .iter()
+        .filter(|&&nid| {
+            !world.constructions.contains_key(&nid)
+                && world
+                    .infra_nodes
+                    .get(&nid)
+                    .map(|n| n.node_type == NodeType::NetworkAccessPoint)
+                    .unwrap_or(false)
+        })
+        .count();
+
+    if nap_count < 50 {
+        // Small corp: no auto-management
+        return;
+    }
+
+    // Budget check: FTTH auto-deployment uses at most 5% of cash per AI tick
+    let ftth_budget = fin.cash / 20;
+    if ftth_budget < 50_000 {
+        return; // Not enough spare cash for FTTH expansion
+    }
+
+    if nap_count < 200 {
+        // Medium tier: auto-connect drop cables from existing active NAPs to
+        // nearby buildings (cells with city population but no drop cable coverage).
+        ftth_medium_auto_connect(world, corp_id, corp_nodes, tick);
+    } else {
+        // Large tier: auto-place FDHs and NAPs in underserved areas.
+        ftth_large_auto_deploy(world, corp_id, fin, corp_nodes, tick);
+    }
+}
+
+/// Medium tier FTTH: find active NAPs without drop cable connections and
+/// build DropCable edges to connect them to nearby FDH or existing infrastructure.
+/// This simulates a department that connects already-deployed NAPs to the
+/// distribution network for last-mile service.
+fn ftth_medium_auto_connect(
+    world: &mut GameWorld,
+    corp_id: EntityId,
+    corp_nodes: &[EntityId],
+    tick: Tick,
+) {
+    // Find active NAPs that have no outgoing DropCable edges
+    let nap_with_drop: std::collections::HashSet<EntityId> = world
+        .infra_edges
+        .values()
+        .filter(|e| e.edge_type == EdgeType::DropCable && e.owner == corp_id)
+        .flat_map(|e| [e.source, e.target])
+        .collect();
+
+    let unconnected_naps: Vec<EntityId> = corp_nodes
+        .iter()
+        .copied()
+        .filter(|&nid| {
+            !world.constructions.contains_key(&nid)
+                && world
+                    .infra_nodes
+                    .get(&nid)
+                    .map(|n| {
+                        n.node_type == NodeType::NetworkAccessPoint
+                            && n.active_ftth
+                            && !nap_with_drop.contains(&nid)
+                    })
+                    .unwrap_or(false)
+        })
+        .collect();
+
+    if unconnected_naps.is_empty() {
+        return;
+    }
+
+    // Connect up to 2 NAPs per AI tick cycle to avoid burst spending
+    let max_connections = 2.min(unconnected_naps.len());
+    for &nap_id in &unconnected_naps[..max_connections] {
+        let nap_cell = match world.infra_nodes.get(&nap_id) {
+            Some(n) => n.cell_index,
+            None => continue,
+        };
+
+        // Find the nearest FDH to connect the NAP to via DistributionFiber
+        // (if not already connected — the FTTH chain may already exist)
+        let fdh_nodes: Vec<EntityId> = corp_nodes
+            .iter()
+            .copied()
+            .filter(|&nid| {
+                world
+                    .infra_nodes
+                    .get(&nid)
+                    .map(|n| n.node_type == NodeType::FiberDistributionHub)
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        if let Some(nearest_fdh) = helpers::find_nearest_node(world, &fdh_nodes, nap_cell) {
+            // Check if there's already a DistributionFiber edge between them
+            let already_connected = world.infra_edges.values().any(|e| {
+                e.edge_type == EdgeType::DistributionFiber
+                    && ((e.source == nap_id && e.target == nearest_fdh)
+                        || (e.source == nearest_fdh && e.target == nap_id))
+            });
+            if !already_connected {
+                helpers::build_edge(world, corp_id, nap_id, nearest_fdh, tick);
+            }
+        }
+    }
+}
+
+/// Large tier FTTH: auto-place FDHs and NAPs in underserved city areas.
+/// Targets city cells with high population but no existing FTTH coverage.
+/// Uses the corp's policy budget to limit spending.
+fn ftth_large_auto_deploy(
+    world: &mut GameWorld,
+    corp_id: EntityId,
+    fin: &Financial,
+    corp_nodes: &[EntityId],
+    tick: Tick,
+) {
+    // Find city cells that have population but no NAP coverage from this corp
+    let nap_cells: std::collections::HashSet<usize> = corp_nodes
+        .iter()
+        .filter_map(|&nid| {
+            let node = world.infra_nodes.get(&nid)?;
+            if node.node_type == NodeType::NetworkAccessPoint
+                || node.node_type == NodeType::FiberDistributionHub
+            {
+                Some(node.cell_index)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Score candidate cells by population density and lack of FTTH coverage
+    let mut candidates: Vec<(usize, f64)> = Vec::new();
+    for (_, city) in &world.cities {
+        for &ci in &city.cells {
+            // Skip cells we already have FTTH nodes in
+            if nap_cells.contains(&ci) {
+                continue;
+            }
+            let cell_pop = city.population as f64 / city.cells.len().max(1) as f64;
+            if cell_pop < 100.0 {
+                continue; // Not enough population to justify FTTH
+            }
+
+            // Prefer cells close to existing corp infrastructure
+            let dist_factor = if let Some(nearest) =
+                helpers::find_nearest_node(world, corp_nodes, ci)
+            {
+                let nearest_cell = world
+                    .infra_nodes
+                    .get(&nearest)
+                    .map(|n| n.cell_index)
+                    .unwrap_or(0);
+                let dist = world
+                    .grid_cell_positions
+                    .get(ci)
+                    .and_then(|a| {
+                        world
+                            .grid_cell_positions
+                            .get(nearest_cell)
+                            .map(|b| helpers::sq_distance(a, b))
+                    })
+                    .unwrap_or(f64::MAX);
+                1.0 / (dist + 1.0)
+            } else {
+                0.001
+            };
+
+            let score = cell_pop * dist_factor;
+            if score > 0.1 {
+                candidates.push((ci, score));
+            }
+        }
+    }
+
+    candidates.sort_unstable_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.0.cmp(&b.0))
+    });
+
+    // Budget: spend at most 5% of cash on FTTH auto-deployment per cycle
+    let mut budget_remaining = fin.cash / 20;
+
+    // Step 1: Place FDH if we don't have enough (need ~1 FDH per 10 NAPs)
+    let fdh_count = corp_nodes
+        .iter()
+        .filter(|&&nid| {
+            world
+                .infra_nodes
+                .get(&nid)
+                .map(|n| n.node_type == NodeType::FiberDistributionHub)
+                .unwrap_or(false)
+        })
+        .count();
+
+    let nap_count = corp_nodes
+        .iter()
+        .filter(|&&nid| {
+            world
+                .infra_nodes
+                .get(&nid)
+                .map(|n| n.node_type == NodeType::NetworkAccessPoint)
+                .unwrap_or(false)
+        })
+        .count();
+
+    let target_fdh_count = (nap_count / 10).max(1);
+
+    if fdh_count < target_fdh_count {
+        if let Some(&(cell_index, _)) = candidates.first() {
+            let fdh_cost = NodeType::FiberDistributionHub.construction_cost();
+            if budget_remaining > fdh_cost * 2 {
+                if let Some(fdh_id) =
+                    helpers::build_node(world, corp_id, NodeType::FiberDistributionHub, cell_index, tick)
+                {
+                    // Connect FDH to nearest CentralOffice via FeederFiber
+                    let co_nodes: Vec<EntityId> = corp_nodes
+                        .iter()
+                        .copied()
+                        .filter(|&nid| {
+                            world
+                                .infra_nodes
+                                .get(&nid)
+                                .map(|n| n.node_type == NodeType::CentralOffice)
+                                .unwrap_or(false)
+                        })
+                        .collect();
+
+                    if let Some(nearest_co) =
+                        helpers::find_nearest_node(world, &co_nodes, cell_index)
+                    {
+                        helpers::build_edge(world, corp_id, fdh_id, nearest_co, tick);
+                    }
+                }
+                return; // One FDH per cycle to pace spending
+            }
+        }
+    }
+
+    // Step 2: Place NAPs in underserved cells and connect to nearest FDH
+    let fdh_nodes: Vec<EntityId> = corp_nodes
+        .iter()
+        .copied()
+        .filter(|&nid| {
+            !world.constructions.contains_key(&nid)
+                && world
+                    .infra_nodes
+                    .get(&nid)
+                    .map(|n| n.node_type == NodeType::FiberDistributionHub)
+                    .unwrap_or(false)
+        })
+        .collect();
+
+    if fdh_nodes.is_empty() {
+        return; // No FDHs to connect NAPs to
+    }
+
+    // Place up to 3 NAPs per cycle
+    let mut placed = 0;
+    for &(cell_index, _) in &candidates {
+        if placed >= 3 {
+            break;
+        }
+        let nap_cost = NodeType::NetworkAccessPoint.construction_cost();
+        if budget_remaining < nap_cost * 2 {
+            break;
+        }
+
+        if let Some(nap_id) =
+            helpers::build_node(world, corp_id, NodeType::NetworkAccessPoint, cell_index, tick)
+        {
+            budget_remaining -= nap_cost;
+            placed += 1;
+
+            // Connect to nearest FDH via DistributionFiber
+            if let Some(nearest_fdh) =
+                helpers::find_nearest_node(world, &fdh_nodes, cell_index)
+            {
+                helpers::build_edge(world, corp_id, nap_id, nearest_fdh, tick);
             }
         }
     }

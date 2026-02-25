@@ -13,6 +13,45 @@ pub struct CellCoverage {
     pub best_signal: f64,
     /// Owner of the strongest signal source (for ownership overlay)
     pub dominant_owner: Option<u64>,
+    /// Per-corporation bandwidth at this cell. Used by the revenue system to
+    /// detect market competition and split subscriber revenue proportionally.
+    /// Sorted by corp_id for deterministic iteration.
+    pub per_corp_bandwidth: Vec<(u64, f64)>,
+}
+
+impl CellCoverage {
+    /// Add bandwidth contribution from a specific corporation.
+    /// Merges into existing entry if present, otherwise appends and re-sorts.
+    pub fn add_corp_bandwidth(&mut self, corp_id: u64, bandwidth: f64) {
+        if bandwidth <= 0.0 {
+            return;
+        }
+        if let Some(entry) = self.per_corp_bandwidth.iter_mut().find(|(c, _)| *c == corp_id) {
+            entry.1 += bandwidth;
+        } else {
+            self.per_corp_bandwidth.push((corp_id, bandwidth));
+            self.per_corp_bandwidth.sort_unstable_by_key(|t| t.0);
+        }
+    }
+
+    /// Returns the number of distinct corporations providing coverage at this cell.
+    pub fn competitor_count(&self) -> usize {
+        self.per_corp_bandwidth.len()
+    }
+
+    /// Returns the bandwidth share (0.0-1.0) that a specific corporation holds at this cell.
+    /// If the corp has no coverage, returns 0.0.
+    pub fn corp_bandwidth_share(&self, corp_id: u64) -> f64 {
+        let total: f64 = self.per_corp_bandwidth.iter().map(|(_, bw)| *bw).sum();
+        if total <= 0.0 {
+            return 0.0;
+        }
+        self.per_corp_bandwidth
+            .iter()
+            .find(|(c, _)| *c == corp_id)
+            .map(|(_, bw)| *bw / total)
+            .unwrap_or(0.0)
+    }
 }
 
 /// Run coverage calculation: determine which cells are covered by which infrastructure.
@@ -266,6 +305,7 @@ pub fn run(world: &mut GameWorld) {
             entry.signal_strength += final_signal;
             entry.bandwidth += final_bandwidth;
             entry.node_count += 1;
+            entry.add_corp_bandwidth(owner, final_bandwidth);
             if final_signal > entry.best_signal {
                 entry.best_signal = final_signal;
                 entry.dominant_owner = Some(owner);
@@ -306,6 +346,7 @@ pub fn run(world: &mut GameWorld) {
                 .or_insert_with(CellCoverage::default);
             entry.bandwidth += backbone_bw;
             entry.signal_strength += backbone_bw * 0.5;
+            entry.add_corp_bandwidth(owner, backbone_bw);
             if entry.dominant_owner.is_none() {
                 entry.dominant_owner = Some(owner);
             }
@@ -339,6 +380,7 @@ pub fn run(world: &mut GameWorld) {
                             .or_insert_with(CellCoverage::default);
                         entry.bandwidth += corridor_bw;
                         entry.signal_strength += corridor_bw * 0.3;
+                        entry.add_corp_bandwidth(owner, corridor_bw);
                         if entry.dominant_owner.is_none() {
                             entry.dominant_owner = Some(owner);
                         }

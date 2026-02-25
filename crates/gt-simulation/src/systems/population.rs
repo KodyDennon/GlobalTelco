@@ -20,7 +20,12 @@ pub fn run(world: &mut GameWorld) {
         spawn_settlements(world);
     }
 
-    // 6. Update region populations from city totals
+    // 6. Dynamic building spawn/destruction based on population changes (every 10 ticks)
+    if world.current_tick() % 10 == 0 {
+        update_buildings_dynamic(world);
+    }
+
+    // 7. Update region populations from city totals
     aggregate_region_populations(world);
 }
 
@@ -329,6 +334,27 @@ fn spawn_settlements(world: &mut GameWorld) {
             region.city_ids.push(new_id);
         }
 
+        // Seed initial buildings for the new settlement
+        {
+            use crate::components::building::{
+                compute_building_target, BuildingFootprint, CityBuildingCensus,
+            };
+            let target = compute_building_target(initial_pop);
+            let base_demand = if target > 0 {
+                telecom_demand / target as f64
+            } else {
+                0.0
+            };
+            for _ in 0..target {
+                let bldg_id = world.allocate_entity();
+                let bldg = BuildingFootprint::new(new_id, cell_idx, base_demand * 0.6, true);
+                world.building_footprints.insert(bldg_id, bldg);
+            }
+            world
+                .city_building_census
+                .insert(new_id, CityBuildingCensus::new(initial_pop));
+        }
+
         world.event_queue.push(
             world.current_tick(),
             gt_common::events::GameEvent::GlobalNotification {
@@ -380,6 +406,192 @@ fn compute_target_cells(population: u64) -> usize {
     }
     .max(1)
     .min(20)
+}
+
+/// Dynamic building spawn/destruction based on city population changes.
+///
+/// **Growing cities:** When population exceeds the current building target, new
+/// buildings spawn in the suburban fringe zone (outermost cells). These buildings
+/// start as fringe buildings with 0.6x demand.
+///
+/// **Declining cities:** When population drops below the building target, fringe
+/// buildings are marked as "Abandoned" (greyed out, zero demand). Abandoned buildings
+/// persist and can be reactivated if population rebounds.
+fn update_buildings_dynamic(world: &mut GameWorld) {
+    use crate::components::building::{
+        compute_building_target, BuildingFootprint, BuildingStatus,
+    };
+
+    // Collect city data for processing (sorted for determinism)
+    let mut city_ids: Vec<u64> = world.cities.keys().copied().collect();
+    city_ids.sort_unstable();
+
+    for city_id in city_ids {
+        let (population, cells, telecom_demand) = match world.cities.get(&city_id) {
+            Some(city) => (city.population, city.cells.clone(), city.telecom_demand),
+            None => continue,
+        };
+
+        let target = compute_building_target(population);
+
+        // Initialize census if missing (backward compat for old saves / newly spawned cities)
+        if !world.city_building_census.contains_key(&city_id) {
+            world.city_building_census.insert(
+                city_id,
+                crate::components::CityBuildingCensus::new(population),
+            );
+        }
+
+        // Count current active and abandoned buildings for this city
+        let mut active_ids: Vec<u64> = Vec::new();
+        let mut abandoned_ids: Vec<u64> = Vec::new();
+        let mut fringe_active_ids: Vec<u64> = Vec::new();
+        let mut fringe_abandoned_ids: Vec<u64> = Vec::new();
+
+        // Collect building IDs sorted for determinism
+        let mut bldg_ids: Vec<u64> = world
+            .building_footprints
+            .iter()
+            .filter(|(_, b)| b.city_id == city_id)
+            .map(|(&id, _)| id)
+            .collect();
+        bldg_ids.sort_unstable();
+
+        for &bldg_id in &bldg_ids {
+            let bldg = match world.building_footprints.get(&bldg_id) {
+                Some(b) => b,
+                None => continue,
+            };
+            match bldg.status {
+                BuildingStatus::Active => {
+                    active_ids.push(bldg_id);
+                    if bldg.is_fringe {
+                        fringe_active_ids.push(bldg_id);
+                    }
+                }
+                BuildingStatus::Abandoned => {
+                    abandoned_ids.push(bldg_id);
+                    if bldg.is_fringe {
+                        fringe_abandoned_ids.push(bldg_id);
+                    }
+                }
+            }
+        }
+
+        let active_count = active_ids.len() as u32;
+
+        if active_count < target {
+            // ── Growing city: spawn new buildings or reactivate abandoned ones ──
+            let deficit = target - active_count;
+
+            // First, reactivate abandoned fringe buildings (cheapest recovery)
+            let mut reactivated = 0u32;
+            for &bldg_id in &fringe_abandoned_ids {
+                if reactivated >= deficit {
+                    break;
+                }
+                if let Some(bldg) = world.building_footprints.get_mut(&bldg_id) {
+                    bldg.status = BuildingStatus::Active;
+                    reactivated += 1;
+                }
+            }
+
+            // Then reactivate non-fringe abandoned buildings
+            if reactivated < deficit {
+                for &bldg_id in &abandoned_ids {
+                    if reactivated >= deficit {
+                        break;
+                    }
+                    // Skip fringe — already handled above
+                    if fringe_abandoned_ids.contains(&bldg_id) {
+                        continue;
+                    }
+                    if let Some(bldg) = world.building_footprints.get_mut(&bldg_id) {
+                        bldg.status = BuildingStatus::Active;
+                        reactivated += 1;
+                    }
+                }
+            }
+
+            // If still deficit, spawn new buildings in fringe cells
+            let still_needed = deficit - reactivated;
+            if still_needed > 0 && !cells.is_empty() {
+                let base_demand = if target > 0 {
+                    telecom_demand / target as f64
+                } else {
+                    0.0
+                };
+                let fringe_demand = base_demand * 0.6;
+
+                // Pick fringe cells: last third of city cells (outermost ring)
+                let fringe_start = cells.len().saturating_sub(cells.len() / 3).max(1);
+                let fringe_cells = &cells[fringe_start..];
+
+                // Distribute new buildings across fringe cells deterministically
+                // Cap spawns per tick to 50 to avoid large spikes
+                let spawn_count = still_needed.min(50);
+                for i in 0..spawn_count {
+                    let cell_idx = fringe_cells[i as usize % fringe_cells.len()];
+                    let id = world.allocate_entity();
+                    let bldg = BuildingFootprint::new(city_id, cell_idx, fringe_demand, true);
+                    world.building_footprints.insert(id, bldg);
+                }
+            }
+        } else if active_count > target {
+            // ── Declining city: abandon fringe buildings first ──
+            let surplus = active_count - target;
+
+            // Abandon fringe buildings first (outermost ring decays first)
+            let mut abandoned = 0u32;
+
+            // Process fringe active buildings in reverse order (highest ID = newest)
+            for &bldg_id in fringe_active_ids.iter().rev() {
+                if abandoned >= surplus {
+                    break;
+                }
+                if let Some(bldg) = world.building_footprints.get_mut(&bldg_id) {
+                    bldg.status = BuildingStatus::Abandoned;
+                    abandoned += 1;
+                }
+            }
+
+            // If more need abandoning, abandon non-fringe buildings (also reverse order)
+            if abandoned < surplus {
+                for &bldg_id in active_ids.iter().rev() {
+                    if abandoned >= surplus {
+                        break;
+                    }
+                    // Skip fringe — already handled
+                    if fringe_active_ids.contains(&bldg_id) {
+                        continue;
+                    }
+                    if let Some(bldg) = world.building_footprints.get_mut(&bldg_id) {
+                        bldg.status = BuildingStatus::Abandoned;
+                        abandoned += 1;
+                    }
+                }
+            }
+        }
+
+        // Update census
+        if let Some(census) = world.city_building_census.get_mut(&city_id) {
+            // Recount after modifications
+            let mut new_active = 0u32;
+            let mut new_abandoned = 0u32;
+            for bldg in world.building_footprints.values() {
+                if bldg.city_id == city_id {
+                    match bldg.status {
+                        BuildingStatus::Active => new_active += 1,
+                        BuildingStatus::Abandoned => new_abandoned += 1,
+                    }
+                }
+            }
+            census.active_count = new_active;
+            census.abandoned_count = new_abandoned;
+            census.target_count = target;
+            census.prev_population = population;
+        }
+    }
 }
 
 /// Generate a deterministic settlement name from tick and cell index.

@@ -14,6 +14,7 @@
 		exitPlacementMode,
 		canEdgeConnect,
 		getEdgeTypesForSource,
+		ghostPreviewInfo,
 	} from '$lib/stores/uiState';
 	import type { PanelGroupType, OverlayType } from '$lib/stores/uiState';
 	import { isMultiplayer, connectionState, playerList } from '$lib/stores/multiplayerState';
@@ -96,6 +97,9 @@
 		traffic: 'Show traffic flow — blue (low) to white (high)',
 		market_share: 'Show market share — regions colored by dominant corporation',
 		ocean_depth: 'Show ocean depth zones — shallow (lighter blue) to deep (dark abyss). Plan submarine cables!',
+		elevation_contour: 'Show elevation contours — lighter = higher, richer = lower. Contour lines at elevation bands. Procgen only.',
+		submarine_reference: 'Show real-world submarine cable routes — reference overlay for planning cable placement. Real Earth mode only.',
+		coverage_overlap: 'Show coverage overlap — cells with 2+ corporations competing. Red = hotspot, darker = more competitors.',
 	};
 
 	const OVERLAYS: Array<{ key: OverlayType; label: string; cls?: string }> = [
@@ -104,11 +108,14 @@
 		{ key: 'population', label: 'Pop', cls: 'population' },
 		{ key: 'demand', label: 'Demand' },
 		{ key: 'coverage', label: 'Cover' },
+		{ key: 'coverage_overlap', label: 'Overlap', cls: 'overlap' },
 		{ key: 'disaster', label: 'Risk', cls: 'disaster' },
 		{ key: 'congestion', label: 'Congest', cls: 'congestion' },
 		{ key: 'traffic', label: 'Traffic', cls: 'traffic' },
 		{ key: 'market_share', label: 'Market', cls: 'market-share' },
 		{ key: 'ocean_depth', label: 'Ocean', cls: 'ocean' },
+		{ key: 'elevation_contour', label: 'Elev', cls: 'elevation' },
+		{ key: 'submarine_reference', label: 'Cables', cls: 'cables' },
 	];
 </script>
 
@@ -150,7 +157,25 @@
 			{#if currentBuild === 'node' && $selectedBuildItem}
 				<span class="build-mode-badge node">NODE</span>
 				<span class="build-item-name">{BUILD_ITEM_NAMES[$selectedBuildItem] ?? $selectedBuildItem}</span>
-				<span class="build-hint">Click map to place</span>
+				{#if $ghostPreviewInfo.terrainType}
+					<span class="ghost-terrain" class:ghost-invalid={!$ghostPreviewInfo.valid}>
+						{$ghostPreviewInfo.terrainType}
+					</span>
+					<span class="ghost-multiplier" class:ghost-expensive={$ghostPreviewInfo.costMultiplier >= 2.0}>
+						{$ghostPreviewInfo.costMultiplier.toFixed(1)}x
+					</span>
+				{/if}
+				{#if $ghostPreviewInfo.cost !== null}
+					<span class="ghost-cost">{formatMoney($ghostPreviewInfo.cost)}</span>
+				{/if}
+				<span class="ghost-cash" class:negative={($playerCorp?.cash ?? 0) < ($ghostPreviewInfo.cost ?? 0)}>
+					{formatMoney($playerCorp?.cash ?? 0)}
+				</span>
+				{#if !$ghostPreviewInfo.valid}
+					<span class="ghost-invalid-label">INVALID</span>
+				{:else}
+					<span class="build-hint">Click to place</span>
+				{/if}
 				<button class="cancel-btn" onclick={exitPlacementMode} use:tooltip={'Cancel build mode (Esc)'}>Cancel</button>
 			{:else if currentBuild === 'edge'}
 				<span class="build-mode-badge edge">LINK</span>
@@ -207,6 +232,8 @@
 					class:traffic={overlay.cls === 'traffic'}
 					class:market-share={overlay.cls === 'market-share'}
 					class:ocean={overlay.cls === 'ocean'}
+					class:cables={overlay.cls === 'cables'}
+					class:overlap={overlay.cls === 'overlap'}
 					onclick={() => toggleOverlay(overlay.key)}
 					use:tooltip={OVERLAY_TIPS[overlay.key] ?? overlay.label}
 					aria-pressed={currentOverlay === overlay.key}
@@ -366,6 +393,67 @@
 		background: rgba(239, 68, 68, 0.25);
 	}
 
+	/* ── Ghost preview (build mode terrain/cost) ──────────────────────────── */
+
+	.ghost-terrain {
+		font-size: 10px;
+		font-weight: 600;
+		color: #a5b4fc;
+		background: rgba(99, 102, 241, 0.15);
+		border: 1px solid rgba(99, 102, 241, 0.3);
+		padding: 1px 6px;
+		border-radius: 3px;
+		font-family: var(--font-mono);
+	}
+
+	.ghost-terrain.ghost-invalid {
+		color: #ef4444;
+		background: rgba(239, 68, 68, 0.15);
+		border-color: rgba(239, 68, 68, 0.3);
+	}
+
+	.ghost-multiplier {
+		font-size: 10px;
+		font-weight: 700;
+		color: var(--text-muted);
+		font-family: var(--font-mono);
+	}
+
+	.ghost-multiplier.ghost-expensive {
+		color: #f59e0b;
+	}
+
+	.ghost-cost {
+		font-size: 10px;
+		font-weight: 600;
+		color: var(--green);
+		font-family: var(--font-mono);
+	}
+
+	.ghost-cash {
+		font-size: 10px;
+		font-weight: 500;
+		color: var(--text-dim);
+		font-family: var(--font-mono);
+		border-left: 1px solid var(--border);
+		padding-left: 6px;
+	}
+
+	.ghost-cash.negative {
+		color: #ef4444;
+	}
+
+	.ghost-invalid-label {
+		font-size: 9px;
+		font-weight: 800;
+		letter-spacing: 0.1em;
+		color: #ef4444;
+		background: rgba(239, 68, 68, 0.15);
+		border: 1px solid rgba(239, 68, 68, 0.3);
+		padding: 1px 6px;
+		border-radius: 3px;
+	}
+
 	/* ── Panel & overlay buttons ────────────────────────────────────────────── */
 
 	.panel-buttons, .overlay-buttons {
@@ -463,6 +551,24 @@
 	.overlay-btn.ocean.active {
 		background: rgba(59, 130, 246, 0.2);
 		color: #60a5fa;
+	}
+
+	.overlay-btn.cables {
+		color: #8bb4d6;
+	}
+
+	.overlay-btn.cables.active {
+		background: rgba(100, 180, 255, 0.2);
+		color: #a8d0f0;
+	}
+
+	.overlay-btn.overlap {
+		color: #f472b6;
+	}
+
+	.overlay-btn.overlap.active {
+		background: rgba(244, 114, 182, 0.2);
+		color: #f9a8d4;
 	}
 
 	.mp-status {

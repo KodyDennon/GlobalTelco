@@ -191,7 +191,15 @@ fn apply_disaster_damage(
             health.degrade(damage);
         }
 
-        apply_insurance_payout(world, node_id, damage, tick);
+        world.event_queue.push(
+            tick,
+            gt_common::events::GameEvent::InfrastructureDamaged {
+                entity: node_id,
+                damage,
+            },
+        );
+
+        apply_insurance_payout_node(world, node_id, damage, tick);
     }
 
     // Damage edges in affected region (50% chance per edge, deployment-modified damage)
@@ -225,13 +233,23 @@ fn apply_disaster_damage(
                 edge.last_damage_tick = Some(tick);
                 edge_count += 1;
             }
+
+            world.event_queue.push(
+                tick,
+                gt_common::events::GameEvent::InfrastructureDamaged {
+                    entity: edge_id,
+                    damage,
+                },
+            );
+
+            apply_insurance_payout_edge(world, edge_id, damage, tick);
         }
     }
 
     (node_count, edge_count)
 }
 
-fn apply_insurance_payout(world: &mut GameWorld, node_id: u64, damage: f64, tick: u64) {
+fn apply_insurance_payout_node(world: &mut GameWorld, node_id: u64, damage: f64, tick: u64) {
     let is_insured = world
         .infra_nodes
         .get(&node_id)
@@ -258,6 +276,49 @@ fn apply_insurance_payout(world: &mut GameWorld, node_id: u64, damage: f64, tick
             tick,
             gt_common::events::GameEvent::InsurancePayout {
                 entity: node_id,
+                amount: payout,
+            },
+        );
+    }
+}
+
+/// Insurance payout for a damaged edge.
+///
+/// An edge is considered insured if either its source or target node is insured.
+/// Payout = construction_cost × damage × 0.2 × 0.6 (same formula as nodes).
+fn apply_insurance_payout_edge(world: &mut GameWorld, edge_id: u64, damage: f64, tick: u64) {
+    let (owner, construction_cost, source, target) = match world.infra_edges.get(&edge_id) {
+        Some(e) => (e.owner, e.construction_cost, e.source, e.target),
+        None => return,
+    };
+
+    // An edge is insured if either endpoint node is insured
+    let src_insured = world
+        .infra_nodes
+        .get(&source)
+        .map(|n| n.insured)
+        .unwrap_or(false);
+    let dst_insured = world
+        .infra_nodes
+        .get(&target)
+        .map(|n| n.insured)
+        .unwrap_or(false);
+
+    if !src_insured && !dst_insured {
+        return;
+    }
+
+    let repair_cost = (construction_cost as f64 * damage * 0.2) as i64;
+    let payout = (repair_cost as f64 * 0.6) as i64;
+
+    if payout > 0 {
+        if let Some(fin) = world.financials.get_mut(&owner) {
+            fin.cash += payout;
+        }
+        world.event_queue.push(
+            tick,
+            gt_common::events::GameEvent::InsurancePayout {
+                entity: edge_id,
                 amount: payout,
             },
         );

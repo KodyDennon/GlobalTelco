@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { cities, regions } from '$lib/stores/gameState';
+	import { cities, regions, playerCorp } from '$lib/stores/gameState';
+	import * as bridge from '$lib/wasm/bridge';
 	import { searchOverlayVisible } from './KeyboardManager';
 
 	let inputEl: HTMLInputElement | undefined = $state();
@@ -8,7 +9,7 @@
 	let selectedIndex = $state(0);
 
 	interface SearchResult {
-		type: 'city' | 'region';
+		type: 'city' | 'region' | 'infra';
 		name: string;
 		id: number;
 		lon: number;
@@ -55,15 +56,42 @@
 			if (matches.length >= 30) break; // Pre-filter cap
 		}
 
-		// Sort by: exact prefix first, then by population descending
+		// Search infrastructure nodes
+		const corp = $playerCorp;
+		if (corp && bridge.isInitialized()) {
+			const infraList = bridge.getInfrastructureList(corp.id);
+			let infraCount = 0;
+			for (const node of infraList.nodes) {
+				if (infraCount >= 10) break;
+				// Match against node_type (e.g., "CellTower" matches "cell tower")
+				const nodeTypeLower = node.node_type.toLowerCase().replace(/_/g, ' ');
+				if (nodeTypeLower.includes(q)) {
+					matches.push({
+						type: 'infra',
+						name: `${node.node_type} #${node.id}`,
+						id: node.id,
+						lon: node.x,
+						lat: node.y,
+						population: 0,
+						detail: `${(node.health * 100).toFixed(0)}% HP  (${node.x.toFixed(2)}, ${node.y.toFixed(2)})`,
+					});
+					infraCount++;
+				}
+			}
+		}
+
+		// Sort by: exact prefix first, then by population descending (infra has population=0 so sorts last)
 		matches.sort((a, b) => {
 			const aPrefix = a.name.toLowerCase().startsWith(q) ? 0 : 1;
 			const bPrefix = b.name.toLowerCase().startsWith(q) ? 0 : 1;
 			if (aPrefix !== bPrefix) return aPrefix - bPrefix;
+			// Group by type: cities first, regions second, infra third within same prefix match
+			const typeOrder = { city: 0, region: 1, infra: 2 };
+			if (a.type !== b.type) return typeOrder[a.type] - typeOrder[b.type];
 			return b.population - a.population;
 		});
 
-		return matches.slice(0, 8);
+		return matches.slice(0, 12);
 	});
 
 	function formatPop(pop: number): string {
@@ -80,7 +108,7 @@
 
 	function navigateTo(result: SearchResult) {
 		// Dispatch fly-to event — zoom depends on type
-		const zoom = result.type === 'city' ? 6 : 4;
+		const zoom = result.type === 'city' ? 6 : result.type === 'infra' ? 8 : 4;
 		window.dispatchEvent(
 			new CustomEvent('map-fly-to', {
 				detail: { lon: result.lon, lat: result.lat, zoom }
@@ -157,7 +185,7 @@
 					bind:value={query}
 					onkeydown={handleKeydown}
 					type="text"
-					placeholder="Search cities, regions..."
+					placeholder="Search cities, regions, infrastructure..."
 					class="search-input"
 					spellcheck="false"
 					autocomplete="off"
@@ -174,8 +202,8 @@
 							onclick={() => navigateTo(result)}
 							onmouseenter={() => selectedIndex = i}
 						>
-							<span class="result-type-badge" class:city={result.type === 'city'} class:region={result.type === 'region'}>
-								{result.type === 'city' ? 'CITY' : 'REGION'}
+							<span class="result-type-badge" class:city={result.type === 'city'} class:region={result.type === 'region'} class:infra={result.type === 'infra'}>
+								{result.type === 'city' ? 'CITY' : result.type === 'region' ? 'REGION' : 'INFRA'}
 							</span>
 							<span class="result-name">{result.name}</span>
 							<span class="result-detail">{result.detail}</span>
@@ -259,7 +287,7 @@
 
 	.search-results {
 		padding: 4px 0;
-		max-height: 320px;
+		max-height: 400px;
 		overflow-y: auto;
 	}
 
@@ -307,6 +335,11 @@
 	.result-type-badge.region {
 		background: rgba(59, 130, 246, 0.2);
 		color: #60a5fa;
+	}
+
+	.result-type-badge.infra {
+		background: rgba(20, 184, 166, 0.2);
+		color: #2dd4bf;
 	}
 
 	.result-name {

@@ -336,6 +336,14 @@ export function disposeRiverData(): void {
     cachedLakes = null;
 }
 
+/**
+ * Get the cached river paths (read-only) for bridge marker detection.
+ * Returns array of { path: [lon, lat][], flow: number } or null if not built.
+ */
+export function getCachedRiverPaths(): { path: [number, number][]; flow: number }[] | null {
+    return cachedRivers;
+}
+
 // ── Layer creation ─────────────────────────────────────────────────────────
 
 /**

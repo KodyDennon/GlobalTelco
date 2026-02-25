@@ -112,6 +112,62 @@ function minTierForZoom(zoom: number): number {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Offset a polyline path slightly to the right of its direction of travel.
+ * This creates visual separation between a cable and the road it follows,
+ * so both are visible at high zoom levels.
+ *
+ * The offset is in degrees, scaled to produce roughly 3-5 pixel offset
+ * at the given zoom level.
+ */
+function offsetPathFromCenterline(
+    path: [number, number][],
+    zoom: number,
+): [number, number][] {
+    if (path.length < 2) return path;
+
+    // Offset in degrees — smaller at higher zoom (more zoomed in = finer detail).
+    // At zoom 8: ~0.0003 deg (~33m), zoom 9: ~0.00015 deg (~17m), zoom 10: ~0.00008 deg (~9m)
+    const offsetDeg = 0.0012 / Math.pow(2, zoom - 6);
+
+    const result: [number, number][] = [];
+
+    for (let i = 0; i < path.length; i++) {
+        // Compute the tangent direction at this point
+        let dx: number, dy: number;
+
+        if (i === 0) {
+            dx = path[1][0] - path[0][0];
+            dy = path[1][1] - path[0][1];
+        } else if (i === path.length - 1) {
+            dx = path[i][0] - path[i - 1][0];
+            dy = path[i][1] - path[i - 1][1];
+        } else {
+            // Average of incoming and outgoing tangent
+            dx = path[i + 1][0] - path[i - 1][0];
+            dy = path[i + 1][1] - path[i - 1][1];
+        }
+
+        // Compute the perpendicular (right-hand normal)
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 1e-12) {
+            result.push(path[i]);
+            continue;
+        }
+
+        // Normal to the right: rotate tangent 90 degrees clockwise
+        const nx = dy / len;
+        const ny = -dx / len;
+
+        result.push([
+            path[i][0] + nx * offsetDeg,
+            path[i][1] + ny * offsetDeg,
+        ]);
+    }
+
+    return result;
+}
+
 /** Get the corp color for an owner ID. Falls back to grey if unknown. */
 function getCorpColor(ownerId: number, corpIndex: Map<number, number>): [number, number, number] {
     const idx = corpIndex.get(ownerId);
@@ -430,6 +486,13 @@ export function createInfraLayers(opts: {
                     [edge.src_x, edge.src_y],
                     [edge.dst_x, edge.dst_y],
                 ];
+            }
+
+            // At zoom > 7, offset cables that follow roads slightly from the road
+            // centerline (3-5px equivalent in degrees) so both road and cable are
+            // visible. An edge "follows a road" if it has 3+ waypoints (road-routed).
+            if (currentZoom > 7 && rawWaypoints.length >= 3) {
+                path = offsetPathFromCenterline(path, currentZoom);
             }
 
             allEdges.push({

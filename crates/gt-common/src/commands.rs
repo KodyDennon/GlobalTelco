@@ -196,6 +196,12 @@ pub enum Command {
         band: String, // e.g. "Band700MHz", "Band3500MHz"
     },
 
+    // Spectrum Unassignment — remove a spectrum band from a wireless node (carrier aggregation)
+    UnassignSpectrum {
+        node: EntityId,
+        band: String,
+    },
+
     // Cable Ship — purchase a cable ship for submarine cable construction
     PurchaseCableShip,
 

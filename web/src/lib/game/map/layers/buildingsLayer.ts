@@ -40,6 +40,8 @@
 import { PolygonLayer, PathLayer } from '@deck.gl/layers';
 import type { Layer } from '@deck.gl/core';
 import type { City } from '$lib/wasm/types';
+import { getCachedCityStreets } from './roadsLayer';
+import type { CityStreet } from './roadsLayer';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -579,6 +581,150 @@ function buildingSetbackForZone(zone: BuildingZone): number {
 }
 
 /**
+ * Generate buildings aligned to CityStreet geometry from roadsLayer.
+ * CityStreets have multi-point paths and typed widths (avenue/main/residential/alley).
+ * Buildings are placed along each path segment with appropriate zone sizing:
+ *   - avenue: downtown/commercial zone buildings (large footprints)
+ *   - main: commercial zone buildings
+ *   - residential: residential zone buildings (set back from street)
+ *   - alley: small residential/suburban buildings
+ */
+function generateBuildingsAlongCityStreets(
+    city: City,
+    cityStreets: CityStreet[],
+    maxCount: number,
+    rng: () => number,
+): BuildingFootprint[] {
+    const buildings: BuildingFootprint[] = [];
+    const latCorr = 1 / Math.max(0.1, Math.cos((city.y * Math.PI) / 180));
+
+    // Map CityStreet type to building zone
+    const streetTypeToZone: Record<string, BuildingZone> = {
+        avenue: 'downtown',
+        main: 'commercial',
+        residential: 'residential_inner',
+        alley: 'residential_outer',
+    };
+
+    for (const street of cityStreets) {
+        if (buildings.length >= maxCount) break;
+
+        const zone = streetTypeToZone[street.type] ?? 'residential_inner';
+        const spacing = buildingSpacingForZone(zone);
+        const setback = buildingSetbackForZone(zone);
+        const config = ZONE_CONFIGS.find(c => c.zone === zone) ?? ZONE_CONFIGS[0];
+
+        // Walk along each segment of the multi-point path
+        for (let si = 0; si < street.path.length - 1 && buildings.length < maxCount; si++) {
+            const p0 = street.path[si];
+            const p1 = street.path[si + 1];
+            const dx = p1[0] - p0[0];
+            const dy = p1[1] - p0[1];
+            const segLen = Math.sqrt(dx * dx + dy * dy);
+            if (segLen < 1e-8) continue;
+
+            const ndx = dx / segLen;
+            const ndy = dy / segLen;
+            const perpX = -ndy;
+            const perpY = ndx;
+            const streetAngle = Math.atan2(dy, dx);
+
+            // Determine zone at segment midpoint (override if too far from center)
+            const midX = (p0[0] + p1[0]) / 2;
+            const midY = (p0[1] + p1[1]) / 2;
+            const distFromCenter = Math.sqrt(
+                ((midX - city.x) / latCorr) ** 2 + (midY - city.y) ** 2
+            );
+            const actualZone = classifyZone(distFromCenter, city.population);
+            // Use the more appropriate zone (whichever is further from downtown)
+            const effectiveZone = ZONE_CONFIGS.findIndex(c => c.zone === actualZone) >
+                ZONE_CONFIGS.findIndex(c => c.zone === zone) ? actualZone : zone;
+            const effectiveConfig = ZONE_CONFIGS.find(c => c.zone === effectiveZone) ?? config;
+            const effectiveSpacing = buildingSpacingForZone(effectiveZone);
+            const effectiveSetback = buildingSetbackForZone(effectiveZone);
+
+            const numBuildings = Math.floor(segLen / effectiveSpacing);
+            for (let i = 0; i < numBuildings && buildings.length < maxCount; i++) {
+                const t = (i + 0.5) / Math.max(1, numBuildings);
+                const baseX = p0[0] + dx * t;
+                const baseY = p0[1] + dy * t;
+
+                for (const side of [-1, 1]) {
+                    if (buildings.length >= maxCount) break;
+
+                    const along = (rng() - 0.5) * effectiveSpacing * 0.3;
+                    const setbackVar = effectiveSetback * (0.8 + rng() * 0.4);
+                    const bx = baseX + ndx * along + perpX * setbackVar * side;
+                    const by = baseY + ndy * along + perpY * setbackVar * side;
+
+                    const sizeW = effectiveConfig.minSizeDeg + rng() * (effectiveConfig.maxSizeDeg - effectiveConfig.minSizeDeg);
+                    const aspect = effectiveConfig.minAspect + rng() * (effectiveConfig.maxAspect - effectiveConfig.minAspect);
+                    const sizeH = sizeW * aspect;
+                    const halfW = (sizeW * latCorr) / 2;
+                    const halfH = sizeH / 2;
+
+                    const angleJitter = (rng() - 0.5) * 0.15;
+                    const angle = streetAngle + angleJitter;
+
+                    const baseColor = ZONE_COLORS[effectiveZone];
+                    const colorVariation = Math.floor((rng() - 0.5) * 12);
+                    const color: [number, number, number, number] = [
+                        Math.max(0, Math.min(255, baseColor[0] + colorVariation)),
+                        Math.max(0, Math.min(255, baseColor[1] + colorVariation)),
+                        Math.max(0, Math.min(255, baseColor[2] + colorVariation)),
+                        baseColor[3],
+                    ];
+
+                    buildings.push({
+                        polygon: makeRect(bx, by, halfW, halfH, angle),
+                        color,
+                        cx: bx,
+                        cy: by,
+                        zone: effectiveZone,
+                        demandValue: ZONE_DEMAND[effectiveZone],
+                        connectionStatus: 'unserved',
+                        providerCorpId: 0,
+                        cityId: city.id,
+                    });
+                }
+            }
+        }
+    }
+
+    return buildings;
+}
+
+/**
+ * Filter CityStreets from roadsLayer that belong to (are near) a specific city.
+ * Uses distance-from-center check based on city radius.
+ */
+function filterCityStreetsForCity(city: City, allStreets: CityStreet[]): CityStreet[] {
+    const latCorr = 1 / Math.max(0.1, Math.cos((city.y * Math.PI) / 180));
+    // Use a generous radius based on population
+    const maxR = cityRadiusForFilter(city.population);
+
+    return allStreets.filter(street => {
+        // Check if the midpoint of the first segment is within the city
+        if (street.path.length < 2) return false;
+        const mx = (street.path[0][0] + street.path[Math.min(1, street.path.length - 1)][0]) / 2;
+        const my = (street.path[0][1] + street.path[Math.min(1, street.path.length - 1)][1]) / 2;
+        const dist = Math.sqrt(((mx - city.x) / latCorr) ** 2 + (my - city.y) ** 2);
+        return dist <= maxR;
+    });
+}
+
+/**
+ * Estimate city radius in degrees for street filtering.
+ */
+function cityRadiusForFilter(population: number): number {
+    if (population >= 5_000_000) return 0.35;
+    if (population >= 1_000_000) return 0.22;
+    if (population >= 250_000) return 0.14;
+    if (population >= 50_000) return 0.07;
+    return 0.04;
+}
+
+/**
  * Generate buildings placed along the given street segments.
  * Buildings are placed on both sides of each street, with appropriate
  * setback and spacing based on their zone classification.
@@ -747,16 +893,43 @@ function generateCityBuildingsRadial(city: City, maxCount: number, rng: () => nu
 
 /**
  * Generate all building footprints for a single city.
- * Buildings are placed along generated streets when possible.
- * Falls back to radial placement for very small cities or when streets
- * don't provide enough placement positions.
+ * When roadsLayer city streets are available, buildings align to that geometry
+ * (avenue = downtown, main = commercial, residential = inner residential,
+ * alley = outer residential). Falls back to internal street generation or
+ * radial placement when roadsLayer data is unavailable.
  */
 function generateCityBuildings(city: City, cityIndex: number): { buildings: BuildingFootprint[]; streets: StreetSegment[] } {
     const count = buildingCount(city.population);
     const tier = getPopulationTier(city.population);
     const rng = mulberry32(citySeed(city));
 
-    // Generate streets first
+    // Try to use roadsLayer city streets for building alignment (Phase 3.2.3)
+    const allCityStreets = getCachedCityStreets();
+    if (allCityStreets && allCityStreets.length > 0) {
+        const cityStreets = filterCityStreetsForCity(city, allCityStreets);
+        if (cityStreets.length > 0) {
+            // Generate buildings aligned to roadsLayer street geometry
+            const streetBuildings = generateBuildingsAlongCityStreets(city, cityStreets, count, rng);
+
+            // Fill remaining with radial placement if streets didn't yield enough
+            if (streetBuildings.length < count) {
+                const remaining = count - streetBuildings.length;
+                const fillRng = mulberry32((citySeed(city) + 31337) | 0);
+                const fillBuildings = generateCityBuildingsRadial(city, remaining, fillRng);
+                return {
+                    buildings: [...streetBuildings, ...fillBuildings],
+                    streets: [], // streets rendered by roadsLayer, not here
+                };
+            }
+
+            return {
+                buildings: streetBuildings.slice(0, count),
+                streets: [], // streets rendered by roadsLayer, not here
+            };
+        }
+    }
+
+    // Fallback: generate internal streets and align buildings to them
     const streets = generateCityStreets(city, cityIndex, tier);
 
     if (streets.length === 0) {
@@ -767,7 +940,7 @@ function generateCityBuildings(city: City, cityIndex: number): { buildings: Buil
         };
     }
 
-    // Generate buildings along streets
+    // Generate buildings along internal streets
     const streetBuildings = generateBuildingsAlongStreets(city, streets, count, rng);
 
     // If streets didn't generate enough buildings, fill remaining with radial placement

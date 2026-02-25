@@ -236,6 +236,11 @@
 					renderer?.updateCities();
 				}, 2000);
 
+				// Throttled ghost preview build options update (500ms interval)
+				const ghostInterval = setInterval(() => {
+					renderer?.updateGhostBuildOptions();
+				}, 500);
+
 				window.addEventListener(
 					"entity-selected",
 					handleEntitySelected as EventListener,
@@ -303,6 +308,7 @@
 
 				cleanup = () => {
 					clearInterval(interval);
+					clearInterval(ghostInterval);
 					overlaySub();
 					edgeSrcSub();
 					edgeTypeSub();
@@ -348,6 +354,7 @@
 
 	function handleMouseLeave() {
 		tooltipData.set(null);
+		renderer?.clearCursorPosition();
 	}
 
 	onDestroy(() => {

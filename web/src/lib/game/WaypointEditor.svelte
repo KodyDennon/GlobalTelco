@@ -16,6 +16,10 @@
 	let draggingIndex: number | null = $state(null);
 	let cursorPosition: [number, number] | null = $state(null);
 
+	// ── Road auto-fix state ──────────────────────────────────────────────
+	let isAutoFixing: boolean = $state(false);
+	let autoFixAvailable: boolean = $state(false);
+
 	// Edge type cost per km (mirror from CableDrawingMode)
 	const EDGE_COST_PER_KM: Record<string, number> = {
 		Copper: 10000,
@@ -44,6 +48,13 @@
 		TerahertzBeam: 100000,
 		LaserInterSatelliteLink: 0,
 	};
+
+	// Edge types that are wireless/satellite (no road routing makes sense)
+	const WIRELESS_EDGE_TYPES = new Set([
+		'Satellite', 'EarlySatelliteLink', 'SatelliteLEOLink',
+		'LaserInterSatelliteLink', 'Microwave', 'MicrowaveLink',
+		'TerahertzBeam',
+	]);
 
 	// ── Derived values ───────────────────────────────────────────────────
 
@@ -132,7 +143,49 @@
 			];
 		}
 		originalWaypoints = waypoints.map(wp => [wp[0], wp[1]] as [number, number]);
+
+		// Determine if auto-fix is available: edge must be a ground-based type
+		// with only 2 waypoints (straight-line legacy edge)
+		autoFixAvailable = !WIRELESS_EDGE_TYPES.has(edge.edge_type) && waypoints.length <= 2;
+		isAutoFixing = false;
+
 		editing = true;
+		pushStateToMap();
+	}
+
+	/**
+	 * Legacy Edge Auto-Fix: retroactively route an existing straight-line
+	 * edge along roads using bridge.roadPathfind(). Replaces the 2-waypoint
+	 * straight line with a multi-waypoint road-following route.
+	 */
+	function snapToRoad(): void {
+		if (!edgeData || waypoints.length < 2) return;
+
+		isAutoFixing = true;
+
+		const startPos = waypoints[0];
+		const endPos = waypoints[waypoints.length - 1];
+
+		// Call WASM road pathfinding
+		const roadPath = bridge.roadPathfind(
+			startPos[0], startPos[1],
+			endPos[0], endPos[1],
+		);
+
+		if (roadPath.length >= 2) {
+			// Replace waypoints with road-following route
+			// Ensure first and last waypoints match the original node positions exactly
+			const newWaypoints: [number, number][] = [...roadPath];
+			newWaypoints[0] = startPos;
+			newWaypoints[newWaypoints.length - 1] = endPos;
+			waypoints = newWaypoints;
+			autoFixAvailable = false; // Already snapped, disable button
+		} else {
+			// No road path found -- keep original waypoints
+			// The button stays available but will show the same result
+		}
+
+		isAutoFixing = false;
 		pushStateToMap();
 	}
 
@@ -156,6 +209,8 @@
 		originalWaypoints = [];
 		draggingIndex = null;
 		cursorPosition = null;
+		autoFixAvailable = false;
+		isAutoFixing = false;
 		pushStateToMap();
 	}
 
@@ -316,6 +371,15 @@
 		<div class="hud-divider"></div>
 
 		<div class="hud-section actions">
+			{#if autoFixAvailable}
+				<button
+					class="snap-road-btn"
+					onclick={snapToRoad}
+					disabled={isAutoFixing}
+				>
+					{isAutoFixing ? 'Routing...' : 'Snap to Road'}
+				</button>
+			{/if}
 			<button class="confirm-btn" onclick={confirmEdit}>Confirm</button>
 			<button class="cancel-btn" onclick={cancelEdit}>Cancel</button>
 		</div>
@@ -411,6 +475,28 @@
 
 	.hud-value.cost {
 		color: #fbbf24;
+	}
+
+	.snap-road-btn {
+		background: rgba(0, 255, 200, 0.15);
+		border: 1px solid rgba(0, 255, 200, 0.4);
+		color: #00ffc8;
+		font-size: 10px;
+		font-family: var(--font-mono, monospace);
+		font-weight: 600;
+		padding: 2px 10px;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: all 0.12s;
+	}
+
+	.snap-road-btn:hover {
+		background: rgba(0, 255, 200, 0.25);
+	}
+
+	.snap-road-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	.confirm-btn {

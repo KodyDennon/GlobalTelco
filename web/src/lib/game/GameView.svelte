@@ -12,6 +12,7 @@
 	import Chat from "./Chat.svelte";
 	import CableDrawingMode from "./CableDrawingMode.svelte";
 	import MiniMap from "./MiniMap.svelte";
+	import BookmarkManager from "./BookmarkManager.svelte";
 	import SearchOverlay from "./SearchOverlay.svelte";
 	import OverlayLegend from "./OverlayLegend.svelte";
 	import PerfMonitor from "./PerfMonitor.svelte";
@@ -20,8 +21,9 @@
 	import ComingSoon from "$lib/ui/ComingSoon.svelte";
 	import { initialized, playerCorp, regions, notifications, worldInfo } from "$lib/stores/gameState";
 	import { eventType, eventData } from "$lib/wasm/types";
-	import type { ActiveDisaster } from "./WeatherLayer";
-	import { DISASTER_DISPLAY_DURATION } from "./WeatherLayer";
+	import type { ActiveDisaster, ForecastDisaster } from "./WeatherLayer";
+	import { DISASTER_DISPLAY_DURATION, computeDisasterForecasts } from "./WeatherLayer";
+	import * as bridge from "$lib/wasm/bridge";
 	import DisasterAlert from "./DisasterAlert.svelte";
 	import {
 		activePanelGroup,
@@ -48,6 +50,7 @@
 	import { onMount, onDestroy } from "svelte";
 
 	let gameViewEl: HTMLElement = $state(null!);
+	let bookmarksPanelVisible = $state(false);
 	let keyboardManager: KeyboardManager | null = null;
 	let effectManager: EventEffectManager | null = null;
 	let screenshotManager: ScreenshotManager | null = null;
@@ -105,6 +108,20 @@
 		}));
 	});
 
+	// ── Disaster forecast tracking ────────────────────────────────────────────
+	// Recompute forecasts every 10 ticks (bucketed for stability, since seed includes tick).
+	let disasterForecasts: ForecastDisaster[] = $state([]);
+	let lastForecastBucket = -1;
+
+	$effect(() => {
+		const currentTick = $worldInfo.tick;
+		const regionList = $regions;
+		const bucket = Math.floor(currentTick / 10);
+		if (bucket === lastForecastBucket) return;
+		lastForecastBucket = bucket;
+		disasterForecasts = computeDisasterForecasts(regionList, bucket);
+	});
+
 	onMount(() => {
 		// Keyboard shortcuts
 		keyboardManager = new KeyboardManager();
@@ -116,6 +133,11 @@
 			if (mapContainer && screenshotManager) {
 				screenshotManager.captureScreenshot(mapContainer, $playerCorp?.name);
 			}
+		});
+
+		// Bind bookmark panel toggle (Shift+B — plain 'b' is node build mode)
+		keyboardManager.bind('shift+b', () => {
+			bookmarksPanelVisible = !bookmarksPanelVisible;
 		});
 
 		keyboardManager.attach();
@@ -286,7 +308,7 @@
 			</div>
 		{/if}
 		<HUD />
-		<DisasterAlert disasters={activeDisasters} />
+		<DisasterAlert disasters={activeDisasters} forecasts={disasterForecasts} />
 		<CableDrawingMode />
 		<InfoPanel />
 		<RadialBuildMenu />
@@ -295,6 +317,22 @@
 		<Tooltip />
 		<Tutorial />
 		<MiniMap />
+		<!-- Bookmark button + floating panel (bottom-right, near minimap) -->
+		<button
+			class="bookmark-toggle-btn"
+			title="Bookmarks (Shift+B)"
+			onclick={() => bookmarksPanelVisible = !bookmarksPanelVisible}
+			class:active={bookmarksPanelVisible}
+		>
+			<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+				<path d="M3 2h10v13l-5-3.5L3 15V2z" stroke="currentColor" stroke-width="1.5" fill={bookmarksPanelVisible ? 'currentColor' : 'none'} />
+			</svg>
+		</button>
+		{#if bookmarksPanelVisible}
+			<div class="bookmark-floating-panel">
+				<BookmarkManager />
+			</div>
+		{/if}
 		<SearchOverlay />
 		<ConfirmDialog />
 		{#if $showWelcome}
@@ -383,6 +421,7 @@
 							<h4>Navigation</h4>
 							<div class="hk"><kbd>/</kbd> Search (cities, regions)</div>
 							<div class="hk"><kbd>M</kbd> Toggle Minimap</div>
+							<div class="hk"><kbd>Shift+B</kbd> Bookmarks</div>
 							<div class="hk"><kbd>Home</kbd> Reset View</div>
 							<div class="hk"><kbd>P</kbd> Toggle 3D Pitch</div>
 						</div>
@@ -595,5 +634,57 @@
 		font-weight: 500;
 		color: #9ca3af;
 		letter-spacing: 0.02em;
+	}
+
+	/* ── Bookmark toggle button + floating panel ─────────────────────── */
+
+	.bookmark-toggle-btn {
+		position: fixed;
+		bottom: 180px;
+		right: 16px;
+		z-index: 50;
+		width: 32px;
+		height: 32px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(13, 18, 30, 0.9);
+		border: 1px solid rgba(55, 65, 81, 0.5);
+		border-radius: 6px;
+		color: #9ca3af;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.bookmark-toggle-btn:hover {
+		background: rgba(30, 41, 59, 0.95);
+		color: #f3f4f6;
+		border-color: rgba(59, 130, 246, 0.5);
+	}
+
+	.bookmark-toggle-btn.active {
+		background: rgba(59, 130, 246, 0.15);
+		border-color: rgba(59, 130, 246, 0.5);
+		color: #60a5fa;
+	}
+
+	.bookmark-floating-panel {
+		position: fixed;
+		bottom: 220px;
+		right: 16px;
+		z-index: 55;
+		width: 280px;
+		max-height: 320px;
+		overflow-y: auto;
+		background: rgba(13, 18, 30, 0.96);
+		border: 1px solid rgba(55, 65, 81, 0.6);
+		border-radius: 8px;
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
+		animation: bm-fade-in 0.12s ease;
+	}
+
+	@keyframes bm-fade-in {
+		from { opacity: 0; transform: translateY(4px); }
+		to { opacity: 1; transform: translateY(0); }
 	}
 </style>

@@ -273,6 +273,13 @@ pub enum GameEvent {
         corp: EntityId,
     },
 
+    // Spectrum Unassignment (carrier aggregation)
+    SpectrumUnassigned {
+        node: EntityId,
+        band: String,
+        corp: EntityId,
+    },
+
     // Cable Ship
     CableShipPurchased {
         corp: EntityId,
@@ -385,8 +392,9 @@ impl GameEvent {
             GameEvent::SpectrumBidPlaced { bidder, .. } => vec![*bidder],
             GameEvent::SpectrumLicenseExpired { owner, .. } => vec![*owner],
 
-            // Spectrum Assignment — private to the corp
-            GameEvent::SpectrumAssigned { corp, .. } => vec![*corp],
+            // Spectrum Assignment/Unassignment — private to the corp
+            GameEvent::SpectrumAssigned { corp, .. }
+            | GameEvent::SpectrumUnassigned { corp, .. } => vec![*corp],
 
             // Cable Ship — private to the corp
             GameEvent::CableShipPurchased { corp } => vec![*corp],

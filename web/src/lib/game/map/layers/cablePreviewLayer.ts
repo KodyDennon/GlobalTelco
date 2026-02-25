@@ -4,6 +4,8 @@
 // - Waypoint handle dots (ScatterplotLayer)
 // - Source node highlight ring (ScatterplotLayer)
 // - Cursor-following extension line
+// - Road snap highlight (bright cyan road segment)
+// - Auto-route preview (dashed line along roads)
 
 import { PathLayer, ScatterplotLayer } from '@deck.gl/layers';
 import type { Layer } from '@deck.gl/core';
@@ -20,6 +22,20 @@ export interface CableDrawingState {
     sourceNodePos: [number, number] | null;
     /** Whether drawing is actively in progress. */
     isDrawing: boolean;
+    /** If snapping to a road, the snapped position [lon, lat]. Null if not snapping. */
+    roadSnapPosition?: [number, number] | null;
+    /** The road segment being snapped to, as [fromLon, fromLat, toLon, toLat]. */
+    roadSnapSegment?: [[number, number], [number, number]] | null;
+    /** Whether the cursor is currently snapped to a road. */
+    isSnappedToRoad?: boolean;
+    /** Auto-route waypoints along roads (preview dashed line). */
+    autoRouteWaypoints?: [number, number][] | null;
+    /** Auto-route cost (road route, in currency). */
+    autoRouteCost?: number | null;
+    /** Direct route cost for comparison. */
+    directRouteCost?: number | null;
+    /** Whether auto-route is available and being shown. */
+    autoRouteAvailable?: boolean;
 }
 
 /**
@@ -135,21 +151,106 @@ export function createCablePreviewLayers(state: CableDrawingState): Layer[] {
 
     // ── 4. Cursor dot (where mouse is) ───────────────────────────────────
     if (state.cursorPosition) {
+        // Use different color when snapped to road
+        const isSnapped = state.isSnappedToRoad ?? false;
         layers.push(new ScatterplotLayer({
             id: 'cable-preview-cursor',
             data: [{ position: state.cursorPosition }],
             getPosition: (d: { position: [number, number] }) => d.position,
-            getFillColor: [251, 191, 36, 160],
-            getLineColor: [255, 255, 255, 200],
-            getLineWidth: 1,
+            getFillColor: isSnapped ? [0, 255, 200, 220] : [251, 191, 36, 160],
+            getLineColor: isSnapped ? [0, 255, 200, 255] : [255, 255, 255, 200],
+            getLineWidth: isSnapped ? 2 : 1,
             lineWidthUnits: 'pixels',
             stroked: true,
             filled: true,
-            getRadius: 8000,
-            radiusMinPixels: 4,
-            radiusMaxPixels: 8,
+            getRadius: isSnapped ? 10000 : 8000,
+            radiusMinPixels: isSnapped ? 5 : 4,
+            radiusMaxPixels: isSnapped ? 10 : 8,
             pickable: false,
             parameters: { depthTest: false },
+        }));
+    }
+
+    // ── 5. Road snap highlight segment ──────────────────────────────────
+    if (state.isSnappedToRoad && state.roadSnapSegment) {
+        const seg = state.roadSnapSegment;
+        layers.push(new PathLayer({
+            id: 'cable-preview-road-snap',
+            data: [{ path: [seg[0], seg[1]] }],
+            getPath: (d: { path: [number, number][] }) => d.path,
+            getColor: [0, 255, 200, 220],
+            getWidth: 5,
+            widthUnits: 'pixels',
+            widthMinPixels: 3,
+            widthMaxPixels: 8,
+            capRounded: true,
+            jointRounded: true,
+            pickable: false,
+            parameters: { depthTest: false },
+        }));
+
+        // Bright glow on snapped road segment
+        layers.push(new PathLayer({
+            id: 'cable-preview-road-snap-glow',
+            data: [{ path: [seg[0], seg[1]] }],
+            getPath: (d: { path: [number, number][] }) => d.path,
+            getColor: [0, 255, 200, 60],
+            getWidth: 12,
+            widthUnits: 'pixels',
+            capRounded: true,
+            jointRounded: true,
+            pickable: false,
+            parameters: {
+                depthTest: false,
+                blend: true,
+                blendFunc: [WebGLRenderingContext.SRC_ALPHA, WebGLRenderingContext.ONE],
+            },
+        }));
+    }
+
+    // ── 6. Auto-route preview (dashed line along roads) ─────────────────
+    if (state.autoRouteAvailable && state.autoRouteWaypoints && state.autoRouteWaypoints.length >= 2) {
+        let autoPath: [number, number][];
+        if (state.autoRouteWaypoints.length >= 3) {
+            autoPath = catmullRomSpline(state.autoRouteWaypoints, 8);
+        } else {
+            autoPath = [...state.autoRouteWaypoints];
+        }
+
+        // Dashed green preview line for the auto-route
+        layers.push(new PathLayer({
+            id: 'cable-preview-autoroute',
+            data: [{ path: autoPath }],
+            getPath: (d: { path: [number, number][] }) => d.path,
+            getColor: [16, 185, 129, 180],
+            getWidth: 3,
+            widthUnits: 'pixels',
+            widthMinPixels: 2,
+            widthMaxPixels: 5,
+            jointRounded: true,
+            capRounded: true,
+            getDashArray: [6, 4],
+            dashJustified: true,
+            pickable: false,
+            parameters: { depthTest: false },
+        }));
+
+        // Subtle glow behind auto-route
+        layers.push(new PathLayer({
+            id: 'cable-preview-autoroute-glow',
+            data: [{ path: autoPath }],
+            getPath: (d: { path: [number, number][] }) => d.path,
+            getColor: [16, 185, 129, 35],
+            getWidth: 10,
+            widthUnits: 'pixels',
+            jointRounded: true,
+            capRounded: true,
+            pickable: false,
+            parameters: {
+                depthTest: false,
+                blend: true,
+                blendFunc: [WebGLRenderingContext.SRC_ALPHA, WebGLRenderingContext.ONE],
+            },
         }));
     }
 

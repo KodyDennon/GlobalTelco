@@ -533,6 +533,69 @@ export function getAvailableSpectrum(regionId: number): AvailableSpectrum[] {
 	}
 }
 
+// ── Phase 9: Disaster Forecasts ──────────────────────────────────────
+
+export interface DisasterForecast {
+	region_id: number;
+	region_name: string;
+	predicted_tick: number;
+	probability: number;
+	disaster_type: string;
+}
+
+export function getDisasterForecasts(): DisasterForecast[] {
+	try {
+		const json = bridge?.get_disaster_forecasts() ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getDisasterForecasts');
+		return [];
+	}
+}
+
+// ── Road Network Queries (Fiber Auto-Routing) ────────────────────────
+
+export interface RoadSegmentInfo {
+	id: number;
+	from: [number, number];
+	to: [number, number];
+	road_class: string;
+	length_km: number;
+	region_id: number;
+}
+
+/** A* pathfinding along the road network. Returns waypoints as [lon, lat] pairs. */
+export function roadPathfind(fromLon: number, fromLat: number, toLon: number, toLat: number): [number, number][] {
+	try {
+		const json = bridge?.road_pathfind(fromLon, fromLat, toLon, toLat) ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'roadPathfind');
+		return [];
+	}
+}
+
+/** Cost of routing fiber along roads between two points (weighted km). */
+export function roadFiberRouteCost(fromLon: number, fromLat: number, toLon: number, toLat: number): number {
+	try {
+		return bridge?.road_fiber_route_cost(fromLon, fromLat, toLon, toLat) ?? 0;
+	} catch (e) {
+		onBridgeError(e, 'roadFiberRouteCost');
+		return 0;
+	}
+}
+
+/** Get all road segments for map rendering. */
+export function getRoadSegments(): RoadSegmentInfo[] {
+	try {
+		const json = bridge?.get_road_segments() ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getRoadSegments');
+		return [];
+	}
+}
+
 // ── Tauri Native Filesystem ───────────────────────────────────────────
 
 export async function saveGameNative(slot: number, data: string): Promise<string | null> {

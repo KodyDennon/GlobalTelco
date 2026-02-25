@@ -25,6 +25,11 @@ pub fn run(world: &mut GameWorld) {
             // Revenue is calculated by the revenue system each tick — no bonus here
         }
 
+        // When a submarine cable edge completes construction, free its cable ship
+        if world.infra_edges.contains_key(&entity) {
+            world.active_submarine_builds.remove(&entity);
+        }
+
         world.event_queue.push(
             tick,
             gt_common::events::GameEvent::ConstructionCompleted { entity, tick },

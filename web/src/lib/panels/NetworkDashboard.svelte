@@ -5,7 +5,7 @@
 	import { gameCommand } from '$lib/game/commandRouter';
 	import * as bridge from '$lib/wasm/bridge';
 	import * as d3 from 'd3';
-	import type { TrafficFlows, InfrastructureList, InfraEdge, InfraNode, ContractInfo } from '$lib/wasm/types';
+	import type { TrafficFlows, InfrastructureList, InfraEdge, InfraNode, ContractInfo, AllInfrastructure } from '$lib/wasm/types';
 	import type { NetworkSnapshot } from '$lib/stores/networkHistory';
 
 	// -- Data state --
@@ -15,6 +15,7 @@
 	});
 	let infra: InfrastructureList = $state({ nodes: [], edges: [] });
 	let contracts: ContractInfo[] = $state([]);
+	let allInfra: AllInfrastructure = $state({ nodes: [], edges: [] });
 
 	// Refresh data each tick
 	$effect(() => {
@@ -24,6 +25,7 @@
 			traffic = bridge.getTrafficFlows();
 			infra = bridge.getInfrastructureList(corp.id);
 			contracts = bridge.getContracts(corp.id);
+			allInfra = bridge.getAllInfrastructure();
 		}
 	});
 
@@ -247,6 +249,7 @@
 	// ── Capacity Planning (Gap #19d + #28) ───────────────────────────────────
 
 	let growthSlider = $state(1.0); // What-if growth multiplier (1.0x to 3.0x)
+	let whatIfGrowthPct = $state(10); // What-if traffic growth rate (0% to 50%, step 5%)
 
 	// Edges nearing capacity (>70% utilization)
 	let nearCapacityEdges = $derived.by(() => {
@@ -264,6 +267,91 @@
 		// Each tick, utilization grows by growthRate fraction
 		return Math.ceil(remaining / growthRate);
 	}
+
+	// Build node ID → node type lookup for From→To display
+	let nodeTypeMap = $derived.by((): Map<number, string> => {
+		const m = new Map<number, string>();
+		for (const n of infra.nodes) {
+			m.set(n.id, n.node_type);
+		}
+		return m;
+	});
+
+	/** Shorten a node type name for table display. */
+	function shortNodeType(nodeId: number): string {
+		const t = nodeTypeMap.get(nodeId);
+		if (!t) return `#${nodeId}`;
+		// Convert CamelCase to short readable form
+		return t.replace(/([a-z])([A-Z])/g, '$1 $2');
+	}
+
+	/** Color for ticks-to-exceed threshold. */
+	function ttxColor(ticks: number): string {
+		if (ticks < 50) return '#ef4444';   // red
+		if (ticks < 200) return '#f59e0b';  // amber
+		return '#10b981';                     // green
+	}
+
+	// ── What-If Analysis: Per-edge capacity stress test ──────────────────────
+	// Uses the whatIfGrowthPct slider (0-50% increase) to project which edges
+	// would exceed capacity at that growth rate. Uses linear regression data
+	// when available, falls back to uniform growth assumption.
+
+	interface WhatIfRow {
+		id: number;
+		edgeType: string;
+		fromLabel: string;
+		toLabel: string;
+		currentUtil: number;
+		ticksToExceed: number;
+		src_x: number;
+		src_y: number;
+		dst_x: number;
+		dst_y: number;
+	}
+
+	let whatIfAnalysis = $derived.by((): WhatIfRow[] => {
+		const growthFraction = whatIfGrowthPct / 100;
+		if (growthFraction <= 0) return [];
+		if (infra.edges.length === 0) return [];
+
+		// Determine per-tick growth rate for edges.
+		// If we have linear regression data, scale its rate by the slider.
+		// Otherwise, assume the slider percentage applies each tick.
+		let perTickRate: number;
+		if (capacityProjection && capacityProjection.growthPctPerTick > 0) {
+			// Base rate from regression, scaled by the what-if growth multiplier
+			const baseRatePerTick = capacityProjection.growthPctPerTick / 100;
+			perTickRate = baseRatePerTick * (1 + growthFraction);
+		} else {
+			// No regression data: use the slider as a flat per-tick fraction
+			perTickRate = growthFraction * 0.01; // scale down for per-tick
+		}
+
+		if (perTickRate <= 0) return [];
+
+		return infra.edges
+			.filter(e => e.utilization > 0.1) // only edges with some load
+			.map(e => {
+				const remaining = 1.0 - e.utilization;
+				const ticks = e.utilization >= 1.0 ? 0 : Math.ceil(remaining / perTickRate);
+				return {
+					id: e.id,
+					edgeType: e.edge_type,
+					fromLabel: shortNodeType(e.source),
+					toLabel: shortNodeType(e.target),
+					currentUtil: e.utilization,
+					ticksToExceed: ticks,
+					src_x: e.src_x,
+					src_y: e.src_y,
+					dst_x: e.dst_x,
+					dst_y: e.dst_y,
+				};
+			})
+			.filter(e => e.ticksToExceed >= 0 && e.ticksToExceed < 500)
+			.sort((a, b) => a.ticksToExceed - b.ticksToExceed)
+			.slice(0, 12);
+	});
 
 	// Linear regression on networkHistory for capacity projections (Gap #28)
 	interface CapacityProjection {
@@ -518,6 +606,15 @@
 
 	function truncRegion(name: string): string {
 		return name.length > 10 ? name.slice(0, 9) + '...' : name;
+	}
+
+	function flyToRegion(regionName: string) {
+		const region = $regions.find(r => r.name === regionName);
+		if (region) {
+			window.dispatchEvent(new CustomEvent('map-fly-to', {
+				detail: { lon: region.center_lon, lat: region.center_lat, zoom: 5 }
+			}));
+		}
 	}
 
 	// -- Color helpers --
@@ -807,8 +904,8 @@
 	// -- View edge action (fly to edge midpoint) --
 	function viewEdge(edgeId: number) {
 		// Find edge from all infrastructure (to get coordinates)
-		const allInfra = bridge.getAllInfrastructure();
-		const edge = allInfra.edges.find(e => e.id === edgeId);
+		const allInfraSnap = bridge.getAllInfrastructure();
+		const edge = allInfraSnap.edges.find(e => e.id === edgeId);
 		if (!edge) return;
 		const midLon = (edge.src_x + edge.dst_x) / 2;
 		const midLat = (edge.src_y + edge.dst_y) / 2;
@@ -816,6 +913,98 @@
 			detail: { lon: midLon, lat: midLat, zoom: 8 }
 		}));
 	}
+
+	// ── Bottleneck Upgrade Suggestions (Phase 10.2.3) ────────────────────
+	function upgradeSuggestion(utilization: number): { text: string; color: string; level: 'upgrade' | 'monitor' } | null {
+		if (utilization > 0.9) return { text: 'UPGRADE: Add parallel edge', color: '#ef4444', level: 'upgrade' };
+		if (utilization > 0.8) return { text: 'MONITOR: Consider capacity upgrade', color: '#f59e0b', level: 'monitor' };
+		return null;
+	}
+
+	// ── Per-Corporation Coverage Comparison (Phase 10.2.6) ───────────────
+
+	interface CorpCoverage {
+		id: number;
+		name: string;
+		color: string;
+		nodeCount: number;
+		edgeCount: number;
+		totalBandwidth: number;
+		totalThroughput: number;
+		avgUtilization: number;
+		isPlayer: boolean;
+	}
+
+	const CORP_COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
+
+	let corpCoverage = $derived.by((): CorpCoverage[] => {
+		if (allInfra.nodes.length === 0 && allInfra.edges.length === 0) return [];
+
+		const corpMap = new Map<number, CorpCoverage>();
+		const playerId = $playerCorp?.id ?? 0;
+
+		for (const n of allInfra.nodes) {
+			if (!corpMap.has(n.owner)) {
+				corpMap.set(n.owner, {
+					id: n.owner,
+					name: n.owner_name || `Corp #${n.owner}`,
+					color: '',
+					nodeCount: 0,
+					edgeCount: 0,
+					totalBandwidth: 0,
+					totalThroughput: n.max_throughput,
+					avgUtilization: 0,
+					isPlayer: n.owner === playerId,
+				});
+			}
+			const entry = corpMap.get(n.owner)!;
+			entry.nodeCount++;
+			entry.totalThroughput += n.max_throughput;
+			entry.avgUtilization += n.utilization;
+		}
+
+		for (const e of allInfra.edges) {
+			if (!corpMap.has(e.owner)) {
+				corpMap.set(e.owner, {
+					id: e.owner,
+					name: e.owner_name || `Corp #${e.owner}`,
+					color: '',
+					nodeCount: 0,
+					edgeCount: 0,
+					totalBandwidth: 0,
+					totalThroughput: 0,
+					avgUtilization: 0,
+					isPlayer: e.owner === playerId,
+				});
+			}
+			const entry = corpMap.get(e.owner)!;
+			entry.edgeCount++;
+			entry.totalBandwidth += e.bandwidth;
+		}
+
+		// Finalize averages and assign colors
+		const corps = [...corpMap.values()];
+		// Sort: player first, then by node count descending
+		corps.sort((a, b) => {
+			if (a.isPlayer && !b.isPlayer) return -1;
+			if (!a.isPlayer && b.isPlayer) return 1;
+			return (b.nodeCount + b.edgeCount) - (a.nodeCount + a.edgeCount);
+		});
+
+		for (let i = 0; i < corps.length; i++) {
+			const c = corps[i];
+			c.color = c.isPlayer ? '#3b82f6' : CORP_COLORS[(i) % CORP_COLORS.length];
+			if (c.nodeCount > 0) {
+				c.avgUtilization = c.avgUtilization / c.nodeCount;
+			}
+		}
+
+		return corps;
+	});
+
+	let totalInfraCount = $derived(
+		corpCoverage.reduce((sum, c) => sum + c.nodeCount + c.edgeCount, 0)
+	);
 
 	onMount(() => {
 		drawTrafficChart($chartHistory);
@@ -963,7 +1152,9 @@
 				<span class="maint-col-action">Action</span>
 			</div>
 			{#each maintenanceQueue.slice(0, 12) as item}
-				<div class="maint-table-row">
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="maint-table-row clickable-row" onclick={() => viewLocation(item.x, item.y)}>
 					<span class="maint-col-type">
 						<span class="rev-category-badge" class:rev-node={item.category === 'node'} class:rev-edge={item.category === 'edge'}>
 							{item.category === 'node' ? 'N' : 'E'}
@@ -985,8 +1176,8 @@
 						{fmtMoney(item.estCost)}
 					</span>
 					<span class="maint-col-action">
-						<button class="view-btn" onclick={() => viewLocation(item.x, item.y)} style="margin-right: 2px;">View</button>
-						<button class="repair-btn" onclick={() => repairItem(item)}>Repair</button>
+						<button class="view-btn" onclick={(e: MouseEvent) => { e.stopPropagation(); viewLocation(item.x, item.y); }} style="margin-right: 2px;">View</button>
+						<button class="repair-btn" onclick={(e: MouseEvent) => { e.stopPropagation(); repairItem(item); }}>Repair</button>
 					</span>
 				</div>
 			{/each}
@@ -1049,7 +1240,7 @@
 			{/each}
 		{/if}
 
-		<!-- What-if slider -->
+		<!-- What-if slider (legacy, kept for backward compat) -->
 		<div class="whatif-section">
 			<div class="whatif-header">
 				<span class="cap-subtitle" style="margin: 0;">What-if: Traffic grows at</span>
@@ -1081,30 +1272,114 @@
 		</div>
 	</section>
 
-	<!-- Top Congested Edges Table -->
+	<!-- What-If Capacity Analysis (Phase 10.2.8) -->
+	<section class="section whatif-analysis-section">
+		<h3>WHAT-IF CAPACITY ANALYSIS</h3>
+		<div class="whatif-analysis-controls">
+			<div class="whatif-analysis-label">
+				<span class="whatif-analysis-label-text">Traffic growth rate</span>
+				<span class="mono whatif-analysis-pct">{whatIfGrowthPct}%</span>
+			</div>
+			<input
+				type="range"
+				class="whatif-analysis-slider"
+				min="0"
+				max="50"
+				step="5"
+				aria-label="Traffic growth rate percentage"
+				bind:value={whatIfGrowthPct}
+			/>
+			<div class="whatif-analysis-ticks-row">
+				<span class="whatif-tick-label">0%</span>
+				<span class="whatif-tick-label">10%</span>
+				<span class="whatif-tick-label">20%</span>
+				<span class="whatif-tick-label">30%</span>
+				<span class="whatif-tick-label">40%</span>
+				<span class="whatif-tick-label">50%</span>
+			</div>
+		</div>
+
+		{#if whatIfGrowthPct > 0 && whatIfAnalysis.length > 0}
+			<div class="whatif-analysis-summary">
+				At <span class="mono" style="color: #3b82f6;">{whatIfGrowthPct}%</span> growth,
+				<span class="mono" style="color: #ef4444;">{whatIfAnalysis.length}</span> edge{whatIfAnalysis.length !== 1 ? 's' : ''} hit capacity first:
+			</div>
+			<div class="whatif-table-header">
+				<span class="wi-col-type">Edge Type</span>
+				<span class="wi-col-route">From → To</span>
+				<span class="wi-col-util">Util%</span>
+				<span class="wi-col-ttx">Ticks to Exceed</span>
+				<span class="wi-col-action"></span>
+			</div>
+			{#each whatIfAnalysis as row}
+				<div class="whatif-table-row" style="border-left: 3px solid {ttxColor(row.ticksToExceed)};">
+					<span class="wi-col-type">{row.edgeType}</span>
+					<span class="wi-col-route mono" title="{row.fromLabel} → {row.toLabel}">
+						{row.fromLabel} → {row.toLabel}
+					</span>
+					<span class="wi-col-util mono" style="color: {utilColor(row.currentUtil)};">
+						{(row.currentUtil * 100).toFixed(0)}%
+					</span>
+					<span class="wi-col-ttx mono" style="color: {ttxColor(row.ticksToExceed)};">
+						{row.ticksToExceed === 0 ? 'NOW' : row.ticksToExceed}
+					</span>
+					<span class="wi-col-action">
+						<button class="view-btn" onclick={() => viewLocation((row.src_x + row.dst_x) / 2, (row.src_y + row.dst_y) / 2)}>View</button>
+					</span>
+				</div>
+			{/each}
+			<div class="whatif-legend">
+				<span class="whatif-legend-item"><span class="whatif-swatch" style="background: #ef4444;"></span> &lt;50 ticks (critical)</span>
+				<span class="whatif-legend-item"><span class="whatif-swatch" style="background: #f59e0b;"></span> &lt;200 ticks (warning)</span>
+				<span class="whatif-legend-item"><span class="whatif-swatch" style="background: #10b981;"></span> &gt;200 ticks (safe)</span>
+			</div>
+		{:else if whatIfGrowthPct > 0}
+			<div class="chart-empty">No edges projected to exceed capacity at {whatIfGrowthPct}% growth</div>
+		{:else}
+			<div class="chart-empty">Set a growth rate above 0% to see projections</div>
+		{/if}
+	</section>
+
+	<!-- Top Congested Edges Table (Phase 10.2.3: Bottleneck Detection + Upgrade Suggestions) -->
 	{#if traffic.top_congested.length > 0}
 		<div class="section">
 			<h3>TOP CONGESTED EDGES</h3>
-			<div class="table-header">
-				<span class="col-type">Edge Type</span>
-				<span class="col-util">Utilization</span>
-				<span class="col-owner">Owner</span>
-				<span class="col-action">Action</span>
+			<div class="congested-table-header">
+				<span class="cg-col-type">Edge Type</span>
+				<span class="cg-col-util">Utilization</span>
+				<span class="cg-col-suggest">Suggestion</span>
+				<span class="cg-col-owner">Owner</span>
+				<span class="cg-col-action"></span>
 			</div>
 			{#each traffic.top_congested.slice(0, 10) as ce}
-				<div class="table-row">
-					<span class="col-type">{ce.edge_type}</span>
-					<span class="col-util">
+				{@const suggestion = upgradeSuggestion(ce.utilization)}
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="congested-table-row clickable-row" onclick={() => viewEdge(ce.id)}>
+					<span class="cg-col-type">{ce.edge_type}</span>
+					<span class="cg-col-util">
 						<div class="util-bar-bg">
 							<div class="util-bar-fill" style="width: {Math.min(ce.utilization * 100, 100)}%; background: {utilColor(ce.utilization)};"></div>
 						</div>
 						<span class="mono" style="color: {utilColor(ce.utilization)}">{(ce.utilization * 100).toFixed(0)}%</span>
 					</span>
-					<span class="col-owner mono">{ce.owner === ($playerCorp?.id ?? 0) ? 'You' : `#${ce.owner}`}</span>
-					<span class="col-action">
-						<button class="view-btn" onclick={() => viewEdge(ce.id)}>View</button>
+					<span class="cg-col-suggest">
+						{#if suggestion}
+							<span class="suggest-badge" class:suggest-upgrade={suggestion.level === 'upgrade'} class:suggest-monitor={suggestion.level === 'monitor'}>
+								{suggestion.level === 'upgrade' ? 'UPGRADE' : 'MONITOR'}
+							</span>
+						{/if}
+					</span>
+					<span class="cg-col-owner mono">{ce.owner === ($playerCorp?.id ?? 0) ? 'You' : `#${ce.owner}`}</span>
+					<span class="cg-col-action">
+						<button class="view-btn" onclick={(e: MouseEvent) => { e.stopPropagation(); viewEdge(ce.id); }}>View</button>
 					</span>
 				</div>
+				{#if suggestion}
+					<div class="suggest-detail" style="color: {suggestion.color};">
+						{suggestion.text}
+					</div>
+				{/if}
 			{/each}
 		</div>
 	{:else}
@@ -1124,14 +1399,14 @@
 						<tr>
 							<th class="od-corner"></th>
 							{#each odMatrix.regionNames as name}
-								<th class="od-col-header" title={name}>{truncRegion(name)}</th>
+								<th class="od-col-header od-clickable" title="Fly to {name}" onclick={() => flyToRegion(name)}>{truncRegion(name)}</th>
 							{/each}
 						</tr>
 					</thead>
 					<tbody>
 						{#each odMatrix.matrix as row, i}
 							<tr>
-								<td class="od-row-header" title={odMatrix.regionNames[i]}>{truncRegion(odMatrix.regionNames[i])}</td>
+								<td class="od-row-header od-clickable" title="Fly to {odMatrix.regionNames[i]}" onclick={() => flyToRegion(odMatrix.regionNames[i])}>{truncRegion(odMatrix.regionNames[i])}</td>
 								{#each row as val}
 									<td
 										class="od-cell"
@@ -1184,6 +1459,50 @@
 			{/if}
 		</div>
 	</div>
+
+	<!-- Per-Corporation Coverage Comparison (Phase 10.2.6) -->
+	<section class="section">
+		<h3>CORPORATION COVERAGE COMPARISON</h3>
+		{#if corpCoverage.length > 0}
+			<div class="corp-cov-header">
+				<span class="cc-col-name">Corporation</span>
+				<span class="cc-col-nodes">Nodes</span>
+				<span class="cc-col-edges">Edges</span>
+				<span class="cc-col-bw">Bandwidth</span>
+				<span class="cc-col-util">Avg Util</span>
+				<span class="cc-col-share">Share</span>
+			</div>
+			{#each corpCoverage as corp}
+				<div class="corp-cov-row" class:corp-cov-player={corp.isPlayer}>
+					<span class="cc-col-name">
+						<span class="corp-color-dot" style="background: {corp.color};"></span>
+						<span class="corp-name-text" class:corp-name-player={corp.isPlayer}>{corp.name}</span>
+						{#if corp.isPlayer}
+							<span class="corp-you-badge">YOU</span>
+						{/if}
+					</span>
+					<span class="cc-col-nodes mono">{corp.nodeCount}</span>
+					<span class="cc-col-edges mono">{corp.edgeCount}</span>
+					<span class="cc-col-bw mono">{fmtTraffic(corp.totalBandwidth)}</span>
+					<span class="cc-col-util mono" style="color: {utilColor(corp.avgUtilization)};">
+						{(corp.avgUtilization * 100).toFixed(0)}%
+					</span>
+					<span class="cc-col-share">
+						{#if totalInfraCount > 0}
+							<div class="share-bar-bg">
+								<div class="share-bar-fill" style="width: {((corp.nodeCount + corp.edgeCount) / totalInfraCount) * 100}%; background: {corp.color};"></div>
+							</div>
+							<span class="mono" style="color: {corp.color}; font-size: 9px;">
+								{(((corp.nodeCount + corp.edgeCount) / totalInfraCount) * 100).toFixed(0)}%
+							</span>
+						{/if}
+					</span>
+				</div>
+			{/each}
+		{:else}
+			<div class="chart-empty">No infrastructure data available</div>
+		{/if}
+	</section>
 </div>
 
 <style>
@@ -1278,54 +1597,6 @@
 		font-size: 11px;
 		text-align: center;
 		padding: 12px 0;
-	}
-
-	/* -- Congested Edges Table -- */
-	.table-header {
-		display: grid;
-		grid-template-columns: 1.2fr 1.5fr 0.6fr 0.5fr;
-		gap: 8px;
-		padding: 4px 0 6px;
-		font-size: 10px;
-		text-transform: uppercase;
-		letter-spacing: 0.5px;
-		color: var(--text-dim);
-		font-weight: 600;
-		border-bottom: 1px solid rgba(55, 65, 81, 0.3);
-	}
-
-	.table-row {
-		display: grid;
-		grid-template-columns: 1.2fr 1.5fr 0.6fr 0.5fr;
-		gap: 8px;
-		padding: 6px 0;
-		align-items: center;
-		border-bottom: 1px solid rgba(55, 65, 81, 0.15);
-		font-size: 12px;
-	}
-
-	.table-row:hover {
-		background: rgba(55, 65, 81, 0.15);
-	}
-
-	.col-type {
-		color: var(--text-primary);
-		font-weight: 500;
-	}
-
-	.col-util {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-	}
-
-	.col-owner {
-		font-size: 11px;
-		color: var(--text-muted);
-	}
-
-	.col-action {
-		text-align: right;
 	}
 
 	.util-bar-bg {
@@ -1846,5 +2117,395 @@
 		width: 10px;
 		height: 10px;
 		border-radius: 2px;
+	}
+
+	/* ── Clickable rows & OD headers (fly-to-map) ─────────────────────── */
+
+	.clickable-row {
+		cursor: pointer;
+		transition: background 0.12s;
+	}
+
+	.clickable-row:hover {
+		background: rgba(59, 130, 246, 0.1) !important;
+	}
+
+	.od-clickable {
+		cursor: pointer;
+		transition: color 0.12s, background 0.12s;
+	}
+
+	.od-clickable:hover {
+		color: #60a5fa !important;
+		background: rgba(59, 130, 246, 0.15) !important;
+	}
+
+	/* ── What-If Capacity Analysis (Phase 10.2.8) ─────────────────────── */
+
+	.whatif-analysis-section {
+		background: rgba(15, 23, 42, 0.6);
+	}
+
+	.whatif-analysis-controls {
+		margin-bottom: 10px;
+	}
+
+	.whatif-analysis-label {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 6px;
+	}
+
+	.whatif-analysis-label-text {
+		font-size: 11px;
+		color: var(--text-muted);
+		font-weight: 500;
+	}
+
+	.whatif-analysis-pct {
+		font-size: 16px;
+		font-weight: 700;
+		color: #3b82f6;
+	}
+
+	.whatif-analysis-slider {
+		width: 100%;
+		height: 4px;
+		-webkit-appearance: none;
+		appearance: none;
+		background: linear-gradient(to right, rgba(16, 185, 129, 0.4), rgba(245, 158, 11, 0.5), rgba(239, 68, 68, 0.5));
+		border-radius: 2px;
+		outline: none;
+		margin-bottom: 2px;
+	}
+
+	.whatif-analysis-slider::-webkit-slider-thumb {
+		-webkit-appearance: none;
+		appearance: none;
+		width: 16px;
+		height: 16px;
+		border-radius: 50%;
+		background: #3b82f6;
+		cursor: pointer;
+		border: 2px solid #0f172a;
+		box-shadow: 0 0 6px rgba(59, 130, 246, 0.4);
+	}
+
+	.whatif-analysis-slider::-moz-range-thumb {
+		width: 16px;
+		height: 16px;
+		border-radius: 50%;
+		background: #3b82f6;
+		cursor: pointer;
+		border: 2px solid #0f172a;
+		box-shadow: 0 0 6px rgba(59, 130, 246, 0.4);
+	}
+
+	.whatif-analysis-ticks-row {
+		display: flex;
+		justify-content: space-between;
+		padding: 0 2px;
+		margin-bottom: 8px;
+	}
+
+	.whatif-tick-label {
+		font-size: 8px;
+		color: var(--text-dim);
+		font-family: var(--font-mono);
+	}
+
+	.whatif-analysis-summary {
+		font-size: 11px;
+		color: var(--text-muted);
+		margin-bottom: 8px;
+		padding: 5px 8px;
+		background: rgba(30, 41, 59, 0.6);
+		border-radius: var(--radius-sm);
+		border: 1px solid rgba(55, 65, 81, 0.3);
+	}
+
+	.whatif-table-header {
+		display: grid;
+		grid-template-columns: 1.2fr 1.5fr 0.6fr 0.8fr 0.4fr;
+		gap: 4px;
+		padding: 4px 4px 6px;
+		font-size: 9px;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+		color: var(--text-dim);
+		font-weight: 700;
+		font-family: var(--font-mono);
+		border-bottom: 1px solid rgba(55, 65, 81, 0.4);
+		background: rgba(15, 23, 42, 0.8);
+	}
+
+	.whatif-table-row {
+		display: grid;
+		grid-template-columns: 1.2fr 1.5fr 0.6fr 0.8fr 0.4fr;
+		gap: 4px;
+		padding: 5px 4px;
+		align-items: center;
+		border-bottom: 1px solid rgba(55, 65, 81, 0.15);
+		font-size: 11px;
+		transition: background 0.12s;
+	}
+
+	.whatif-table-row:hover {
+		background: rgba(55, 65, 81, 0.15);
+	}
+
+	.wi-col-type {
+		color: var(--text-primary);
+		font-weight: 500;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.wi-col-route {
+		font-size: 10px;
+		color: var(--text-muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.wi-col-util {
+		text-align: center;
+		font-size: 11px;
+		font-weight: 600;
+	}
+
+	.wi-col-ttx {
+		text-align: center;
+		font-size: 11px;
+		font-weight: 700;
+	}
+
+	.wi-col-action {
+		text-align: right;
+	}
+
+	.whatif-legend {
+		display: flex;
+		gap: 10px;
+		justify-content: center;
+		margin-top: 8px;
+		font-size: 9px;
+		color: var(--text-dim);
+		font-family: var(--font-mono);
+	}
+
+	.whatif-legend-item {
+		display: flex;
+		align-items: center;
+		gap: 3px;
+	}
+
+	.whatif-swatch {
+		display: inline-block;
+		width: 8px;
+		height: 8px;
+		border-radius: 2px;
+	}
+
+	/* ── Congested Edges Table (Phase 10.2.3) ─────────────────────────── */
+
+	.congested-table-header {
+		display: grid;
+		grid-template-columns: 1.2fr 1.3fr 1fr 0.5fr 0.4fr;
+		gap: 6px;
+		padding: 4px 0 6px;
+		font-size: 10px;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+		color: var(--text-dim);
+		font-weight: 600;
+		border-bottom: 1px solid rgba(55, 65, 81, 0.3);
+	}
+
+	.congested-table-row {
+		display: grid;
+		grid-template-columns: 1.2fr 1.3fr 1fr 0.5fr 0.4fr;
+		gap: 6px;
+		padding: 6px 0;
+		align-items: center;
+		border-bottom: 1px solid rgba(55, 65, 81, 0.15);
+		font-size: 12px;
+	}
+
+	.congested-table-row:hover {
+		background: rgba(55, 65, 81, 0.15);
+	}
+
+	.cg-col-type {
+		color: var(--text-primary);
+		font-weight: 500;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.cg-col-util {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.cg-col-suggest {
+		display: flex;
+		align-items: center;
+	}
+
+	.cg-col-owner {
+		font-size: 11px;
+		color: var(--text-muted);
+	}
+
+	.cg-col-action {
+		text-align: right;
+	}
+
+	.suggest-badge {
+		display: inline-block;
+		padding: 1px 6px;
+		border-radius: 3px;
+		font-size: 9px;
+		font-weight: 700;
+		font-family: var(--font-mono);
+		letter-spacing: 0.3px;
+	}
+
+	.suggest-upgrade {
+		background: rgba(239, 68, 68, 0.15);
+		color: #ef4444;
+		border: 1px solid rgba(239, 68, 68, 0.35);
+	}
+
+	.suggest-monitor {
+		background: rgba(245, 158, 11, 0.15);
+		color: #f59e0b;
+		border: 1px solid rgba(245, 158, 11, 0.35);
+	}
+
+	.suggest-detail {
+		font-size: 10px;
+		font-family: var(--font-mono);
+		padding: 2px 0 4px 12px;
+		border-bottom: 1px solid rgba(55, 65, 81, 0.1);
+		opacity: 0.85;
+	}
+
+	/* ── Corporation Coverage Comparison (Phase 10.2.6) ───────────────── */
+
+	.corp-cov-header {
+		display: grid;
+		grid-template-columns: 2fr 0.5fr 0.5fr 0.7fr 0.6fr 1fr;
+		gap: 4px;
+		padding: 4px 0 6px;
+		font-size: 9px;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+		color: var(--text-dim);
+		font-weight: 600;
+		border-bottom: 1px solid rgba(55, 65, 81, 0.3);
+	}
+
+	.corp-cov-row {
+		display: grid;
+		grid-template-columns: 2fr 0.5fr 0.5fr 0.7fr 0.6fr 1fr;
+		gap: 4px;
+		padding: 5px 0;
+		align-items: center;
+		border-bottom: 1px solid rgba(55, 65, 81, 0.12);
+		font-size: 11px;
+	}
+
+	.corp-cov-row:hover {
+		background: rgba(55, 65, 81, 0.12);
+	}
+
+	.corp-cov-player {
+		background: rgba(59, 130, 246, 0.06);
+	}
+
+	.cc-col-name {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		overflow: hidden;
+	}
+
+	.corp-color-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		flex-shrink: 0;
+	}
+
+	.corp-name-text {
+		color: var(--text-primary);
+		font-weight: 500;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.corp-name-player {
+		color: #60a5fa;
+		font-weight: 600;
+	}
+
+	.corp-you-badge {
+		display: inline-block;
+		padding: 0 4px;
+		border-radius: 2px;
+		font-size: 8px;
+		font-weight: 700;
+		font-family: var(--font-mono);
+		background: rgba(59, 130, 246, 0.2);
+		color: #60a5fa;
+		border: 1px solid rgba(59, 130, 246, 0.3);
+		flex-shrink: 0;
+	}
+
+	.cc-col-nodes, .cc-col-edges {
+		text-align: center;
+		color: var(--text-muted);
+		font-size: 10px;
+	}
+
+	.cc-col-bw {
+		text-align: center;
+		color: var(--text-muted);
+		font-size: 10px;
+	}
+
+	.cc-col-util {
+		text-align: center;
+		font-size: 10px;
+		font-weight: 600;
+	}
+
+	.cc-col-share {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+
+	.share-bar-bg {
+		flex: 1;
+		height: 6px;
+		background: rgba(55, 65, 81, 0.4);
+		border-radius: 3px;
+		overflow: hidden;
+		min-width: 30px;
+	}
+
+	.share-bar-fill {
+		height: 100%;
+		border-radius: 3px;
+		transition: width 0.3s;
 	}
 </style>

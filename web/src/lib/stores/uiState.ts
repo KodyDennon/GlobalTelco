@@ -1,7 +1,7 @@
 import { writable, derived } from 'svelte/store';
 
 export type PanelType = 'none' | 'info' | 'dashboard' | 'infrastructure' | 'network' | 'research' | 'contracts' | 'region' | 'workforce' | 'advisor' | 'auctions' | 'mergers' | 'intel' | 'achievements' | 'spectrum';
-export type OverlayType = 'none' | 'terrain' | 'ownership' | 'population' | 'demand' | 'disaster' | 'coverage' | 'congestion' | 'traffic' | 'market_share' | 'ocean_depth' | 'spectrum';
+export type OverlayType = 'none' | 'terrain' | 'ownership' | 'population' | 'demand' | 'disaster' | 'coverage' | 'congestion' | 'traffic' | 'market_share' | 'ocean_depth' | 'spectrum' | 'elevation_contour' | 'submarine_reference' | 'coverage_overlap';
 export type PanelGroupType = 'finance' | 'operations' | 'diplomacy' | 'research' | 'market' | 'info';
 
 // Panel group → tab definitions
@@ -103,8 +103,9 @@ export interface HotbarSlot {
 	category: 'node' | 'edge' | null;
 }
 
-/** 9 pinnable hotbar slots (keys 1-9) */
-export const hotbarSlots = writable<HotbarSlot[]>([
+const HOTBAR_STORAGE_KEY = 'globaltelco-hotbar';
+
+const DEFAULT_HOTBAR_SLOTS: HotbarSlot[] = [
 	{ itemType: 'CellTower', category: 'node' },
 	{ itemType: 'CentralOffice', category: 'node' },
 	{ itemType: 'FiberLocal', category: 'edge' },
@@ -114,7 +115,42 @@ export const hotbarSlots = writable<HotbarSlot[]>([
 	{ itemType: null, category: null },
 	{ itemType: null, category: null },
 	{ itemType: null, category: null },
-]);
+];
+
+/** Load hotbar config from localStorage, falling back to defaults. */
+function loadHotbarSlots(): HotbarSlot[] {
+	try {
+		if (typeof window === 'undefined' || !window.localStorage) return [...DEFAULT_HOTBAR_SLOTS];
+		const stored = localStorage.getItem(HOTBAR_STORAGE_KEY);
+		if (!stored) return [...DEFAULT_HOTBAR_SLOTS];
+		const parsed = JSON.parse(stored) as unknown;
+		if (!Array.isArray(parsed) || parsed.length !== 9) return [...DEFAULT_HOTBAR_SLOTS];
+		// Validate each slot has the expected shape
+		for (const slot of parsed) {
+			if (typeof slot !== 'object' || slot === null) return [...DEFAULT_HOTBAR_SLOTS];
+			if (!('itemType' in slot) || !('category' in slot)) return [...DEFAULT_HOTBAR_SLOTS];
+		}
+		return parsed as HotbarSlot[];
+	} catch {
+		return [...DEFAULT_HOTBAR_SLOTS];
+	}
+}
+
+/** Save hotbar config to localStorage. */
+function saveHotbarSlots(slots: HotbarSlot[]): void {
+	try {
+		if (typeof window === 'undefined' || !window.localStorage) return;
+		localStorage.setItem(HOTBAR_STORAGE_KEY, JSON.stringify(slots));
+	} catch {
+		// Silently ignore storage errors (quota, security, etc.)
+	}
+}
+
+/** 9 pinnable hotbar slots (keys 1-9) — persisted in localStorage */
+export const hotbarSlots = writable<HotbarSlot[]>(loadHotbarSlots());
+
+// Subscribe to changes and persist to localStorage
+hotbarSlots.subscribe(saveHotbarSlots);
 
 /** Enter placement mode for a specific item */
 export function enterPlacementMode(itemType: string, category: 'node' | 'edge'): void {
@@ -208,6 +244,79 @@ export function getEdgeTypesForSource(sourceType: string): string[] {
 /** Get the tier number for a node type (1-5). */
 export function getNodeTier(nodeType: string): number {
 	return TIER_MAP[nodeType] ?? 0;
+}
+
+// ── Build Mode Ghost Preview Data ─────────────────────────────────────────────
+// Exposed by MapRenderer during node placement so the HUD can display
+// terrain type, construction cost, terrain cost multiplier, and validity.
+
+export interface GhostPreviewInfo {
+	terrainType: string | null;
+	cost: number | null;
+	valid: boolean;
+	costMultiplier: number;
+}
+
+export const ghostPreviewInfo = writable<GhostPreviewInfo>({
+	terrainType: null,
+	cost: null,
+	valid: true,
+	costMultiplier: 1.0,
+});
+
+// Terrain cost multiplier table (mirrors Rust TerrainType::construction_cost_multiplier)
+export const TERRAIN_COST_MULTIPLIERS: Record<string, number> = {
+	Urban: 2.0,
+	Suburban: 1.2,
+	Rural: 1.0,
+	Mountainous: 3.0,
+	Desert: 1.8,
+	Coastal: 1.5,
+	OceanShallow: 5.0,
+	OceanDeep: 10.0,
+	Tundra: 2.5,
+	Frozen: 4.0,
+};
+
+// ── Pinned Dashboard Widgets ──────────────────────────────────────────────────
+// Persist which NetworkDashboard widget sections are pinned as floating overlays.
+
+const PINNED_WIDGETS_STORAGE_KEY = 'globaltelco-pinned-widgets';
+
+function loadPinnedWidgets(): string[] {
+	try {
+		if (typeof window === 'undefined' || !window.localStorage) return [];
+		const stored = localStorage.getItem(PINNED_WIDGETS_STORAGE_KEY);
+		if (!stored) return [];
+		const parsed = JSON.parse(stored);
+		if (!Array.isArray(parsed)) return [];
+		return parsed.filter((s: unknown) => typeof s === 'string');
+	} catch {
+		return [];
+	}
+}
+
+function savePinnedWidgets(widgets: string[]): void {
+	try {
+		if (typeof window === 'undefined' || !window.localStorage) return;
+		localStorage.setItem(PINNED_WIDGETS_STORAGE_KEY, JSON.stringify(widgets));
+	} catch {
+		// Silently ignore storage errors
+	}
+}
+
+export const pinnedWidgets = writable<string[]>(loadPinnedWidgets());
+
+// Subscribe to persist pinned widgets
+pinnedWidgets.subscribe(savePinnedWidgets);
+
+export function togglePinnedWidget(widgetId: string): void {
+	pinnedWidgets.update(current => {
+		if (current.includes(widgetId)) {
+			return current.filter(w => w !== widgetId);
+		}
+		return [...current, widgetId];
+	});
 }
 
 // Confirmation dialog state

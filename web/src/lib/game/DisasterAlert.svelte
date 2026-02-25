@@ -105,7 +105,7 @@
 	}
 </script>
 
-{#if visibleDisasters.length > 0}
+{#if visibleDisasters.length > 0 || visibleForecasts.length > 0}
 	<div class="disaster-alert-container" role="alert" aria-live="assertive">
 		{#each visibleDisasters as disaster (disaster.id)}
 			{@const remaining = remainingTicks(disaster.startTick)}
@@ -140,6 +140,39 @@
 						use:tooltip={'Zoom to the affected region'}
 					>
 						View
+					</button>
+				</div>
+			</div>
+		{/each}
+
+		{#if visibleForecasts.length > 0 && visibleDisasters.length === 0}
+			<div class="forecast-header">FORECAST</div>
+		{/if}
+		{#each visibleForecasts as forecast (forecast.id)}
+			{@const rClass = riskClass(forecast.probability)}
+			<div class="forecast-alert {rClass}">
+				<div class="forecast-icon">{disasterIcon(forecast.disasterType)}</div>
+				<div class="alert-body">
+					<div class="alert-header">
+						<span class="forecast-type">{forecast.disasterType}</span>
+						<span class="alert-sep">|</span>
+						<span class="alert-region">{forecast.regionName}</span>
+						<span class="alert-sep">|</span>
+						<span class="forecast-risk {rClass}">{riskLabel(forecast.probability)}</span>
+					</div>
+					<div class="alert-details">
+						<span class="forecast-prob">{formatProbability(forecast.probability)} probability</span>
+						<span class="alert-sep">|</span>
+						<span class="forecast-eta">~{forecast.estimatedTicks} ticks</span>
+					</div>
+				</div>
+				<div class="alert-actions">
+					<button
+						class="alert-btn prepare"
+						onclick={() => prepareForecast(forecast)}
+						use:tooltip={'Zoom to region and open infrastructure panel to prepare'}
+					>
+						Prepare
 					</button>
 				</div>
 			</div>
@@ -330,5 +363,114 @@
 	.alert-btn.view:hover {
 		background: rgba(59, 130, 246, 0.25);
 		color: #93c5fd;
+	}
+
+	/* ── Forecast entries ──────────────────────────────────────────────── */
+
+	.forecast-header {
+		font-family: var(--font-mono);
+		font-size: 9px;
+		font-weight: 700;
+		letter-spacing: 0.1em;
+		color: #6b7280;
+		padding: 4px 14px 0;
+	}
+
+	.forecast-alert {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 6px 14px;
+		background: rgba(17, 24, 39, 0.90);
+		border-radius: 6px;
+		font-family: var(--font-mono);
+		font-size: 11px;
+		animation: alert-slide-in 0.25s ease-out;
+	}
+
+	.forecast-alert.risk-watch {
+		border: 1px solid rgba(245, 158, 11, 0.25);
+		border-left: 3px solid rgba(245, 158, 11, 0.5);
+	}
+
+	.forecast-alert.risk-elevated {
+		border: 1px solid rgba(245, 158, 11, 0.4);
+		border-left: 3px solid #f59e0b;
+	}
+
+	.forecast-alert.risk-high {
+		border: 1px solid rgba(239, 68, 68, 0.35);
+		border-left: 3px solid rgba(239, 68, 68, 0.7);
+		animation: alert-slide-in 0.25s ease-out, forecast-pulse 3s infinite;
+	}
+
+	@keyframes forecast-pulse {
+		0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+		50% { box-shadow: 0 0 8px 1px rgba(245, 158, 11, 0.12); }
+	}
+
+	.forecast-icon {
+		font-size: 12px;
+		font-weight: 900;
+		color: rgba(245, 158, 11, 0.6);
+		min-width: 24px;
+		text-align: center;
+		flex-shrink: 0;
+	}
+
+	.risk-high .forecast-icon {
+		color: rgba(239, 68, 68, 0.7);
+	}
+
+	.forecast-type {
+		font-weight: 600;
+		color: #d1d5db;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		font-size: 10px;
+	}
+
+	.forecast-risk {
+		font-weight: 800;
+		letter-spacing: 0.06em;
+		font-size: 9px;
+		padding: 1px 5px;
+		border-radius: 3px;
+	}
+
+	.forecast-risk.risk-watch {
+		background: rgba(245, 158, 11, 0.1);
+		color: rgba(245, 158, 11, 0.7);
+	}
+
+	.forecast-risk.risk-elevated {
+		background: rgba(245, 158, 11, 0.15);
+		color: #f59e0b;
+	}
+
+	.forecast-risk.risk-high {
+		background: rgba(239, 68, 68, 0.15);
+		color: #f87171;
+	}
+
+	.forecast-prob {
+		color: #9ca3af;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.forecast-eta {
+		color: #6b7280;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.alert-btn.prepare {
+		background: rgba(245, 158, 11, 0.12);
+		border-color: rgba(245, 158, 11, 0.35);
+		color: #f59e0b;
+	}
+
+	.alert-btn.prepare:hover {
+		background: rgba(245, 158, 11, 0.22);
+		color: #fbbf24;
 	}
 </style>

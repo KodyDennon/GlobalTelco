@@ -18,6 +18,7 @@ pub mod regulation;
 pub mod research;
 pub mod revenue;
 pub mod routing;
+pub mod spectrum;
 pub mod utilization;
 
 use crate::world::GameWorld;
@@ -30,6 +31,7 @@ pub fn run_all_systems(world: &mut GameWorld) {
     demand::run(world);         // Uses coverage data for satisfaction
     routing::run(world);
     utilization::run(world);
+    spectrum::run(world);       // Carrier aggregation + interference penalties (after utilization resets capacities)
     ftth::run(world);           // Validate FTTH chains and mark active NAPs (after coverage, before revenue)
     revenue::run(world);
     cost::run(world);

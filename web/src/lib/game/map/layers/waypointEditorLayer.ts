@@ -100,7 +100,7 @@ export function createWaypointEditorLayers(state: WaypointEditorState): Layer[] 
         stroked: true,
         filled: true,
         getRadius: (d: any) => d.isDragging ? 18000 : 14000,
-        radiusMinPixels: (d: any) => d.isDragging ? 8 : 6,
+        radiusMinPixels: 6,
         radiusMaxPixels: 14,
         pickable: true,
         autoHighlight: true,

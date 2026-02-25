@@ -56,6 +56,60 @@
 		edge: '#fbbf24',
 	};
 
+	// ── Drag-and-drop state ──────────────────────────────────────────────────
+	let dragSourceIndex: number | null = $state(null);
+	let dragOverIndex: number | null = $state(null);
+
+	function handleDragStart(e: DragEvent, index: number) {
+		const slot = $hotbarSlots[index];
+		// Only allow dragging filled slots
+		if (!slot || !slot.itemType) {
+			e.preventDefault();
+			return;
+		}
+		dragSourceIndex = index;
+		if (e.dataTransfer) {
+			e.dataTransfer.effectAllowed = 'move';
+			e.dataTransfer.setData('text/plain', String(index));
+		}
+	}
+
+	function handleDragOver(e: DragEvent, index: number) {
+		e.preventDefault();
+		if (e.dataTransfer) {
+			e.dataTransfer.dropEffect = 'move';
+		}
+		dragOverIndex = index;
+	}
+
+	function handleDragLeave() {
+		dragOverIndex = null;
+	}
+
+	function handleDrop(e: DragEvent, targetIndex: number) {
+		e.preventDefault();
+		dragOverIndex = null;
+
+		if (dragSourceIndex === null || dragSourceIndex === targetIndex) {
+			dragSourceIndex = null;
+			return;
+		}
+
+		// Swap the two slots
+		const slots = [...$hotbarSlots];
+		const temp = slots[dragSourceIndex];
+		slots[dragSourceIndex] = slots[targetIndex];
+		slots[targetIndex] = temp;
+		hotbarSlots.set(slots);
+
+		dragSourceIndex = null;
+	}
+
+	function handleDragEnd() {
+		dragSourceIndex = null;
+		dragOverIndex = null;
+	}
+
 	function activateSlot(index: number) {
 		const slot = $hotbarSlots[index];
 		if (!slot || !slot.itemType || !slot.category) return;
@@ -73,18 +127,28 @@
 		if (!slot.itemType) return `Slot ${index + 1} (empty)\nRight-click map to build`;
 		const name = ITEM_NAMES[slot.itemType] ?? slot.itemType;
 		const cat = slot.category === 'node' ? 'Node' : 'Link';
-		return `[${index + 1}] ${name} (${cat})\nPress ${index + 1} or click to activate`;
+		return `[${index + 1}] ${name} (${cat})\nPress ${index + 1} or click to activate\nDrag to reorder`;
 	}
 </script>
 
 <div class="hotbar" role="toolbar" aria-label="Build hotbar">
 	{#each $hotbarSlots as slot, i}
 		{@const isActive = slot.itemType !== null && $selectedBuildItem === slot.itemType && $buildCategory === slot.category}
+		{@const isDragging = dragSourceIndex === i}
+		{@const isDragOver = dragOverIndex === i && dragSourceIndex !== i}
 		<button
 			class="hotbar-slot"
 			class:active={isActive}
 			class:filled={slot.itemType !== null}
+			class:dragging={isDragging}
+			class:drag-over={isDragOver}
+			draggable={slot.itemType !== null ? 'true' : 'false'}
 			onclick={() => activateSlot(i)}
+			ondragstart={(e) => handleDragStart(e, i)}
+			ondragover={(e) => handleDragOver(e, i)}
+			ondragleave={handleDragLeave}
+			ondrop={(e) => handleDrop(e, i)}
+			ondragend={handleDragEnd}
 			use:tooltip={getTooltipText(slot, i)}
 			aria-pressed={isActive}
 		>
@@ -144,6 +208,18 @@
 		background: rgba(16, 185, 129, 0.15);
 		border-color: rgba(16, 185, 129, 0.6);
 		box-shadow: 0 0 8px rgba(16, 185, 129, 0.2);
+	}
+
+	.hotbar-slot.dragging {
+		opacity: 0.35;
+		transform: scale(0.92);
+		border-color: rgba(96, 165, 250, 0.5);
+	}
+
+	.hotbar-slot.drag-over {
+		border-color: rgba(96, 165, 250, 0.8);
+		background: rgba(59, 130, 246, 0.15);
+		box-shadow: 0 0 8px rgba(59, 130, 246, 0.3);
 	}
 
 	.hotbar-slot:not(.filled) {

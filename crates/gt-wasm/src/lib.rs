@@ -1373,6 +1373,76 @@ impl WasmBridge {
             .collect();
         serde_json::to_string(&available).unwrap_or_default()
     }
+
+    /// Get disaster forecasts: server-side prediction of upcoming disasters.
+    /// Returns JSON array of { region_id, region_name, predicted_tick, probability, disaster_type }.
+    pub fn get_disaster_forecasts(&self) -> String {
+        let forecasts = self.world.get_disaster_forecasts();
+        let json: Vec<serde_json::Value> = forecasts
+            .iter()
+            .map(|f| {
+                serde_json::json!({
+                    "region_id": f.region_id,
+                    "region_name": f.region_name,
+                    "predicted_tick": f.predicted_tick,
+                    "probability": f.probability,
+                    "disaster_type": f.disaster_type,
+                })
+            })
+            .collect();
+        serde_json::to_string(&json).unwrap_or_default()
+    }
+
+    // ── Road Network Queries (Fiber Auto-Routing) ────────────────────────
+
+    /// A* pathfinding along the road network between two (lon, lat) points.
+    /// Returns JSON array of [lon, lat] waypoints for fiber auto-routing.
+    pub fn road_pathfind(
+        &self,
+        from_lon: f64,
+        from_lat: f64,
+        to_lon: f64,
+        to_lat: f64,
+    ) -> String {
+        let waypoints = self.world.road_pathfind(from_lon, from_lat, to_lon, to_lat);
+        let json: Vec<serde_json::Value> = waypoints
+            .iter()
+            .map(|(lon, lat)| serde_json::json!([lon, lat]))
+            .collect();
+        serde_json::to_string(&json).unwrap_or_default()
+    }
+
+    /// Cost of routing fiber along roads between two points.
+    /// Returns a single f64 value representing the weighted km cost.
+    pub fn road_fiber_route_cost(
+        &self,
+        from_lon: f64,
+        from_lat: f64,
+        to_lon: f64,
+        to_lat: f64,
+    ) -> f64 {
+        self.world.road_fiber_route_cost(from_lon, from_lat, to_lon, to_lat)
+    }
+
+    /// Get all road segments for map rendering.
+    /// Returns JSON array of { id, from: [lon, lat], to: [lon, lat], road_class, length_km, region_id }.
+    pub fn get_road_segments(&self) -> String {
+        let segments = self.world.get_road_segments();
+        let json: Vec<serde_json::Value> = segments
+            .iter()
+            .map(|s| {
+                serde_json::json!({
+                    "id": s.id,
+                    "from": [s.from.0, s.from.1],
+                    "to": [s.to.0, s.to.1],
+                    "road_class": format!("{:?}", s.road_class),
+                    "length_km": s.length_km,
+                    "region_id": s.region_id,
+                })
+            })
+            .collect();
+        serde_json::to_string(&json).unwrap_or_default()
+    }
 }
 
 // ── BridgeQuery Trait Implementation ────────────────────────────────────

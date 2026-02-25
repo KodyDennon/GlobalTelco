@@ -26,18 +26,21 @@ import { createRoadsLayers, buildRoadData, disposeRoadData } from './layers/road
 import { createBuildingsLayers, buildBuildingData, disposeBuildingData, updateBuildingCoverage } from './layers/buildingsLayer';
 import { createRiversLayers, buildRiverData, disposeRiverData } from './layers/riversLayer';
 import { createTerrainDetailLayers, buildTerrainDetailData, disposeTerrainDetailData } from './layers/terrainDetailLayer';
+import { createElevationContourLayers, buildElevationData, disposeElevationData } from './layers/elevationLayer';
 import { createCityGlowLayer } from './layers/cityGlowLayer';
+import { createCableGlowLayers } from './layers/cableGlowLayer';
+import { createSubmarineCableRefLayers } from './layers/submarineCableRefLayer';
 import type { IconMapping } from './iconAtlas';
 import { buildIconAtlas } from './iconAtlas';
 import { buildTerrainBitmapAsync, disposeTerrainWorker } from './terrainBitmap';
-import { CORP_COLORS, SATELLITE_COLORS, TERRAIN_OVERLAY_COLORS } from './constants';
+import { CORP_COLORS, SATELLITE_COLORS, TERRAIN_OVERLAY_COLORS, NODE_TIER_SIZE } from './constants';
 import { satelliteMapStyle, procgenMapStyle } from './tileConfig';
 import { handleMapMouseMove, setTooltipDisasters, type TooltipHit } from './tooltip';
-import { createWeatherLayers, type ActiveDisaster } from '../WeatherLayer';
+import { createWeatherLayers, computeDisasterForecasts, type ActiveDisaster, type ForecastDisaster } from '../WeatherLayer';
 import { createCablePreviewLayers, type CableDrawingState } from './layers/cablePreviewLayer';
 import { createWaypointEditorLayers, type WaypointEditorState } from './layers/waypointEditorLayer';
-import { NODE_TIER_SIZE } from './constants';
-import { selectedBuildItem, buildCategory } from '$lib/stores/uiState';
+import { selectedBuildItem, buildCategory, buildMode, ghostPreviewInfo, TERRAIN_COST_MULTIPLIERS } from '$lib/stores/uiState';
+import type { BuildOption } from '$lib/wasm/types';
 
 // ── MapRenderer class ───────────────────────────────────────────────────────
 
@@ -78,6 +81,8 @@ export class MapRenderer {
     private weatherEnabled: boolean = true;
     private dayNightCycle: boolean = true;
     private activeDisasters: ActiveDisaster[] = [];
+    private forecastDisasters: ForecastDisaster[] = [];
+    private lastForecastTick: number = -1;
 
     // Cable drawing preview state
     private cableDrawingState: CableDrawingState = {
@@ -99,6 +104,17 @@ export class MapRenderer {
 
     // Ghost preview state (cursor-following placement preview)
     private ghostPreviewPosition: [number, number] | null = null;
+
+    // Cursor position for ghost preview layer
+    private cursorLon: number = 0;
+    private cursorLat: number = 0;
+    private cursorOnMap: boolean = false;
+
+    // Cached ghost preview validation
+    private ghostTerrainType: string | null = null;
+    private ghostValid: boolean = true;
+    private ghostCost: number | null = null;
+    private ghostBuildOptions: BuildOption[] = [];
 
     // Custom event listener references (for cleanup)
     private mapPanHandler: ((e: Event) => void) | null = null;
@@ -329,9 +345,10 @@ export class MapRenderer {
             buildVectorTerrainData(cells);
             // Build ocean depth data from cached vector terrain polygons
             buildOceanDepthData();
-            // Build river/lake/coastline glow and terrain detail data
+            // Build river/lake/coastline glow, terrain detail, and elevation contour data
             buildRiverData(cells);
             buildTerrainDetailData();
+            buildElevationData();
             this.iconAtlas = iconResult.canvas;
             this.iconMapping = iconResult.mapping;
             this.iconAtlasReady = true;
@@ -384,6 +401,16 @@ export class MapRenderer {
             ...terrainLayers,
             // 2. Ocean depth (procgen)
             ...this.createOceanDepthLayers(),
+            // 2b. Terrain detail patterns (mountain contours, desert bands, urban grid — procgen zoom 4+)
+            ...createTerrainDetailLayers(this.currentZoom, this.isRealEarth),
+            // 2c. Elevation contour overlay (procgen zoom 3+, toggle-able)
+            ...createElevationContourLayers(
+                this.activeOverlay === 'elevation_contour',
+                this.currentZoom,
+                this.isRealEarth,
+            ),
+            // 2d. Rivers, lakes, and coastline glow (procgen zoom 3+)
+            ...createRiversLayers(this.currentZoom, this.isRealEarth),
             // 3. Roads (procgen PathLayer — real earth roads come from MapLibre vector tiles)
             ...createRoadsLayers(this.isRealEarth, this.currentZoom),
             // 4. Buildings (procedural footprints around cities, demand overlay at zoom 7+)
@@ -392,10 +419,23 @@ export class MapRenderer {
             createBordersLayer(this.cachedRegions, this.isRealEarth),
             // 6. Overlays (population, demand, terrain, etc.)
             ...this.createOverlayLayers(),
+            // 6a. Submarine cable reference (real earth mode only, zoom 0-7)
+            ...createSubmarineCableRefLayers(
+                this.activeOverlay === 'submarine_reference',
+                this.isRealEarth,
+                this.currentZoom,
+            ),
+            // 6b. City ambient glow (population-proportional warm glow — rendered before city icons)
+            ...createCityGlowLayer(this.cachedCities, this.currentZoom),
             // 7. Cities (glow, icons, labels)
             this.createCitiesLayer(),
             this.createLabelsLayer(),
             this.createRegionLabelsLayer(),
+            // 7b. Cable glow (low zoom) + pole dots (high zoom aerial) — below main infra
+            ...createCableGlowLayers(
+                bridge.isInitialized() ? bridge.getAllInfrastructure().edges : [],
+                this.currentZoom,
+            ),
             // 8. Infrastructure (nodes, edges — above cities)
             ...createInfraLayers({
                 iconAtlas: this.iconAtlas,
@@ -418,11 +458,13 @@ export class MapRenderer {
                 dayNightCycle: this.dayNightCycle,
                 gameTick: this.gameTick,
                 currentZoom: this.currentZoom,
-            }, this.activeDisasters),
+            }, this.activeDisasters, this.forecastDisasters),
             // 11. Selection/hover highlights (topmost)
             this.createSelectionLayer(),
             ...this.createEdgeBuildHighlights(),
             this.createPathfindingPreviewLayer(),
+            // 12. Ghost preview for node placement (above everything)
+            ...this.createGhostPreviewLayer(),
         ];
 
         const filtered = layers.flat().filter(Boolean) as Layer[];
@@ -916,6 +958,238 @@ export class MapRenderer {
         return layers;
     }
 
+    // ── Ghost preview layer (cursor-following placement preview) ────────────
+
+    private createGhostPreviewLayer(): Layer[] {
+        // Only show when in node placement mode with a selected build item
+        const currentBuildMode = get(buildMode);
+        const currentBuildItem = get(selectedBuildItem);
+        const currentBuildCat = get(buildCategory);
+
+        if (currentBuildMode !== 'node' || !currentBuildItem || currentBuildCat !== 'node' || !this.cursorOnMap) {
+            ghostPreviewInfo.set({ terrainType: null, cost: null, valid: true, costMultiplier: 1.0 });
+            return [];
+        }
+
+        if (!bridge.isInitialized()) return [];
+
+        const layers: Layer[] = [];
+
+        // Determine node sizing from the network level of the selected item
+        const NODE_TYPE_LEVEL: Record<string, string> = {
+            CellTower: 'Local',
+            WirelessRelay: 'Local',
+            CentralOffice: 'Regional',
+            ExchangePoint: 'Regional',
+            DataCenter: 'National',
+            BackboneRouter: 'Continental',
+            SatelliteGround: 'GlobalBackbone',
+            SubmarineLanding: 'GlobalBackbone',
+        };
+        const networkLevel = NODE_TYPE_LEVEL[currentBuildItem] ?? 'Local';
+        const tierSize = NODE_TIER_SIZE[networkLevel] ?? 24;
+
+        // Get player corp color
+        const playerCorpId = bridge.getPlayerCorpId();
+        const corps = bridge.getAllCorporations();
+        const corpIdx = corps.findIndex(c => c.id === playerCorpId);
+        const baseColor: [number, number, number] = corpIdx >= 0
+            ? CORP_COLORS[corpIdx % CORP_COLORS.length]
+            : [16, 185, 129];
+
+        // Find terrain at cursor position from cached cells
+        const cursorTerrain = this.getTerrainAtCursor();
+        this.ghostTerrainType = cursorTerrain;
+
+        // Validate placement based on terrain
+        const isValid = this.validateNodePlacement(currentBuildItem, cursorTerrain);
+        this.ghostValid = isValid;
+
+        // Get cost estimate from cached build options
+        const costInfo = this.ghostBuildOptions.find(o => o.node_type === currentBuildItem);
+        this.ghostCost = costInfo?.cost ?? null;
+
+        // Update ghost preview store for HUD display
+        const multiplier = cursorTerrain ? (TERRAIN_COST_MULTIPLIERS[cursorTerrain] ?? 1.0) : 1.0;
+        ghostPreviewInfo.set({
+            terrainType: cursorTerrain,
+            cost: this.ghostCost,
+            valid: isValid,
+            costMultiplier: multiplier,
+        });
+
+        // Choose color based on validity: green tint for valid, red tint for invalid
+        const ghostColor: [number, number, number, number] = isValid
+            ? [
+                Math.min(255, Math.floor(baseColor[0] * 0.6 + 16 * 0.4)),
+                Math.min(255, Math.floor(baseColor[1] * 0.6 + 185 * 0.4)),
+                Math.min(255, Math.floor(baseColor[2] * 0.6 + 129 * 0.4)),
+                100,
+            ]
+            : [
+                Math.min(255, Math.floor(baseColor[0] * 0.3 + 239 * 0.7)),
+                Math.min(255, Math.floor(baseColor[1] * 0.3 + 68 * 0.7)),
+                Math.min(255, Math.floor(baseColor[2] * 0.3 + 68 * 0.7)),
+                100,
+            ];
+
+        // Pulsing factor for subtle animation
+        const pulse = 0.7 + 0.3 * (0.5 + 0.5 * Math.sin(this.currentTime * 4.0));
+        const pulseAlpha = Math.floor(ghostColor[3] * pulse);
+
+        // Main ghost node circle (semi-transparent, pulsing)
+        layers.push(new ScatterplotLayer({
+            id: 'ghost-preview-node',
+            data: [{ position: [this.cursorLon, this.cursorLat] as [number, number] }],
+            getPosition: (d: { position: [number, number] }) => d.position,
+            getFillColor: [ghostColor[0], ghostColor[1], ghostColor[2], pulseAlpha],
+            getLineColor: isValid
+                ? [16, 185, 129, Math.floor(200 * pulse)]
+                : [239, 68, 68, Math.floor(200 * pulse)],
+            getLineWidth: 2,
+            lineWidthUnits: 'pixels',
+            stroked: true,
+            filled: true,
+            getRadius: tierSize * 600,
+            radiusMinPixels: 12,
+            radiusMaxPixels: 40,
+            pickable: false,
+            parameters: { depthTest: false },
+        }));
+
+        // Outer pulsing ring
+        layers.push(new ScatterplotLayer({
+            id: 'ghost-preview-ring',
+            data: [{ position: [this.cursorLon, this.cursorLat] as [number, number] }],
+            getPosition: (d: { position: [number, number] }) => d.position,
+            getFillColor: [0, 0, 0, 0],
+            getLineColor: isValid
+                ? [16, 185, 129, Math.floor(120 * pulse)]
+                : [239, 68, 68, Math.floor(120 * pulse)],
+            getLineWidth: 1,
+            lineWidthUnits: 'pixels',
+            stroked: true,
+            filled: false,
+            getRadius: tierSize * 900 * pulse,
+            radiusMinPixels: 18,
+            radiusMaxPixels: 60,
+            pickable: false,
+            parameters: { depthTest: false },
+        }));
+
+        // Cost + terrain label at cursor
+        const labelParts: string[] = [];
+        if (cursorTerrain) {
+            labelParts.push(cursorTerrain);
+        }
+        if (this.ghostCost !== null) {
+            labelParts.push(`$${this.formatCompactCost(this.ghostCost)}`);
+        }
+        if (!isValid) {
+            labelParts.push('INVALID');
+        }
+
+        if (labelParts.length > 0) {
+            layers.push(new TextLayer({
+                id: 'ghost-preview-label',
+                data: [{ position: [this.cursorLon, this.cursorLat] as [number, number], text: labelParts.join(' | ') }],
+                getPosition: (d: { position: [number, number] }) => d.position,
+                getText: (d: { text: string }) => d.text,
+                getSize: 11,
+                getColor: isValid ? [16, 185, 129, 220] : [239, 68, 68, 220],
+                getPixelOffset: [0, 28],
+                fontFamily: 'monospace',
+                fontWeight: 'bold',
+                getTextAnchor: 'middle',
+                getAlignmentBaseline: 'top',
+                parameters: { depthTest: false },
+            }));
+        }
+
+        return layers;
+    }
+
+    /** Find the terrain type of the cell nearest to the cursor position. */
+    private getTerrainAtCursor(): string | null {
+        if (this.cachedCells.length === 0) return null;
+
+        let minDist = Infinity;
+        let nearestTerrain: string | null = null;
+        const cLon = this.cursorLon;
+        const cLat = this.cursorLat;
+
+        for (const cell of this.cachedCells) {
+            const dLon = cell.lon - cLon;
+            const dLat = cell.lat - cLat;
+            const dist = dLon * dLon + dLat * dLat;
+            if (dist < minDist) {
+                minDist = dist;
+                nearestTerrain = cell.terrain;
+            }
+        }
+
+        return nearestTerrain;
+    }
+
+    /** Validate whether a node type can be placed on the given terrain. */
+    private validateNodePlacement(nodeType: string, terrain: string | null): boolean {
+        if (!terrain) return true; // Unknown terrain = allow
+
+        const OCEAN_TERRAINS = new Set(['OceanShallow', 'OceanDeep', 'Ocean']);
+        const COASTAL_TERRAINS = new Set(['Coastal']);
+        const LAND_TERRAINS = new Set(['Urban', 'Suburban', 'Rural', 'Mountainous', 'Desert', 'Tundra', 'Frozen']);
+        const isOcean = OCEAN_TERRAINS.has(terrain);
+        const isCoastal = COASTAL_TERRAINS.has(terrain);
+        const isLand = LAND_TERRAINS.has(terrain);
+
+        switch (nodeType) {
+            case 'SubmarineLanding':
+                return isCoastal;
+            case 'SatelliteGround':
+                return isLand || isCoastal;
+            case 'CellTower':
+            case 'WirelessRelay':
+            case 'CentralOffice':
+            case 'ExchangePoint':
+            case 'DataCenter':
+            case 'BackboneRouter':
+                return isLand || isCoastal;
+            default:
+                return !isOcean;
+        }
+    }
+
+    /** Format a cost number compactly (e.g., 1500000 -> "1.5M"). */
+    private formatCompactCost(cost: number): string {
+        if (cost >= 1_000_000_000) return `${(cost / 1_000_000_000).toFixed(1)}B`;
+        if (cost >= 1_000_000) return `${(cost / 1_000_000).toFixed(1)}M`;
+        if (cost >= 1_000) return `${(cost / 1_000).toFixed(0)}K`;
+        return cost.toFixed(0);
+    }
+
+    /** Update ghost preview build options at cursor (throttled). */
+    updateGhostBuildOptions(): void {
+        if (!bridge.isInitialized()) return;
+        const currentBuildMode = get(buildMode);
+        if (currentBuildMode !== 'node' || !this.cursorOnMap) {
+            this.ghostBuildOptions = [];
+            return;
+        }
+        this.ghostBuildOptions = bridge.getBuildableNodes(this.cursorLon, this.cursorLat);
+    }
+
+    /** Update cursor position for ghost preview. Called from handleMouseMove. */
+    updateCursorPosition(lon: number, lat: number): void {
+        this.cursorLon = lon;
+        this.cursorLat = lat;
+        this.cursorOnMap = true;
+    }
+
+    /** Mark cursor as off the map (hides ghost preview). */
+    clearCursorPosition(): void {
+        this.cursorOnMap = false;
+    }
+
     // ── Pathfinding preview ─────────────────────────────────────────────────
 
     private createPathfindingPreviewLayer(): Layer | null {
@@ -1052,6 +1326,20 @@ export class MapRenderer {
         // No explicit renderLayers() call needed — the animation loop handles it
     }
 
+    /** Update forecast disasters (recomputed every 10 ticks for stability). */
+    updateForecasts(regions: import('$lib/wasm/types').Region[], currentTick: number): void {
+        // Only recompute every 10 ticks to avoid flicker (seed includes tick)
+        const bucket = Math.floor(currentTick / 10);
+        if (bucket === this.lastForecastTick) return;
+        this.lastForecastTick = bucket;
+        this.forecastDisasters = computeDisasterForecasts(regions, bucket);
+    }
+
+    /** Get the current forecast disasters (for use by parent components). */
+    getForecasts(): ForecastDisaster[] {
+        return this.forecastDisasters;
+    }
+
     /** Update the cable drawing preview state and re-render. */
     setCableDrawingState(state: CableDrawingState): void {
         this.cableDrawingState = state;
@@ -1098,12 +1386,16 @@ export class MapRenderer {
             this.hoveredNodeId = null;
         }
 
-        // Dispatch map-mousemove with geo coordinates for cable drawing
+        // Dispatch map-mousemove with geo coordinates for cable drawing + ghost preview
         if (this.map) {
             const rect = this.container.getBoundingClientRect();
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
             const lngLat = this.map.unproject([x, y]);
+
+            // Update cursor position for ghost preview layer
+            this.updateCursorPosition(lngLat.lng, lngLat.lat);
+
             window.dispatchEvent(new CustomEvent('map-mousemove', {
                 detail: {
                     lon: lngLat.lng,
@@ -1149,11 +1441,14 @@ export class MapRenderer {
             this.map = null;
         }
 
-        // Clean up the terrain worker, vector terrain data, ocean depth, roads, and buildings
+        // Clean up the terrain worker, vector terrain data, ocean depth, roads, buildings, rivers, and terrain detail
         disposeTerrainWorker();
         disposeVectorTerrainData();
         disposeOceanDepthData();
         disposeRoadData();
         disposeBuildingData();
+        disposeRiverData();
+        disposeTerrainDetailData();
+        disposeElevationData();
     }
 }

@@ -66,6 +66,9 @@ fn command_target_corp(command: &Command) -> Option<EntityId> {
         | Command::VoteUpgrade { .. }
         | Command::UpdateEdgeWaypoints { .. }
         | Command::BidSpectrum { .. }
+        | Command::AssignSpectrum { .. }
+        | Command::UnassignSpectrum { .. }
+        | Command::PurchaseCableShip
         | Command::SetSpeed(_)
         | Command::TogglePause
         | Command::SaveGame { .. }

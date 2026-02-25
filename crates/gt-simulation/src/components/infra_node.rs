@@ -15,10 +15,12 @@ pub struct InfraNode {
     pub owner: EntityId,
     pub insured: bool,
     pub insurance_premium: Money,
-    /// Spectrum band assigned to this wireless node (e.g. "Band700MHz", "Band3500MHz").
-    /// Wireless nodes without an assigned band operate at 50% throughput.
+    /// Spectrum bands assigned to this wireless node via carrier aggregation.
+    /// Each entry is a band name (e.g. "Band700MHz", "Band3500MHz").
+    /// Multiple bands aggregate capacity. Wireless nodes without any assigned band
+    /// operate at 50% throughput.
     #[serde(default)]
-    pub assigned_band: Option<String>,
+    pub assigned_bands: Vec<String>,
     /// Whether this NAP has a validated FTTH chain (CO -> FeederFiber -> FDH -> DistributionFiber -> NAP).
     /// Set by the FTTH system each tick. Only meaningful for NetworkAccessPoint nodes.
     #[serde(default)]
@@ -154,7 +156,7 @@ impl InfraNode {
             owner,
             insured: false,
             insurance_premium: cost / 50, // 2% of construction cost per tick cycle
-            assigned_band: None,
+            assigned_bands: Vec::new(),
             active_ftth: false,
             repairing: false,
             repair_ticks_left: 0,

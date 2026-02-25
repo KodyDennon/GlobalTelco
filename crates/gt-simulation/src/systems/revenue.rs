@@ -173,13 +173,23 @@ const BUILDING_BASE_RATE: f64 = 50.0;
 /// Buildings covered by NAP radius alone get 85% of full revenue.
 const AUTO_COVERAGE_FACTOR: f64 = 0.85;
 
-/// Calculate revenue from buildings served by active FTTH NAPs.
+/// Calculate per-building subscriber revenue for a corporation.
 ///
-/// Each active NAP (marked by the FTTH system) covers buildings within its
-/// coverage radius. Revenue per building = base_rate * demand_value * service_quality.
+/// Each building footprint in the simulation serves as an individual demand point.
+/// Revenue per building = BUILDING_BASE_RATE * demand_value * service_quality * connection_factor * competition_share.
 ///
-/// Gap #15: Buildings with a direct DropCable edge from the NAP get 100% revenue.
-/// Buildings auto-covered by radius alone get 85% (15% overhead deduction).
+/// **Connection factor:**
+/// - Buildings with a direct DropCable from one of the corp's active NAPs get 100% (full rate).
+/// - Buildings auto-covered by NAP radius (no DropCable) get 85% (15% overhead deduction).
+///
+/// **Competition:**
+/// - If multiple corporations cover the same cell, subscriber revenue is split
+///   proportionally by bandwidth share at that cell (from `CellCoverage::per_corp_bandwidth`).
+/// - A monopoly corp in a cell captures 100% of building revenue in that cell.
+///
+/// **Fallback (no buildings seeded):**
+/// - If no building footprints exist yet, falls back to the legacy cell-based approximation
+///   to keep revenue flowing during early game or un-migrated saves.
 fn calculate_building_revenue(world: &GameWorld, corp_id: EntityId) -> i64 {
     // Collect this corporation's active FTTH NAPs
     let corp_nodes = world
@@ -222,32 +232,40 @@ fn calculate_building_revenue(world: &GameWorld, corp_id: EntityId) -> i64 {
     // Sort for deterministic processing
     active_naps.sort_unstable_by_key(|t| t.0);
 
-    // Build a set of NAP IDs that have at least one DropCable edge.
-    // NAPs with DropCables serve those buildings at 100%; remaining auto-covered at 85%.
-    let mut naps_with_drops: HashSet<EntityId> = HashSet::new();
-    // Count DropCable edges per NAP for proportional full-rate calculation
-    let mut drop_cable_count: std::collections::HashMap<EntityId, u32> =
-        std::collections::HashMap::new();
+    // Build a set of building entity IDs that have a direct DropCable from one of our NAPs.
+    // Also build a set of cells that our NAPs serve with DropCables.
+    let mut drop_cable_targets: HashSet<EntityId> = HashSet::new();
+    let mut drop_cable_cells: HashSet<usize> = HashSet::new();
+    let nap_ids: HashSet<EntityId> = active_naps.iter().map(|t| t.0).collect();
 
     for edge in world.infra_edges.values() {
         if edge.edge_type != EdgeType::DropCable {
             continue;
         }
-        // A DropCable connects from a NAP to a building (or vice versa).
-        // Check if source or target is one of our active NAPs.
-        for &(nap_id, _, _, _) in &active_naps {
-            if edge.source == nap_id || edge.target == nap_id {
-                naps_with_drops.insert(nap_id);
-                *drop_cable_count.entry(nap_id).or_insert(0) += 1;
+        // A DropCable connects a NAP to a building endpoint (or vice versa).
+        let nap_end = if nap_ids.contains(&edge.source) {
+            Some(edge.target)
+        } else if nap_ids.contains(&edge.target) {
+            Some(edge.source)
+        } else {
+            None
+        };
+        if let Some(target) = nap_end {
+            drop_cable_targets.insert(target);
+            // Also mark the cell of the target node (if it's an infra node) as DropCable-covered
+            if let Some(node) = world.infra_nodes.get(&target) {
+                drop_cable_cells.insert(node.cell_index);
             }
         }
     }
 
     let cell_spacing = world.cell_spacing_km;
-    let mut revenue: f64 = 0.0;
 
-    for &(nap_id, nap_cell, health, utilization) in &active_naps {
-        // Service quality = health * utilization_headroom (1.0 - utilization)
+    // Collect cells covered by our NAPs (with service quality per cell)
+    let mut nap_covered_cells: std::collections::HashMap<usize, f64> =
+        std::collections::HashMap::new();
+
+    for &(_nap_id, nap_cell, health, utilization) in &active_naps {
         let utilization_headroom = (1.0 - utilization).max(0.0);
         let service_quality = health * utilization_headroom;
 
@@ -255,12 +273,9 @@ fn calculate_building_revenue(world: &GameWorld, corp_id: EntityId) -> i64 {
             continue;
         }
 
-        // NAP coverage radius
         let base_radius_km = NodeType::NetworkAccessPoint.coverage_radius_km();
-        // Scale radius for grid resolution (same logic as coverage system)
         let radius_km = base_radius_km.max(cell_spacing * 0.8);
 
-        // Get NAP position
         let nap_pos = match world.grid_cell_positions.get(nap_cell) {
             Some(p) => *p,
             None => continue,
@@ -270,21 +285,154 @@ fn calculate_building_revenue(world: &GameWorld, corp_id: EntityId) -> i64 {
         let cos_lat = (nap_lat.to_radians()).cos().max(0.1);
         let lon_range = radius_km / (111.0 * cos_lat);
 
-        // Number of DropCable connections from this NAP
-        let drops = drop_cable_count.get(&nap_id).copied().unwrap_or(0);
-        let has_drops = naps_with_drops.contains(&nap_id);
+        for (cell_idx, &(cell_lat, cell_lon)) in world.grid_cell_positions.iter().enumerate() {
+            if (cell_lat - nap_lat).abs() > lat_range || (cell_lon - nap_lon).abs() > lon_range {
+                continue;
+            }
+            // Only cells that belong to a city have buildings
+            if !world.cell_to_city.contains_key(&cell_idx) {
+                continue;
+            }
+            // Use the best service quality from any covering NAP for this cell
+            let entry = nap_covered_cells
+                .entry(cell_idx)
+                .or_insert(0.0_f64);
+            if service_quality > *entry {
+                *entry = service_quality;
+            }
+        }
+    }
 
-        // Scan cells within NAP radius for buildings (city population)
+    if nap_covered_cells.is_empty() {
+        return 0;
+    }
+
+    // ── Per-building revenue calculation ─────────────────────────────────────
+
+    // Check if building footprints exist for any of the covered cities
+    let has_buildings = !world.building_footprints.is_empty();
+
+    if has_buildings {
+        // New per-building model: iterate over individual building footprints in covered cells
+        let mut revenue: f64 = 0.0;
+
+        // Collect and sort building IDs for deterministic processing
+        let mut building_entries: Vec<(EntityId, usize, f64)> = world
+            .building_footprints
+            .iter()
+            .filter_map(|(&bldg_id, bldg)| {
+                if bldg.effective_demand() <= 0.0 {
+                    return None;
+                }
+                let service_quality = nap_covered_cells.get(&bldg.cell_index)?;
+                Some((bldg_id, bldg.cell_index, *service_quality))
+            })
+            .collect();
+        building_entries.sort_unstable_by_key(|t| t.0);
+
+        for (bldg_id, cell_idx, service_quality) in building_entries {
+            let bldg = match world.building_footprints.get(&bldg_id) {
+                Some(b) => b,
+                None => continue,
+            };
+
+            let demand_value = bldg.effective_demand();
+
+            // Connection factor: DropCable cells get 100%, auto-covered get 85%
+            let connection_factor = if drop_cable_cells.contains(&cell_idx) {
+                1.0
+            } else {
+                AUTO_COVERAGE_FACTOR
+            };
+
+            // Competition share: if multiple corps cover this cell, split by bandwidth
+            let competition_share = world
+                .cell_coverage
+                .get(&cell_idx)
+                .map(|cov| {
+                    if cov.competitor_count() <= 1 {
+                        // Monopoly or no other coverage — full revenue
+                        1.0
+                    } else {
+                        // Split by bandwidth share; minimum 10% even with tiny share
+                        cov.corp_bandwidth_share(corp_id).max(0.1)
+                    }
+                })
+                .unwrap_or(1.0);
+
+            let bldg_revenue = BUILDING_BASE_RATE
+                * demand_value
+                * service_quality
+                * connection_factor
+                * competition_share;
+
+            revenue += bldg_revenue;
+        }
+
+        revenue as i64
+    } else {
+        // Legacy fallback: cell-based approximation for worlds without building footprints.
+        // This preserves backward compatibility with old save files.
+        calculate_building_revenue_legacy(world, corp_id, &active_naps, &drop_cable_cells, &nap_covered_cells)
+    }
+}
+
+/// Legacy cell-based building revenue approximation.
+/// Used as fallback when no BuildingFootprint entities have been seeded.
+fn calculate_building_revenue_legacy(
+    world: &GameWorld,
+    _corp_id: EntityId,
+    active_naps: &[(EntityId, usize, f64, f64)],
+    drop_cable_cells: &HashSet<usize>,
+    nap_covered_cells: &std::collections::HashMap<usize, f64>,
+) -> i64 {
+    let cell_spacing = world.cell_spacing_km;
+    let mut revenue: f64 = 0.0;
+
+    // Count total DropCable connections across all active NAPs for proportional allocation
+    let nap_ids: HashSet<EntityId> = active_naps.iter().map(|t| t.0).collect();
+    let mut drop_cable_count: std::collections::HashMap<EntityId, u32> =
+        std::collections::HashMap::new();
+    for edge in world.infra_edges.values() {
+        if edge.edge_type != EdgeType::DropCable {
+            continue;
+        }
+        for &(nap_id, _, _, _) in active_naps {
+            if edge.source == nap_id || edge.target == nap_id {
+                *drop_cable_count.entry(nap_id).or_insert(0) += 1;
+            }
+        }
+    }
+
+    for &(nap_id, nap_cell, health, utilization) in active_naps {
+        let utilization_headroom = (1.0 - utilization).max(0.0);
+        let service_quality = health * utilization_headroom;
+        if service_quality <= 0.0 {
+            continue;
+        }
+
+        let base_radius_km = NodeType::NetworkAccessPoint.coverage_radius_km();
+        let radius_km = base_radius_km.max(cell_spacing * 0.8);
+
+        let nap_pos = match world.grid_cell_positions.get(nap_cell) {
+            Some(p) => *p,
+            None => continue,
+        };
+        let (nap_lat, nap_lon) = nap_pos;
+        let lat_range = radius_km / 111.0;
+        let cos_lat = (nap_lat.to_radians()).cos().max(0.1);
+        let lon_range = radius_km / (111.0 * cos_lat);
+
+        let drops = drop_cable_count.get(&nap_id).copied().unwrap_or(0);
+        let has_drops = drops > 0;
+
         let mut covered_demand: f64 = 0.0;
         let mut covered_cell_count: u32 = 0;
 
         for (cell_idx, &(cell_lat, cell_lon)) in world.grid_cell_positions.iter().enumerate() {
-            // Bounding box check
             if (cell_lat - nap_lat).abs() > lat_range || (cell_lon - nap_lon).abs() > lon_range {
                 continue;
             }
-
-            // Check if cell belongs to a city (has "buildings" / demand)
             let city = match world
                 .cell_to_city
                 .get(&cell_idx)
@@ -293,15 +441,11 @@ fn calculate_building_revenue(world: &GameWorld, corp_id: EntityId) -> i64 {
                 Some(c) => c,
                 None => continue,
             };
-
-            // Calculate demand value for this cell
             let cell_pop = city.population / city.cells.len().max(1) as u64;
-            let demand_value = city.telecom_demand * (cell_pop as f64 / 1000.0); // Normalize: demand per 1000 people
-
+            let demand_value = city.telecom_demand * (cell_pop as f64 / 1000.0);
             if demand_value <= 0.0 {
                 continue;
             }
-
             covered_demand += demand_value;
             covered_cell_count += 1;
         }
@@ -310,10 +454,6 @@ fn calculate_building_revenue(world: &GameWorld, corp_id: EntityId) -> i64 {
             continue;
         }
 
-        // Calculate revenue with overhead deduction (Gap #15).
-        // If the NAP has DropCable connections, a portion of covered buildings
-        // are served at full rate and the rest at the reduced auto-coverage rate.
-        // We approximate: drop_cable buildings = min(drops, covered_cell_count).
         let full_rate_cells = if has_drops {
             drops.min(covered_cell_count)
         } else {
@@ -321,7 +461,6 @@ fn calculate_building_revenue(world: &GameWorld, corp_id: EntityId) -> i64 {
         };
         let auto_rate_cells = covered_cell_count.saturating_sub(full_rate_cells);
 
-        // Distribute demand proportionally across cells
         let demand_per_cell = if covered_cell_count > 0 {
             covered_demand / covered_cell_count as f64
         } else {
