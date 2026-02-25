@@ -247,6 +247,7 @@ impl WasmBridge {
                     "current_load": e.current_load,
                     "latency_ms": e.latency_ms,
                     "length_km": e.length_km,
+                    "health": e.health,
                     "utilization": e.utilization(),
                     "src_x": src_pos.map(|p| p.x).unwrap_or(0.0),
                     "src_y": src_pos.map(|p| p.y).unwrap_or(0.0),
@@ -254,6 +255,8 @@ impl WasmBridge {
                     "dst_y": dst_pos.map(|p| p.y).unwrap_or(0.0),
                     "src_cell": src_cell,
                     "dst_cell": dst_cell,
+                    "waypoints": e.waypoints.iter().map(|&(lon, lat)| [lon, lat]).collect::<Vec<_>>(),
+                    "deployment": format!("{:?}", e.deployment),
                 })
             })
             .collect();
@@ -844,6 +847,7 @@ impl WasmBridge {
                     "current_load": e.current_load,
                     "latency_ms": e.latency_ms,
                     "length_km": e.length_km,
+                    "health": e.health,
                     "utilization": e.utilization(),
                     "owner": e.owner,
                     "owner_name": owner_name,
@@ -853,6 +857,8 @@ impl WasmBridge {
                     "dst_y": dst_pos.map(|p| p.y).unwrap_or(0.0),
                     "src_cell": src_cell,
                     "dst_cell": dst_cell,
+                    "waypoints": e.waypoints.iter().map(|&(lon, lat)| [lon, lat]).collect::<Vec<_>>(),
+                    "deployment": format!("{:?}", e.deployment),
                 })
             })
             .collect();

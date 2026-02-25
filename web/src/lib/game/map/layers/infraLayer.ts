@@ -1,11 +1,12 @@
-import { LineLayer, ScatterplotLayer, TextLayer, IconLayer, ColumnLayer } from '@deck.gl/layers';
+import { PathLayer, ScatterplotLayer, TextLayer, IconLayer, ColumnLayer } from '@deck.gl/layers';
 import { TripsLayer } from '@deck.gl/geo-layers';
 import { CollisionFilterExtension } from '@deck.gl/extensions';
 import type { Layer } from '@deck.gl/core';
 
 import * as bridge from '$lib/wasm/bridge';
-import type { AllInfraNode, AllInfraEdge } from '$lib/wasm/types';
+import type { AllInfraNode, DeploymentMethod } from '$lib/wasm/types';
 import { CORP_COLORS, EDGE_STYLES, NODE_TIER_SIZE, NETWORK_TIER_LABEL, toIconKey } from '../constants';
+import { catmullRomSpline } from '../spline';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -122,39 +123,31 @@ interface TripDatum {
     color: [number, number, number, number];
 }
 
-/** Generate animated trip paths for high-traffic edges. */
+/** Generate animated trip paths for high-traffic edges.
+ *  Particles now follow the edge's spline path for visual consistency. */
 function buildTrips(
     edges: ProcessedEdge[],
-    currentTime: number,
+    _currentTime: number,
 ): TripDatum[] {
     const trips: TripDatum[] = [];
     for (const edge of edges) {
         const util = edge.utilization;
         if (util <= 0.7) continue; // only high traffic gets particles
 
-        // Create a path from source to target with midpoint for smoother arcs
-        const srcLon = edge.src_x;
-        const srcLat = edge.src_y;
-        const dstLon = edge.dst_x;
-        const dstLat = edge.dst_y;
-        const midLon = (srcLon + dstLon) / 2;
-        const midLat = (srcLat + dstLat) / 2;
+        // Use the pre-computed spline path so particles follow curves
+        const path = edge.path;
+        if (path.length < 2) continue;
 
-        const path: [number, number][] = [
-            [srcLon, srcLat],
-            [midLon, midLat],
-            [dstLon, dstLat],
-        ];
-
-        // Duration proportional to inverse utilization (busier = more frequent particles)
+        // Distribute timestamps evenly along the path
         const duration = 200; // trip loop duration in time units
-        const t0 = 0;
-        const t1 = duration * 0.5;
-        const t2 = duration;
+        const timestamps: number[] = [];
+        for (let i = 0; i < path.length; i++) {
+            timestamps.push((i / (path.length - 1)) * duration);
+        }
 
         trips.push({
             path,
-            timestamps: [t0, t1, t2],
+            timestamps,
             color: [255, 255, 255, 200],
         });
     }
@@ -175,6 +168,8 @@ interface ProcessedNode {
     under_construction: boolean;
     health: number;
     utilization: number;
+    max_throughput: number;
+    current_load: number;
     owner: number;
     owner_name: string;
     tierRank: number;
@@ -186,11 +181,16 @@ interface ProcessedEdge {
     id: number;
     sourcePosition: [number, number];
     targetPosition: [number, number];
+    /** Tessellated spline path (or straight-line fallback) for PathLayer rendering. */
+    path: [number, number][];
     color: [number, number, number, number];
     width: number;
     edge_type: string;
     utilization: number;
     bandwidth: number;
+    current_load: number;
+    length_km: number;
+    health: number;
     source: number;
     target: number;
     src_x: number;
@@ -198,6 +198,10 @@ interface ProcessedEdge {
     dst_x: number;
     dst_y: number;
     tierRank: number;
+    /** Raw waypoints from sim data (empty if none). */
+    waypoints: [number, number][];
+    /** Deployment method: Aerial (on poles) or Underground (buried). */
+    deployment: DeploymentMethod;
 }
 
 // ── Main export ──────────────────────────────────────────────────────────────
@@ -318,15 +322,56 @@ export function createInfraLayers(opts: {
                 opacity = Math.min(255, opacity + 40);
             }
 
+            // Health-based color tinting (green > 0.8, amber 0.5-0.8, red < 0.5)
+            const health = edge.health ?? 1;
+            if (!isCongestion && !isTraffic) {
+                if (health < 0.5) {
+                    // Red tint for damaged edges
+                    color = [
+                        Math.min(255, Math.floor(color[0] * 0.3 + 239 * 0.7)),
+                        Math.min(255, Math.floor(color[1] * 0.3 + 68 * 0.7)),
+                        Math.min(255, Math.floor(color[2] * 0.3 + 68 * 0.7)),
+                    ];
+                } else if (health < 0.8) {
+                    // Amber tint for degraded edges
+                    color = [
+                        Math.min(255, Math.floor(color[0] * 0.5 + 245 * 0.5)),
+                        Math.min(255, Math.floor(color[1] * 0.5 + 158 * 0.5)),
+                        Math.min(255, Math.floor(color[2] * 0.5 + 11 * 0.5)),
+                    ];
+                }
+                // health >= 0.8: keep original color (healthy)
+            }
+
+            // Build the display path: spline if waypoints exist, straight line otherwise
+            const rawWaypoints: [number, number][] = (edge as any).waypoints ?? [];
+            const deployment: DeploymentMethod = (edge as any).deployment ?? 'Underground';
+
+            let path: [number, number][];
+            if (rawWaypoints.length >= 2) {
+                // Waypoints already include src→dst route; tessellate as spline
+                path = catmullRomSpline(rawWaypoints);
+            } else {
+                // Fallback: straight line from source to target
+                path = [
+                    [edge.src_x, edge.src_y],
+                    [edge.dst_x, edge.dst_y],
+                ];
+            }
+
             allEdges.push({
                 id: edge.id,
                 sourcePosition: [edge.src_x, edge.src_y],
                 targetPosition: [edge.dst_x, edge.dst_y],
+                path,
                 color: [color[0], color[1], color[2], opacity],
                 width,
                 edge_type: edge.edge_type,
                 utilization: edge.utilization || 0,
                 bandwidth: edge.bandwidth || 0,
+                current_load: edge.current_load || 0,
+                length_km: edge.length_km || 0,
+                health: edge.health ?? 1,
                 source: edge.source,
                 target: edge.target,
                 src_x: edge.src_x,
@@ -334,6 +379,8 @@ export function createInfraLayers(opts: {
                 dst_x: edge.dst_x,
                 dst_y: edge.dst_y,
                 tierRank,
+                waypoints: rawWaypoints,
+                deployment,
             });
         }
 
@@ -361,6 +408,8 @@ export function createInfraLayers(opts: {
                 under_construction: node.under_construction,
                 health: node.health ?? 1,
                 utilization: node.utilization || 0,
+                max_throughput: node.max_throughput || 0,
+                current_load: node.current_load || 0,
                 owner: corp.id,
                 owner_name: corp.name,
                 tierRank,
@@ -373,15 +422,26 @@ export function createInfraLayers(opts: {
     // ── Build layer array ────────────────────────────────────────────────────
     const layers: Layer[] = [];
 
-    // ── 1. Edge lines ────────────────────────────────────────────────────────
-    layers.push(new LineLayer({
+    // ── 1. Edge paths (spline curves or straight lines) ────────────────────
+    // At high zoom (5+), Aerial edges get dashed style (poles), Underground stays solid.
+    const highZoom = currentZoom >= 5;
+
+    layers.push(new PathLayer({
         id: 'infra-edges',
         data: allEdges,
-        getSourcePosition: (d: ProcessedEdge) => d.sourcePosition,
-        getTargetPosition: (d: ProcessedEdge) => d.targetPosition,
+        getPath: (d: ProcessedEdge) => d.path,
         getColor: (d: ProcessedEdge) => d.color,
         getWidth: (d: ProcessedEdge) => d.width,
         widthUnits: 'pixels',
+        widthMinPixels: 1,
+        widthMaxPixels: 12,
+        jointRounded: true,
+        capRounded: true,
+        // Dashed lines for Aerial deployment at high zoom
+        getDashArray: highZoom
+            ? (d: ProcessedEdge) => d.deployment === 'Aerial' ? [8, 4] : [0, 0]
+            : [0, 0],
+        dashJustified: true,
         pickable: true,
         autoHighlight: true,
         onClick: ({ object }: any) => {
@@ -401,11 +461,10 @@ export function createInfraLayers(opts: {
     if (mediumTrafficEdges.length > 0) {
         // Pulse factor oscillates between 0.4 and 1.0
         const pulse = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(currentTime * 0.003));
-        layers.push(new LineLayer({
+        layers.push(new PathLayer({
             id: 'infra-edges-medium-glow',
             data: mediumTrafficEdges,
-            getSourcePosition: (d: ProcessedEdge) => d.sourcePosition,
-            getTargetPosition: (d: ProcessedEdge) => d.targetPosition,
+            getPath: (d: ProcessedEdge) => d.path,
             getColor: (d: ProcessedEdge) => [
                 Math.min(255, d.color[0] + 60),
                 Math.min(255, d.color[1] + 60),
@@ -414,6 +473,8 @@ export function createInfraLayers(opts: {
             ],
             getWidth: (d: ProcessedEdge) => d.width * 2.5,
             widthUnits: 'pixels',
+            jointRounded: true,
+            capRounded: true,
             pickable: false,
             parameters: {
                 blend: true,
@@ -595,15 +656,16 @@ export function createInfraLayers(opts: {
             );
 
             if (connectedEdges.length > 0) {
-                // Highlight connected edges in bright accent color
-                layers.push(new LineLayer({
+                // Highlight connected edges in bright accent color (follows spline path)
+                layers.push(new PathLayer({
                     id: 'infra-hover-edges',
                     data: connectedEdges,
-                    getSourcePosition: (d: ProcessedEdge) => d.sourcePosition,
-                    getTargetPosition: (d: ProcessedEdge) => d.targetPosition,
+                    getPath: (d: ProcessedEdge) => d.path,
                     getColor: [255, 255, 100, 200],
                     getWidth: 4,
                     widthUnits: 'pixels',
+                    jointRounded: true,
+                    capRounded: true,
                     pickable: false,
                     parameters: { depthTest: false },
                 }));
@@ -709,25 +771,51 @@ export function createInfraLayers(opts: {
 
 /**
  * Estimate tier rank for an edge type based on name convention.
- * FiberLocal/Copper = T1-T2, FiberRegional/Microwave = T2-T3,
- * FiberNational = T3, Submarine/Satellite = T4-T5.
+ * Local/access cables = T1, Regional/metro = T2, National/long-haul = T3,
+ * Continental/submarine = T4, Global backbone/future = T5.
  */
 function edgeTierRank(edgeType: string): number {
     switch (edgeType) {
+        // T1 — Local / access
         case 'Copper':
-            return 1;
         case 'FiberLocal':
+        case 'TelegraphWire':
+        case 'DropCable':
+        case 'DistributionFiber':
             return 1;
+
+        // T2 — Regional / metro
         case 'Microwave':
-            return 2;
+        case 'MicrowaveLink':
         case 'FiberRegional':
+        case 'FeederFiber':
+        case 'FiberMetro':
+        case 'CoaxialCable':
+        case 'CopperTrunkLine':
             return 2;
+
+        // T3 — National / long-haul
         case 'FiberNational':
+        case 'FiberLongHaul':
+        case 'LongDistanceCopper':
             return 3;
+
+        // T4 — Continental / submarine / satellite
         case 'Satellite':
-            return 4;
+        case 'SatelliteLEOLink':
+        case 'EarlySatelliteLink':
         case 'Submarine':
+        case 'SubseaFiberCable':
+        case 'SubseaTelegraphCable':
+        case 'DWDM_Backbone':
+            return 4;
+
+        // T5 — Global backbone / near-future
+        case 'QuantumFiberLink':
+        case 'TerahertzBeam':
+        case 'LaserInterSatelliteLink':
             return 5;
+
         default:
             return 1;
     }

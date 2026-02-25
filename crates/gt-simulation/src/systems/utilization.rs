@@ -57,13 +57,40 @@ fn reset_edge_latency(world: &mut GameWorld) {
             .iter()
             .map(|(&id, edge)| {
                 let latency_per_km = match edge.edge_type {
+                    // Fiber-based: 0.005 ms/km
                     EdgeType::FiberLocal
                     | EdgeType::FiberRegional
                     | EdgeType::FiberNational
-                    | EdgeType::Submarine => 0.005,
-                    EdgeType::Copper => 0.02,
-                    EdgeType::Microwave => 0.003,
+                    | EdgeType::Submarine
+                    | EdgeType::SubseaFiberCable
+                    | EdgeType::FeederFiber
+                    | EdgeType::DistributionFiber
+                    | EdgeType::DropCable => 0.005,
+                    // Modern fiber with DWDM: slightly better
+                    EdgeType::FiberMetro
+                    | EdgeType::FiberLongHaul => 0.004,
+                    EdgeType::DWDM_Backbone => 0.003,
+                    // Copper: 0.02 ms/km
+                    EdgeType::Copper
+                    | EdgeType::CopperTrunkLine
+                    | EdgeType::LongDistanceCopper => 0.02,
+                    // Coaxial: 0.015
+                    EdgeType::CoaxialCable => 0.015,
+                    // Microwave: 0.003 ms/km
+                    EdgeType::Microwave | EdgeType::MicrowaveLink => 0.003,
+                    // Satellite: high latency
                     EdgeType::Satellite => 0.5,
+                    EdgeType::EarlySatelliteLink => 0.6,
+                    EdgeType::SatelliteLEOLink => 0.01,
+                    // Telegraph: very slow
+                    EdgeType::TelegraphWire => 0.1,
+                    EdgeType::SubseaTelegraphCable => 0.2,
+                    // Quantum: ultra-low latency
+                    EdgeType::QuantumFiberLink => 0.001,
+                    // Terahertz: ultra-low
+                    EdgeType::TerahertzBeam => 0.001,
+                    // Laser inter-satellite
+                    EdgeType::LaserInterSatelliteLink => 0.0005,
                 };
                 (id, latency_per_km * edge.length_km)
             })
@@ -538,13 +565,53 @@ fn apply_loads(world: &mut GameWorld, accum: &TrafficAccumulator) {
 fn scaled_coverage_radius(node_type: NodeType, cell_spacing: f64) -> f64 {
     let base_radius = node_type.coverage_radius_km();
     let min_cells = match node_type {
-        NodeType::CellTower => 2.5,
-        NodeType::WirelessRelay => 1.5,
-        NodeType::CentralOffice => 1.5,
-        NodeType::SatelliteGround => 6.0,
-        NodeType::DataCenter | NodeType::BackboneRouter => 1.0,
-        NodeType::ExchangePoint => 1.0,
-        NodeType::SubmarineLanding => 0.5,
+        // Wireless access nodes — wide coverage needed
+        NodeType::CellTower | NodeType::MacroCell => 2.5,
+        NodeType::WirelessRelay | NodeType::MeshDroneRelay => 1.5,
+        // Wired access with some coverage
+        NodeType::CentralOffice
+        | NodeType::ManualExchange
+        | NodeType::AutomaticExchange
+        | NodeType::DigitalSwitch
+        | NodeType::ISPGateway
+        | NodeType::FiberPOP
+        | NodeType::CoaxHub
+        | NodeType::ContentDeliveryNode => 1.5,
+        // Satellite — very wide
+        NodeType::SatelliteGround
+        | NodeType::SatelliteGroundStation
+        | NodeType::LEO_SatelliteGateway => 6.0,
+        // Core/backbone — small footprint
+        NodeType::DataCenter
+        | NodeType::BackboneRouter
+        | NodeType::EarlyDataCenter
+        | NodeType::ColocationFacility
+        | NodeType::EdgeDataCenter
+        | NodeType::HyperscaleDataCenter
+        | NodeType::CloudOnRamp
+        | NodeType::DWDM_Terminal
+        | NodeType::NeuromorphicEdgeNode
+        | NodeType::InternetExchangePoint => 1.0,
+        // Exchange/aggregation
+        NodeType::ExchangePoint
+        | NodeType::MicrowaveTower
+        | NodeType::LongDistanceRelay
+        | NodeType::QuantumRepeater => 1.0,
+        // Small access nodes
+        NodeType::SmallCell
+        | NodeType::TerahertzRelay
+        | NodeType::TelephonePole
+        | NodeType::NetworkAccessPoint
+        | NodeType::FiberDistributionHub => 0.8,
+        // Passive/landing points
+        NodeType::SubmarineLanding
+        | NodeType::SubseaLandingStation
+        | NodeType::CableHut
+        | NodeType::UnderwaterDataCenter
+        | NodeType::FiberSplicePoint => 0.5,
+        // Telegraph
+        NodeType::TelegraphOffice => 1.5,
+        NodeType::TelegraphRelay => 0.8,
     };
     base_radius.max(cell_spacing * min_cells)
 }

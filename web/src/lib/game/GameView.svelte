@@ -4,7 +4,8 @@
 	import MapView from "./MapView.svelte";
 	import HUD from "./HUD.svelte";
 	import InfoPanel from "./InfoPanel.svelte";
-	import BuildMenu from "./BuildMenu.svelte";
+	import RadialBuildMenu from "./RadialBuildMenu.svelte";
+	import BuildHotbar from "./BuildHotbar.svelte";
 	import NotificationFeed from "./NotificationFeed.svelte";
 	import Tooltip from "./Tooltip.svelte";
 	import Tutorial from "./Tutorial.svelte";
@@ -227,7 +228,8 @@
 		{/if}
 		<HUD />
 		<InfoPanel />
-		<BuildMenu />
+		<RadialBuildMenu />
+		<BuildHotbar />
 		<NotificationFeed />
 		<Tooltip />
 		<Tutorial />
@@ -288,11 +290,13 @@
 						<div class="hotkey-section">
 							<h4>Game</h4>
 							<div class="hk"><kbd>Space</kbd> Pause / Resume</div>
-							<div class="hk"><kbd>1-4</kbd> Set Speed</div>
+							<div class="hk"><kbd>Shift+1-4</kbd> Set Speed</div>
 							<div class="hk"><kbd>Ctrl+S</kbd> Quick Save</div>
 						</div>
 						<div class="hotkey-section">
 							<h4>Build</h4>
+							<div class="hk"><kbd>1-9</kbd> Hotbar Slots</div>
+							<div class="hk"><kbd>Right-click</kbd> Radial Menu</div>
 							<div class="hk"><kbd>B</kbd> Node Build Mode</div>
 							<div class="hk"><kbd>E</kbd> Edge Build Mode</div>
 							<div class="hk"><kbd>Esc</kbd> Cancel</div>

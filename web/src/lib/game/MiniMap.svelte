@@ -15,6 +15,8 @@
 	const LAT_MIN = -80;
 	const LAT_MAX = 80;
 
+	const STORAGE_KEY = 'gt-minimap-visible';
+
 	// Muted pastel region fills — semi-transparent for layered look
 	const REGION_FILLS = [
 		'rgba(124, 158, 178, 0.35)',
@@ -51,6 +53,9 @@
 
 	let canvas: HTMLCanvasElement | undefined = $state();
 	let ctx: CanvasRenderingContext2D | null = $state(null);
+
+	// Visibility toggle (persisted in localStorage)
+	let visible = $state(true);
 
 	// Pre-rendered terrain background (scaled down from full terrain bitmap)
 	let terrainImage: HTMLCanvasElement | null = $state(null);
@@ -99,8 +104,6 @@
 			const miniCtx = miniCanvas.getContext('2d')!;
 
 			// Sample the equirectangular bitmap and re-project to Mercator
-			// For each row of the minimap, find the corresponding latitude,
-			// then look up the source row in the equirectangular source
 			const srcW = fullBitmap.width;
 			const srcH = fullBitmap.height;
 			const srcCtx = fullBitmap.getContext('2d')!;
@@ -192,34 +195,56 @@
 			// Clamp to minimap bounds
 			if (cx < 0 || cx > CANVAS_W || cy < 0 || cy > CANVAS_H) continue;
 
-			// Radius by population tier
+			// Radius and color by population tier
 			let radius: number;
-			let alpha: number;
+			let color: string;
 			if (city.population > 5_000_000) {
 				radius = 2.5;
-				alpha = 1.0;
+				color = 'rgba(255, 160, 60, 1.0)';  // Bright orange (Megalopolis)
 			} else if (city.population > 1_000_000) {
 				radius = 2.0;
-				alpha = 0.9;
+				color = 'rgba(255, 180, 80, 0.9)';  // Orange (Metropolis)
 			} else if (city.population > 250_000) {
 				radius = 1.5;
-				alpha = 0.8;
+				color = 'rgba(255, 220, 100, 0.8)';  // Yellow (City)
 			} else if (city.population > 50_000) {
 				radius = 1.0;
-				alpha = 0.6;
+				color = 'rgba(255, 220, 120, 0.6)';  // Dim yellow (Town)
 			} else {
 				radius = 0.7;
-				alpha = 0.4;
+				color = 'rgba(255, 220, 120, 0.4)';  // Dim yellow (Hamlet)
 			}
 
-			// Warm city glow
-			ctx.fillStyle = `rgba(255, 210, 120, ${alpha})`;
+			ctx.fillStyle = color;
 			ctx.beginPath();
 			ctx.arc(cx, cy, radius, 0, Math.PI * 2);
 			ctx.fill();
 		}
 
-		// ── Layer 5: Player infrastructure nodes (tiny dots) ────────────────
+		// ── Layer 5: Competitor infrastructure (grey dots) ───────────────────
+		if (bridge.isInitialized()) {
+			try {
+				const allInfra = bridge.getAllInfrastructure();
+				const worldInfo = bridge.getWorldInfo();
+				const playerId = worldInfo.player_corp_id;
+
+				// Draw competitor nodes as small grey dots
+				ctx.fillStyle = 'rgba(120, 130, 150, 0.5)';
+				for (const node of allInfra.nodes) {
+					if (node.owner === playerId) continue;
+					const nx = lonToX(node.x);
+					const ny = mercatorY(node.y);
+					if (nx < 0 || nx > CANVAS_W || ny < 0 || ny > CANVAS_H) continue;
+					ctx.beginPath();
+					ctx.arc(nx, ny, 1, 0, Math.PI * 2);
+					ctx.fill();
+				}
+			} catch {
+				// All infrastructure query failed; skip competitor layer
+			}
+		}
+
+		// ── Layer 6: Player infrastructure nodes (emerald dots) ──────────────
 		if (bridge.isInitialized()) {
 			try {
 				const worldInfo = bridge.getWorldInfo();
@@ -254,7 +279,7 @@
 			}
 		}
 
-		// ── Layer 6: Viewport rectangle ─────────────────────────────────────
+		// ── Layer 7: Viewport rectangle ─────────────────────────────────────
 		const vp = $viewport;
 		const vpLeft = lonToX(vp.minX);
 		const vpRight = lonToX(vp.maxX);
@@ -359,10 +384,27 @@
 		isDragging = false;
 	}
 
+	function toggleVisibility() {
+		visible = !visible;
+		try {
+			localStorage.setItem(STORAGE_KEY, visible ? '1' : '0');
+		} catch {
+			// localStorage unavailable — ignore
+		}
+	}
+
 	// Build terrain once data is available
 	let terrainBuilt = false;
 
 	onMount(() => {
+		// Restore visibility from localStorage
+		try {
+			const stored = localStorage.getItem(STORAGE_KEY);
+			if (stored === '0') visible = false;
+		} catch {
+			// localStorage unavailable — default to visible
+		}
+
 		if (canvas) {
 			ctx = canvas.getContext('2d');
 		}
@@ -385,7 +427,7 @@
 		}
 	});
 
-	// Re-render whenever reactive state changes
+	// Re-render whenever reactive state changes (throttled to ~2s via effect debouncing)
 	$effect(() => {
 		void $viewport;
 		void $zoomLevel;
@@ -396,18 +438,43 @@
 	});
 </script>
 
-<div class="minimap-container" role="navigation" aria-label="Mini map" use:tooltip={'Click to navigate the map'}>
-	<canvas
-		bind:this={canvas}
-		width={CANVAS_W}
-		height={CANVAS_H}
-		class="minimap-canvas"
-		onmousedown={handleMouseDown}
-		onmousemove={handleMouseMove}
-		onmouseup={handleMouseUp}
-	></canvas>
-	<div class="minimap-label">MAP</div>
-</div>
+{#if visible}
+	<div class="minimap-container" role="navigation" aria-label="Mini map" use:tooltip={'Click to navigate the map. Drag to pan.'}>
+		<canvas
+			bind:this={canvas}
+			width={CANVAS_W}
+			height={CANVAS_H}
+			class="minimap-canvas"
+			onmousedown={handleMouseDown}
+			onmousemove={handleMouseMove}
+			onmouseup={handleMouseUp}
+		></canvas>
+		<div class="minimap-label">MAP</div>
+		<button
+			class="minimap-toggle-close"
+			onclick={toggleVisibility}
+			aria-label="Hide minimap"
+			use:tooltip={'Hide minimap (M)'}
+		>
+			<svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+				<path d="M1 1L7 7M7 1L1 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+			</svg>
+		</button>
+	</div>
+{:else}
+	<button
+		class="minimap-toggle-show"
+		onclick={toggleVisibility}
+		aria-label="Show minimap"
+		use:tooltip={'Show minimap (M)'}
+	>
+		<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+			<rect x="1" y="1" width="12" height="8" rx="1" stroke="currentColor" stroke-width="1.2"/>
+			<rect x="3" y="3" width="4" height="3" rx="0.5" stroke="currentColor" stroke-width="0.8" stroke-dasharray="1.5 0.8"/>
+			<circle cx="10" cy="5" r="1" fill="currentColor"/>
+		</svg>
+	</button>
+{/if}
 
 <style>
 	.minimap-container {
@@ -422,6 +489,7 @@
 		border-radius: 6px;
 		overflow: hidden;
 		cursor: crosshair;
+		opacity: 0.9;
 		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 	}
 
@@ -442,5 +510,55 @@
 		pointer-events: none;
 		font-family: 'Inter', sans-serif;
 		text-transform: uppercase;
+	}
+
+	.minimap-toggle-close {
+		position: absolute;
+		top: 3px;
+		right: 3px;
+		width: 16px;
+		height: 16px;
+		border: none;
+		background: rgba(0, 0, 0, 0.5);
+		color: rgba(255, 255, 255, 0.4);
+		border-radius: 3px;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+		transition: all 0.15s;
+		line-height: 1;
+	}
+
+	.minimap-toggle-close:hover {
+		background: rgba(239, 68, 68, 0.4);
+		color: rgba(255, 255, 255, 0.9);
+	}
+
+	.minimap-toggle-show {
+		position: absolute;
+		bottom: 70px;
+		right: 16px;
+		z-index: 12;
+		width: 32px;
+		height: 28px;
+		border: 1px solid rgba(55, 65, 81, 0.5);
+		background: rgba(17, 24, 39, 0.9);
+		color: rgba(255, 255, 255, 0.5);
+		border-radius: 6px;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+		transition: all 0.15s;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+	}
+
+	.minimap-toggle-show:hover {
+		background: rgba(31, 41, 55, 0.95);
+		color: rgba(255, 255, 255, 0.8);
+		border-color: rgba(75, 85, 99, 0.6);
 	}
 </style>

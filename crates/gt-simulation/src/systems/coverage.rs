@@ -160,15 +160,54 @@ pub fn run(world: &mut GameWorld) {
 
         // Scale radius: ensure minimum coverage of ~2-3 grid cells for gameplay
         let min_cells = match node_type {
-            gt_common::types::NodeType::CellTower => 2.5,
-            gt_common::types::NodeType::WirelessRelay => 1.5,
-            gt_common::types::NodeType::CentralOffice => 1.5,
-            gt_common::types::NodeType::SatelliteGround => 6.0,
-            gt_common::types::NodeType::DataCenter | gt_common::types::NodeType::BackboneRouter => {
-                1.0
-            }
-            gt_common::types::NodeType::ExchangePoint => 1.0,
-            gt_common::types::NodeType::SubmarineLanding => 0.5,
+            // Wireless access nodes
+            gt_common::types::NodeType::CellTower
+            | gt_common::types::NodeType::MacroCell => 2.5,
+            gt_common::types::NodeType::WirelessRelay
+            | gt_common::types::NodeType::MeshDroneRelay => 1.5,
+            // Wired access with some coverage
+            gt_common::types::NodeType::CentralOffice
+            | gt_common::types::NodeType::ManualExchange
+            | gt_common::types::NodeType::AutomaticExchange
+            | gt_common::types::NodeType::DigitalSwitch
+            | gt_common::types::NodeType::ISPGateway
+            | gt_common::types::NodeType::FiberPOP
+            | gt_common::types::NodeType::CoaxHub
+            | gt_common::types::NodeType::ContentDeliveryNode
+            | gt_common::types::NodeType::TelegraphOffice => 1.5,
+            // Satellite — very wide
+            gt_common::types::NodeType::SatelliteGround
+            | gt_common::types::NodeType::SatelliteGroundStation
+            | gt_common::types::NodeType::LEO_SatelliteGateway => 6.0,
+            // Core/backbone nodes
+            gt_common::types::NodeType::DataCenter
+            | gt_common::types::NodeType::BackboneRouter
+            | gt_common::types::NodeType::EarlyDataCenter
+            | gt_common::types::NodeType::ColocationFacility
+            | gt_common::types::NodeType::EdgeDataCenter
+            | gt_common::types::NodeType::HyperscaleDataCenter
+            | gt_common::types::NodeType::CloudOnRamp
+            | gt_common::types::NodeType::DWDM_Terminal
+            | gt_common::types::NodeType::NeuromorphicEdgeNode
+            | gt_common::types::NodeType::InternetExchangePoint => 1.0,
+            // Exchange/aggregation
+            gt_common::types::NodeType::ExchangePoint
+            | gt_common::types::NodeType::MicrowaveTower
+            | gt_common::types::NodeType::LongDistanceRelay
+            | gt_common::types::NodeType::QuantumRepeater => 1.0,
+            // Small access
+            gt_common::types::NodeType::SmallCell
+            | gt_common::types::NodeType::TerahertzRelay
+            | gt_common::types::NodeType::TelephonePole
+            | gt_common::types::NodeType::NetworkAccessPoint
+            | gt_common::types::NodeType::FiberDistributionHub
+            | gt_common::types::NodeType::TelegraphRelay => 0.8,
+            // Passive/landing
+            gt_common::types::NodeType::SubmarineLanding
+            | gt_common::types::NodeType::SubseaLandingStation
+            | gt_common::types::NodeType::CableHut
+            | gt_common::types::NodeType::UnderwaterDataCenter
+            | gt_common::types::NodeType::FiberSplicePoint => 0.5,
         };
         let radius_km = base_radius_km.max(cell_spacing * min_cells);
 

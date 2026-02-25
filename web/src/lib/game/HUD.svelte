@@ -3,13 +3,15 @@
 	import {
 		activePanelGroup,
 		buildMode,
-		buildMenuLocation,
 		buildEdgeSource,
 		activeOverlay,
 		selectedEdgeType,
 		edgeTargets,
+		selectedBuildItem,
+		buildCategory,
 		openPanelGroup,
 		closePanelGroup,
+		exitPlacementMode,
 		canEdgeConnect,
 		getEdgeTypesForSource,
 	} from '$lib/stores/uiState';
@@ -30,13 +32,6 @@
 		return node?.node_type ?? null;
 	});
 
-	// Filter edge types: when source is selected, only show compatible types
-	let filteredEdgeTypes = $derived.by(() => {
-		if (!sourceNodeType) return EDGE_TYPES;
-		const compatible = getEdgeTypesForSource(sourceNodeType);
-		return EDGE_TYPES.filter(et => compatible.includes(et.key));
-	});
-
 	// Count valid targets for selected edge type
 	let validTargetCount = $derived.by(() => {
 		if (!sourceNodeType || $edgeTargets.length === 0) return 0;
@@ -53,17 +48,6 @@
 		}
 	}
 
-	function toggleBuild(mode: string) {
-		buildMode.update((m) => {
-			if (m === mode) {
-				buildMenuLocation.set(null);
-				buildEdgeSource.set(null);
-				return null;
-			}
-			return mode;
-		});
-	}
-
 	function toggleOverlay(overlay: OverlayType) {
 		activeOverlay.update((o) => (o === overlay ? 'none' : overlay));
 	}
@@ -73,24 +57,24 @@
 	let currentGroup = $derived($activePanelGroup);
 	let showTierGuide = $state(false);
 
-	// Edge types with distance multipliers (must match Rust EdgeType::distance_multiplier())
-	const EDGE_TYPES = [
-		{ key: 'Copper', name: 'Copper', mult: 2, tiers: 'T1-T1/T2' },
-		{ key: 'FiberLocal', name: 'Fiber Local', mult: 5, tiers: 'T1-T1/T2, T2-T2' },
-		{ key: 'Microwave', name: 'Microwave', mult: 8, tiers: 'T1-T2, T2-T2/T3' },
-		{ key: 'FiberRegional', name: 'Fiber Reg.', mult: 15, tiers: 'T2-T2/T3, T3-T3' },
-		{ key: 'FiberNational', name: 'Fiber Nat.', mult: 40, tiers: 'T3-T3/T4, T4-T4' },
-		{ key: 'Satellite', name: 'Satellite', mult: Infinity, tiers: 'T3/T4-T5' },
-		{ key: 'Submarine', name: 'Submarine', mult: 60, tiers: 'T5-T5' },
-	];
-
-	let spacing = $derived($worldInfo.cell_spacing_km || 100);
-
-	function fmtRange(mult: number): string {
-		if (!isFinite(mult)) return '∞';
-		const km = Math.round(spacing * mult);
-		return km >= 1000 ? `${(km / 1000).toFixed(1)}k km` : `${km}km`;
-	}
+	// Display name for the active build item
+	const BUILD_ITEM_NAMES: Record<string, string> = {
+		CellTower: 'Cell Tower',
+		WirelessRelay: 'Wireless Relay',
+		CentralOffice: 'Central Office',
+		ExchangePoint: 'Exchange Point',
+		DataCenter: 'Data Center',
+		BackboneRouter: 'Backbone Router',
+		SatelliteGround: 'Satellite Ground',
+		SubmarineLanding: 'Submarine Landing',
+		Copper: 'Copper',
+		FiberLocal: 'Fiber Local',
+		FiberRegional: 'Fiber Regional',
+		FiberNational: 'Fiber National',
+		Microwave: 'Microwave',
+		Satellite: 'Satellite',
+		Submarine: 'Submarine',
+	};
 
 	const PANEL_GROUPS: Array<{ key: PanelGroupType; label: string; tip: string }> = [
 		{ key: 'finance', label: 'Finance', tip: 'Dashboard, loans, budgets, and market share' },
@@ -104,6 +88,7 @@
 	const OVERLAY_TIPS: Record<string, string> = {
 		terrain: 'Show terrain types — urban, rural, mountain, desert, etc.',
 		ownership: 'Show which corporation controls each area',
+		population: 'Show population density — dark (sparse) to bright yellow (dense). Build near population!',
 		demand: 'Show telecom demand intensity — blue (low) to red (high)',
 		coverage: 'Show network coverage — red (none) to green (full)',
 		disaster: 'Show disaster risk — green (safe) to red (dangerous)',
@@ -114,6 +99,7 @@
 	const OVERLAYS: Array<{ key: OverlayType; label: string; cls?: string }> = [
 		{ key: 'terrain', label: 'Terrain' },
 		{ key: 'ownership', label: 'Own' },
+		{ key: 'population', label: 'Pop', cls: 'population' },
 		{ key: 'demand', label: 'Demand' },
 		{ key: 'coverage', label: 'Cover' },
 		{ key: 'disaster', label: 'Risk', cls: 'disaster' },
@@ -155,19 +141,16 @@
 
 	<!-- Row 2: Actions bar -->
 	<div class="hud-row row-2">
-		<div class="build-buttons">
-			<button class="build-btn" class:active={currentBuild === 'node'} onclick={() => toggleBuild('node')} use:tooltip={'Build Node — click anywhere on the map to place infrastructure.\nCosts vary by node type and terrain.'} aria-pressed={currentBuild === 'node'}>
-				{$tr('game.build_node')}
-			</button>
-			<button class="build-btn" class:active={currentBuild === 'edge'} onclick={() => toggleBuild('edge')} use:tooltip={'Build Link — click two nodes to connect them.\nSelect an edge type, then click source and target nodes.'} aria-pressed={currentBuild === 'edge'}>
-				{$tr('game.build_edge')}
-			</button>
-			{#if currentBuild === 'edge'}
-				<select class="edge-type-select" bind:value={$selectedEdgeType} aria-label="Edge type">
-					{#each filteredEdgeTypes as et}
-						<option value={et.key}>{et.name} ({fmtRange(et.mult)}) {et.tiers}</option>
-					{/each}
-				</select>
+		<!-- Build mode status indicator -->
+		<div class="build-status">
+			{#if currentBuild === 'node' && $selectedBuildItem}
+				<span class="build-mode-badge node">NODE</span>
+				<span class="build-item-name">{BUILD_ITEM_NAMES[$selectedBuildItem] ?? $selectedBuildItem}</span>
+				<span class="build-hint">Click map to place</span>
+				<button class="cancel-btn" onclick={exitPlacementMode} use:tooltip={'Cancel build mode (Esc)'}>Cancel</button>
+			{:else if currentBuild === 'edge'}
+				<span class="build-mode-badge edge">LINK</span>
+				<span class="build-item-name">{BUILD_ITEM_NAMES[$selectedEdgeType] ?? $selectedEdgeType}</span>
 				{#if $buildEdgeSource !== null}
 					<span class="edge-status">
 						{#if validTargetCount > 0}
@@ -178,9 +161,16 @@
 						— click a green node
 					</span>
 				{:else}
-					<span class="edge-hint">Click a node to start</span>
+					<span class="edge-hint">Click a source node</span>
 				{/if}
 				<button class="tier-help-btn" onclick={() => showTierGuide = !showTierGuide} use:tooltip={'Show tier compatibility guide — which edge types connect which node tiers'}>?</button>
+				<button class="cancel-btn" onclick={exitPlacementMode} use:tooltip={'Cancel build mode (Esc)'}>Cancel</button>
+			{:else if currentBuild === 'node'}
+				<span class="build-mode-badge node">NODE</span>
+				<span class="build-hint">Right-click map to open build menu</span>
+				<button class="cancel-btn" onclick={exitPlacementMode} use:tooltip={'Cancel build mode (Esc)'}>Cancel</button>
+			{:else}
+				<span class="build-hint-idle" use:tooltip={'Right-click the map to open the radial build menu.\nUse keys 1-9 for hotbar shortcuts.'}>Right-click to build</span>
 			{/if}
 		</div>
 
@@ -207,6 +197,7 @@
 				<button
 					class="overlay-btn"
 					class:active={currentOverlay === overlay.key}
+					class:population={overlay.cls === 'population'}
 					class:disaster={overlay.cls === 'disaster'}
 					class:congestion={overlay.cls === 'congestion'}
 					class:traffic={overlay.cls === 'traffic'}
@@ -305,7 +296,73 @@
 		color: var(--blue);
 	}
 
-	.build-buttons, .panel-buttons, .overlay-buttons {
+	/* ── Build status indicator ────────────────────────────────────────────── */
+
+	.build-status {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		background: rgba(31, 41, 55, 0.8);
+		border-radius: var(--radius-sm);
+		padding: 2px 8px;
+		min-height: 28px;
+	}
+
+	.build-mode-badge {
+		font-size: 9px;
+		font-weight: 800;
+		letter-spacing: 0.1em;
+		padding: 2px 6px;
+		border-radius: 3px;
+	}
+
+	.build-mode-badge.node {
+		background: rgba(16, 185, 129, 0.2);
+		color: #10b981;
+	}
+
+	.build-mode-badge.edge {
+		background: rgba(251, 191, 36, 0.2);
+		color: #fbbf24;
+	}
+
+	.build-item-name {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--text-primary);
+	}
+
+	.build-hint {
+		font-size: 11px;
+		color: var(--text-muted);
+	}
+
+	.build-hint-idle {
+		font-size: 11px;
+		color: var(--text-dim, #6b7280);
+		cursor: default;
+	}
+
+	.cancel-btn {
+		background: rgba(239, 68, 68, 0.15);
+		border: 1px solid rgba(239, 68, 68, 0.3);
+		color: #ef4444;
+		font-size: 10px;
+		font-family: var(--font-mono);
+		font-weight: 600;
+		padding: 2px 8px;
+		border-radius: 3px;
+		cursor: pointer;
+		transition: all 0.12s;
+	}
+
+	.cancel-btn:hover {
+		background: rgba(239, 68, 68, 0.25);
+	}
+
+	/* ── Panel & overlay buttons ────────────────────────────────────────────── */
+
+	.panel-buttons, .overlay-buttons {
 		display: flex;
 		gap: 2px;
 		background: rgba(31, 41, 55, 0.8);
@@ -313,7 +370,7 @@
 		padding: 2px;
 	}
 
-	.build-btn, .panel-btn, .overlay-btn {
+	.panel-btn, .overlay-btn {
 		background: transparent;
 		border: none;
 		color: var(--text-muted);
@@ -332,25 +389,9 @@
 		font-weight: 600;
 	}
 
-	.build-btn:hover, .panel-btn:hover, .overlay-btn:hover {
+	.panel-btn:hover, .overlay-btn:hover {
 		background: rgba(55, 65, 81, 0.5);
 		color: var(--text-primary);
-	}
-
-	.edge-type-select {
-		background: rgba(31, 41, 55, 0.9);
-		border: 1px solid var(--border);
-		color: var(--text-primary);
-		font-size: 11px;
-		font-family: var(--font-mono);
-		padding: 3px 6px;
-		border-radius: 3px;
-		cursor: pointer;
-	}
-
-	.build-btn.active {
-		background: rgba(59, 130, 246, 0.2);
-		color: var(--blue);
 	}
 
 	.panel-btn.active {
@@ -361,6 +402,15 @@
 	.overlay-btn.active {
 		background: rgba(245, 158, 11, 0.2);
 		color: var(--amber);
+	}
+
+	.overlay-btn.population {
+		color: #f5d060;
+	}
+
+	.overlay-btn.population.active {
+		background: rgba(245, 208, 96, 0.2);
+		color: #f5d060;
 	}
 
 	.overlay-btn.disaster {

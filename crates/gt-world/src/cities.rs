@@ -1,4 +1,4 @@
-use gt_common::types::EntityId;
+use gt_common::types::{EntityId, TerrainType};
 use serde::{Deserialize, Serialize};
 
 use crate::grid::GeodesicGrid;
@@ -19,6 +19,7 @@ pub fn place_cities(
     grid: &GeodesicGrid,
     regions: &[Region],
     elevations: &[f64],
+    terrains: &[TerrainType],
     seed: u64,
 ) -> Vec<City> {
     let mut cities = Vec::new();
@@ -29,9 +30,11 @@ pub fn place_cities(
         }
 
         // Score cells by development potential: lower elevation (but land) + closer to center
+        // IMPORTANT: Only consider land cells — never place cities in water
         let mut scored_cells: Vec<(usize, f64)> = region
             .cells
             .iter()
+            .filter(|&&ci| ci < terrains.len() && terrains[ci].is_land())
             .map(|&ci| {
                 let cell = &grid.cells[ci];
                 let elev_score = 1.0 - (elevations[ci] - 0.1).abs(); // prefer moderate elevation
@@ -108,7 +111,7 @@ fn generate_city_name(seed: u64) -> String {
     hash = hash
         .wrapping_mul(6364136223846793005)
         .wrapping_add(1442695040888963407);
-    let use_prefix = !hash.is_multiple_of(3); // 2/3 chance of prefix
+    let use_prefix = hash % 3 != 0; // 2/3 chance of prefix
     hash = hash
         .wrapping_mul(6364136223846793005)
         .wrapping_add(1442695040888963407);

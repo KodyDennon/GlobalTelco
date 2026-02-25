@@ -81,6 +81,8 @@ export interface InfraNode {
 	under_construction: boolean;
 }
 
+export type DeploymentMethod = 'Aerial' | 'Underground';
+
 export interface InfraEdge {
 	id: number;
 	edge_type: string;
@@ -90,6 +92,7 @@ export interface InfraEdge {
 	current_load: number;
 	latency_ms: number;
 	length_km: number;
+	health: number;
 	utilization: number;
 	src_x: number;
 	src_y: number;
@@ -97,6 +100,10 @@ export interface InfraEdge {
 	dst_y: number;
 	src_cell: number;
 	dst_cell: number;
+	/** Ordered waypoints [lon, lat] defining cable route geometry (Catmull-Rom spline). */
+	waypoints: [number, number][];
+	/** Physical deployment method: Aerial (on poles) or Underground (buried). */
+	deployment: DeploymentMethod;
 }
 
 export interface InfrastructureList {
@@ -196,6 +203,7 @@ export interface AllInfraEdge {
 	current_load: number;
 	latency_ms: number;
 	length_km: number;
+	health: number;
 	utilization: number;
 	owner: number;
 	owner_name: string;
@@ -205,6 +213,10 @@ export interface AllInfraEdge {
 	dst_y: number;
 	src_cell: number;
 	dst_cell: number;
+	/** Ordered waypoints [lon, lat] defining cable route geometry (Catmull-Rom spline). */
+	waypoints: [number, number][];
+	/** Physical deployment method: Aerial (on poles) or Underground (buried). */
+	deployment: DeploymentMethod;
 }
 
 export interface AllInfrastructure {

@@ -146,6 +146,229 @@ export const satelliteMapStyle: StyleSpecification = {
                 ],
             },
         },
+        // ── Road layers from OpenFreeMap transportation source-layer ──────
+        // Motorway/trunk casing (dark outline under the road fill)
+        {
+            id: 'road-motorway-casing',
+            type: 'line',
+            source: 'openmaptiles',
+            'source-layer': 'transportation',
+            filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk']]],
+            minzoom: 4,
+            layout: {
+                'line-cap': 'round',
+                'line-join': 'round',
+            },
+            paint: {
+                'line-color': 'rgba(30, 35, 45, 0.8)',
+                'line-width': [
+                    'interpolate', ['exponential', 1.5], ['zoom'],
+                    4, 1.5,
+                    6, 3,
+                    8, 5,
+                    10, 8,
+                ],
+                'line-opacity': [
+                    'interpolate', ['linear'], ['zoom'],
+                    4, 0.3,
+                    6, 0.5,
+                    10, 0.6,
+                ],
+            },
+        },
+        // Motorway/trunk fill (lighter line on top of casing)
+        {
+            id: 'road-motorway-fill',
+            type: 'line',
+            source: 'openmaptiles',
+            'source-layer': 'transportation',
+            filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk']]],
+            minzoom: 4,
+            layout: {
+                'line-cap': 'round',
+                'line-join': 'round',
+            },
+            paint: {
+                'line-color': 'rgba(74, 85, 104, 0.9)',
+                'line-width': [
+                    'interpolate', ['exponential', 1.5], ['zoom'],
+                    4, 0.8,
+                    6, 1.8,
+                    8, 3,
+                    10, 5,
+                ],
+                'line-opacity': [
+                    'interpolate', ['linear'], ['zoom'],
+                    4, 0.3,
+                    6, 0.5,
+                    10, 0.65,
+                ],
+            },
+        },
+        // Primary road casing
+        {
+            id: 'road-primary-casing',
+            type: 'line',
+            source: 'openmaptiles',
+            'source-layer': 'transportation',
+            filter: ['==', ['get', 'class'], 'primary'],
+            minzoom: 6,
+            layout: {
+                'line-cap': 'round',
+                'line-join': 'round',
+            },
+            paint: {
+                'line-color': 'rgba(30, 35, 45, 0.7)',
+                'line-width': [
+                    'interpolate', ['exponential', 1.5], ['zoom'],
+                    6, 1.2,
+                    8, 2.5,
+                    10, 5,
+                ],
+                'line-opacity': [
+                    'interpolate', ['linear'], ['zoom'],
+                    6, 0.25,
+                    8, 0.4,
+                    10, 0.5,
+                ],
+            },
+        },
+        // Primary road fill
+        {
+            id: 'road-primary-fill',
+            type: 'line',
+            source: 'openmaptiles',
+            'source-layer': 'transportation',
+            filter: ['==', ['get', 'class'], 'primary'],
+            minzoom: 6,
+            layout: {
+                'line-cap': 'round',
+                'line-join': 'round',
+            },
+            paint: {
+                'line-color': 'rgba(113, 128, 150, 0.85)',
+                'line-width': [
+                    'interpolate', ['exponential', 1.5], ['zoom'],
+                    6, 0.6,
+                    8, 1.5,
+                    10, 3,
+                ],
+                'line-opacity': [
+                    'interpolate', ['linear'], ['zoom'],
+                    6, 0.25,
+                    8, 0.4,
+                    10, 0.55,
+                ],
+            },
+        },
+        // Secondary road casing
+        {
+            id: 'road-secondary-casing',
+            type: 'line',
+            source: 'openmaptiles',
+            'source-layer': 'transportation',
+            filter: ['==', ['get', 'class'], 'secondary'],
+            minzoom: 7,
+            layout: {
+                'line-cap': 'round',
+                'line-join': 'round',
+            },
+            paint: {
+                'line-color': 'rgba(30, 35, 45, 0.6)',
+                'line-width': [
+                    'interpolate', ['exponential', 1.5], ['zoom'],
+                    7, 0.8,
+                    9, 2,
+                    10, 3.5,
+                ],
+                'line-opacity': [
+                    'interpolate', ['linear'], ['zoom'],
+                    7, 0.2,
+                    9, 0.35,
+                    10, 0.45,
+                ],
+            },
+        },
+        // Secondary road fill
+        {
+            id: 'road-secondary-fill',
+            type: 'line',
+            source: 'openmaptiles',
+            'source-layer': 'transportation',
+            filter: ['==', ['get', 'class'], 'secondary'],
+            minzoom: 7,
+            layout: {
+                'line-cap': 'round',
+                'line-join': 'round',
+            },
+            paint: {
+                'line-color': 'rgba(160, 174, 192, 0.8)',
+                'line-width': [
+                    'interpolate', ['exponential', 1.5], ['zoom'],
+                    7, 0.4,
+                    9, 1.2,
+                    10, 2,
+                ],
+                'line-opacity': [
+                    'interpolate', ['linear'], ['zoom'],
+                    7, 0.2,
+                    9, 0.35,
+                    10, 0.45,
+                ],
+            },
+        },
+        // Tertiary + residential road casing
+        {
+            id: 'road-minor-casing',
+            type: 'line',
+            source: 'openmaptiles',
+            'source-layer': 'transportation',
+            filter: ['in', ['get', 'class'], ['literal', ['tertiary', 'minor', 'service']]],
+            minzoom: 9,
+            layout: {
+                'line-cap': 'round',
+                'line-join': 'round',
+            },
+            paint: {
+                'line-color': 'rgba(30, 35, 45, 0.5)',
+                'line-width': [
+                    'interpolate', ['exponential', 1.5], ['zoom'],
+                    9, 0.5,
+                    10, 1.5,
+                ],
+                'line-opacity': [
+                    'interpolate', ['linear'], ['zoom'],
+                    9, 0.15,
+                    10, 0.3,
+                ],
+            },
+        },
+        // Tertiary + residential road fill
+        {
+            id: 'road-minor-fill',
+            type: 'line',
+            source: 'openmaptiles',
+            'source-layer': 'transportation',
+            filter: ['in', ['get', 'class'], ['literal', ['tertiary', 'minor', 'service']]],
+            minzoom: 9,
+            layout: {
+                'line-cap': 'round',
+                'line-join': 'round',
+            },
+            paint: {
+                'line-color': 'rgba(203, 213, 224, 0.7)',
+                'line-width': [
+                    'interpolate', ['exponential', 1.5], ['zoom'],
+                    9, 0.3,
+                    10, 0.8,
+                ],
+                'line-opacity': [
+                    'interpolate', ['linear'], ['zoom'],
+                    9, 0.15,
+                    10, 0.3,
+                ],
+            },
+        },
         // City labels from tiles — subtle, high zoom only
         {
             id: 'label-city',

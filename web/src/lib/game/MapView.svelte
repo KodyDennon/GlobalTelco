@@ -19,6 +19,11 @@
 		getCompatibleEdgeTypes,
 		viewport,
 		zoomLevel,
+		radialMenuOpen,
+		radialMenuPosition,
+		radialMenuGeoPosition,
+		selectedBuildItem,
+		buildCategory,
 	} from "$lib/stores/uiState";
 	import * as bridge from "$lib/wasm/bridge";
 	import { gameCommand } from '$lib/game/commandRouter';
@@ -99,11 +104,36 @@
 
 	function handleMapClicked(e: CustomEvent) {
 		const currentBuildMode = get(buildMode);
+		const currentBuildItem = get(selectedBuildItem);
+		const currentBuildCat = get(buildCategory);
+
+		if (currentBuildMode === "node" && currentBuildItem && currentBuildCat === 'node') {
+			// Direct placement: build the selected node type at click position
+			const { lon, lat } = e.detail;
+			gameCommand({
+				BuildNode: { node_type: currentBuildItem, lon, lat }
+			});
+			// Stay in build mode for rapid placement
+			return;
+		}
 
 		if (currentBuildMode === "node") {
+			// Legacy fallback: open build menu at location
 			const { lon, lat } = e.detail;
 			buildMenuLocation.set({ lon, lat });
 		}
+	}
+
+	function handleMapContextMenu(e: Event) {
+		const detail = (e as CustomEvent).detail;
+		// Close radial menu if clicking while it's already open
+		if (get(radialMenuOpen)) {
+			radialMenuOpen.set(false);
+			return;
+		}
+		radialMenuPosition.set({ x: detail.screenX, y: detail.screenY });
+		radialMenuGeoPosition.set({ lon: detail.lon, lat: detail.lat });
+		radialMenuOpen.set(true);
 	}
 
 	onMount(() => {
@@ -207,6 +237,10 @@
 					"map-clicked",
 					handleMapClicked as EventListener,
 				);
+				window.addEventListener(
+					"map-contextmenu",
+					handleMapContextMenu as EventListener,
+				);
 
 				// Subscribe to overlay changes
 				const overlaySub = activeOverlay.subscribe((overlay) => {
@@ -261,6 +295,10 @@
 						"map-clicked",
 						handleMapClicked as EventListener,
 					);
+					window.removeEventListener(
+						"map-contextmenu",
+						handleMapContextMenu as EventListener,
+					);
 					window.removeEventListener('map-pan', handleMapPan);
 					window.removeEventListener('map-zoom', handleMapZoom);
 					window.removeEventListener('map-reset-view', handleMapResetView);
@@ -295,7 +333,8 @@
 	});
 </script>
 
-<div class="map-container" bind:this={container}></div>
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="map-container" bind:this={container} oncontextmenu={(e) => e.preventDefault()}></div>
 
 <style>
 	.map-container {

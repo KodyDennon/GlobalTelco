@@ -1243,49 +1243,72 @@ impl GameWorld {
         };
 
         // Terrain constraints for node types
+        // Categorize: subsea/coastal-only, land-only, water-tolerant, ocean-floor
         match node_type {
-            NodeType::SubmarineLanding => {
+            // Subsea landings require coastal/shallow ocean
+            NodeType::SubmarineLanding
+            | NodeType::SubseaLandingStation
+            | NodeType::CableHut => {
                 if !matches!(terrain, TerrainType::Coastal | TerrainType::OceanShallow) {
                     self.event_queue.push(
                         self.tick,
                         gt_common::events::GameEvent::GlobalNotification {
-                            message: "Cannot build: Submarine landing requires coastal or shallow ocean terrain.".to_string(),
+                            message: format!(
+                                "Cannot build {}: requires coastal or shallow ocean terrain.",
+                                node_type.display_name()
+                            ),
                             level: "error".to_string(),
                         },
                     );
-                    return CommandResult::fail("Submarine landing requires coastal or shallow ocean terrain");
+                    return CommandResult::fail("Requires coastal or shallow ocean terrain");
                 }
             }
-            NodeType::CellTower
-            | NodeType::WirelessRelay
-            | NodeType::CentralOffice
-            | NodeType::ExchangePoint
-            | NodeType::DataCenter
-            | NodeType::BackboneRouter => {
+            // Underwater data center requires deep ocean
+            NodeType::UnderwaterDataCenter => {
+                if !matches!(terrain, TerrainType::OceanDeep | TerrainType::OceanShallow) {
+                    self.event_queue.push(
+                        self.tick,
+                        gt_common::events::GameEvent::GlobalNotification {
+                            message: "Cannot build: Underwater data center requires ocean terrain.".to_string(),
+                            level: "error".to_string(),
+                        },
+                    );
+                    return CommandResult::fail("Underwater data center requires ocean terrain");
+                }
+            }
+            // Satellite/drone nodes — any non-deep-ocean terrain
+            NodeType::SatelliteGround
+            | NodeType::SatelliteGroundStation
+            | NodeType::LEO_SatelliteGateway
+            | NodeType::MeshDroneRelay => {
+                if matches!(terrain, TerrainType::OceanDeep) {
+                    self.event_queue.push(
+                        self.tick,
+                        gt_common::events::GameEvent::GlobalNotification {
+                            message: format!(
+                                "Cannot build {}: cannot be placed on deep ocean.",
+                                node_type.display_name()
+                            ),
+                            level: "error".to_string(),
+                        },
+                    );
+                    return CommandResult::fail("Cannot be placed on deep ocean");
+                }
+            }
+            // All other nodes require solid ground (no ocean)
+            _ => {
                 if matches!(terrain, TerrainType::OceanDeep | TerrainType::OceanShallow) {
                     self.event_queue.push(
                         self.tick,
                         gt_common::events::GameEvent::GlobalNotification {
                             message: format!(
-                                "Cannot build {:?}: Requires solid ground.",
-                                node_type
+                                "Cannot build {}: Requires solid ground.",
+                                node_type.display_name()
                             ),
                             level: "error".to_string(),
                         },
                     );
                     return CommandResult::fail("Requires solid ground");
-                }
-            }
-            NodeType::SatelliteGround => {
-                if matches!(terrain, TerrainType::OceanDeep) {
-                    self.event_queue.push(
-                        self.tick,
-                        gt_common::events::GameEvent::GlobalNotification {
-                            message: "Cannot build: Satellite ground station cannot be placed on deep ocean.".to_string(),
-                            level: "error".to_string(),
-                        },
-                    );
-                    return CommandResult::fail("Satellite ground station cannot be placed on deep ocean");
                 }
             }
         }
@@ -1320,12 +1343,52 @@ impl GameWorld {
         // Create construction (takes time)
         let difficulty = gt_common::config::DifficultyConfig::from_preset(self.config.difficulty);
         let base_duration = match node_type {
+            // Original 8 (unchanged)
             NodeType::CellTower | NodeType::WirelessRelay => 10,
             NodeType::CentralOffice => 20,
             NodeType::ExchangePoint => 30,
             NodeType::DataCenter | NodeType::BackboneRouter => 50,
             NodeType::SatelliteGround => 40,
             NodeType::SubmarineLanding => 60,
+            // Era 1: Telegraph — fast
+            NodeType::TelegraphOffice => 5,
+            NodeType::TelegraphRelay => 3,
+            NodeType::CableHut => 8,
+            // Era 2: Telephone
+            NodeType::ManualExchange => 10,
+            NodeType::AutomaticExchange => 15,
+            NodeType::TelephonePole => 2,
+            NodeType::LongDistanceRelay => 12,
+            // Era 3: Early Digital
+            NodeType::DigitalSwitch => 20,
+            NodeType::MicrowaveTower => 15,
+            NodeType::CoaxHub => 10,
+            NodeType::EarlyDataCenter => 40,
+            NodeType::SatelliteGroundStation => 35,
+            // Era 4: Internet
+            NodeType::FiberPOP => 25,
+            NodeType::InternetExchangePoint => 35,
+            NodeType::SubseaLandingStation => 70,
+            NodeType::ColocationFacility => 45,
+            NodeType::ISPGateway => 15,
+            // Era 5: Modern
+            NodeType::MacroCell => 12,
+            NodeType::SmallCell => 5,
+            NodeType::EdgeDataCenter => 30,
+            NodeType::HyperscaleDataCenter => 120,
+            NodeType::CloudOnRamp => 25,
+            NodeType::ContentDeliveryNode => 20,
+            NodeType::FiberSplicePoint => 2,
+            NodeType::DWDM_Terminal => 35,
+            NodeType::FiberDistributionHub => 5,
+            NodeType::NetworkAccessPoint => 3,
+            // Era 6: Near Future
+            NodeType::LEO_SatelliteGateway => 80,
+            NodeType::QuantumRepeater => 60,
+            NodeType::MeshDroneRelay => 5,
+            NodeType::UnderwaterDataCenter => 150,
+            NodeType::NeuromorphicEdgeNode => 40,
+            NodeType::TerahertzRelay => 10,
         };
         let duration = (base_duration as f64 * difficulty.construction_time_multiplier) as Tick;
 
@@ -1533,8 +1596,10 @@ impl GameWorld {
             .and_then(|n| cell_terrain.get(&n.cell_index).copied());
 
         match edge_type {
-            EdgeType::Submarine => {
-                // Submarine edges must have at least one endpoint on ocean/coastal
+            // Subsea cables require at least one endpoint on ocean/coastal
+            EdgeType::Submarine
+            | EdgeType::SubseaTelegraphCable
+            | EdgeType::SubseaFiberCable => {
                 let is_water = |t: Option<TerrainType>| {
                     matches!(
                         t,
@@ -1549,18 +1614,32 @@ impl GameWorld {
                     self.event_queue.push(
                         self.tick,
                         gt_common::events::GameEvent::GlobalNotification {
-                            message: "Cannot build: Submarine edges require at least one endpoint on water.".to_string(),
+                            message: format!(
+                                "Cannot build: {} requires at least one endpoint on water.",
+                                edge_type.display_name()
+                            ),
                             level: "error".to_string(),
                         },
                     );
-                    return CommandResult::fail("Submarine edges require water"); // Submarine requires water
+                    return CommandResult::fail("Subsea edges require water");
                 }
             }
+            // Land-based cables/wires can't span deep ocean
             EdgeType::Copper
             | EdgeType::FiberLocal
             | EdgeType::FiberRegional
-            | EdgeType::FiberNational => {
-                // Land-based cables can't span open ocean
+            | EdgeType::FiberNational
+            | EdgeType::TelegraphWire
+            | EdgeType::CopperTrunkLine
+            | EdgeType::LongDistanceCopper
+            | EdgeType::CoaxialCable
+            | EdgeType::FiberMetro
+            | EdgeType::FiberLongHaul
+            | EdgeType::DWDM_Backbone
+            | EdgeType::FeederFiber
+            | EdgeType::DistributionFiber
+            | EdgeType::DropCable
+            | EdgeType::QuantumFiberLink => {
                 let is_deep_ocean =
                     |t: Option<TerrainType>| matches!(t, Some(TerrainType::OceanDeep));
                 if is_deep_ocean(from_terrain) || is_deep_ocean(to_terrain) {
@@ -1572,10 +1651,11 @@ impl GameWorld {
                             level: "error".to_string(),
                         },
                     );
-                    return CommandResult::fail("Wired cables cannot be placed in deep ocean"); // Fiber/copper can't be on deep ocean
+                    return CommandResult::fail("Wired cables cannot be placed in deep ocean");
                 }
             }
-            _ => {} // Microwave, Satellite have no terrain restriction
+            // Microwave, Satellite, Terahertz, Laser have no terrain restriction
+            _ => {}
         }
 
         // Network contiguity: new edge must connect to existing corp network

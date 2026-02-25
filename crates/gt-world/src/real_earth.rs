@@ -167,11 +167,24 @@ pub fn generate_real_earth(grid: &GeodesicGrid, seed: u64) -> GeneratedWorld {
         crate::regions::compute_region_boundaries(&mut regions, grid, &assignments, &land_indices);
     }
 
-    // 7. Place cities from real data, snapped to nearest grid cell
+    // 7. Place cities from real data, snapped to nearest LAND grid cell
     let mut all_cities: Vec<City> = Vec::new();
     for city_data in &data.cities {
         let xyz = latlon_to_xyz(city_data.lat, city_data.lon);
-        let cell_index = grid.nearest_cell(xyz.0, xyz.1, xyz.2);
+        let nearest = grid.nearest_cell(xyz.0, xyz.1, xyz.2);
+
+        // Ensure we snap to a land cell, not ocean. Search neighbors if nearest is water.
+        let cell_index = if nearest < terrains.len() && terrains[nearest].is_land() {
+            nearest
+        } else {
+            // Search neighbors for nearest land cell
+            grid.cells[nearest]
+                .neighbors
+                .iter()
+                .copied()
+                .find(|&n| n < terrains.len() && terrains[n].is_land())
+                .unwrap_or(nearest) // fallback to original if no land neighbor found
+        };
 
         // Find the region this city belongs to (by country code)
         let region_id = data

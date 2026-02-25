@@ -215,12 +215,58 @@ pub fn build_node(
     }
 
     let build_time = match node_type {
+        // Original 8 (unchanged)
         NodeType::CellTower | NodeType::WirelessRelay => 10,
         NodeType::CentralOffice => 20,
         NodeType::ExchangePoint => 30,
         NodeType::DataCenter | NodeType::BackboneRouter => 50,
         NodeType::SatelliteGround => 40,
         NodeType::SubmarineLanding => 60,
+
+        // Era 1: Telegraph — fast to build
+        NodeType::TelegraphOffice => 5,
+        NodeType::TelegraphRelay => 3,
+        NodeType::CableHut => 8,
+
+        // Era 2: Telephone
+        NodeType::ManualExchange => 10,
+        NodeType::AutomaticExchange => 15,
+        NodeType::TelephonePole => 2,
+        NodeType::LongDistanceRelay => 12,
+
+        // Era 3: Early Digital
+        NodeType::DigitalSwitch => 20,
+        NodeType::MicrowaveTower => 15,
+        NodeType::CoaxHub => 10,
+        NodeType::EarlyDataCenter => 40,
+        NodeType::SatelliteGroundStation => 35,
+
+        // Era 4: Internet
+        NodeType::FiberPOP => 25,
+        NodeType::InternetExchangePoint => 35,
+        NodeType::SubseaLandingStation => 70,
+        NodeType::ColocationFacility => 45,
+        NodeType::ISPGateway => 15,
+
+        // Era 5: Modern
+        NodeType::MacroCell => 12,
+        NodeType::SmallCell => 5,
+        NodeType::EdgeDataCenter => 30,
+        NodeType::HyperscaleDataCenter => 120,
+        NodeType::CloudOnRamp => 25,
+        NodeType::ContentDeliveryNode => 20,
+        NodeType::FiberSplicePoint => 2,
+        NodeType::DWDM_Terminal => 35,
+        NodeType::FiberDistributionHub => 5,
+        NodeType::NetworkAccessPoint => 3,
+
+        // Era 6: Near Future
+        NodeType::LEO_SatelliteGateway => 80,
+        NodeType::QuantumRepeater => 60,
+        NodeType::MeshDroneRelay => 5,
+        NodeType::UnderwaterDataCenter => 150,
+        NodeType::NeuromorphicEdgeNode => 40,
+        NodeType::TerahertzRelay => 10,
     };
 
     acquire_parcel(world, corp_id, cell_index);
@@ -347,14 +393,17 @@ fn is_terrain_blocked(
     to: EntityId,
     edge_type: EdgeType,
 ) -> bool {
-    match edge_type {
-        EdgeType::Copper | EdgeType::FiberLocal | EdgeType::FiberRegional | EdgeType::FiberNational => {
-            let from_terrain = node_terrain(world, from);
-            let to_terrain = node_terrain(world, to);
-            matches!(from_terrain, Some(TerrainType::OceanDeep))
-                || matches!(to_terrain, Some(TerrainType::OceanDeep))
-        }
-        _ => false,
+    if edge_type.is_underground_capable() && !matches!(
+        edge_type,
+        EdgeType::Submarine | EdgeType::SubseaTelegraphCable | EdgeType::SubseaFiberCable
+    ) {
+        // Land-based cables can't cross deep ocean
+        let from_terrain = node_terrain(world, from);
+        let to_terrain = node_terrain(world, to);
+        matches!(from_terrain, Some(TerrainType::OceanDeep))
+            || matches!(to_terrain, Some(TerrainType::OceanDeep))
+    } else {
+        false
     }
 }
 

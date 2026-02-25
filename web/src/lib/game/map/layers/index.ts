@@ -7,3 +7,6 @@ export { createOverlayLayers } from './overlayLayers';
 export { createLabelLayers } from './labelLayers';
 export { createSelectionLayer, createEdgeBuildHighlights } from './selectionLayer';
 export { createPathfindingPreviewLayer } from './pathfindingLayer';
+export { createVectorTerrainLayers, buildVectorTerrainData, hasVectorTerrainData, disposeVectorTerrainData } from './vectorTerrainLayer';
+export { createRoadsLayers, buildRoadData, disposeRoadData } from './roadsLayer';
+export { createBuildingsLayers, buildBuildingData, disposeBuildingData } from './buildingsLayer';

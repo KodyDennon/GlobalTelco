@@ -20,6 +20,9 @@ import { annotations, routePlans, createAnnotationLayers } from '../AnnotationLa
 import { createLandLayer } from './layers/landLayer';
 import { createBordersLayer } from './layers/bordersLayer';
 import { createInfraLayers } from './layers/infraLayer';
+import { createVectorTerrainLayers, buildVectorTerrainData, disposeVectorTerrainData } from './layers/vectorTerrainLayer';
+import { createRoadsLayers, buildRoadData, disposeRoadData } from './layers/roadsLayer';
+import { createBuildingsLayers, buildBuildingData, disposeBuildingData } from './layers/buildingsLayer';
 import type { IconMapping } from './iconAtlas';
 import { buildIconAtlas } from './iconAtlas';
 import { buildTerrainBitmapAsync, disposeTerrainWorker } from './terrainBitmap';
@@ -165,6 +168,21 @@ export class MapRenderer {
             }));
         });
 
+        // Right-click: open radial build menu at cursor position
+        this.map.on('contextmenu', (e: maplibregl.MapMouseEvent) => {
+            e.preventDefault();
+            // Calculate screen position relative to the window (not the map container)
+            const rect = container.getBoundingClientRect();
+            window.dispatchEvent(new CustomEvent('map-contextmenu', {
+                detail: {
+                    screenX: rect.left + e.point.x,
+                    screenY: rect.top + e.point.y,
+                    lon: e.lngLat.lng,
+                    lat: e.lngLat.lat,
+                }
+            }));
+        });
+
         // ── Map navigation event handlers (dispatched by KeyboardManager) ─
         this.mapPanHandler = (e: Event) => {
             if (!this.map) return;
@@ -238,21 +256,33 @@ export class MapRenderer {
             this.cellRadiusM = this.cellSpacingKm * 1000 * 0.85;
         }
 
-        // Run terrain bitmap (worker), icon atlas, and pathfinder init in parallel.
-        // Each is independent — terrain runs in a Web Worker, icons load async
-        // images, pathfinder is fast CPU work.
-        const [terrainResult, iconResult] = await Promise.all([
-            buildTerrainBitmapAsync(cells, this.cellSpacingKm, SATELLITE_COLORS, this.quality),
-            buildIconAtlas(),
-        ]);
-
-        this.terrainCanvas = terrainResult;
-        this.iconAtlas = iconResult.canvas;
-        this.iconMapping = iconResult.mapping;
-        this.iconAtlasReady = true;
+        // Run terrain build, icon atlas, and pathfinder init in parallel.
+        // For procgen mode: build vector terrain polygons (fast geometry, no worker needed).
+        // For real earth mode: build bitmap terrain (worker-offloaded Gaussian splat).
+        if (this.isRealEarth) {
+            const [terrainResult, iconResult] = await Promise.all([
+                buildTerrainBitmapAsync(cells, this.cellSpacingKm, SATELLITE_COLORS, this.quality),
+                buildIconAtlas(),
+            ]);
+            this.terrainCanvas = terrainResult;
+            this.iconAtlas = iconResult.canvas;
+            this.iconMapping = iconResult.mapping;
+            this.iconAtlasReady = true;
+        } else {
+            // Procgen: vector terrain polygons + icon atlas in parallel
+            const iconResult = await buildIconAtlas();
+            buildVectorTerrainData(cells);
+            this.iconAtlas = iconResult.canvas;
+            this.iconMapping = iconResult.mapping;
+            this.iconAtlasReady = true;
+        }
 
         // Pathfinder init is fast (<10ms) — runs after await to avoid race conditions
         this.pathfinder.init(cells);
+
+        // Build road network and building footprint data (both modes)
+        buildRoadData(this.cachedCities, this.cachedRegions);
+        buildBuildingData(this.cachedCities);
 
         // Mark map as ready and do initial render
         this.mapBuilt = true;
@@ -284,11 +314,29 @@ export class MapRenderer {
     private renderLayers(): void {
         if (!this.overlay || !this.mapBuilt) return;
 
+        // Terrain base: vector polygons for procgen, bitmap for real earth
+        const terrainLayers: (Layer | Layer[] | null)[] = this.isRealEarth
+            ? [createLandLayer(this.terrainCanvas, this.isRealEarth)]
+            : [createVectorTerrainLayers()];
+
         const layers: (Layer | Layer[] | null)[] = [
-            createLandLayer(this.terrainCanvas, this.isRealEarth),
-            createBordersLayer(this.cachedRegions, this.isRealEarth),
+            // 1. Terrain (bitmap or vector polygons + coastlines)
+            ...terrainLayers,
+            // 2. Ocean depth (procgen)
             ...this.createOceanDepthLayers(),
+            // 3. Roads (procgen PathLayer — real earth roads come from MapLibre vector tiles)
+            ...createRoadsLayers(this.isRealEarth, this.currentZoom),
+            // 4. Buildings (procedural footprints around cities)
+            ...createBuildingsLayers(this.currentZoom),
+            // 5. Borders
+            createBordersLayer(this.cachedRegions, this.isRealEarth),
+            // 6. Overlays (population, demand, terrain, etc.)
             ...this.createOverlayLayers(),
+            // 7. Cities (glow, icons, labels)
+            this.createCitiesLayer(),
+            this.createLabelsLayer(),
+            this.createRegionLabelsLayer(),
+            // 8. Infrastructure (nodes, edges — above cities)
             ...createInfraLayers({
                 iconAtlas: this.iconAtlas,
                 iconMapping: this.iconMapping,
@@ -299,9 +347,7 @@ export class MapRenderer {
                 pitch: this.pitch,
                 hoveredNodeId: this.hoveredNodeId,
             }),
-            this.createCitiesLayer(),
-            this.createLabelsLayer(),
-            this.createRegionLabelsLayer(),
+            // 9. Annotations and weather
             ...createAnnotationLayers(get(annotations), get(routePlans)),
             ...createWeatherLayers({
                 enabled: this.weatherEnabled,
@@ -309,6 +355,7 @@ export class MapRenderer {
                 gameTick: this.gameTick,
                 currentZoom: this.currentZoom,
             }),
+            // 10. Selection/hover highlights (topmost)
             this.createSelectionLayer(),
             ...this.createEdgeBuildHighlights(),
             this.createPathfindingPreviewLayer(),
@@ -416,6 +463,40 @@ export class MapRenderer {
                 }));
             }
             return layers;
+        }
+
+        if (this.activeOverlay === 'population') {
+            const popCells: { position: [number, number]; color: [number, number, number, number]; pop: number }[] = [];
+            // Find max population for normalization
+            const maxPop = Math.max(1, ...this.cachedCities.map(c => c.population));
+            for (const city of this.cachedCities) {
+                // Logarithmic scale: log(pop) normalized to [0, 1]
+                const rawIntensity = Math.log10(Math.max(city.population, 10)) / Math.log10(Math.max(maxPop, 10));
+                const intensity = Math.min(1.0, rawIntensity);
+                // Dark purple (sparse) → bright yellow (dense)
+                const r = Math.floor(40 + intensity * 215);
+                const g = Math.floor(20 + intensity * 215);
+                const b = Math.floor(80 * (1 - intensity));
+                const alpha = Math.floor(100 + intensity * 155);
+                const cellPop = Math.round(city.population / Math.max(city.cell_positions.length, 1));
+                for (const cp of city.cell_positions) {
+                    popCells.push({
+                        position: [cp.lon, cp.lat],
+                        color: [r, g, b, alpha],
+                        pop: cellPop,
+                    });
+                }
+            }
+            layers.push(new ScatterplotLayer({
+                id: 'overlay-population',
+                data: popCells,
+                getPosition: (d: any) => d.position,
+                getFillColor: (d: any) => d.color,
+                getRadius: overlayRadius,
+                radiusMinPixels: 6,
+                pickable: false,
+                parameters: { depthTest: false }
+            }));
         }
 
         if (this.activeOverlay === 'demand') {
@@ -739,6 +820,9 @@ export class MapRenderer {
     updateCities(): void {
         if (!bridge.isInitialized()) return;
         this.cachedCities = bridge.getCities();
+        // Rebuild road and building data when cities change
+        buildRoadData(this.cachedCities, this.cachedRegions);
+        buildBuildingData(this.cachedCities);
         this.renderLayers();
     }
 
@@ -848,7 +932,10 @@ export class MapRenderer {
             this.map = null;
         }
 
-        // Clean up the terrain worker
+        // Clean up the terrain worker, vector terrain data, roads, and buildings
         disposeTerrainWorker();
+        disposeVectorTerrainData();
+        disposeRoadData();
+        disposeBuildingData();
     }
 }

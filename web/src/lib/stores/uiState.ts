@@ -1,7 +1,7 @@
 import { writable, derived } from 'svelte/store';
 
 export type PanelType = 'none' | 'info' | 'dashboard' | 'infrastructure' | 'research' | 'contracts' | 'region' | 'workforce' | 'advisor' | 'auctions' | 'mergers' | 'intel' | 'achievements';
-export type OverlayType = 'none' | 'terrain' | 'ownership' | 'demand' | 'disaster' | 'coverage' | 'congestion' | 'traffic';
+export type OverlayType = 'none' | 'terrain' | 'ownership' | 'population' | 'demand' | 'disaster' | 'coverage' | 'congestion' | 'traffic';
 export type PanelGroupType = 'finance' | 'operations' | 'diplomacy' | 'research' | 'market' | 'info';
 
 // Panel group → tab definitions
@@ -77,6 +77,67 @@ export const viewport = writable({ minX: -180, minY: -90, maxX: 180, maxY: 90 })
 export const activeOverlay = writable<OverlayType>('none');
 export const tooltipData = writable<{ x: number; y: number; content: string } | null>(null);
 export const selectedEdgeType = writable<string>('FiberLocal');
+
+// ── Radial Build Menu + Hotbar state ────────────────────────────────────────
+
+/** Currently selected build item type string (e.g. 'CellTower', 'FiberLocal') or null */
+export const selectedBuildItem = writable<string | null>(null);
+
+/** Whether the selected item is a node or edge */
+export const buildCategory = writable<'node' | 'edge' | null>(null);
+
+/** Whether the radial menu is open */
+export const radialMenuOpen = writable<boolean>(false);
+
+/** Screen position where the radial menu should appear */
+export const radialMenuPosition = writable<{ x: number; y: number }>({ x: 0, y: 0 });
+
+/** Geo position (lon/lat) where the radial menu was opened */
+export const radialMenuGeoPosition = writable<{ lon: number; lat: number } | null>(null);
+
+/** Hotbar slot definition */
+export interface HotbarSlot {
+	itemType: string | null;
+	category: 'node' | 'edge' | null;
+}
+
+/** 9 pinnable hotbar slots (keys 1-9) */
+export const hotbarSlots = writable<HotbarSlot[]>([
+	{ itemType: 'CellTower', category: 'node' },
+	{ itemType: 'CentralOffice', category: 'node' },
+	{ itemType: 'FiberLocal', category: 'edge' },
+	{ itemType: 'DataCenter', category: 'node' },
+	{ itemType: null, category: null },
+	{ itemType: null, category: null },
+	{ itemType: null, category: null },
+	{ itemType: null, category: null },
+	{ itemType: null, category: null },
+]);
+
+/** Enter placement mode for a specific item */
+export function enterPlacementMode(itemType: string, category: 'node' | 'edge'): void {
+	selectedBuildItem.set(itemType);
+	buildCategory.set(category);
+	if (category === 'node') {
+		buildMode.set('node');
+		buildEdgeSource.set(null);
+	} else {
+		buildMode.set('edge');
+		selectedEdgeType.set(itemType);
+		buildMenuLocation.set(null);
+	}
+	radialMenuOpen.set(false);
+}
+
+/** Exit placement mode */
+export function exitPlacementMode(): void {
+	selectedBuildItem.set(null);
+	buildCategory.set(null);
+	buildMode.set(null);
+	buildMenuLocation.set(null);
+	buildEdgeSource.set(null);
+	radialMenuOpen.set(false);
+}
 
 // Edge target data when source is selected in edge build mode
 export const edgeTargets = writable<Array<{

@@ -153,8 +153,9 @@ fn calculate_coverage_revenue(world: &GameWorld, corp_id: EntityId) -> i64 {
         }
     }
 
-    // Reduced from $0.10 to $0.02 — coverage alone is worth less now
-    (covered_population as f64 * 0.02) as i64
+    // Coverage subscription revenue: represents monthly fees from covered population.
+    // At $0.15/pop/tick, covering 100K people at 50% satisfaction = $7,500/tick.
+    (covered_population as f64 * 0.15) as i64
 }
 
 // ─── Quality Multiplier ───────────────────────────────────────────────────────

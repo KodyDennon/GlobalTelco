@@ -14,6 +14,10 @@ import {
 	closePanelGroup,
 	showConfirm,
 	PANEL_GROUP_TABS,
+	hotbarSlots,
+	enterPlacementMode,
+	exitPlacementMode,
+	radialMenuOpen,
 } from '$lib/stores/uiState';
 import type { PanelGroupType, OverlayType } from '$lib/stores/uiState';
 import { setSpeed, togglePause, quickSave } from './GameLoop';
@@ -164,11 +168,11 @@ function toggleEdgeBuild(): void {
 }
 
 function cancelOrClose(): void {
-	// Priority: cancel build mode > deselect entity > close panel
-	if (get(buildMode)) {
-		buildMode.set(null);
-		buildMenuLocation.set(null);
-		buildEdgeSource.set(null);
+	// Priority: close radial menu > cancel build mode > deselect entity > close panel
+	if (get(radialMenuOpen)) {
+		radialMenuOpen.set(false);
+	} else if (get(buildMode)) {
+		exitPlacementMode();
 	} else if (get(selectedEntityId) !== null) {
 		selectedEntityId.set(null);
 		selectedEntityType.set(null);
@@ -190,6 +194,15 @@ function decommissionSelected(): void {
 			selectedEntityType.set(null);
 		}
 	);
+}
+
+// ── Hotbar activation ─────────────────────────────────────────────────────
+
+function activateHotbarSlot(index: number): void {
+	const slots = get(hotbarSlots);
+	const slot = slots[index];
+	if (!slot || !slot.itemType || !slot.category) return;
+	enterPlacementMode(slot.itemType, slot.category);
 }
 
 // ── Map dispatch helpers ──────────────────────────────────────────────────
@@ -229,12 +242,23 @@ export function createDefaultBindings(manager: KeyboardManager): void {
 	// Reset view
 	manager.bind('home', () => resetView());
 
-	// Speed controls
+	// Speed controls (Shift+number for speed, plain number for hotbar)
 	manager.bind('space', () => togglePause());
-	manager.bind('1', () => setSpeed(1));
-	manager.bind('2', () => setSpeed(2));
-	manager.bind('3', () => setSpeed(4));
-	manager.bind('4', () => setSpeed(8));
+	manager.bind('shift+1', () => setSpeed(1));
+	manager.bind('shift+2', () => setSpeed(2));
+	manager.bind('shift+3', () => setSpeed(4));
+	manager.bind('shift+4', () => setSpeed(8));
+
+	// Hotbar slots (1-9)
+	manager.bind('1', () => activateHotbarSlot(0));
+	manager.bind('2', () => activateHotbarSlot(1));
+	manager.bind('3', () => activateHotbarSlot(2));
+	manager.bind('4', () => activateHotbarSlot(3));
+	manager.bind('5', () => activateHotbarSlot(4));
+	manager.bind('6', () => activateHotbarSlot(5));
+	manager.bind('7', () => activateHotbarSlot(6));
+	manager.bind('8', () => activateHotbarSlot(7));
+	manager.bind('9', () => activateHotbarSlot(8));
 
 	// Build modes
 	manager.bind('b', () => toggleNodeBuild());
