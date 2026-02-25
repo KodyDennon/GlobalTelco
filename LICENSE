@@ -1,0 +1,109 @@
+GlobalTelco Source Available License
+Version 1.0, February 2026
+
+Copyright (c) 2026 Kody Dennon. All rights reserved.
+
+TERMS AND CONDITIONS
+
+1. DEFINITIONS
+
+   "Software" means the GlobalTelco source code, documentation, assets, and
+   associated files in this repository.
+
+   "You" means any individual or entity exercising rights under this License.
+
+   "Derivative Work" means any work based on or incorporating the Software,
+   including modifications, translations, adaptations, and extensions.
+
+   "Author" means Kody Dennon, the original copyright holder.
+
+   "Commercial Use" means any use intended for or directed toward commercial
+   advantage or monetary compensation. This includes, but is not limited to,
+   selling the Software, offering paid services using the Software, or
+   incorporating the Software into a commercial product.
+
+   "Host" means to deploy, run, or make available the Software or any
+   Derivative Work as a publicly accessible service, whether over the internet,
+   a local network, or any other medium.
+
+2. GRANT OF RIGHTS
+
+   Subject to the terms of this License, the Author grants You a non-exclusive,
+   worldwide, royalty-free right to:
+
+   a) View, read, and study the Software source code.
+   b) Download, clone, and fork the repository.
+   c) Build, compile, and run the Software locally for personal, educational,
+      or non-commercial purposes.
+   d) Modify the Software and create Derivative Works for personal,
+      educational, or non-commercial purposes.
+   e) Host and deploy the Software or Derivative Works for non-commercial
+      purposes, including running personal game servers, LAN servers, or
+      community servers — provided they are entirely free to access and use,
+      and no fees, donations, subscriptions, or other payments are required
+      or solicited from users.
+   f) Distribute the Software or Derivative Works to others for non-commercial
+      purposes, provided this License and all copyright notices are included.
+   g) Submit contributions (pull requests, patches, issues) to the official
+      repository.
+
+3. RESTRICTIONS
+
+   You MAY NOT:
+
+   a) Use the Software or any Derivative Work for Commercial Use without prior
+      written permission from the Author. This includes but is not limited to:
+      selling access to game servers, charging subscription fees, running
+      paid hosting services, incorporating the Software into a commercial
+      product, or monetizing the Software through ads, sponsorships, or
+      donations.
+   b) Sublicense, sell, lease, or otherwise transfer commercial rights to the
+      Software.
+   c) Remove or alter any copyright notices, license text, or attribution
+      from the Software.
+   d) Misrepresent the origin of the Software or claim authorship of the
+      original work.
+
+4. CONTRIBUTIONS
+
+   By submitting a contribution (pull request, patch, or other modification)
+   to the official repository, You:
+
+   a) Grant the Author a perpetual, worldwide, non-exclusive, royalty-free,
+      irrevocable license to use, reproduce, modify, distribute, and
+      sublicense Your contribution as part of the Software.
+   b) Represent that You have the right to grant such license.
+   c) Understand that Your contribution may be incorporated into the Software
+      under this License or any future license chosen by the Author.
+
+5. COMMERCIAL LICENSING
+
+   If You wish to use the Software for Commercial Use, contact the Author to
+   negotiate a commercial license. The Author welcomes partnerships and is
+   open to discussing terms.
+
+6. ATTRIBUTION
+
+   Any permitted use of the Software must include clear attribution to the
+   original project and Author. At minimum, this means retaining the credits
+   and copyright notices present in the Software.
+
+7. NO WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL
+   THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING
+   FROM THE USE OF THE SOFTWARE.
+
+8. TERMINATION
+
+   This License automatically terminates if You violate any of its terms.
+   Upon termination, You must cease all use and destroy all copies of the
+   Software in Your possession.
+
+9. CONTACT
+
+   For commercial licensing, hosting agreements, or questions:
+   GitHub: https://github.com/KodyDennon
+   Project: https://github.com/KodyDennon/GlobalTelco
