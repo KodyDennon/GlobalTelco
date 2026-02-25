@@ -381,6 +381,67 @@ export interface WorldPreviewData {
 	regionCount: number;
 }
 
+// Typed array interfaces for zero-copy hot-path rendering (deck.gl)
+
+export interface InfraNodesTyped {
+	count: number;
+	ids: Uint32Array;
+	owners: Uint32Array;
+	/** [lon0, lat0, lon1, lat1, ...] — 2 floats per node */
+	positions: Float64Array;
+	/** [health0, utilization0, throughput0, ...] — 3 floats per node */
+	stats: Float64Array;
+	node_types: Uint32Array;
+	network_levels: Uint32Array;
+	construction_flags: Uint8Array;
+}
+
+export interface InfraEdgesTyped {
+	count: number;
+	ids: Uint32Array;
+	owners: Uint32Array;
+	/** [src_lon0, src_lat0, dst_lon0, dst_lat0, ...] — 4 floats per edge */
+	endpoints: Float64Array;
+	/** [bandwidth0, utilization0, ...] — 2 floats per edge */
+	stats: Float64Array;
+	edge_types: Uint32Array;
+}
+
+export interface CorporationsTyped {
+	count: number;
+	ids: Uint32Array;
+	/** [cash0, revenue0, cost0, ...] — 3 floats per corp */
+	financials: Float64Array;
+	/** [offset0, length0, offset1, length1, ...] — 2 ints per corp */
+	name_offsets: Uint32Array;
+	/** UTF-8 packed name bytes */
+	names_packed: Uint8Array;
+}
+
+// Multiplayer delta operations (mirrors Rust DeltaOp enum)
+export type DeltaOp =
+	| { NodeCreated: { entity_id: number; owner: number; node_type: string; network_level: string; lon: number; lat: number; under_construction: boolean } }
+	| { EdgeCreated: { entity_id: number; owner: number; edge_type: string; from_node: number; to_node: number } }
+	| { NodeUpgraded: { entity_id: number; node_type: string } }
+	| { NodeRemoved: { entity_id: number } }
+	| { EdgeRemoved: { entity_id: number } }
+	| { ConstructionCompleted: { entity_id: number } };
+
+// Ghost entity for optimistic UI
+export interface GhostEntity {
+	id: string; // temp ID like "ghost-{seq}"
+	seq: number; // command sequence number
+	type: 'node' | 'edge';
+	lon?: number;
+	lat?: number;
+	node_type?: string;
+	network_level?: string;
+	from_node?: number;
+	to_node?: number;
+	edge_type?: string;
+	created_at: number; // timestamp for timeout
+}
+
 // Traffic flow types
 export interface EdgeFlow {
 	id: number;

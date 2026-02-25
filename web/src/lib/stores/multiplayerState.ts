@@ -96,6 +96,56 @@ export function updatePlayerStatus(id: string, username: string, status: 'Connec
 	});
 }
 
+// ── Ghost Entity System (optimistic UI) ─────────────────────────────────
+export interface GhostNode {
+	seq: number;
+	lon: number;
+	lat: number;
+	node_type: string;
+	network_level: string;
+	created_at: number;
+}
+
+export interface GhostEdge {
+	seq: number;
+	from_node: number;
+	to_node: number;
+	edge_type: string;
+	created_at: number;
+}
+
+export const ghostNodes = writable<GhostNode[]>([]);
+export const ghostEdges = writable<GhostEdge[]>([]);
+
+const GHOST_TIMEOUT_MS = 5000; // Remove unresolved ghosts after 5s
+
+export function addGhostNode(seq: number, lon: number, lat: number, node_type: string, network_level: string) {
+	ghostNodes.update((nodes) => [...nodes, { seq, lon, lat, node_type, network_level, created_at: Date.now() }]);
+	// Auto-remove after timeout
+	setTimeout(() => removeGhost(seq), GHOST_TIMEOUT_MS);
+}
+
+export function addGhostEdge(seq: number, from_node: number, to_node: number, edge_type: string) {
+	ghostEdges.update((edges) => [...edges, { seq, from_node, to_node, edge_type, created_at: Date.now() }]);
+	setTimeout(() => removeGhost(seq), GHOST_TIMEOUT_MS);
+}
+
+export function removeGhost(seq: number) {
+	ghostNodes.update((nodes) => nodes.filter((n) => n.seq !== seq));
+	ghostEdges.update((edges) => edges.filter((e) => e.seq !== seq));
+}
+
+// ── Speed Vote System ───────────────────────────────────────────────────
+export interface SpeedVote {
+	player_id: string;
+	username: string;
+	speed: string;
+	timestamp: number;
+}
+
+export const speedVotes = writable<SpeedVote[]>([]);
+export const speedVoteDeadline = writable<number | null>(null);
+
 export function resetMultiplayerState() {
 	connectionState.set('disconnected');
 	worldId.set(null);
@@ -110,4 +160,8 @@ export function resetMultiplayerState() {
 	isAuthenticated.set(false);
 	serverInfo.set(null);
 	proxySummary.set(null);
+	ghostNodes.set([]);
+	ghostEdges.set([]);
+	speedVotes.set([]);
+	speedVoteDeadline.set(null);
 }

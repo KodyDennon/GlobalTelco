@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::commands::Command;
 use crate::events::GameEvent;
-use crate::types::{EntityId, GameSpeed, Money, Tick};
+use crate::types::{EdgeType, EntityId, GameSpeed, Money, NetworkLevel, NodeType, Tick};
 
 /// Serde helper: always serialize/deserialize Uuid as a string.
 /// MessagePack (non-human-readable) would otherwise use 16-byte binary,
@@ -39,6 +39,9 @@ pub enum ClientMessage {
         #[serde(with = "uuid_string")]
         world_id: Uuid,
         command: Command,
+        /// Client-assigned sequence number for correlation
+        #[serde(default)]
+        seq: Option<u64>,
     },
     /// Request a state snapshot
     RequestSnapshot {
@@ -119,10 +122,27 @@ pub enum ServerMessage {
     },
     /// Full state snapshot (on join or request)
     Snapshot { tick: Tick, state_json: String },
-    /// Command acknowledged
+    /// Command acknowledged (enriched with entity ID and tick)
     CommandAck {
         success: bool,
         error: Option<String>,
+        /// Echo of client-assigned sequence number
+        #[serde(skip_serializing_if = "Option::is_none")]
+        seq: Option<u64>,
+        /// Entity created/affected by the command (if applicable)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        entity_id: Option<EntityId>,
+        /// Tick at which the command took effect
+        #[serde(skip_serializing_if = "Option::is_none")]
+        effective_tick: Option<Tick>,
+    },
+    /// Broadcast of a command's visible effects to all players
+    CommandBroadcast {
+        tick: Tick,
+        /// Corp that executed the command
+        corp_id: EntityId,
+        /// Delta operations describing what changed
+        ops: Vec<DeltaOp>,
     },
     /// Server error
     Error { code: ErrorCode, message: String },
@@ -149,6 +169,13 @@ pub enum ServerMessage {
     SaveList { saves: Vec<CloudSaveInfo> },
     /// Cloud save data download
     SaveData { slot: i32, save_data: Vec<u8> },
+    /// Speed vote update broadcast
+    SpeedVoteUpdate {
+        /// Current tally of speed votes
+        votes: Vec<SpeedVoteEntry>,
+        /// The resolved speed (majority or creator override)
+        resolved_speed: GameSpeed,
+    },
     /// AI proxy summary after reconnection
     ProxySummary {
         ticks_elapsed: u64,
@@ -238,6 +265,105 @@ pub struct WorldInfo {
     pub speed: GameSpeed,
     pub era: crate::types::Era,
     pub map_size: crate::types::MapSize,
+}
+
+/// Entry in a speed vote tally
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpeedVoteEntry {
+    pub username: String,
+    pub speed: GameSpeed,
+}
+
+// ── Command Result (returned by simulation) ──────────────────────────────
+
+/// Result of processing a game command in the simulation.
+/// Contains success/failure plus any entities created and delta ops for broadcast.
+#[derive(Debug, Clone)]
+pub struct CommandResult {
+    pub success: bool,
+    pub error: Option<String>,
+    /// Primary entity created or affected
+    pub entity_id: Option<EntityId>,
+    /// Delta operations for broadcasting to other players
+    pub ops: Vec<DeltaOp>,
+}
+
+impl CommandResult {
+    pub fn ok() -> Self {
+        Self {
+            success: true,
+            error: None,
+            entity_id: None,
+            ops: Vec::new(),
+        }
+    }
+
+    pub fn ok_with_entity(entity_id: EntityId) -> Self {
+        Self {
+            success: true,
+            error: None,
+            entity_id: Some(entity_id),
+            ops: Vec::new(),
+        }
+    }
+
+    pub fn fail(error: impl Into<String>) -> Self {
+        Self {
+            success: false,
+            error: Some(error.into()),
+            entity_id: None,
+            ops: Vec::new(),
+        }
+    }
+
+    pub fn with_op(mut self, op: DeltaOp) -> Self {
+        self.ops.push(op);
+        self
+    }
+}
+
+// ── Delta Operations (for CommandBroadcast) ──────────────────────────────
+
+/// A single delta operation describing a visible change to the world.
+/// These are broadcast to all players so they can update their local state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DeltaOp {
+    /// A new infrastructure node was created
+    NodeCreated {
+        entity_id: EntityId,
+        owner: EntityId,
+        node_type: NodeType,
+        network_level: NetworkLevel,
+        lon: f64,
+        lat: f64,
+        /// Whether the node is still under construction
+        under_construction: bool,
+    },
+    /// A new infrastructure edge was created
+    EdgeCreated {
+        entity_id: EntityId,
+        owner: EntityId,
+        edge_type: EdgeType,
+        from_node: EntityId,
+        to_node: EntityId,
+    },
+    /// A node was upgraded
+    NodeUpgraded {
+        entity_id: EntityId,
+        node_type: NodeType,
+    },
+    /// A node was decommissioned / removed
+    NodeRemoved {
+        entity_id: EntityId,
+    },
+    /// An edge was removed
+    EdgeRemoved {
+        entity_id: EntityId,
+    },
+    /// A node's construction completed
+    ConstructionCompleted {
+        entity_id: EntityId,
+    },
 }
 
 // ── Serialization Helpers ──────────────────────────────────────────────────

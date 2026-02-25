@@ -48,7 +48,9 @@ pub fn create_router(state: Arc<AppState>, tile_dir: Option<String>) -> Router {
         .route("/api/admin/worlds/{world_id}", delete(admin_delete_world))
         .route("/api/admin/worlds/{world_id}/speed", post(admin_set_speed))
         .route("/api/admin/broadcast", post(admin_broadcast))
-        .route("/api/admin/debug/{world_id}", get(admin_debug_world));
+        .route("/api/admin/debug/{world_id}", get(admin_debug_world))
+        .route("/api/admin/ban", post(admin_ban_player))
+        .route("/api/admin/unban", post(admin_unban_player));
 
     // Mount tile serving if TILE_DIR is configured
     if let Some(ref dir) = tile_dir {
@@ -876,6 +878,82 @@ async fn admin_broadcast(
             Json(serde_json::json!({ "broadcast": true, "scope": "all", "world_count": worlds.len() })),
         )
     }
+}
+
+// ── Ban / Unban Endpoints ──────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct BanRequest {
+    world_id: Uuid,
+    player_id: Uuid,
+}
+
+async fn admin_ban_player(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<BanRequest>,
+) -> impl IntoResponse {
+    if let Err(e) = extract_admin_claims(&headers) {
+        return e;
+    }
+
+    let world = match state.get_world(&body.world_id).await {
+        Some(w) => w,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": "World not found" })),
+            );
+        }
+    };
+
+    // Add to ban list
+    world.banned_players.write().await.insert(body.player_id);
+
+    // Also kick them if currently connected
+    let kicked = state.kick_player(&body.player_id).await;
+    world.remove_player(&body.player_id).await;
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "banned": true,
+            "player_id": body.player_id,
+            "world_id": body.world_id,
+            "also_kicked": kicked,
+        })),
+    )
+}
+
+async fn admin_unban_player(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<BanRequest>,
+) -> impl IntoResponse {
+    if let Err(e) = extract_admin_claims(&headers) {
+        return e;
+    }
+
+    let world = match state.get_world(&body.world_id).await {
+        Some(w) => w,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": "World not found" })),
+            );
+        }
+    };
+
+    let was_banned = world.banned_players.write().await.remove(&body.player_id);
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "unbanned": was_banned,
+            "player_id": body.player_id,
+            "world_id": body.world_id,
+        })),
+    )
 }
 
 // ── Debug Endpoint ──────────────────────────────────────────────────────

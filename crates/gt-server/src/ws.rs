@@ -74,6 +74,18 @@ fn command_target_corp(command: &Command) -> Option<EntityId> {
 /// Returns an error message if validation fails.
 fn validate_command(command: &Command) -> Result<(), &'static str> {
     match command {
+        Command::BuildNode { lon, lat, .. } => {
+            // Spatial validation: coordinates must be finite and within world bounds
+            if !lon.is_finite() || !lat.is_finite() {
+                return Err("Coordinates must be finite numbers");
+            }
+            if *lon < -180.0 || *lon > 180.0 {
+                return Err("Longitude must be between -180 and 180");
+            }
+            if *lat < -90.0 || *lat > 90.0 {
+                return Err("Latitude must be between -90 and 90");
+            }
+        }
         Command::TakeLoan { amount, .. } => {
             if *amount <= 0 {
                 return Err("Loan amount must be positive");
@@ -124,32 +136,97 @@ fn validate_command(command: &Command) -> Result<(), &'static str> {
     Ok(())
 }
 
-/// Simple sliding window rate limiter
+/// Per-type sliding window rate limiter.
+/// Different command categories have different rate limits.
 struct RateLimiter {
-    command_timestamps: Vec<std::time::Instant>,
+    build_timestamps: Vec<std::time::Instant>,
+    financial_timestamps: Vec<std::time::Instant>,
+    research_timestamps: Vec<std::time::Instant>,
+    espionage_timestamps: Vec<std::time::Instant>,
+    general_timestamps: Vec<std::time::Instant>,
     chat_timestamps: Vec<std::time::Instant>,
-    max_commands_per_sec: usize,
-    max_chats_per_10sec: usize,
+}
+
+/// Command category for rate limiting
+enum CommandCategory {
+    Build,      // BuildNode, BuildEdge, UpgradeNode, DecommissionNode
+    Financial,  // TakeLoan, RepayLoan, SetBudget, PurchaseInsurance, etc.
+    Research,   // StartResearch, CancelResearch
+    Espionage,  // LaunchEspionage, LaunchSabotage
+    General,    // Everything else
+}
+
+fn categorize_command(command: &Command) -> CommandCategory {
+    match command {
+        Command::BuildNode { .. }
+        | Command::BuildEdge { .. }
+        | Command::UpgradeNode { .. }
+        | Command::DecommissionNode { .. }
+        | Command::RepairNode { .. }
+        | Command::EmergencyRepair { .. } => CommandCategory::Build,
+
+        Command::TakeLoan { .. }
+        | Command::RepayLoan { .. }
+        | Command::SetBudget { .. }
+        | Command::PurchaseInsurance { .. }
+        | Command::CancelInsurance { .. }
+        | Command::PlaceBid { .. }
+        | Command::ProposeAcquisition { .. }
+        | Command::ProposeContract { .. } => CommandCategory::Financial,
+
+        Command::StartResearch { .. }
+        | Command::CancelResearch { .. } => CommandCategory::Research,
+
+        Command::LaunchEspionage { .. }
+        | Command::LaunchSabotage { .. } => CommandCategory::Espionage,
+
+        _ => CommandCategory::General,
+    }
 }
 
 impl RateLimiter {
     fn new() -> Self {
         Self {
-            command_timestamps: Vec::new(),
+            build_timestamps: Vec::new(),
+            financial_timestamps: Vec::new(),
+            research_timestamps: Vec::new(),
+            espionage_timestamps: Vec::new(),
+            general_timestamps: Vec::new(),
             chat_timestamps: Vec::new(),
-            max_commands_per_sec: 10,
-            max_chats_per_10sec: 5,
         }
     }
 
     fn check_command(&mut self) -> bool {
+        // Global fallback: 10 commands/sec across all types
         let now = std::time::Instant::now();
         let cutoff = now - std::time::Duration::from_secs(1);
-        self.command_timestamps.retain(|t| *t > cutoff);
-        if self.command_timestamps.len() >= self.max_commands_per_sec {
+        self.general_timestamps.retain(|t| *t > cutoff);
+        if self.general_timestamps.len() >= 10 {
             return false;
         }
-        self.command_timestamps.push(now);
+        self.general_timestamps.push(now);
+        true
+    }
+
+    /// Per-type rate limit check. Returns true if allowed.
+    fn check_typed_command(&mut self, command: &Command) -> bool {
+        let now = std::time::Instant::now();
+        let category = categorize_command(command);
+
+        let (timestamps, window, max) = match category {
+            CommandCategory::Build => (&mut self.build_timestamps, std::time::Duration::from_secs(1), 3usize),
+            CommandCategory::Financial => (&mut self.financial_timestamps, std::time::Duration::from_secs(1), 2),
+            CommandCategory::Research => (&mut self.research_timestamps, std::time::Duration::from_secs(5), 1),
+            CommandCategory::Espionage => (&mut self.espionage_timestamps, std::time::Duration::from_secs(30), 1),
+            CommandCategory::General => (&mut self.general_timestamps, std::time::Duration::from_secs(1), 10),
+        };
+
+        let cutoff = now - window;
+        timestamps.retain(|t| *t > cutoff);
+        if timestamps.len() >= max {
+            return false;
+        }
+        timestamps.push(now);
         true
     }
 
@@ -157,7 +234,7 @@ impl RateLimiter {
         let now = std::time::Instant::now();
         let cutoff = now - std::time::Duration::from_secs(10);
         self.chat_timestamps.retain(|t| *t > cutoff);
-        if self.chat_timestamps.len() >= self.max_chats_per_10sec {
+        if self.chat_timestamps.len() >= 5 {
             return false;
         }
         self.chat_timestamps.push(now);
@@ -304,10 +381,30 @@ fn filter_tick_update_for_player(
                 })
                 .collect();
 
+            // Filter events: global events (empty related_corps) go to everyone;
+            // private events only go to the relevant corporations.
+            let filtered_events: Vec<gt_common::events::GameEvent> = events
+                .iter()
+                .filter(|event| {
+                    let corps = event.related_corps();
+                    // Empty = global event, send to all
+                    if corps.is_empty() {
+                        return true;
+                    }
+                    // Send to player if their corp is in the related list
+                    if let Some(pc) = player_corp_id {
+                        corps.contains(&pc)
+                    } else {
+                        false
+                    }
+                })
+                .cloned()
+                .collect();
+
             ServerMessage::TickUpdate {
                 tick: *tick,
                 corp_updates: filtered_updates,
-                events: events.clone(),
+                events: filtered_events,
             }
         }
         // Non-TickUpdate messages pass through unmodified
@@ -330,6 +427,8 @@ pub async fn handle_socket(socket: WebSocket, state: Arc<AppState>, ip: IpAddr) 
     let mut player: Option<ConnectedPlayer> = None;
     let mut world_broadcast_rx: Option<broadcast::Receiver<ServerMessage>> = None;
     let mut rate_limiter = RateLimiter::new();
+    // Sequence number dedup: track the highest seq seen from this client
+    let mut last_seq: u64 = 0;
 
     // Spawn a task to forward broadcast messages to this client
     let (forward_tx, mut forward_rx) = tokio::sync::mpsc::channel::<ServerMessage>(64);
@@ -490,10 +589,10 @@ pub async fn handle_socket(socket: WebSocket, state: Arc<AppState>, ip: IpAddr) 
             }
         }
 
-        // Rate limit commands and chat
+        // Rate limit commands and chat (per-type for game commands)
         let is_rate_limited = match &msg {
-            ClientMessage::GameCommand { .. }
-            | ClientMessage::UploadSave { .. }
+            ClientMessage::GameCommand { command, .. } => !rate_limiter.check_typed_command(command),
+            ClientMessage::UploadSave { .. }
             | ClientMessage::DeleteSave { .. } => !rate_limiter.check_command(),
             ClientMessage::Chat { .. } => !rate_limiter.check_chat(),
             _ => false,
@@ -507,6 +606,21 @@ pub async fn handle_socket(socket: WebSocket, state: Arc<AppState>, ip: IpAddr) 
                 })
                 .await;
             continue;
+        }
+
+        // Sequence number dedup: reject commands with already-seen seq numbers
+        if let ClientMessage::GameCommand { seq: Some(seq_val), .. } = &msg {
+            if *seq_val <= last_seq {
+                let _ = forward_tx.send(ServerMessage::CommandAck {
+                    success: false,
+                    error: Some("Duplicate command (seq already processed)".to_string()),
+                    seq: Some(*seq_val),
+                    entity_id: None,
+                    effective_tick: None,
+                }).await;
+                continue;
+            }
+            last_seq = *seq_val;
         }
 
         let response = handle_client_message(
@@ -619,6 +733,14 @@ async fn handle_client_message(
                 }
             };
 
+            // Check if player is banned from this world
+            if world.banned_players.read().await.contains(&p.id) {
+                return Some(ServerMessage::Error {
+                    code: ErrorCode::PermissionDenied,
+                    message: "You are banned from this world".to_string(),
+                });
+            }
+
             // Spectators don't count toward the player limit
             if !p.is_spectator && world.is_full().await {
                 return Some(ServerMessage::Error {
@@ -669,6 +791,13 @@ async fn handle_client_message(
             if !p.is_spectator {
                 // Add player to world's player map
                 world.add_player(p.id, corp_id).await;
+
+                // First non-spectator player becomes the creator (has speed override)
+                let mut creator = world.creator_id.write().await;
+                if creator.is_none() {
+                    *creator = Some(p.id);
+                }
+                drop(creator);
             }
 
             p.world_id = Some(world_id);
@@ -811,10 +940,13 @@ async fn handle_client_message(
             Some(ServerMessage::CommandAck {
                 success: true,
                 error: None,
+                seq: None,
+                entity_id: None,
+                effective_tick: None,
             })
         }
 
-        ClientMessage::GameCommand { world_id, command } => {
+        ClientMessage::GameCommand { world_id, command, seq } => {
             let p = match player {
                 Some(p) => p,
                 None => {
@@ -869,18 +1001,161 @@ async fn handle_client_message(
                 }
             };
 
-            // Process the command and log it
+            // Speed vote system: SetSpeed/TogglePause go through voting
+            if matches!(command, Command::SetSpeed(_) | Command::TogglePause) {
+                let requested_speed = match &command {
+                    Command::SetSpeed(speed) => *speed,
+                    Command::TogglePause => {
+                        let w = world.world.lock().await;
+                        if w.speed() == gt_common::types::GameSpeed::Paused {
+                            gt_common::types::GameSpeed::Normal
+                        } else {
+                            gt_common::types::GameSpeed::Paused
+                        }
+                    }
+                    _ => unreachable!(),
+                };
+
+                let is_creator = {
+                    let creator = world.creator_id.read().await;
+                    *creator == Some(p.id)
+                };
+
+                // Creator has override power — set speed directly
+                if is_creator {
+                    let mut w = world.world.lock().await;
+                    w.process_command(Command::SetSpeed(requested_speed));
+                    let tick = w.current_tick();
+                    drop(w);
+
+                    // Clear any pending votes and broadcast
+                    world.speed_votes.write().await.clear();
+                    let _ = world.broadcast_tx.send(ServerMessage::SpeedVoteUpdate {
+                        votes: vec![],
+                        resolved_speed: requested_speed,
+                    });
+
+                    return Some(ServerMessage::CommandAck {
+                        success: true,
+                        error: None,
+                        seq,
+                        entity_id: None,
+                        effective_tick: Some(tick),
+                    });
+                }
+
+                // Non-creator: register vote
+                let speed_str = format!("{:?}", requested_speed);
+                world.speed_votes.write().await.insert(p.id, speed_str);
+
+                // Tally votes and resolve by majority
+                let players = world.players.read().await;
+                let total_players = players.len();
+                let votes = world.speed_votes.read().await;
+                let mut vote_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+                for speed in votes.values() {
+                    *vote_counts.entry(speed.clone()).or_insert(0) += 1;
+                }
+                drop(players);
+
+                // Find the speed with the most votes
+                let majority_threshold = (total_players / 2) + 1;
+                let resolved = vote_counts.iter()
+                    .filter(|(_, count)| **count >= majority_threshold)
+                    .max_by_key(|(_, count)| *count)
+                    .map(|(speed, _)| speed.clone());
+
+                if let Some(speed_str) = resolved {
+                    let resolved_speed = match speed_str.as_str() {
+                        "Paused" => gt_common::types::GameSpeed::Paused,
+                        "Normal" => gt_common::types::GameSpeed::Normal,
+                        "Fast" => gt_common::types::GameSpeed::Fast,
+                        "VeryFast" => gt_common::types::GameSpeed::VeryFast,
+                        "Ultra" => gt_common::types::GameSpeed::Ultra,
+                        _ => gt_common::types::GameSpeed::Normal,
+                    };
+
+                    let mut w = world.world.lock().await;
+                    w.process_command(Command::SetSpeed(resolved_speed));
+                    let tick = w.current_tick();
+                    drop(w);
+
+                    // Clear votes after resolution
+                    world.speed_votes.write().await.clear();
+                    let _ = world.broadcast_tx.send(ServerMessage::SpeedVoteUpdate {
+                        votes: vec![],
+                        resolved_speed,
+                    });
+
+                    return Some(ServerMessage::CommandAck {
+                        success: true,
+                        error: None,
+                        seq,
+                        entity_id: None,
+                        effective_tick: Some(tick),
+                    });
+                }
+
+                // No majority yet — broadcast vote tally
+                let vote_entries: Vec<gt_common::protocol::SpeedVoteEntry> = votes.iter().map(|(pid, speed)| {
+                    // Look up username from state
+                    gt_common::protocol::SpeedVoteEntry {
+                        username: pid.to_string(), // Will be resolved below
+                        speed: match speed.as_str() {
+                            "Paused" => gt_common::types::GameSpeed::Paused,
+                            "Normal" => gt_common::types::GameSpeed::Normal,
+                            "Fast" => gt_common::types::GameSpeed::Fast,
+                            "VeryFast" => gt_common::types::GameSpeed::VeryFast,
+                            "Ultra" => gt_common::types::GameSpeed::Ultra,
+                            _ => gt_common::types::GameSpeed::Normal,
+                        },
+                    }
+                }).collect();
+                drop(votes);
+
+                let current_speed = {
+                    let w = world.world.lock().await;
+                    w.speed()
+                };
+                let _ = world.broadcast_tx.send(ServerMessage::SpeedVoteUpdate {
+                    votes: vote_entries,
+                    resolved_speed: current_speed,
+                });
+
+                return Some(ServerMessage::CommandAck {
+                    success: true,
+                    error: Some("Speed vote registered, waiting for majority".to_string()),
+                    seq,
+                    entity_id: None,
+                    effective_tick: None,
+                });
+            }
+
+            // Process the command using the player's corp and collect result
+            let corp_id = p.corp_id.unwrap_or(0);
             let mut w = world.world.lock().await;
             let tick = w.current_tick();
             let command_debug = format!("{:?}", command);
-            w.process_command(command);
+            let result = w.process_command_for_corp(command, corp_id);
             drop(w);
 
             state.log_command(p.id, command_debug, tick).await;
 
+            // Broadcast delta ops to all players if command produced visible changes
+            if result.success && !result.ops.is_empty() {
+                let _ = world.broadcast_tx.send(ServerMessage::CommandBroadcast {
+                    tick,
+                    corp_id,
+                    ops: result.ops,
+                });
+            }
+
             Some(ServerMessage::CommandAck {
-                success: true,
-                error: None,
+                success: result.success,
+                error: result.error,
+                seq,
+                entity_id: result.entity_id,
+                effective_tick: Some(tick),
             })
         }
 
@@ -1120,6 +1395,9 @@ async fn handle_client_message(
                             } else {
                                 Some("Save not found".to_string())
                             },
+                            seq: None,
+                            entity_id: None,
+                            effective_tick: None,
                         });
                     }
                     Err(e) => {

@@ -39,6 +39,7 @@ pub struct AuditEntry {
 }
 
 /// A running game world instance
+#[allow(dead_code)]
 pub struct WorldInstance {
     pub id: Uuid,
     pub name: String,
@@ -48,6 +49,12 @@ pub struct WorldInstance {
     pub players: RwLock<HashMap<Uuid, EntityId>>, // player_id → corp_id
     pub max_players: u32,
     pub tick_rate_ms: u64,
+    /// Player who created the world (has override power for speed)
+    pub creator_id: RwLock<Option<Uuid>>,
+    /// Speed votes: player_id → requested speed string
+    pub speed_votes: RwLock<HashMap<Uuid, String>>,
+    /// Banned players (by account ID)
+    pub banned_players: RwLock<std::collections::HashSet<Uuid>>,
 }
 
 impl WorldInstance {
@@ -63,6 +70,9 @@ impl WorldInstance {
             players: RwLock::new(HashMap::new()),
             max_players,
             tick_rate_ms: 1000, // Default 1 tick/sec
+            creator_id: RwLock::new(None),
+            speed_votes: RwLock::new(HashMap::new()),
+            banned_players: RwLock::new(std::collections::HashSet::new()),
         }
     }
 

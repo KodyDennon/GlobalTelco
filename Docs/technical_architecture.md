@@ -190,20 +190,33 @@ crates/
 │   │   ├── strategy.rs     # Strategy selection (expand/consolidate/compete/survive)
 │   │   └── actions.rs      # AI action execution
 │
+├── gt-bridge/          # Shared bridge query trait
+│   ├── src/
+│   │   └── lib.rs          # BridgeQuery trait, InfraArrays, EdgeArrays structs
+│
 ├── gt-wasm/            # WASM bindings for browser
 │   ├── src/
-│   │   ├── lib.rs          # wasm-bindgen entry point
-│   │   ├── bridge.rs       # JS ↔ Rust data bridge
-│   │   ├── commands.rs     # Player action commands
-│   │   └── queries.rs      # UI data queries
+│   │   └── lib.rs          # wasm-bindgen entry, JSON queries, typed array exports, BridgeQuery impl
+│
+├── gt-tauri/           # Tauri native bridge for desktop
+│   ├── src/
+│   │   └── lib.rs          # TauriBridge struct, BridgeQuery impl, cmd_new_game factory
 │
 └── gt-server/          # Multiplayer server
     ├── src/
     │   ├── main.rs         # Server entry point
-    │   ├── websocket.rs    # WebSocket handling
+    │   ├── ws.rs           # WebSocket handling, rate limiting, spatial validation, speed votes
+    │   ├── routes.rs       # HTTP API (worlds, auth, admin ban/unban)
+    │   ├── state.rs        # WorldInstance, AppState, player/vote/ban tracking
+    │   ├── tick.rs         # Tick processing, snapshot intervals
     │   ├── auth.rs         # Authentication
-    │   ├── persistence.rs  # PostgreSQL save/load
-    │   └── world_manager.rs # Multiple world management
+    │   └── persistence.rs  # PostgreSQL save/load
+
+desktop/src-tauri/      # Tauri desktop app (separate Cargo project)
+    ├── src/
+    │   └── main.rs         # SimState, 16 Tauri commands (filesystem + native sim)
+    ├── tauri.conf.json     # Tauri v2 config
+    └── Cargo.toml          # Depends on gt-tauri, gt-bridge, gt-common
 ```
 
 ---
@@ -399,11 +412,15 @@ The bridge between Svelte/JS and Rust/WASM uses `wasm-bindgen` and follows this 
 └───────────────┘
 ```
 
-**Server authority:** The server runs the simulation. Clients send commands, server validates and executes, broadcasts state updates to all clients. Fog of war is enforced server-side: each client only receives world state their corporation has intel on. Competitor infrastructure is filtered before transmission.
+**Server authority:** The server runs the simulation. Clients send commands, server validates and executes, broadcasts state deltas to all clients. Per-player event filtering enforced server-side based on espionage intel level. Infrastructure is always visible to all players.
 
-**Client rendering:** Clients receive state snapshots and deltas. They render the map and UI locally. No simulation runs on client in multiplayer mode. Pure thin client — no WASM tick execution in MP.
+**Client rendering:** Clients receive event-driven delta broadcasts (CommandBroadcast) and periodic TickUpdates. In multiplayer, the client's WASM module receives incremental state updates via `applyBatch()` (DeltaOps), not full snapshots. Full snapshots sent every 30 ticks as safety net. Pure thin client — no WASM tick execution in MP.
+
+**Optimistic UI:** Builder sees instant ghost entity (translucent). Server confirms/rejects via CommandAck. Other players see confirmed entity immediately via CommandBroadcast + applyBatch. Sub-200ms latency for all players.
 
 **Single-player:** The WASM module IS the server. Same simulation code, running in the browser. Commands go directly to WASM, no network needed.
+
+**Desktop (Tauri):** WASM runs in Tauri's webview for simulation (same as browser). Tauri IPC provides native filesystem access for saves. Native sim commands exist in desktop/src-tauri for future async adoption.
 
 ### 4b. WebSocket Protocol
 
@@ -411,17 +428,36 @@ Messages are serialized with MessagePack (compact binary) or JSON (debug mode).
 
 **Client → Server:**
 ```
-{ type: "command", action: "build_node", params: { ... }, seq: 123 }
-{ type: "command", action: "set_speed", params: { multiplier: 4 }, seq: 124 }
+GameCommand { seq: 123, command: BuildNode { CellTower, 34.05, -118.25 } }
+GameCommand { seq: 124, command: SetSpeed("Fast") }  // Speed vote in MP
 ```
 
 **Server → Client:**
 ```
-{ type: "tick", tick_number: 1234, delta: { ... } }  // State changes this tick
-{ type: "ack", seq: 123, success: true }              // Command acknowledged
-{ type: "event", event: { type: "disaster", ... } }   // Game event notification
-{ type: "snapshot", state: { ... } }                   // Full state (on connect)
+CommandAck { success: true, seq: 123, entity_id: 1337, effective_tick: 500, error: null }
+CommandBroadcast { tick: 500, player_id, corp_id, ops: [NodeCreated { ... }] }
+SpeedVoteUpdate { votes: [...], deadline: 530, current_speed: "Normal" }
+TickUpdate { tick: 501, world_info, events: [...] }  // Per-tick state (filtered per player)
+FullSnapshot { tick: 530, state: "..." }              // Every 30 ticks (safety net)
 ```
+
+**DeltaOp types (CommandBroadcast payload):**
+```
+NodeCreated { entity_id, owner, node_type, network_level, lon, lat, under_construction }
+EdgeCreated { entity_id, owner, edge_type, from_node, to_node }
+NodeUpgraded { entity_id, node_type }
+NodeRemoved { entity_id }
+EdgeRemoved { entity_id }
+ConstructionCompleted { entity_id }
+```
+
+**Anti-cheat:**
+- Per-type rate limiting: Build 3/sec, Financial 2/sec, Research 1/5sec, Espionage 1/30sec
+- Server-side spatial validation: finite coords, world bounds (-180/180, -90/90)
+- Sequence number dedup: reject if seq <= last_seq per player
+- Speed control: world creator has override power, others need majority vote (30s window)
+
+**Admin:** `POST /api/admin/ban`, `POST /api/admin/unban` endpoints. Ban check on JoinWorld.
 
 ### 4c. Fog of War (Server-Side Filtering)
 

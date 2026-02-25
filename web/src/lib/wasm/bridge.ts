@@ -24,11 +24,33 @@ import type {
 	VictoryInfo,
 	TrafficFlows,
 	WorldConfig,
-	WorldPreviewData
+	WorldPreviewData,
+	InfraNodesTyped,
+	InfraEdgesTyped,
+	CorporationsTyped
 } from './types';
 
 let wasmModule: any = null;
 let bridge: any = null;
+
+// Tauri desktop detection: provides native filesystem access for saves.
+// The simulation still runs via WASM in the webview for API compatibility.
+// Native sim commands exist in desktop/src-tauri for future async adoption.
+const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
+let tauriInvoke: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null = null;
+
+async function initTauri(): Promise<void> {
+	if (!isTauri || tauriInvoke) return;
+	try {
+		// Dynamic import — @tauri-apps/api is only available in Tauri desktop builds.
+		// Use string variable to avoid static analysis errors when package isn't installed.
+		const tauriModulePath = '@tauri-apps/api/core';
+		const tauri = await import(/* @vite-ignore */ tauriModulePath);
+		tauriInvoke = tauri.invoke;
+	} catch {
+		// @tauri-apps/api not available — fall back to WASM-only
+	}
+}
 
 type ErrorHandler = (error: string, context: string) => void;
 let errorHandler: ErrorHandler | null = null;
@@ -46,6 +68,9 @@ function onBridgeError(error: unknown, context: string): void {
 }
 
 export async function initWasm(): Promise<void> {
+	// Always init Tauri for native filesystem access (saves)
+	if (isTauri) await initTauri();
+	// Always load WASM — it runs the simulation in all environments
 	if (wasmModule) return;
 	const wasm = await import('./pkg/gt_wasm');
 	await wasm.default();
@@ -63,7 +88,7 @@ export function newGame(config?: Partial<WorldConfig>): void {
 		}
 	} catch (e) {
 		onBridgeError(e, 'newGame');
-		throw e; // Re-throw — caller needs to know game creation failed
+		throw e;
 	}
 }
 
@@ -88,7 +113,6 @@ export function currentTick(): number {
 export function processCommand(command: object): void {
 	try {
 		const result = bridge?.process_command(JSON.stringify(command));
-		// process_command now returns any immediate notifications (e.g., error messages)
 		if (result && result.length > 0) {
 			try {
 				const notifs = JSON.parse(result);
@@ -115,6 +139,14 @@ export function setCommandNotificationHandler(handler: CommandNotificationHandle
 function onCommandNotifications(notifs: Notification[]): void {
 	if (commandNotificationHandler) {
 		commandNotificationHandler(notifs);
+	}
+}
+
+export function applyBatch(ops: unknown[]): void {
+	try {
+		bridge?.apply_batch(JSON.stringify(ops));
+	} catch (e) {
+		onBridgeError(e, 'applyBatch');
 	}
 }
 
@@ -404,7 +436,6 @@ export function getTrafficFlows(): TrafficFlows {
 export function createWorldPreview(config: Partial<WorldConfig>): WorldPreviewData | null {
 	if (!wasmModule) return null;
 	try {
-		// Try calling the WASM preview method if it exists
 		if (typeof wasmModule.WasmBridge.create_world_preview === 'function') {
 			const configJson = JSON.stringify(config);
 			const json = wasmModule.WasmBridge.create_world_preview(configJson);
@@ -426,6 +457,88 @@ export function getWorldGeoJSON(): any {
 		onBridgeError(e, 'getWorldGeoJSON');
 	}
 	return null;
+}
+
+// ── Typed Array Queries (Hot-Path Rendering) ──────────────────────────
+
+const EMPTY_F64 = new Float64Array(0);
+const EMPTY_U32 = new Uint32Array(0);
+const EMPTY_U8 = new Uint8Array(0);
+
+export function getInfraNodesTyped(): InfraNodesTyped {
+	try {
+		if (bridge && typeof bridge.get_infra_nodes_typed === 'function') {
+			return bridge.get_infra_nodes_typed() as InfraNodesTyped;
+		}
+	} catch (e) {
+		onBridgeError(e, 'getInfraNodesTyped');
+	}
+	return { count: 0, ids: EMPTY_U32, owners: EMPTY_U32, positions: EMPTY_F64, stats: EMPTY_F64, node_types: EMPTY_U32, network_levels: EMPTY_U32, construction_flags: EMPTY_U8 };
+}
+
+export function getInfraEdgesTyped(): InfraEdgesTyped {
+	try {
+		if (bridge && typeof bridge.get_infra_edges_typed === 'function') {
+			return bridge.get_infra_edges_typed() as InfraEdgesTyped;
+		}
+	} catch (e) {
+		onBridgeError(e, 'getInfraEdgesTyped');
+	}
+	return { count: 0, ids: EMPTY_U32, owners: EMPTY_U32, endpoints: EMPTY_F64, stats: EMPTY_F64, edge_types: EMPTY_U32 };
+}
+
+export function getCorporationsTyped(): CorporationsTyped {
+	try {
+		if (bridge && typeof bridge.get_corporations_typed === 'function') {
+			return bridge.get_corporations_typed() as CorporationsTyped;
+		}
+	} catch (e) {
+		onBridgeError(e, 'getCorporationsTyped');
+	}
+	return { count: 0, ids: EMPTY_U32, financials: EMPTY_F64, name_offsets: EMPTY_U32, names_packed: EMPTY_U8 };
+}
+
+// ── Tauri Native Filesystem ───────────────────────────────────────────
+
+export async function saveGameNative(slot: number, data: string): Promise<string | null> {
+	if (!tauriInvoke) return null;
+	try {
+		return (await tauriInvoke('save_game_native', { slot, data })) as string;
+	} catch (e) {
+		onBridgeError(e, 'saveGameNative');
+		return null;
+	}
+}
+
+export async function loadGameNative(slot: number): Promise<string | null> {
+	if (!tauriInvoke) return null;
+	try {
+		return (await tauriInvoke('load_game_native', { slot })) as string | null;
+	} catch (e) {
+		onBridgeError(e, 'loadGameNative');
+		return null;
+	}
+}
+
+export interface NativeSaveEntry {
+	name: string;
+	path: string;
+	size: number;
+	modified: number;
+}
+
+export async function listSavesNative(): Promise<NativeSaveEntry[]> {
+	if (!tauriInvoke) return [];
+	try {
+		return (await tauriInvoke('list_saves')) as NativeSaveEntry[];
+	} catch (e) {
+		onBridgeError(e, 'listSavesNative');
+		return [];
+	}
+}
+
+export function isTauriDesktop(): boolean {
+	return isTauri && tauriInvoke !== null;
 }
 
 export function isInitialized(): boolean {

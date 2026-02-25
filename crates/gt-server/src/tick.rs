@@ -64,8 +64,8 @@ fn build_corp_delta(w: &GameWorld, corp_id: EntityId) -> Option<CorpDelta> {
 const DB_SNAPSHOT_INTERVAL_TICKS: u64 = 100;
 
 /// Client snapshot interval: push full state to clients every N ticks
-/// so their local WASM stays in sync for map rendering + queries.
-const CLIENT_SNAPSHOT_INTERVAL_TICKS: u64 = 5;
+/// as a safety net. CommandBroadcast handles instant sync for commands.
+const CLIENT_SNAPSHOT_INTERVAL_TICKS: u64 = 30;
 
 /// Start the tick loop for a specific world
 #[cfg(feature = "postgres")]

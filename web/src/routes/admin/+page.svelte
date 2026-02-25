@@ -904,14 +904,6 @@
 		flex-wrap: wrap;
 	}
 
-	.inline-label {
-		font-size: 0.8rem;
-		color: #9ca3af;
-		display: flex;
-		align-items: center;
-		gap: 6px;
-	}
-
 	.broadcast-result {
 		font-size: 0.8rem;
 		color: #10b981;

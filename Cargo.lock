@@ -646,6 +646,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gt-bridge"
+version = "0.1.0"
+dependencies = [
+ "gt-common",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "gt-common"
 version = "0.1.0"
 dependencies = [
@@ -729,14 +738,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "gt-tauri"
+version = "0.1.0"
+dependencies = [
+ "gt-bridge",
+ "gt-common",
+ "gt-simulation",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "gt-wasm"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
  "getrandom 0.2.17",
+ "gt-bridge",
  "gt-common",
  "gt-simulation",
  "gt-world",
+ "js-sys",
  "serde",
  "serde_json",
  "wasm-bindgen",

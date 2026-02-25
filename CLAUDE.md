@@ -24,20 +24,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 globaltelco/
 ├── crates/                    # Rust workspace
-│   ├── gt-common/             # Shared types, traits, serialization
+│   ├── gt-common/             # Shared types, traits, serialization, protocol
 │   ├── gt-simulation/         # Core ECS engine, tick orchestrator
 │   ├── gt-world/              # World generation, geography, terrain
 │   ├── gt-economy/            # Corporations, finance, markets, contracts, research
 │   ├── gt-infrastructure/     # Network graph, nodes, edges, routing
 │   ├── gt-population/         # Demographics, migration, employment, demand
 │   ├── gt-ai/                 # AI corporation controllers, archetypes, strategy
-│   ├── gt-wasm/               # WASM bindings (wasm-bindgen bridge to JS)
+│   ├── gt-bridge/             # Shared BridgeQuery trait + typed array structs (WASM & Tauri)
+│   ├── gt-wasm/               # WASM bindings (wasm-bindgen bridge to JS + typed arrays)
+│   ├── gt-tauri/              # Tauri native bridge (BridgeQuery impl for desktop)
 │   └── gt-server/             # Multiplayer server binary (WebSocket, auth, persistence)
 ├── web/                       # Svelte frontend
 │   ├── src/
 │   │   ├── lib/
-│   │   │   ├── wasm/          # TypeScript WASM bridge (commands + queries)
+│   │   │   ├── wasm/          # TypeScript WASM bridge (commands + queries + typed arrays)
 │   │   │   ├── game/          # Game screen (map renderer, HUD, speed controls, advisor)
+│   │   │   ├── multiplayer/   # WebSocket client, multiplayer state management
 │   │   │   ├── panels/        # Management panels (dashboard, infra, workforce, research, contracts)
 │   │   │   ├── menu/          # Main menu, new game, load game, world browser, settings
 │   │   │   ├── charts/        # D3.js visualizations (finance, population, network, market share)
@@ -45,7 +48,8 @@ globaltelco/
 │   │   └── stores/            # Svelte stores (game state, UI state, settings)
 │   ├── static/                # Icons, fonts, map data (GeoJSON)
 │   └── package.json
-├── desktop/                   # Tauri desktop app wrapper
+├── desktop/                   # Tauri desktop app wrapper (separate Cargo project)
+│   └── src-tauri/             # Rust backend with native sim commands + file system ops
 ├── data/                      # Open data sources (OSM, World Bank, UN)
 ├── Docs/                      # Design specification documents
 └── Cargo.toml                 # Rust workspace root
@@ -103,13 +107,16 @@ wasm-pack build crates/gt-wasm --target web --out-dir ../../web/src/lib/wasm/pkg
 
 ```
 gt-server → gt-simulation, gt-common
-gt-wasm → gt-simulation, gt-common
+gt-wasm → gt-simulation, gt-bridge, gt-common
+gt-tauri → gt-simulation, gt-bridge, gt-common
+gt-bridge → gt-common
 gt-simulation → gt-world, gt-economy, gt-infrastructure, gt-population, gt-ai, gt-common
 gt-world → gt-common
 gt-economy → gt-common
 gt-infrastructure → gt-common
 gt-population → gt-common
 gt-ai → gt-common, gt-economy, gt-infrastructure
+desktop/src-tauri → gt-tauri, gt-bridge, gt-common (separate Cargo project, excluded from workspace)
 ```
 
 ## ECS Architecture
@@ -142,11 +149,17 @@ All game state is managed through an Entity Component System. Entities are IDs, 
 ## WASM Bridge Pattern
 
 ```
-Svelte Component → bridge.ts (TypeScript) → gt-wasm (wasm-bindgen) → ECS World
+Single-player: Svelte Component → bridge.ts → gt-wasm (wasm-bindgen) → ECS World
+Multiplayer:   Svelte Component → commandRouter.ts → WebSocketClient → Server → validates → broadcasts
+Desktop:       Same as single-player (WASM in Tauri webview), Tauri IPC for native filesystem
 
 Commands (player → sim): build_node, build_edge, hire_employee, set_policy, take_loan, propose_contract, set_research, set_speed, toggle_pause, save_game, load_game, file_patent, request_license, propose_alliance, file_lawsuit, bid_for_grant, set_region_pricing, set_maintenance_priority, start_independent_research
 
-Queries (sim → UI): get_visible_entities, get_corporation_data, get_region_data, get_infrastructure_list, get_workforce, get_contracts, get_research_state, get_notifications, get_advisor_suggestion, get_patents, get_licenses, get_alliances, get_lawsuits, get_grants, get_intel_levels
+Queries (sim → UI):
+  JSON queries: get_visible_entities, get_corporation_data, get_region_data, get_infrastructure_list, get_workforce, get_contracts, get_research_state, get_notifications, get_advisor_suggestion, get_patents, get_licenses, get_alliances, get_lawsuits, get_grants, get_intel_levels
+  Typed array queries (hot-path): get_infra_nodes_typed, get_infra_edges_typed, get_corporations_typed
+
+Multiplayer protocol: CommandAck (with seq, entity_id, tick), CommandBroadcast (DeltaOps), SpeedVoteUpdate, applyBatch (incremental WASM state update)
 ```
 
 ## AI Corporation System
@@ -161,9 +174,15 @@ Queries (sim → UI): get_visible_entities, get_corporation_data, get_region_dat
 
 - **Single-player:** WASM module IS the server. Full sim runs in browser. No network needed.
 - **Multiplayer:** Server-authoritative. Clients send commands via WebSocket, server validates and broadcasts state deltas.
+- **Sync model:** Event-driven delta broadcasts. CommandBroadcast carries DeltaOps (NodeCreated, EdgeCreated, etc.) for sub-200ms sync. Full snapshots every 30 ticks as safety net.
+- **Optimistic UI:** Ghost entities (translucent) appear instantly for builder. Resolved on CommandAck. Other players see confirmed entities immediately via applyBatch.
+- **Anti-cheat:** Per-type rate limiting (Build 3/sec, Financial 2/sec, Research 1/5sec, Espionage 1/30sec), server-side spatial validation, sequence number dedup.
+- **Speed control:** World creator has override power. Others need majority vote (30s window).
+- **Per-player event filtering:** Infrastructure events visible to all. Financial/internal events gated by espionage intel level.
+- **Admin:** Ban/unban endpoints, real-time monitoring.
 - **AI proxy:** When player disconnects, AI manages their corp using saved policies. No strategic changes — maintenance only.
 - **Persistent worlds:** 24/7 servers, multiple worlds with different settings/eras.
-- **Protocol:** MessagePack (binary) or JSON (debug). Commands, ticks, acks, events, snapshots.
+- **Protocol:** MessagePack (binary) or JSON (debug). Commands (with seq), CommandAck (with entity_id + tick), CommandBroadcast (DeltaOps), SpeedVoteUpdate, TickUpdate, full snapshots.
 
 ## Save System
 

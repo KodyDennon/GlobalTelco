@@ -14,6 +14,9 @@ tauri-plugin-fs = "2"
 tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+gt-tauri = { path = "../../crates/gt-tauri" }
+gt-bridge = { path = "../../crates/gt-bridge" }
+gt-common = { path = "../../crates/gt-common" }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

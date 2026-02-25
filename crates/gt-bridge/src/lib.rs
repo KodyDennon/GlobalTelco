@@ -1,0 +1,79 @@
+//! Shared bridge query trait for gt-wasm and gt-tauri.
+//!
+//! Both the WASM bridge (browser) and the Tauri bridge (desktop native)
+//! implement `BridgeQuery` so that the frontend can use the same API
+//! regardless of the runtime environment.
+
+use gt_common::types::EntityId;
+
+/// Results of an infrastructure query as flat typed arrays.
+/// Each array is parallel-indexed: positions[2*i], positions[2*i+1] = (lon, lat) for entity i.
+pub struct InfraArrays {
+    /// Entity IDs (parallel with positions)
+    pub ids: Vec<u32>,
+    /// Owner corp IDs
+    pub owners: Vec<u32>,
+    /// [lon0, lat0, lon1, lat1, ...] — 2 floats per node
+    pub positions: Vec<f64>,
+    /// [health0, utilization0, throughput0, health1, utilization1, throughput1, ...] — 3 floats per node
+    pub stats: Vec<f64>,
+    /// Node type enum discriminants
+    pub node_types: Vec<u32>,
+    /// Network level enum discriminants
+    pub network_levels: Vec<u32>,
+    /// 1 if under construction, 0 if not
+    pub construction_flags: Vec<u8>,
+}
+
+/// Edge data as flat typed arrays.
+pub struct EdgeArrays {
+    /// Entity IDs
+    pub ids: Vec<u32>,
+    /// Owner corp IDs
+    pub owners: Vec<u32>,
+    /// [src_lon0, src_lat0, dst_lon0, dst_lat0, ...] — 4 floats per edge
+    pub endpoints: Vec<f64>,
+    /// [bandwidth0, utilization0, bandwidth1, utilization1, ...] — 2 floats per edge
+    pub stats: Vec<f64>,
+    /// Edge type enum discriminants
+    pub edge_types: Vec<u32>,
+}
+
+/// Trait defining the shared query API between WASM and Tauri bridges.
+///
+/// JSON methods return `String` for compatibility with both wasm-bindgen
+/// and Tauri's serde-based IPC. Typed array methods return flat structs
+/// for zero-copy rendering in deck.gl.
+pub trait BridgeQuery {
+    // ── Lifecycle ────────────────────────────────────────────────────────
+    fn tick(&mut self);
+    fn current_tick(&self) -> u64;
+    fn process_command(&mut self, command_json: &str) -> Result<String, String>;
+    fn apply_batch(&mut self, ops_json: &str) -> Result<(), String>;
+
+    // ── JSON queries (non-hot-path) ─────────────────────────────────────
+    fn get_world_info(&self) -> String;
+    fn get_corporation_data(&self, corp_id: EntityId) -> String;
+    fn get_regions(&self) -> String;
+    fn get_cities(&self) -> String;
+    fn get_all_corporations(&self) -> String;
+    fn get_research_state(&self) -> String;
+    fn get_contracts(&self, corp_id: EntityId) -> String;
+    fn get_debt_instruments(&self, corp_id: EntityId) -> String;
+    fn get_notifications(&mut self) -> String;
+    fn get_buildable_nodes(&self, lon: f64, lat: f64) -> String;
+    fn get_buildable_edges(&self, source_id: EntityId) -> String;
+    fn get_damaged_nodes(&self, corp_id: EntityId) -> String;
+    fn get_auctions(&self) -> String;
+    fn get_covert_ops(&self, corp_id: EntityId) -> String;
+    fn get_lobbying_campaigns(&self, corp_id: EntityId) -> String;
+    fn get_achievements(&self, corp_id: EntityId) -> String;
+    fn get_victory_state(&self) -> String;
+    fn get_traffic_flows(&self) -> String;
+    fn save_game(&self) -> Result<String, String>;
+    fn load_game(&mut self, data: &str) -> Result<(), String>;
+
+    // ── Typed array queries (hot-path rendering) ────────────────────────
+    fn get_infra_arrays(&self) -> InfraArrays;
+    fn get_edge_arrays(&self) -> EdgeArrays;
+}

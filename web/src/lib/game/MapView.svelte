@@ -188,11 +188,16 @@
 				window.addEventListener('map-toggle-pitch', handleMapTogglePitch);
 				window.addEventListener('minimap-navigate', handleMinimapNavigate);
 
-				// Update map every 500ms (roughly per-tick at 1x speed, responsive at higher speeds)
+				// Event-driven map updates: re-render on delta broadcasts + 2s fallback
+				const handleMapDirty = () => {
+					renderer?.updateInfrastructure();
+				};
+				window.addEventListener('map-dirty', handleMapDirty);
+				// Fallback: update every 2 seconds as safety net
 				const interval = setInterval(() => {
 					renderer?.updateInfrastructure();
 					renderer?.updateCities();
-				}, 500);
+				}, 2000);
 
 				window.addEventListener(
 					"entity-selected",
@@ -247,6 +252,7 @@
 					edgeSrcSub();
 					edgeTypeSub();
 					selectionSub();
+					window.removeEventListener('map-dirty', handleMapDirty);
 					window.removeEventListener(
 						"entity-selected",
 						handleEntitySelected as EventListener,

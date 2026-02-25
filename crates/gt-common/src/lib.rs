@@ -7,5 +7,5 @@ pub mod types;
 
 pub use commands::Command;
 pub use events::GameEvent;
-pub use protocol::{ClientMessage, ServerMessage};
+pub use protocol::{ClientMessage, CommandResult, DeltaOp, ServerMessage};
 pub use types::*;

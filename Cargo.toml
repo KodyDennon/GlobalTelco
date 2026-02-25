@@ -8,8 +8,13 @@ members = [
     "crates/gt-infrastructure",
     "crates/gt-population",
     "crates/gt-ai",
+    "crates/gt-bridge",
     "crates/gt-wasm",
+    "crates/gt-tauri",
     "crates/gt-server",
+]
+exclude = [
+    "desktop/src-tauri",
 ]
 
 [workspace.package]

@@ -10,7 +10,6 @@
     "beforeBuildCommand": "cd ../../web && bun run build"
   },
   "app": {
-    "title": "GlobalTelco",
     "windows": [
       {
         "title": "GlobalTelco",

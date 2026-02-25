@@ -123,7 +123,7 @@ function pixelsToCanvas(pixels: Uint8ClampedArray, w: number, h: number): HTMLCa
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext('2d')!;
-    const imageData = new ImageData(pixels, w, h);
+    const imageData = new ImageData(pixels as unknown as Uint8ClampedArray<ArrayBuffer>, w, h);
     ctx.putImageData(imageData, 0, 0);
     return canvas;
 }

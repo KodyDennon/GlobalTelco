@@ -26,6 +26,9 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 10;
 
+// Command sequence tracking for correlating acks
+let nextSeq = 1;
+
 type ServerMessage = Record<string, unknown>;
 
 export function connect() {
@@ -184,6 +187,34 @@ function handleServerMessage(msg: ServerMessage) {
 				state_json: snapshot.state_json as string,
 			}
 		}));
+	} else if ('CommandAck' in msg) {
+		const ack = msg.CommandAck as Record<string, unknown>;
+		window.dispatchEvent(new CustomEvent('mp-command-ack', {
+			detail: {
+				success: ack.success as boolean,
+				error: ack.error as string | null,
+				seq: ack.seq as number | null,
+				entity_id: ack.entity_id as number | null,
+				effective_tick: ack.effective_tick as number | null,
+			}
+		}));
+	} else if ('CommandBroadcast' in msg) {
+		const broadcast = msg.CommandBroadcast as Record<string, unknown>;
+		window.dispatchEvent(new CustomEvent('mp-command-broadcast', {
+			detail: {
+				tick: broadcast.tick as number,
+				corp_id: broadcast.corp_id as number,
+				ops: broadcast.ops as Array<Record<string, unknown>>,
+			}
+		}));
+	} else if ('SpeedVoteUpdate' in msg) {
+		const vote = msg.SpeedVoteUpdate as Record<string, unknown>;
+		window.dispatchEvent(new CustomEvent('mp-speed-vote', {
+			detail: {
+				votes: vote.votes as Array<{ username: string; speed: string }>,
+				resolved_speed: vote.resolved_speed as string,
+			}
+		}));
 	} else if ('Error' in msg) {
 		const error = msg.Error as Record<string, unknown>;
 		console.error(`Server error [${error.code}]: ${error.message}`);
@@ -231,8 +262,10 @@ export function leaveWorld() {
 	corpId.set(null);
 }
 
-export function sendCommand(worldIdStr: string, command: Record<string, unknown>) {
-	sendMessage({ GameCommand: { world_id: worldIdStr, command } });
+export function sendCommand(worldIdStr: string, command: Record<string, unknown>): number {
+	const seq = nextSeq++;
+	sendMessage({ GameCommand: { world_id: worldIdStr, command, seq } });
+	return seq;
 }
 
 export function requestSnapshot(id: string) {

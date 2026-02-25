@@ -727,6 +727,101 @@ impl GameWorld {
         serde_json::to_string(self).map_err(|e| format!("Save failed: {}", e))
     }
 
+    /// Apply a batch of delta operations to the world state.
+    /// Used by multiplayer clients to incrementally update WASM state
+    /// from CommandBroadcast messages without a full snapshot reload.
+    pub fn apply_delta(&mut self, ops: &[gt_common::protocol::DeltaOp]) {
+        use gt_common::protocol::DeltaOp;
+        for op in ops {
+            match op {
+                DeltaOp::NodeCreated {
+                    entity_id,
+                    owner,
+                    node_type,
+                    network_level: _,
+                    lon,
+                    lat,
+                    under_construction,
+                } => {
+                    // Find nearest cell for terrain lookup
+                    let (cell_index, _) = self.find_nearest_cell(*lon, *lat).unwrap_or((0, 0.0));
+                    let terrain = self.get_cell_terrain(cell_index).unwrap_or(TerrainType::Rural);
+                    let node = InfraNode::new_on_terrain(*node_type, cell_index, *owner, terrain);
+                    self.infra_nodes.insert(*entity_id, node);
+                    let region_id = self.cell_to_region.get(&cell_index).copied();
+                    self.positions.insert(*entity_id, Position { x: *lon, y: *lat, region_id });
+                    self.ownerships.insert(*entity_id, Ownership::sole(*owner));
+                    self.healths.insert(*entity_id, Health::new());
+                    self.capacities.insert(*entity_id, Capacity::new(0.0));
+                    if *under_construction {
+                        self.constructions.insert(*entity_id, Construction::new(self.tick, 10));
+                    }
+                    self.corp_infra_nodes.entry(*owner).or_default().push(*entity_id);
+                    // Ensure next_entity_id stays ahead
+                    if *entity_id >= self.next_entity_id {
+                        self.next_entity_id = *entity_id + 1;
+                    }
+                }
+                DeltaOp::EdgeCreated {
+                    entity_id,
+                    owner,
+                    edge_type,
+                    from_node,
+                    to_node,
+                } => {
+                    let from_pos = self.positions.get(from_node);
+                    let to_pos = self.positions.get(to_node);
+                    let length_km = match (from_pos, to_pos) {
+                        (Some(a), Some(b)) => {
+                            let dlat = (a.y - b.y).to_radians();
+                            let dlon = (a.x - b.x).to_radians();
+                            let lat1 = a.y.to_radians();
+                            let lat2 = b.y.to_radians();
+                            let a_val = (dlat / 2.0).sin().powi(2)
+                                + lat1.cos() * lat2.cos() * (dlon / 2.0).sin().powi(2);
+                            6371.0 * 2.0 * a_val.sqrt().asin()
+                        }
+                        _ => 100.0,
+                    };
+                    let edge = InfraEdge::new(*edge_type, *from_node, *to_node, length_km, *owner);
+                    self.infra_edges.insert(*entity_id, edge);
+                    self.network.add_edge_with_id(*from_node, *to_node, *entity_id);
+                    if *entity_id >= self.next_entity_id {
+                        self.next_entity_id = *entity_id + 1;
+                    }
+                }
+                DeltaOp::NodeUpgraded { entity_id, .. } => {
+                    if let Some(node) = self.infra_nodes.get_mut(entity_id) {
+                        node.max_throughput *= 1.5;
+                        node.reliability = (node.reliability + 0.05).min(1.0);
+                    }
+                    if let Some(cap) = self.capacities.get_mut(entity_id) {
+                        cap.max_throughput *= 1.5;
+                    }
+                }
+                DeltaOp::NodeRemoved { entity_id } => {
+                    if let Some(node) = self.infra_nodes.remove(entity_id) {
+                        self.network.remove_node(*entity_id);
+                        if let Some(nodes) = self.corp_infra_nodes.get_mut(&node.owner) {
+                            nodes.retain(|&id| id != *entity_id);
+                        }
+                        self.positions.remove(entity_id);
+                        self.healths.remove(entity_id);
+                        self.capacities.remove(entity_id);
+                        self.ownerships.remove(entity_id);
+                        self.constructions.remove(entity_id);
+                    }
+                }
+                DeltaOp::EdgeRemoved { entity_id } => {
+                    self.infra_edges.remove(entity_id);
+                }
+                DeltaOp::ConstructionCompleted { entity_id } => {
+                    self.constructions.remove(entity_id);
+                }
+            }
+        }
+    }
+
     /// Deserialize a game world from a JSON string.
     pub fn load_game(data: &str) -> Result<Self, String> {
         serde_json::from_str(data).map_err(|e| format!("Load failed: {}", e))
@@ -809,10 +904,37 @@ impl GameWorld {
         systems::run_all_systems(self);
     }
 
+    /// Process a command using the world's current player_corp_id (single-player mode).
     pub fn process_command(&mut self, command: Command) {
+        self.process_command_inner(command);
+    }
+
+    /// Process a command on behalf of a specific corporation (multiplayer mode).
+    /// Temporarily sets player_corp_id so all cmd_* methods use the correct corp.
+    /// Returns a CommandResult with entity IDs and delta ops for broadcasting.
+    pub fn process_command_for_corp(
+        &mut self,
+        command: Command,
+        corp_id: EntityId,
+    ) -> gt_common::protocol::CommandResult {
+        let prev_corp = self.player_corp_id;
+        self.player_corp_id = Some(corp_id);
+        let result = self.process_command_with_result(command);
+        self.player_corp_id = prev_corp;
+        result
+    }
+
+    /// Internal: process command and return a result with delta ops.
+    fn process_command_with_result(
+        &mut self,
+        command: Command,
+    ) -> gt_common::protocol::CommandResult {
+        use gt_common::protocol::CommandResult;
+
         match command {
             Command::SetSpeed(speed) => {
                 self.speed = speed;
+                CommandResult::ok()
             }
             Command::TogglePause => {
                 self.speed = if self.speed == GameSpeed::Paused {
@@ -820,31 +942,34 @@ impl GameWorld {
                 } else {
                     GameSpeed::Paused
                 };
+                CommandResult::ok()
             }
             Command::BuildNode { node_type, lon, lat } => {
-                self.cmd_build_node(node_type, lon, lat);
+                self.cmd_build_node(node_type, lon, lat)
             }
             Command::BuildEdge {
                 edge_type,
                 from,
                 to,
             } => {
-                self.cmd_build_edge(edge_type, from, to);
+                self.cmd_build_edge(edge_type, from, to)
             }
             Command::UpgradeNode { entity } => {
-                self.cmd_upgrade_node(entity);
+                self.cmd_upgrade_node(entity)
             }
             Command::DecommissionNode { entity } => {
-                self.cmd_decommission_node(entity);
+                self.cmd_decommission_node(entity)
             }
             Command::TakeLoan {
                 corporation,
                 amount,
             } => {
                 self.cmd_take_loan(corporation, amount);
+                CommandResult::ok()
             }
             Command::RepayLoan { loan, amount } => {
                 self.cmd_repay_loan(loan, amount);
+                CommandResult::ok()
             }
             Command::SetBudget {
                 corporation,
@@ -854,9 +979,11 @@ impl GameWorld {
                 if let Some(policy) = self.policies.get_mut(&corporation) {
                     policy.set(format!("budget_{}", category), amount.to_string());
                 }
+                CommandResult::ok()
             }
             Command::ProposeContract { from, to, terms } => {
                 self.cmd_propose_contract(from, to, &terms);
+                CommandResult::ok()
             }
             Command::AcceptContract { contract } => {
                 if let Some(c) = self.contracts.get_mut(&contract) {
@@ -864,12 +991,15 @@ impl GameWorld {
                     let event = gt_common::events::GameEvent::ContractAccepted { entity: contract };
                     self.event_queue.push(self.tick, event);
                 }
+                CommandResult::ok()
             }
             Command::RejectContract { contract } => {
                 self.contracts.remove(&contract);
+                CommandResult::ok()
             }
             Command::StartResearch { corporation, tech } => {
                 self.cmd_start_research(corporation, &tech);
+                CommandResult::ok()
             }
             Command::CancelResearch { corporation } => {
                 // Find active research for this corp and remove it
@@ -882,6 +1012,7 @@ impl GameWorld {
                 for id in to_remove {
                     self.tech_research.remove(&id);
                 }
+                CommandResult::ok()
             }
             Command::HireEmployee { corporation, .. } => {
                 if let Some(wf) = self.workforces.get_mut(&corporation) {
@@ -898,6 +1029,7 @@ impl GameWorld {
                     // Scale total salary budget to match new headcount
                     wf.salary_per_tick += per_employee;
                 }
+                CommandResult::ok()
             }
             Command::FireEmployee { entity } => {
                 // entity here refers to the corporation
@@ -911,6 +1043,7 @@ impl GameWorld {
                         }
                     }
                 }
+                CommandResult::ok()
             }
             Command::SetPolicy {
                 corporation,
@@ -920,55 +1053,70 @@ impl GameWorld {
                 if let Some(p) = self.policies.get_mut(&corporation) {
                     p.set(policy, value);
                 }
+                CommandResult::ok()
             }
             Command::RepairNode { entity } => {
                 self.cmd_repair_node(entity, false);
+                CommandResult::ok()
             }
             Command::EmergencyRepair { entity } => {
                 self.cmd_repair_node(entity, true);
+                CommandResult::ok()
             }
             Command::CreateSubsidiary { parent, name } => {
                 self.cmd_create_subsidiary(parent, &name);
+                CommandResult::ok()
             }
             Command::PurchaseInsurance { node } => {
                 self.cmd_purchase_insurance(node);
+                CommandResult::ok()
             }
             Command::CancelInsurance { node } => {
                 if let Some(n) = self.infra_nodes.get_mut(&node) {
                     n.insured = false;
                 }
+                CommandResult::ok()
             }
             // Bankruptcy & Auctions
             Command::DeclareBankruptcy { entity } => {
                 self.cmd_declare_bankruptcy(entity);
+                CommandResult::ok()
             }
             Command::RequestBailout { entity } => {
                 self.cmd_request_bailout(entity);
+                CommandResult::ok()
             }
             Command::AcceptBailout { entity } => {
                 self.cmd_accept_bailout(entity);
+                CommandResult::ok()
             }
             Command::PlaceBid { auction, amount } => {
                 self.cmd_place_bid(auction, amount);
+                CommandResult::ok()
             }
 
             // Mergers & Acquisitions
             Command::ProposeAcquisition { target, offer } => {
                 self.cmd_propose_acquisition(target, offer);
+                CommandResult::ok()
             }
             Command::RespondToAcquisition { proposal, accept } => {
                 self.cmd_respond_to_acquisition(proposal, accept);
+                CommandResult::ok()
             }
 
             // Espionage & Sabotage
             Command::LaunchEspionage { target, region } => {
                 self.cmd_launch_espionage(target, region);
+                CommandResult::ok()
             }
             Command::LaunchSabotage { target, node } => {
                 self.cmd_launch_sabotage(target, node);
+                CommandResult::ok()
             }
             Command::UpgradeSecurity { level } => {
                 self.cmd_upgrade_security(level);
+                CommandResult::ok()
             }
 
             // Lobbying
@@ -978,9 +1126,11 @@ impl GameWorld {
                 budget,
             } => {
                 self.cmd_start_lobbying(region, &policy, budget);
+                CommandResult::ok()
             }
             Command::CancelLobbying { lobby_id } => {
                 self.lobbying_campaigns.remove(&lobby_id);
+                CommandResult::ok()
             }
 
             // Cooperative Infrastructure
@@ -990,9 +1140,11 @@ impl GameWorld {
                 share_pct,
             } => {
                 self.cmd_propose_co_ownership(node, target_corp, share_pct);
+                CommandResult::ok()
             }
             Command::RespondCoOwnership { proposal, accept } => {
                 self.cmd_respond_co_ownership(proposal, accept);
+                CommandResult::ok()
             }
             Command::ProposeBuyout {
                 node,
@@ -1000,15 +1152,23 @@ impl GameWorld {
                 price,
             } => {
                 self.cmd_propose_buyout(node, target_corp, price);
+                CommandResult::ok()
             }
             Command::VoteUpgrade { node, approve } => {
                 self.cmd_vote_upgrade(node, approve);
+                CommandResult::ok()
             }
 
             Command::AssignTeam { .. } | Command::SaveGame { .. } | Command::LoadGame { .. } => {
                 // Handled externally
+                CommandResult::ok()
             }
         }
+    }
+
+    /// Legacy wrapper: process command without returning result (for single-player).
+    fn process_command_inner(&mut self, command: Command) {
+        let _ = self.process_command_with_result(command);
     }
 
     /// Find the nearest grid cell to the given (lon, lat) coordinates.
@@ -1039,7 +1199,14 @@ impl GameWorld {
             .map(|p| p.terrain)
     }
 
-    fn cmd_build_node(&mut self, node_type: NodeType, lon: f64, lat: f64) {
+    fn cmd_build_node(
+        &mut self,
+        node_type: NodeType,
+        lon: f64,
+        lat: f64,
+    ) -> gt_common::protocol::CommandResult {
+        use gt_common::protocol::{CommandResult, DeltaOp};
+
         let corp_id = match self.player_corp_id {
             Some(id) => id,
             None => {
@@ -1050,7 +1217,7 @@ impl GameWorld {
                         level: "error".to_string(),
                     },
                 );
-                return;
+                return CommandResult::fail("No corporation assigned");
             }
         };
 
@@ -1065,7 +1232,7 @@ impl GameWorld {
                         level: "error".to_string(),
                     },
                 );
-                return;
+                return CommandResult::fail("No valid location found");
             }
         };
 
@@ -1086,7 +1253,7 @@ impl GameWorld {
                             level: "error".to_string(),
                         },
                     );
-                    return;
+                    return CommandResult::fail("Submarine landing requires coastal or shallow ocean terrain");
                 }
             }
             NodeType::CellTower
@@ -1106,7 +1273,7 @@ impl GameWorld {
                             level: "error".to_string(),
                         },
                     );
-                    return;
+                    return CommandResult::fail("Requires solid ground");
                 }
             }
             NodeType::SatelliteGround => {
@@ -1118,7 +1285,7 @@ impl GameWorld {
                             level: "error".to_string(),
                         },
                     );
-                    return;
+                    return CommandResult::fail("Satellite ground station cannot be placed on deep ocean");
                 }
             }
         }
@@ -1139,10 +1306,10 @@ impl GameWorld {
                         level: "warning".to_string(),
                     },
                 );
-                return;
+                return CommandResult::fail("Insufficient funds");
             }
         } else {
-            return;
+            return CommandResult::fail("Corporation financials not found");
         }
 
         // Deduct cost
@@ -1163,6 +1330,7 @@ impl GameWorld {
         let duration = (base_duration as f64 * difficulty.construction_time_multiplier) as Tick;
 
         let node_id = self.allocate_entity();
+        let network_level = node.network_level;
         let maintenance = node.maintenance_cost;
         self.infra_nodes.insert(node_id, node);
         self.constructions
@@ -1199,9 +1367,26 @@ impl GameWorld {
                 tick: self.tick,
             },
         );
+
+        CommandResult::ok_with_entity(node_id).with_op(DeltaOp::NodeCreated {
+            entity_id: node_id,
+            owner: corp_id,
+            node_type,
+            network_level,
+            lon,
+            lat,
+            under_construction: true,
+        })
     }
 
-    fn cmd_build_edge(&mut self, edge_type: EdgeType, from_node: EntityId, to_node: EntityId) {
+    fn cmd_build_edge(
+        &mut self,
+        edge_type: EdgeType,
+        from_node: EntityId,
+        to_node: EntityId,
+    ) -> gt_common::protocol::CommandResult {
+        use gt_common::protocol::{CommandResult, DeltaOp};
+
         // Get corp from either node
         let corp_id = match self.infra_nodes.get(&from_node) {
             Some(n) => n.owner,
@@ -1213,7 +1398,7 @@ impl GameWorld {
                         level: "error".to_string(),
                     },
                 );
-                return;
+                return CommandResult::fail("Source node not found");
             }
         };
 
@@ -1229,7 +1414,7 @@ impl GameWorld {
                         level: "error".to_string(),
                     },
                 );
-                return;
+                return CommandResult::fail("Target node belongs to a different corporation");
             }
             None => {
                 self.event_queue.push(
@@ -1239,7 +1424,7 @@ impl GameWorld {
                         level: "error".to_string(),
                     },
                 );
-                return;
+                return CommandResult::fail("Target node not found");
             }
         }
 
@@ -1276,7 +1461,7 @@ impl GameWorld {
                         level: "error".to_string(),
                     },
                 );
-                return;
+                return CommandResult::fail("Edge type incompatible with node tiers");
             }
         }
 
@@ -1328,7 +1513,7 @@ impl GameWorld {
                     level: "warning".to_string(),
                 },
             );
-            return;
+            return CommandResult::fail("Distance exceeds max range for edge type");
         }
 
         // Enforce terrain constraints: check source/target terrain
@@ -1368,7 +1553,7 @@ impl GameWorld {
                             level: "error".to_string(),
                         },
                     );
-                    return; // Submarine requires water
+                    return CommandResult::fail("Submarine edges require water"); // Submarine requires water
                 }
             }
             EdgeType::Copper
@@ -1387,7 +1572,7 @@ impl GameWorld {
                             level: "error".to_string(),
                         },
                     );
-                    return; // Fiber/copper can't be on deep ocean
+                    return CommandResult::fail("Wired cables cannot be placed in deep ocean"); // Fiber/copper can't be on deep ocean
                 }
             }
             _ => {} // Microwave, Satellite have no terrain restriction
@@ -1426,10 +1611,10 @@ impl GameWorld {
                         level: "warning".to_string(),
                     },
                 );
-                return;
+                return CommandResult::fail("Insufficient funds");
             }
         } else {
-            return;
+            return CommandResult::fail("Corporation financials not found");
         }
 
         // Deduct cost
@@ -1453,22 +1638,32 @@ impl GameWorld {
                 to: to_node,
             },
         );
+
+        CommandResult::ok_with_entity(edge_id).with_op(DeltaOp::EdgeCreated {
+            entity_id: edge_id,
+            owner: corp_id,
+            edge_type,
+            from_node,
+            to_node,
+        })
     }
 
-    fn cmd_upgrade_node(&mut self, entity: EntityId) {
+    fn cmd_upgrade_node(&mut self, entity: EntityId) -> gt_common::protocol::CommandResult {
+        use gt_common::protocol::{CommandResult, DeltaOp};
+
         let corp_id = match self.infra_nodes.get(&entity) {
             Some(n) => n.owner,
-            None => return,
+            None => return CommandResult::fail("Node not found"),
         };
 
         let upgrade_cost = match self.infra_nodes.get(&entity) {
             Some(n) => n.construction_cost / 2,
-            None => return,
+            None => return CommandResult::fail("Node not found"),
         };
 
         if let Some(fin) = self.financials.get(&corp_id) {
             if fin.cash < upgrade_cost {
-                return;
+                return CommandResult::fail("Insufficient funds");
             }
         }
 
@@ -1486,25 +1681,35 @@ impl GameWorld {
         if let Some(health) = self.healths.get_mut(&entity) {
             health.condition = 1.0;
         }
+
+        let node_type = self.infra_nodes.get(&entity).map(|n| n.node_type).unwrap();
+        CommandResult::ok_with_entity(entity).with_op(DeltaOp::NodeUpgraded {
+            entity_id: entity,
+            node_type,
+        })
     }
 
-    fn cmd_decommission_node(&mut self, entity: EntityId) {
+    fn cmd_decommission_node(&mut self, entity: EntityId) -> gt_common::protocol::CommandResult {
+        use gt_common::protocol::{CommandResult, DeltaOp};
+
         if let Some(node) = self.infra_nodes.remove(&entity) {
             let corp_id = node.owner;
             // Remove from network
             self.network.remove_node(entity);
-            // Remove associated edges
+            // Remove associated edges — collect delta ops for removed edges
             let edges_to_remove: Vec<EntityId> = self
                 .infra_edges
                 .iter()
                 .filter(|(_, e)| e.source == entity || e.target == entity)
                 .map(|(&id, _)| id)
                 .collect();
+            let mut result = CommandResult::ok_with_entity(entity);
             for eid in &edges_to_remove {
                 if let Some(edge) = self.infra_edges.remove(eid) {
                     if let Some(fin) = self.financials.get_mut(&corp_id) {
                         fin.cost_per_tick = (fin.cost_per_tick - edge.maintenance_cost).max(0);
                     }
+                    result.ops.push(DeltaOp::EdgeRemoved { entity_id: *eid });
                 }
             }
             // Reduce maintenance
@@ -1532,6 +1737,11 @@ impl GameWorld {
             if let Some(fin) = self.financials.get_mut(&corp_id) {
                 fin.cash += salvage;
             }
+
+            result.ops.push(DeltaOp::NodeRemoved { entity_id: entity });
+            result
+        } else {
+            CommandResult::fail("Node not found")
         }
     }
 

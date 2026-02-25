@@ -1,6 +1,7 @@
 use gt_common::types::WorldConfig;
 use gt_simulation::world::GameWorld;
 use wasm_bindgen::prelude::*;
+use js_sys::{Float64Array, Uint32Array, Uint8Array};
 
 #[wasm_bindgen(start)]
 pub fn init_panic_hook() {
@@ -64,6 +65,16 @@ impl WasmBridge {
                 .collect();
             Ok(serde_json::to_string(&notifications).unwrap_or_default())
         }
+    }
+
+    /// Apply a batch of delta operations to the local world state.
+    /// Used in multiplayer to incrementally update WASM state from
+    /// CommandBroadcast messages without requiring a full snapshot reload.
+    pub fn apply_batch(&mut self, ops_json: &str) -> Result<(), JsValue> {
+        let ops: Vec<gt_common::protocol::DeltaOp> = serde_json::from_str(ops_json)
+            .map_err(|e| JsValue::from_str(&format!("Invalid delta ops: {}", e)))?;
+        self.world.apply_delta(&ops);
+        Ok(())
     }
 
     pub fn get_world_info(&self) -> String {
@@ -1105,5 +1116,323 @@ impl WasmBridge {
             "features": features,
         });
         serde_json::to_string(&geojson).unwrap_or_default()
+    }
+
+    // ── Typed Array Exports (zero-copy hot-path rendering) ──────────────
+
+    /// Returns infrastructure node data as parallel typed arrays.
+    /// Output: { count, ids: Uint32Array, owners: Uint32Array, positions: Float64Array,
+    ///           stats: Float64Array, node_types: Uint32Array, network_levels: Uint32Array,
+    ///           construction_flags: Uint8Array }
+    /// positions layout: [lon0, lat0, lon1, lat1, ...] (2 floats per node)
+    /// stats layout: [health0, utilization0, throughput0, ...] (3 floats per node)
+    pub fn get_infra_nodes_typed(&self) -> JsValue {
+        let w = &self.world;
+        let count = w.infra_nodes.len();
+        let mut ids = Vec::with_capacity(count);
+        let mut owners = Vec::with_capacity(count);
+        let mut positions = Vec::with_capacity(count * 2);
+        let mut stats = Vec::with_capacity(count * 3);
+        let mut node_types = Vec::with_capacity(count);
+        let mut network_levels = Vec::with_capacity(count);
+        let mut construction_flags = Vec::with_capacity(count);
+
+        for (&eid, node) in &w.infra_nodes {
+            ids.push(eid as u32);
+            let owner = w.ownerships.get(&eid).map(|o| o.owner).unwrap_or(0);
+            owners.push(owner as u32);
+
+            let pos = w.positions.get(&eid);
+            positions.push(pos.map(|p| p.x).unwrap_or(0.0));
+            positions.push(pos.map(|p| p.y).unwrap_or(0.0));
+
+            let health = w.healths.get(&eid).map(|h| h.condition).unwrap_or(1.0);
+            let utilization = w.capacities.get(&eid).map(|c| c.utilization()).unwrap_or(0.0);
+            stats.push(health);
+            stats.push(utilization);
+            stats.push(node.max_throughput);
+
+            node_types.push(node.node_type as u32);
+            network_levels.push(node.network_level as u32);
+            construction_flags.push(if w.constructions.contains_key(&eid) { 1u8 } else { 0u8 });
+        }
+
+        let obj = js_sys::Object::new();
+        let _ = js_sys::Reflect::set(&obj, &"count".into(), &JsValue::from(count as u32));
+        let _ = js_sys::Reflect::set(&obj, &"ids".into(), &Uint32Array::from(&ids[..]).into());
+        let _ = js_sys::Reflect::set(&obj, &"owners".into(), &Uint32Array::from(&owners[..]).into());
+        let _ = js_sys::Reflect::set(&obj, &"positions".into(), &Float64Array::from(&positions[..]).into());
+        let _ = js_sys::Reflect::set(&obj, &"stats".into(), &Float64Array::from(&stats[..]).into());
+        let _ = js_sys::Reflect::set(&obj, &"node_types".into(), &Uint32Array::from(&node_types[..]).into());
+        let _ = js_sys::Reflect::set(&obj, &"network_levels".into(), &Uint32Array::from(&network_levels[..]).into());
+        let _ = js_sys::Reflect::set(&obj, &"construction_flags".into(), &Uint8Array::from(&construction_flags[..]).into());
+        obj.into()
+    }
+
+    /// Returns infrastructure edge data as parallel typed arrays.
+    /// endpoints layout: [src_lon0, src_lat0, dst_lon0, dst_lat0, ...] (4 floats per edge)
+    /// stats layout: [bandwidth0, utilization0, ...] (2 floats per edge)
+    pub fn get_infra_edges_typed(&self) -> JsValue {
+        let w = &self.world;
+        let count = w.infra_edges.len();
+        let mut ids = Vec::with_capacity(count);
+        let mut owners = Vec::with_capacity(count);
+        let mut endpoints = Vec::with_capacity(count * 4);
+        let mut stats = Vec::with_capacity(count * 2);
+        let mut edge_types = Vec::with_capacity(count);
+
+        for (&eid, edge) in &w.infra_edges {
+            ids.push(eid as u32);
+            let owner = w.ownerships.get(&eid).map(|o| o.owner).unwrap_or(0);
+            owners.push(owner as u32);
+
+            let src_pos = w.positions.get(&edge.source);
+            let dst_pos = w.positions.get(&edge.target);
+            endpoints.push(src_pos.map(|p| p.x).unwrap_or(0.0));
+            endpoints.push(src_pos.map(|p| p.y).unwrap_or(0.0));
+            endpoints.push(dst_pos.map(|p| p.x).unwrap_or(0.0));
+            endpoints.push(dst_pos.map(|p| p.y).unwrap_or(0.0));
+
+            stats.push(edge.bandwidth);
+            let utilization = w.capacities.get(&eid).map(|c| c.utilization()).unwrap_or(0.0);
+            stats.push(utilization);
+
+            edge_types.push(edge.edge_type as u32);
+        }
+
+        let obj = js_sys::Object::new();
+        let _ = js_sys::Reflect::set(&obj, &"count".into(), &JsValue::from(count as u32));
+        let _ = js_sys::Reflect::set(&obj, &"ids".into(), &Uint32Array::from(&ids[..]).into());
+        let _ = js_sys::Reflect::set(&obj, &"owners".into(), &Uint32Array::from(&owners[..]).into());
+        let _ = js_sys::Reflect::set(&obj, &"endpoints".into(), &Float64Array::from(&endpoints[..]).into());
+        let _ = js_sys::Reflect::set(&obj, &"stats".into(), &Float64Array::from(&stats[..]).into());
+        let _ = js_sys::Reflect::set(&obj, &"edge_types".into(), &Uint32Array::from(&edge_types[..]).into());
+        obj.into()
+    }
+
+    /// Returns all corporation summary data as typed arrays for fast leaderboard rendering.
+    /// ids: Uint32Array, cash/revenue/cost: Float64Array (3 floats per corp)
+    pub fn get_corporations_typed(&self) -> JsValue {
+        let w = &self.world;
+        let count = w.corporations.len();
+        let mut ids = Vec::with_capacity(count);
+        let mut financials = Vec::with_capacity(count * 3);
+        let mut names_packed = Vec::new();
+        let mut name_offsets = Vec::with_capacity(count * 2); // [offset, length] pairs
+
+        for (&cid, corp) in &w.corporations {
+            ids.push(cid as u32);
+            let fin = w.financials.get(&cid);
+            financials.push(fin.map(|f| f.cash as f64).unwrap_or(0.0));
+            financials.push(fin.map(|f| f.revenue_per_tick as f64).unwrap_or(0.0));
+            financials.push(fin.map(|f| f.cost_per_tick as f64).unwrap_or(0.0));
+
+            let name_bytes = corp.name.as_bytes();
+            name_offsets.push(names_packed.len() as u32);
+            name_offsets.push(name_bytes.len() as u32);
+            names_packed.extend_from_slice(name_bytes);
+        }
+
+        let obj = js_sys::Object::new();
+        let _ = js_sys::Reflect::set(&obj, &"count".into(), &JsValue::from(count as u32));
+        let _ = js_sys::Reflect::set(&obj, &"ids".into(), &Uint32Array::from(&ids[..]).into());
+        let _ = js_sys::Reflect::set(&obj, &"financials".into(), &Float64Array::from(&financials[..]).into());
+        let _ = js_sys::Reflect::set(&obj, &"name_offsets".into(), &Uint32Array::from(&name_offsets[..]).into());
+        let _ = js_sys::Reflect::set(&obj, &"names_packed".into(), &Uint8Array::from(&names_packed[..]).into());
+        obj.into()
+    }
+}
+
+// ── BridgeQuery Trait Implementation ────────────────────────────────────
+
+impl gt_bridge::BridgeQuery for WasmBridge {
+    fn tick(&mut self) {
+        self.world.tick();
+    }
+
+    fn current_tick(&self) -> u64 {
+        self.world.current_tick()
+    }
+
+    fn process_command(&mut self, command_json: &str) -> Result<String, String> {
+        let cmd: gt_common::commands::Command = serde_json::from_str(command_json)
+            .map_err(|e| format!("Invalid command: {}", e))?;
+        self.world.process_command(cmd);
+        let events = self.world.event_queue.drain();
+        if events.is_empty() {
+            Ok(String::new())
+        } else {
+            let notifications: Vec<serde_json::Value> = events
+                .iter()
+                .map(|(tick, event)| {
+                    serde_json::json!({
+                        "tick": tick,
+                        "event": serde_json::to_value(event).unwrap_or(serde_json::Value::Null),
+                    })
+                })
+                .collect();
+            Ok(serde_json::to_string(&notifications).unwrap_or_default())
+        }
+    }
+
+    fn apply_batch(&mut self, ops_json: &str) -> Result<(), String> {
+        let ops: Vec<gt_common::protocol::DeltaOp> = serde_json::from_str(ops_json)
+            .map_err(|e| format!("Invalid delta ops: {}", e))?;
+        self.world.apply_delta(&ops);
+        Ok(())
+    }
+
+    fn get_world_info(&self) -> String {
+        WasmBridge::get_world_info(self)
+    }
+
+    fn get_corporation_data(&self, corp_id: gt_common::types::EntityId) -> String {
+        WasmBridge::get_corporation_data(self, corp_id)
+    }
+
+    fn get_regions(&self) -> String {
+        WasmBridge::get_regions(self)
+    }
+
+    fn get_cities(&self) -> String {
+        WasmBridge::get_cities(self)
+    }
+
+    fn get_all_corporations(&self) -> String {
+        WasmBridge::get_all_corporations(self)
+    }
+
+    fn get_research_state(&self) -> String {
+        WasmBridge::get_research_state(self)
+    }
+
+    fn get_contracts(&self, corp_id: gt_common::types::EntityId) -> String {
+        WasmBridge::get_contracts(self, corp_id)
+    }
+
+    fn get_debt_instruments(&self, corp_id: gt_common::types::EntityId) -> String {
+        WasmBridge::get_debt_instruments(self, corp_id)
+    }
+
+    fn get_notifications(&mut self) -> String {
+        WasmBridge::get_notifications(self)
+    }
+
+    fn get_buildable_nodes(&self, lon: f64, lat: f64) -> String {
+        WasmBridge::get_buildable_nodes(self, lon, lat)
+    }
+
+    fn get_buildable_edges(&self, source_id: gt_common::types::EntityId) -> String {
+        WasmBridge::get_buildable_edges(self, source_id)
+    }
+
+    fn get_damaged_nodes(&self, corp_id: gt_common::types::EntityId) -> String {
+        WasmBridge::get_damaged_nodes(self, corp_id)
+    }
+
+    fn get_auctions(&self) -> String {
+        WasmBridge::get_auctions(self)
+    }
+
+    fn get_covert_ops(&self, corp_id: gt_common::types::EntityId) -> String {
+        WasmBridge::get_covert_ops(self, corp_id)
+    }
+
+    fn get_lobbying_campaigns(&self, corp_id: gt_common::types::EntityId) -> String {
+        WasmBridge::get_lobbying_campaigns(self, corp_id)
+    }
+
+    fn get_achievements(&self, corp_id: gt_common::types::EntityId) -> String {
+        WasmBridge::get_achievements(self, corp_id)
+    }
+
+    fn get_victory_state(&self) -> String {
+        WasmBridge::get_victory_state(self)
+    }
+
+    fn get_traffic_flows(&self) -> String {
+        WasmBridge::get_traffic_flows(self)
+    }
+
+    fn save_game(&self) -> Result<String, String> {
+        self.world.save_game().map_err(|e| format!("Save failed: {}", e))
+    }
+
+    fn load_game(&mut self, data: &str) -> Result<(), String> {
+        self.world = GameWorld::load_game(data).map_err(|e| format!("Load failed: {}", e))?;
+        Ok(())
+    }
+
+    fn get_infra_arrays(&self) -> gt_bridge::InfraArrays {
+        let w = &self.world;
+        let count = w.infra_nodes.len();
+        let mut ids = Vec::with_capacity(count);
+        let mut owners_vec = Vec::with_capacity(count);
+        let mut positions = Vec::with_capacity(count * 2);
+        let mut stats = Vec::with_capacity(count * 3);
+        let mut node_types_vec = Vec::with_capacity(count);
+        let mut network_levels_vec = Vec::with_capacity(count);
+        let mut construction_flags = Vec::with_capacity(count);
+
+        for (&eid, node) in &w.infra_nodes {
+            ids.push(eid as u32);
+            let owner = w.ownerships.get(&eid).map(|o| o.owner).unwrap_or(0);
+            owners_vec.push(owner as u32);
+            let pos = w.positions.get(&eid);
+            positions.push(pos.map(|p| p.x).unwrap_or(0.0));
+            positions.push(pos.map(|p| p.y).unwrap_or(0.0));
+            let health = w.healths.get(&eid).map(|h| h.condition).unwrap_or(1.0);
+            let utilization = w.capacities.get(&eid).map(|c| c.utilization()).unwrap_or(0.0);
+            stats.push(health);
+            stats.push(utilization);
+            stats.push(node.max_throughput);
+            node_types_vec.push(node.node_type as u32);
+            network_levels_vec.push(node.network_level as u32);
+            construction_flags.push(if w.constructions.contains_key(&eid) { 1u8 } else { 0u8 });
+        }
+
+        gt_bridge::InfraArrays {
+            ids,
+            owners: owners_vec,
+            positions,
+            stats,
+            node_types: node_types_vec,
+            network_levels: network_levels_vec,
+            construction_flags,
+        }
+    }
+
+    fn get_edge_arrays(&self) -> gt_bridge::EdgeArrays {
+        let w = &self.world;
+        let count = w.infra_edges.len();
+        let mut ids = Vec::with_capacity(count);
+        let mut owners_vec = Vec::with_capacity(count);
+        let mut endpoints = Vec::with_capacity(count * 4);
+        let mut stats = Vec::with_capacity(count * 2);
+        let mut edge_types_vec = Vec::with_capacity(count);
+
+        for (&eid, edge) in &w.infra_edges {
+            ids.push(eid as u32);
+            let owner = w.ownerships.get(&eid).map(|o| o.owner).unwrap_or(0);
+            owners_vec.push(owner as u32);
+            let src_pos = w.positions.get(&edge.source);
+            let dst_pos = w.positions.get(&edge.target);
+            endpoints.push(src_pos.map(|p| p.x).unwrap_or(0.0));
+            endpoints.push(src_pos.map(|p| p.y).unwrap_or(0.0));
+            endpoints.push(dst_pos.map(|p| p.x).unwrap_or(0.0));
+            endpoints.push(dst_pos.map(|p| p.y).unwrap_or(0.0));
+            stats.push(edge.bandwidth);
+            let utilization = w.capacities.get(&eid).map(|c| c.utilization()).unwrap_or(0.0);
+            stats.push(utilization);
+            edge_types_vec.push(edge.edge_type as u32);
+        }
+
+        gt_bridge::EdgeArrays {
+            ids,
+            owners: owners_vec,
+            endpoints,
+            stats,
+            edge_types: edge_types_vec,
+        }
     }
 }

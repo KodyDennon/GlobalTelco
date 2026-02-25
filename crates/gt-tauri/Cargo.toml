@@ -1,0 +1,11 @@
+[package]
+name = "gt-tauri"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+gt-common = { path = "../gt-common" }
+gt-bridge = { path = "../gt-bridge" }
+gt-simulation = { path = "../gt-simulation" }
+serde = { workspace = true }
+serde_json = { workspace = true }

@@ -68,10 +68,15 @@ The AUDIT.md identified 12 Critical, 26 Major, 25 Minor, and 15 Polish issues ac
 - **Test coverage target:** Happy path + edge cases per system. ~120-150 total tests.
 
 ### Codebase State Summary
-- **Rust:** 9 crates, 20 ECS systems, 27 component types, 38 commands, 50+ event types — all functional
-- **Frontend:** 13 panel types, 8 overlay types, 1,481-line map renderer, D3 charts, i18n partial
-- **Server:** Full Axum HTTP + WebSocket, JWT auth, AI proxy, admin API, optional PostgreSQL
+- **Rust:** 11 crates (added gt-bridge, gt-tauri), 20 ECS systems, 27 component types, 38 commands, 50+ event types — all functional
+- **Frontend:** 13 panel types, 8 overlay types, deck.gl map renderer, D3 charts, typed array bridge, ghost entity system
+- **Server:** Full Axum HTTP + WebSocket, JWT auth, AI proxy, admin API (with ban/unban), optional PostgreSQL, event-driven delta broadcasts, per-type rate limiting, speed vote system, per-player event filtering, sequence dedup
+- **Desktop:** Tauri v2 with 16 commands (4 filesystem + 12 native sim), compiles clean
+- **Tests:** 79 passing, 0 warnings across entire codebase
 - **Key gaps:** No era enforcement, no patent enforcement gate, Debug format events, no tier visualization, no co-ownership/insurance/repair UI, no dynamic AI spawning, uniform pricing only
+
+### Completed Supplemental Plans
+- **INSTANT_MULTIPLAYER_PLAN.md** — ALL 10 PHASES COMPLETE. Sub-200ms multiplayer sync, anti-cheat, typed array bridge, Tauri native bridge. See that document for details.
 
 ---
 
@@ -292,16 +297,18 @@ The AUDIT.md identified 12 Critical, 26 Major, 25 Minor, and 15 Polish issues ac
 
 ## Phase 4: Multiplayer & Lobby
 
-### 4.1 Full state snapshot
-- Implement `serialize_full_state()` on `GameWorld` that returns all entities, corporations, financials, infrastructure, regions, cities
-- Use existing `save_game_binary()` or create a JSON summary suitable for client hydration
-- **Files:** `crates/gt-server/src/ws.rs`, `crates/gt-simulation/src/world.rs`
+> **Note:** Items 4.1, 4.2, and parts of 4.9/4.12 have been substantially addressed by INSTANT_MULTIPLAYER_PLAN.md (all 10 phases complete). The multiplayer system now uses event-driven delta broadcasts (CommandBroadcast + DeltaOps), incremental WASM state updates (applyBatch), per-type rate limiting, spatial validation, speed vote system, per-player event filtering, sequence dedup, and ghost entity optimistic UI.
 
-### 4.2 Pure thin client mode
-- In `GameLoop.ts`, check `$isMultiplayer` store
-- If multiplayer: do NOT call `bridge.tick()`, only call `updateStores()` from server messages
-- Create `applyServerState(delta)` function in bridge that updates stores from server tick data
-- **Files:** `web/src/lib/game/GameLoop.ts`, `web/src/lib/multiplayer/WebSocketClient.ts`
+### 4.1 Full state snapshot [ADDRESSED by INSTANT_MULTIPLAYER_PLAN]
+- Full snapshots now sent every 30 ticks as safety net (down from 5)
+- Primary sync via CommandBroadcast + applyBatch (sub-200ms)
+- **Files:** `crates/gt-server/src/ws.rs`, `crates/gt-simulation/src/world.rs`, `crates/gt-server/src/tick.rs`
+
+### 4.2 Pure thin client mode [ADDRESSED by INSTANT_MULTIPLAYER_PLAN]
+- Event-driven rendering (map-dirty events + 2s fallback, not 500ms polling)
+- applyBatch for incremental WASM state updates from CommandBroadcast
+- Ghost entity system for optimistic UI
+- **Files:** `web/src/lib/game/GameLoop.ts`, `web/src/lib/multiplayer/WebSocketClient.ts`, `web/src/lib/stores/multiplayerState.ts`, `web/src/lib/game/commandRouter.ts`
 
 ### 4.3 Fix deadlock (ABBA lock pattern)
 - Establish strict lock ordering: always `world.world` before `world.players`

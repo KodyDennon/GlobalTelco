@@ -25,6 +25,7 @@ import {
 	openPanelGroup,
 	closePanelGroup,
 } from '$lib/stores/uiState';
+import { removeGhost } from '$lib/stores/multiplayerState';
 import type { OverlayType } from '$lib/stores/uiState';
 import { autoPauseOnCritical, showPerfMonitor } from '$lib/stores/settings';
 import { writable } from 'svelte/store';
@@ -426,12 +427,56 @@ export async function initMultiplayer(saveData: string) {
 		}
 	};
 
+	// Listen for command broadcasts (instant delta ops from other players' actions)
+	const handleCommandBroadcast = (e: Event) => {
+		const { tick, ops } = (e as CustomEvent).detail;
+		if (!Array.isArray(ops) || ops.length === 0) return;
+
+		// Apply deltas to local WASM state
+		try {
+			bridge.applyBatch(ops);
+		} catch (err) {
+			console.error('[MP] Failed to apply command broadcast:', err);
+		}
+
+		// Update tick if it's newer
+		if (tick > mpHighWaterTick) {
+			mpHighWaterTick = tick;
+			worldInfo.update((info) => {
+				if (!info) return info;
+				return { ...info, tick };
+			});
+		}
+
+		// Signal map to re-render infrastructure
+		window.dispatchEvent(new CustomEvent('map-dirty'));
+	};
+
+	// Listen for command acks (confirmation of our own commands)
+	const handleCommandAck = (e: Event) => {
+		const { success, error, seq, entity_id, effective_tick } = (e as CustomEvent).detail;
+		// Remove ghost entity for this seq (confirmed or rejected)
+		if (seq != null) {
+			removeGhost(seq);
+		}
+		if (!success && error) {
+			notifications.update((n) => [
+				{ tick: effective_tick || 0, event: { GlobalNotification: { message: error, level: 'warning' } } },
+				...n
+			].slice(0, 50));
+		}
+	};
+
 	window.addEventListener('mp-corp-deltas', handleCorpDeltas);
 	window.addEventListener('mp-snapshot', handleSnapshotReload);
+	window.addEventListener('mp-command-broadcast', handleCommandBroadcast);
+	window.addEventListener('mp-command-ack', handleCommandAck);
 
 	mpCleanupFns.push(
 		() => window.removeEventListener('mp-corp-deltas', handleCorpDeltas),
 		() => window.removeEventListener('mp-snapshot', handleSnapshotReload),
+		() => window.removeEventListener('mp-command-broadcast', handleCommandBroadcast),
+		() => window.removeEventListener('mp-command-ack', handleCommandAck),
 		() => { isMultiplayerMode = false; mpHighWaterTick = 0; },
 	);
 }
