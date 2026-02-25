@@ -430,7 +430,7 @@
 	});
 
 	// Capacity sparkline chart (D3) - Gap #28
-	let sparkSvg: SVGSVGElement;
+	let sparkSvg: SVGSVGElement = $state() as unknown as SVGSVGElement;
 	const spW = 460;
 	const spH = 80;
 	const spMargin = { top: 8, right: 16, bottom: 20, left: 52 };

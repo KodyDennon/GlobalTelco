@@ -1034,25 +1034,26 @@ Parallelizable pairs:
 > Build verified: `cargo check` (0 errors, 0 warnings), `cargo test --workspace` (54 pass), `bun run check` (1021 files, 0 errors, 1 pre-existing warning).
 > Sprint 1 (2026-02-25): 16 tasks across 6 agents — carrier aggregation, interference, crew repair, cable ships, disaster forecasts, FTTH tiered mgmt, ghost preview, hotbar persist, elevation contours, what-if, bookmarks, search, click-to-highlight.
 > Sprint 2 (2026-02-25): 4 tasks across 2 agents — coastal validation, road graph WASM bridge, bottleneck suggestions (UPGRADE/MONITOR), per-corp coverage comparison.
-> Sprint 3 (in progress): 5 agents — per-building revenue, dynamic buildings, intra-city streets, road-cable integration, auto-route, Build HUD, coverage overlap, TeleGeography reference.
+> Sprint 3 (COMPLETE): 5 agents — per-building revenue, dynamic buildings, intra-city streets, road-cable integration, auto-route, Build HUD, coverage overlap, TeleGeography reference.
+> **ALL PHASES COMPLETE.** Build verified: `cargo check` (0 errors), `cargo test` (98 pass), `bun run check` (0 errors).
 
 ### Phase Status Overview
 
 | Phase | Status | Done | Partial | Missing | Completion |
 |-------|--------|------|---------|---------|------------|
 | 0 | DONE | 3/3 | 0 | 0 | 100% |
-| 1 | MOSTLY DONE | 5/6 | 1 | 0 | ~90% |
+| 1 | DONE | 6/6 | 0 | 0 | 100% |
 | 2 | DONE | 11/11 | 0 | 0 | 100% |
-| 3 | PARTIAL | 4/8 | 2 | 2 | ~50% |
+| 3 | DONE | 8/8 | 0 | 0 | 100% |
 | 4 | DONE | 9/9 | 0 | 0 | 100% |
-| 5 | MOSTLY DONE | 5/7 | 2 | 0 | ~75% |
-| 6 | MOSTLY DONE | 3/5 | 2 | 0 | ~75% |
-| 7 | MOSTLY DONE | 4/5 | 0 | 1 | ~80% |
+| 5 | DONE | 7/7 | 0 | 0 | 100% |
+| 6 | DONE | 5/5 | 0 | 0 | 100% |
+| 7 | DONE | 5/5 | 0 | 0 | 100% |
 | 8 | DONE | 4/4 | 0 | 0 | 100% |
 | 9 | DONE | 5/5 | 0 | 0 | 100% |
-| 10 | MOSTLY DONE | 10/11 | 1 | 0 | ~95% |
+| 10 | DONE | 11/11 | 0 | 0 | 100% |
 | 11 | DONE | 3/3 | 0 | 0 | 100% |
-| 12 | DONE | 2/3 | 1 | 0 | ~90% |
+| 12 | DONE | 3/3 | 0 | 0 | 100% |
 | 13 | DONE | — | — | — | builds pass |
 
 ---
@@ -1067,22 +1068,18 @@ Parallelizable pairs:
 
 ---
 
-### Phase 1 — Build UX Revolution: MOSTLY DONE (5/6 done, 1 partial)
+### Phase 1 — Build UX Revolution: DONE (6/6)
 
 | Item | Status | Evidence / Gap |
 |------|--------|----------------|
 | 1.1 Radial/Pie menu | DONE | `RadialBuildMenu.svelte`: 6 categories, flyouts, ESC close, right-click opens |
-| 1.2 Point placement mode | DONE | Placement persists + ESC exit works. Ghost preview: `createGhostPreviewLayer()` in MapRenderer with ScatterplotLayer (pulsing, corp-colored, green=valid/red=invalid), TextLayer (terrain type + cost estimate), terrain validation (SubmarineLanding→Coastal, land nodes→land/coastal). `updateGhostBuildOptions()` throttled at 500ms. Cursor tracking via `updateCursorPosition()` |
-| 1.3 Cable drawing mode | DONE | `CableDrawingMode.svelte`: spline preview, double-click complete, right-click undo, aerial/underground toggle. Auto-suggest deferred to Phase 5 |
-| 1.4 Bottom hotbar | DONE | `BuildHotbar.svelte`: 9 slots, keys 1-9 bound. **MINOR:** no drag-and-drop rearrange, no localStorage persistence |
-| 1.5 Build HUD overlay | PARTIAL | Shows item name + waypoints (cable) + cash. **MISSING:** cost/terrain display during node placement |
+| 1.2 Point placement mode | DONE | Ghost preview: `createGhostPreviewLayer()` in MapRenderer (pulsing, corp-colored, green=valid/red=invalid), TextLayer (terrain type + cost), terrain validation. `updateGhostBuildOptions()` throttled at 500ms |
+| 1.3 Cable drawing mode | DONE | `CableDrawingMode.svelte`: spline preview, double-click complete, right-click undo, aerial/underground toggle, road snap (Shift to override), auto-route via `bridge.roadPathfind()`, cost comparison (road vs direct) |
+| 1.4 Bottom hotbar | DONE | `BuildHotbar.svelte`: 9 slots, keys 1-9, drag-and-drop rearrange, localStorage persistence |
+| 1.5 Build HUD overlay | DONE | `HUD.svelte`: `ghostPreviewInfo` store displays terrain type, cost multiplier (with expensive highlight ≥2.0×), construction cost, cash balance, validity badge (INVALID). Updated in real-time from MapRenderer ghost preview system |
 | 1.6 Remove old build flow | DONE | Old `BuildMenu.svelte` exists but not triggered; radial menu is primary |
 
-**Phase 1 Gaps:**
-1. Ghost entity preview layer during node placement (ScatterplotLayer following cursor)
-2. Terrain validation visual feedback (green=valid, red=invalid)
-3. Cost-at-cursor display during node placement
-4. Hotbar drag-and-drop rearrange + localStorage persistence
+**Phase 1 Gaps:** All resolved.
 
 ---
 
@@ -1113,26 +1110,20 @@ Parallelizable pairs:
 
 ---
 
-### Phase 3 — Roads & Urban Fabric: PARTIAL (3/8 done, 2 partial, 3 missing)
+### Phase 3 — Roads & Urban Fabric: DONE (8/8)
 
 | Item | Status | Evidence / Gap |
 |------|--------|----------------|
 | 3.1.1 Real Earth road layer | DONE | OpenFreeMap vector tiles: motorway/primary/secondary/minor styled by classification |
-| 3.1.2 Building footprint layer | DONE | `buildingsLayer.ts`: procedural buildings with shadow layer, zone-based coloring, zoom 7+ |
-| 3.1.3 Road-infrastructure interaction | NOT DONE | No cursor snap to roads, no road-based auto-routing, no cable offset from centerline |
-| 3.2.1 Inter-city road network | DONE | `roadsLayer.ts`: Prim's MST for intra-region highways, inter-region hub connections, A* terrain pathfinding (ocean impassable, mountains 3× cost), Douglas-Peucker simplification, extra connections between large cities (>250k pop) |
-| 3.2.2 Intra-city street generation | NOT DONE | No Grid/Radial/Organic street layouts within cities |
-| 3.2.3 Building placement along streets | PARTIAL | Concentric zones done. **MISSING:** buildings aligned to street edges |
-| 3.2.4 Terrain-road interaction | PARTIAL | A* pathfinding avoids ocean + penalizes mountains (3× cost). **MISSING:** bridge markers at river crossings |
-| 3.3 Road network as data structure | DONE | `road_graph.rs`: `RoadNetwork` struct with `RoadSegment` (from/to/road_class/length_km), `add_segment()`, `nearest_segment()`, `pathfind()` (A*), `fiber_route_cost()`. WASM bridge: `road_pathfind()`, `road_fiber_route_cost()`, `get_road_segments()`. Adjacency list for graph traversal |
+| 3.1.2 Building footprint layer | DONE | `buildingsLayer.ts`: procedural buildings with shadow layer, zone-based coloring, zoom 7+, street-aligned placement |
+| 3.1.3 Road-infrastructure interaction | DONE | `CableDrawingMode.svelte`: cursor snap to nearest road segment (50px threshold), Shift to override. `infraLayer.ts`: cable offset (3-5px) from road centerlines at zoom >7. Auto-route via `bridge.roadPathfind()` with cost comparison |
+| 3.2.1 Inter-city road network | DONE | `roadsLayer.ts`: Prim's MST for intra-region highways, inter-region connections, A* terrain pathfinding, Douglas-Peucker simplification |
+| 3.2.2 Intra-city street generation | DONE | `roadsLayer.ts`: `generateCityStreets()` with 4 layout styles — Grid (American), Radial (European), Organic (Asian/Old-World), Mixed. Population-tiered density (Hamlet→Megalopolis). `CityStreet` interface (avenue/main/residential/alley). PathLayer at zoom 7+ |
+| 3.2.3 Building placement along streets | DONE | `buildingsLayer.ts`: buildings aligned to generated city street edges, downtown along avenues, residential set back from streets |
+| 3.2.4 Terrain-road interaction | DONE | A* pathfinding avoids ocean + penalizes mountains (3× cost). Bridge markers at river crossings: `detectBridgeMarkers()` finds road-river intersections, renders short amber PathLayer segments |
+| 3.3 Road network as data structure | DONE | `road_graph.rs`: `RoadNetwork` with A* pathfind, fiber_route_cost, adjacency list. WASM bridge: `road_pathfind()`, `road_fiber_route_cost()`, `get_road_segments()` |
 
-**Phase 3 Gaps:**
-1. ~~Backend road network graph~~ → **RESOLVED**: `road_graph.rs` with RoadNetwork, A* pathfind, fiber_route_cost, WASM bridge
-2. Intra-city street generation (Grid/Radial/Organic layouts) — IN PROGRESS (Sprint 3)
-3. Road-based fiber auto-routing / cursor snapping — IN PROGRESS (Sprint 3)
-4. ~~Terrain-aware road generation~~ → PARTIALLY RESOLVED: A* with terrain costs in `roadsLayer.ts`
-5. Building placement along streets — IN PROGRESS (Sprint 3)
-6. Cable offset from road centerlines — IN PROGRESS (Sprint 3)
+**Phase 3 Gaps:** All resolved.
 
 ---
 
@@ -1157,58 +1148,47 @@ Parallelizable pairs:
 
 ---
 
-### Phase 5 — Spline Routing: MOSTLY DONE (5/7 done, 2 partial)
+### Phase 5 — Spline Routing: DONE (7/7)
 
 | Item | Status | Evidence / Gap |
 |------|--------|----------------|
 | 5.1 Edge data model (waypoints) | DONE | `InfraEdge.waypoints: Vec<(f64,f64)>`, serde, multiplayer sync |
 | 5.2 Catmull-Rom rendering | DONE | `spline.ts`: full math, 10 segments/span, PathLayer rendering |
-| 5.3 Visual style by zoom | MOSTLY DONE | Aerial dashed/underground solid done, health colors done, traffic particles done. `cableGlowLayer.ts` written AND integrated in MapRenderer (glow at zoom <5, pole dots at zoom >7 for aerial). **MISSING:** road-hugging at high zoom |
-| 5.4 Waypoint editing (post-build) | DONE | `WaypointEditor.svelte`: full editor with spline preview, draggable handles, HUD (waypoint count, total length, cost), Enter/Esc keyboard, sends `UpdateEdgeWaypoints` command. `waypointEditorLayer.ts`: PathLayer + glow + ScatterplotLayer handles with drag events |
-| 5.5 Auto-route along roads | PARTIAL | `GridPathfinder.ts` terrain A* pathfinding exists. **MISSING:** actual road network integration, road-based weights |
-| 5.6 Cable drawing mode | DONE | Click-chain waypoints, spline preview, cost calculation. **MINOR:** no drag gesture, no road snapping |
-| 5.7 Legacy edge migration | PARTIAL | Straight-line fallback works. **MISSING:** auto-fix tool to retroactively route old edges |
+| 5.3 Visual style by zoom | DONE | Aerial dashed/underground solid, health colors, traffic particles. `cableGlowLayer.ts` (glow at zoom <5, pole dots at zoom >7). `infraLayer.ts`: road-hugging offset (3-5px) at zoom >7 for edges following road geometry |
+| 5.4 Waypoint editing (post-build) | DONE | `WaypointEditor.svelte`: drag handles, insert/delete, keyboard shortcuts, `UpdateEdgeWaypoints` command |
+| 5.5 Auto-route along roads | DONE | `CableDrawingMode.svelte`: calls `bridge.roadPathfind()` for WASM A* road pathfinding, shows preview dashed line, cost comparison ("Road: $X | Direct: $Y"), Tab/Enter to accept. Falls back to direct path if no road route |
+| 5.6 Cable drawing mode | DONE | Click-chain waypoints, spline preview, cost calculation, road snapping, Shift override for off-road |
+| 5.7 Legacy edge migration | DONE | `WaypointEditor.svelte`: "Auto-Fix Route" button for legacy straight-line edges (2 waypoints), retroactively routes along roads via `bridge.roadPathfind()`, updates edge waypoints |
 
-**Phase 5 Gaps:**
-1. ~~Post-build waypoint editing UI~~ → RESOLVED: `WaypointEditor.svelte` + `waypointEditorLayer.ts`
-2. Road network integration for auto-routing — IN PROGRESS (Sprint 3, road graph now available via WASM)
-3. ~~Glow lines at low zoom + pole dots on aerial~~ → **RESOLVED**: `cableGlowLayer.ts` integrated
-4. Road-hugging at high zoom — IN PROGRESS (Sprint 3)
-5. Auto-fix tool for legacy straight-line edges — IN PROGRESS (Sprint 3)
+**Phase 5 Gaps:** All resolved.
 
 ---
 
-### Phase 6 — City Density & Demand: MOSTLY DONE (3/5 done, 2 partial)
+### Phase 6 — City Density & Demand: DONE (5/5)
 
 | Item | Status | Evidence / Gap |
 |------|--------|----------------|
 | 6.1 City zone system | DONE | 5 zones: downtown/commercial/inner_res/outer_res/suburban, population-scaled radii |
-| 6.2 Building-as-demand-point | DONE | `BuildingFootprint` with position, zone, demand value, connection status, provider. **MINOR:** no explicit 15-20% overhead deduction for NAP auto-coverage vs manual drops |
+| 6.2 Building-as-demand-point | DONE | `BuildingFootprint` with position, zone, demand value, connection status, provider. 85%/100% overhead deduction for NAP auto-coverage vs manual drops |
 | 6.3 Demand visualization | DONE | Status-based colors (grey/dim-green/bright-green/red), zoom 7+ visibility |
-| 6.4 Revenue model update | PARTIAL | Revenue still cell-coverage-based (`revenue.rs`). **MISSING:** per-building subscriber revenue |
-| 6.5 Population growth impact | PARTIAL | Population system tracks growth. **MISSING:** dynamic building spawn/destruction in suburban fringe |
+| 6.4 Revenue model update | DONE | `revenue.rs`: `calculate_building_revenue()` iterates individual building footprints, per-building revenue = BUILDING_BASE_RATE × demand_value × service_quality × connection_factor × competition_share. Legacy fallback for worlds without footprints |
+| 6.5 Population growth impact | DONE | `population.rs`: dynamic building spawn/destruction every 10 ticks. Growing cities spawn buildings in suburban fringe. Declining cities mark fringe buildings as abandoned (zeroed demand). Reactivates abandoned buildings first before spawning new ones |
 
-**Phase 6 Gaps:**
-1. Per-building subscriber revenue model (replace cell-coverage abstraction)
-2. NAP auto-coverage overhead deduction (15-20% less revenue than manual drops)
-3. Dynamic building spawn in growing cities / abandoned buildings in declining cities
+**Phase 6 Gaps:** All resolved.
 
 ---
 
-### Phase 7 — Submarine Cables: MOSTLY DONE (3/5 done, 1 partial, 1 missing)
+### Phase 7 — Submarine Cables: DONE (5/5)
 
 | Item | Status | Evidence / Gap |
 |------|--------|----------------|
-| 7.1 Submarine cable placement | DONE | SubseaLandingStation node + SubseaFiberCable edge exist. Coastal validation in `world.rs cmd_build_node()`: SubmarineLanding/SubseaLandingStation require Coastal terrain only. CableHut requires Coastal or OceanShallow |
+| 7.1 Submarine cable placement | DONE | SubseaLandingStation + SubseaFiberCable. Coastal validation: SubmarineLanding/SubseaLandingStation require Coastal terrain. CableHut requires Coastal or OceanShallow |
 | 7.2 Bathymetry visualization | DONE | `oceanDepthLayer.ts`: depth-graded fills + contour lines at boundaries |
 | 7.3 Submarine cable properties | DONE | High capacity (1M bandwidth), high cost ($250K/km), vulnerability in disaster system |
-| 7.4 TeleGeography reference data | NOT DONE | No real-world cable route overlay or landing station suggestions |
-| 7.5 Cable ship mechanic | DONE | `PurchaseCableShip` command + `cmd_purchase_cable_ship()` handler ($50M cost, increments ship count, emits `CableShipPurchased` event). Construction constraint in `cmd_build_edge()`: checks ship ownership, limits concurrent submarine builds to ship count. Submarine construction registered with length-based build time (80 + length_km/100 × 2 ticks). `active_submarine_builds` cleanup in construction.rs on completion |
+| 7.4 TeleGeography reference data | DONE | `submarineCableRefLayer.ts`: 20 major real-world submarine cables (TAT-14, SEA-ME-WE 5, 2Africa, MAREA, etc.) with approximate waypoints. PathLayer (dashed, 2px, 0.3 opacity). Landing station markers. Hover tooltips (name + year + capacity). `submarine_reference` overlay type in HUD. Real Earth mode only |
+| 7.5 Cable ship mechanic | DONE | `PurchaseCableShip` command ($50M), construction constraint (one cable per ship), concurrent build limits, length-based build time, `active_submarine_builds` cleanup on completion |
 
-**Phase 7 Gaps:**
-1. ~~Coastal cell validation~~ → **RESOLVED**: `world.rs cmd_build_node()` validates SubmarineLanding/SubseaLandingStation require Coastal terrain
-2. TeleGeography reference data overlay (Real Earth mode) — IN PROGRESS (Sprint 3)
-3. ~~Cable ship entity~~ → **RESOLVED**: purchase command + construction constraint, concurrent build limits, length-based construction time
+**Phase 7 Gaps:** All resolved.
 
 ---
 
@@ -1249,29 +1229,23 @@ Parallelizable pairs:
 
 ---
 
-### Phase 10 — Network Dashboard: MOSTLY DONE (9/11 done, 2 partial)
+### Phase 10 — Network Dashboard: DONE (11/11)
 
 | Item | Status | Evidence / Gap |
 |------|--------|----------------|
 | 10.1 Dashboard panel | DONE | `NetworkDashboard.svelte` with dark theme, monospace, Bloomberg aesthetic |
 | 10.2.1 Network health overview | DONE | Stats + 100-tick historical graph via `networkHistory.ts` |
-| 10.2.2 Traffic flow | DONE | Real-time volume, top 10 congested edges, node utilization histogram. OD traffic matrix: top-5 regions × traffic flows (color-coded table). Contracts data |
-| 10.2.3 Bottleneck detection | DONE | Congestion overlay colors edges >80%. Bottleneck suggestions in NetworkDashboard: UPGRADE badge (>90% util, "Add parallel edge"), MONITOR badge (>80% util, "Consider capacity upgrade"). Color-coded (red/amber) |
-| 10.2.4 Revenue by infrastructure | DONE | `NetworkDashboard.svelte` lines 58-124: `RevenueRow` interface, node revenue estimated from utilization×throughput, edge revenue from utilization×bandwidth, sorted by total revenue. **MINOR:** uses estimates rather than actual per-entity sim revenue |
-| 10.2.5 SLA monitoring | DONE | `NetworkDashboard.svelte` lines 126-175: `SLARow` interface, derives SLA targets from contract capacity, tracks ok/at_risk/breach status, penalty calculation |
-| 10.2.6 Coverage map | PARTIAL | Coverage overlay exists. **MISSING:** per-corporation comparison |
-| 10.2.7 Maintenance queue | DONE | `NetworkDashboard.svelte` lines 177-237: `MaintenanceItem` interface, lists all damaged nodes+edges sorted by health, estimated repair cost, repair and repair-all-critical buttons |
-| 10.2.8 Capacity planning | DONE | D3.js capacity sparklines (460×80px SVG) with timeline of last 50 snapshots. Linear regression for growth projections. **What-if analysis**: `whatIfGrowthPct` slider (0-50%, step 5%), per-edge stress test with linear regression data, Bloomberg terminal aesthetic table (edge type, from→to, util%, ticks to exceed), color-coded thresholds (red <50, amber <200, green >200), gradient slider |
-| 10.3 Map integration | MOSTLY DONE | Overlays exist. **Click-to-highlight**: maintenance queue rows fly to node coordinates, congested edges fly to midpoint, OD matrix headers fly to region center. **MISSING:** widget pinning |
-| — Traffic OD matrix | DONE | `NetworkDashboard.svelte`: `ODEntry` interface, top-5 regions by traffic, N×N color-coded matrix table |
+| 10.2.2 Traffic flow | DONE | Real-time volume, top 10 congested edges, OD traffic matrix (top-5 regions) |
+| 10.2.3 Bottleneck detection | DONE | Congestion overlay >80%. UPGRADE badge (>90%), MONITOR badge (>80%) |
+| 10.2.4 Revenue by infrastructure | DONE | `RevenueRow` interface, node+edge revenue estimated from utilization |
+| 10.2.5 SLA monitoring | DONE | `SLARow` interface, ok/at_risk/breach status, penalty calculation |
+| 10.2.6 Coverage map | DONE | Coverage overlay + "CORPORATION COVERAGE COMPARISON" table: per-corp node count, edge count, bandwidth, utilization, market share %. Player row highlighted. `coverage_overlap` overlay type for multi-corp overlap visualization |
+| 10.2.7 Maintenance queue | DONE | Damaged nodes+edges sorted by health, repair buttons, crew allocation |
+| 10.2.8 Capacity planning | DONE | D3.js sparklines, linear regression projections, what-if slider (0-50% growth), per-edge stress test table |
+| 10.3 Map integration | DONE | Click-to-highlight fly-to. Widget pinning: pin icon on section headers, pinned widgets as floating overlays on map, `pinnedWidgets` stored in localStorage (`globaltelco-pinned-widgets`), toggle via `togglePinnedWidget()` |
+| — Traffic OD matrix | DONE | Top-5 region N×N color-coded matrix |
 
-**Phase 10 Gaps:**
-1. ~~Revenue by infrastructure widget~~ → RESOLVED: `NetworkDashboard.svelte` lines 58-124 (estimated from utilization)
-2. ~~SLA monitoring widget~~ → RESOLVED: `NetworkDashboard.svelte` lines 126-175 (ok/at_risk/breach)
-3. ~~Maintenance queue / crew allocation widget~~ → RESOLVED: `NetworkDashboard.svelte` lines 177-237 (repair buttons)
-4. ~~Capacity planning "what if" scenario analysis~~ → **RESOLVED**: `whatIfGrowthPct` slider, per-edge stress test, Bloomberg terminal aesthetic, color-coded thresholds
-5. ~~Click-to-highlight map integration~~ → **RESOLVED**: maintenance rows, congested edges, OD matrix headers all fly-to on click. `clickable-row` CSS class
-6. ~~Traffic origin-destination matrix~~ → RESOLVED: top-5 region OD matrix in NetworkDashboard
+**Phase 10 Gaps:** All resolved.
 
 ---
 
@@ -1289,12 +1263,12 @@ Parallelizable pairs:
 
 ---
 
-### Phase 12 — Competitor Visualization: DONE (2/3 done, 1 partial)
+### Phase 12 — Competitor Visualization: DONE (3/3)
 
 | Item | Status | Evidence / Gap |
 |------|--------|----------------|
 | 12.1 Competitor rendering | DONE | All competitor nodes/edges visible, color-coded, 0.7× opacity, 0.8× width, corp name on hover |
-| 12.2 Competitive overlay | PARTIAL | Market share overlay exists. **MINOR:** no explicit coverage overlap visualization |
+| 12.2 Competitive overlay | DONE | Market share overlay + `coverage_overlap` overlay type showing multi-corp coverage areas. Per-corporation comparison table in NetworkDashboard. Coverage overlap cells rendered with blended colors |
 | 12.3 Competitor detail | DONE | Hover shows type/owner/status, click shows stats, espionage gates financials |
 
 ---

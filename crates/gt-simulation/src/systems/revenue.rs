@@ -383,14 +383,14 @@ fn calculate_building_revenue_legacy(
     world: &GameWorld,
     _corp_id: EntityId,
     active_naps: &[(EntityId, usize, f64, f64)],
-    drop_cable_cells: &HashSet<usize>,
-    nap_covered_cells: &std::collections::HashMap<usize, f64>,
+    _drop_cable_cells: &HashSet<usize>,
+    _nap_covered_cells: &std::collections::HashMap<usize, f64>,
 ) -> i64 {
     let cell_spacing = world.cell_spacing_km;
     let mut revenue: f64 = 0.0;
 
     // Count total DropCable connections across all active NAPs for proportional allocation
-    let nap_ids: HashSet<EntityId> = active_naps.iter().map(|t| t.0).collect();
+    let _nap_ids: HashSet<EntityId> = active_naps.iter().map(|t| t.0).collect();
     let mut drop_cable_count: std::collections::HashMap<EntityId, u32> =
         std::collections::HashMap::new();
     for edge in world.infra_edges.values() {
