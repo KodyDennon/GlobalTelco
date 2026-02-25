@@ -10,8 +10,18 @@
 		<p class="subtitle">{$tr('credits.game_subtitle')}</p>
 
 		<section>
-			<h3>{$tr('credits.design')}</h3>
-			<p class="credit-entry">GlobalTelco Team</p>
+			<h3>{$tr('credits.developed_by')}</h3>
+			<ul class="dev-list">
+				<li class="ai-credit">Claude Opus 4.5 & 4.6</li>
+				<li class="ai-credit">Claude Sonnet 4.5 & 4.6</li>
+				<li class="ai-credit">Gemini Pro 3.0</li>
+				<li class="ai-credit">Gemini Flash</li>
+			</ul>
+		</section>
+
+		<section>
+			<h3>{$tr('credits.orchestrated_by')}</h3>
+			<p class="credit-entry orchestrator">Kody Dennon</p>
 		</section>
 
 		<section>
@@ -80,9 +90,32 @@
 		margin-bottom: 8px;
 	}
 
+	.dev-list {
+		list-style: none;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.ai-credit {
+		font-size: 14px;
+		color: #d1d5db;
+		font-weight: 500;
+	}
+
 	.credit-entry {
 		font-size: 14px;
 		color: #d1d5db;
+	}
+
+	.orchestrator {
+		font-size: 18px;
+		font-weight: 700;
+		background: linear-gradient(90deg, #10b981, #3b82f6);
+		-webkit-background-clip: text;
+		-webkit-text-fill-color: transparent;
+		background-clip: text;
 	}
 
 	.tech-list {

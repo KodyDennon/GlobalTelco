@@ -440,13 +440,14 @@
 		"title": "Credits",
 		"game_title": "GlobalTelco",
 		"game_subtitle": "A Telecom Infrastructure Empire Builder",
-		"design": "Game Design & Development",
+		"developed_by": "Developed By",
+		"orchestrated_by": "Orchestrated By",
 		"tech_stack": "Technology Stack",
 		"simulation": "Simulation: Rust (ECS Architecture)",
 		"frontend": "Frontend: Svelte + deck.gl + D3.js",
 		"desktop": "Desktop: Tauri",
 		"server": "Server: Rust (Axum)",
-		"built_with": "Built with open-source technology"
+		"built_with": "Built with AI + open-source technology"
 	},
 	"errors": {
 		"wasm_load_failed": "Failed to load game engine. Please refresh the page.",
