@@ -7,6 +7,7 @@ import * as bridge from '$lib/wasm/bridge';
 import type { AllInfraNode, DeploymentMethod } from '$lib/wasm/types';
 import { CORP_COLORS, EDGE_STYLES, NODE_TIER_SIZE, NETWORK_TIER_LABEL, toIconKey } from '../constants';
 import { catmullRomSpline } from '../spline';
+import type { ActiveDisaster } from '../../WeatherLayer';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,60 @@ const COVERAGE_RADIUS: Record<string, number> = {
 
 /** Node types considered wireless for coverage display. */
 const WIRELESS_TYPES = new Set(Object.keys(COVERAGE_RADIUS));
+
+/**
+ * Determine base pixel width for an edge type based on strand count / capacity class.
+ * Drop → 1, Distribution/local → 2, Feeder/metro → 3, National → 4, Backbone/submarine → 5, Future → 6.
+ */
+export function edgeWidthByType(edgeType: string): number {
+    switch (edgeType) {
+        // Drop cable — thinnest single strand
+        case 'DropCable':
+            return 1;
+
+        // Distribution fiber & local/access cables — 2px
+        case 'DistributionFiber':
+        case 'Copper':
+        case 'FiberLocal':
+        case 'TelegraphWire':
+        case 'CoaxialCable':
+        case 'CopperTrunkLine':
+            return 2;
+
+        // Feeder fiber & metro/regional — 3px
+        case 'FeederFiber':
+        case 'FiberRegional':
+        case 'Microwave':
+        case 'MicrowaveLink':
+        case 'FiberMetro':
+        case 'LongDistanceCopper':
+        case 'Satellite':
+        case 'SatelliteLEOLink':
+        case 'EarlySatelliteLink':
+            return 3;
+
+        // National / long-haul — 4px
+        case 'FiberNational':
+        case 'FiberLongHaul':
+            return 4;
+
+        // DWDM backbone & submarine — 5px
+        case 'DWDM_Backbone':
+        case 'Submarine':
+        case 'SubseaFiberCable':
+        case 'SubseaTelegraphCable':
+            return 5;
+
+        // Near-future — 6px
+        case 'QuantumFiberLink':
+        case 'TerahertzBeam':
+        case 'LaserInterSatelliteLink':
+            return 6;
+
+        default:
+            return 2;
+    }
+}
 
 /** Minimum tier rank visible at each zoom bracket. */
 function minTierForZoom(zoom: number): number {
@@ -175,6 +230,7 @@ interface ProcessedNode {
     tierRank: number;
     x: number;
     y: number;
+    isPlayer: boolean;
 }
 
 interface ProcessedEdge {
@@ -202,6 +258,9 @@ interface ProcessedEdge {
     waypoints: [number, number][];
     /** Deployment method: Aerial (on poles) or Underground (buried). */
     deployment: DeploymentMethod;
+    owner: number;
+    owner_name: string;
+    isPlayer: boolean;
 }
 
 // ── Main export ──────────────────────────────────────────────────────────────
@@ -227,6 +286,8 @@ export function createInfraLayers(opts: {
     currentTime: number;
     pitch: number;
     hoveredNodeId: number | null;
+    playerCorpId?: number;
+    activeDisasters?: ActiveDisaster[];
 }): Layer[] {
     const {
         iconAtlas,
@@ -237,6 +298,8 @@ export function createInfraLayers(opts: {
         currentTime,
         pitch,
         hoveredNodeId,
+        playerCorpId,
+        activeDisasters,
     } = opts;
 
     // ── Gather raw data ──────────────────────────────────────────────────────
@@ -314,12 +377,22 @@ export function createInfraLayers(opts: {
                 }
             }
 
+            // Base width from strand-count / capacity class
+            const baseWidth = edgeWidthByType(edge.edge_type);
+
             // Medium traffic: wider, brighter glow
             const util = edge.utilization || 0;
-            let width = style.width;
+            let width = baseWidth;
             if (!isCongestion && !isTraffic && util > 0.3 && util <= 0.7) {
-                width = style.width * 1.8;
+                width = baseWidth * 1.8;
                 opacity = Math.min(255, opacity + 40);
+            }
+
+            // Competitor visual hierarchy: reduce opacity and width for non-player corps
+            const isPlayerEdge = playerCorpId !== undefined && corp.id === playerCorpId;
+            if (!isPlayerEdge && !isCongestion && !isTraffic) {
+                opacity = Math.floor(opacity * 0.7);
+                width = width * 0.8;
             }
 
             // Health-based color tinting (green > 0.8, amber 0.5-0.8, red < 0.5)
@@ -381,6 +454,9 @@ export function createInfraLayers(opts: {
                 tierRank,
                 waypoints: rawWaypoints,
                 deployment,
+                owner: corp.id,
+                owner_name: corp.name,
+                isPlayer: isPlayerEdge,
             });
         }
 
@@ -395,6 +471,12 @@ export function createInfraLayers(opts: {
                 isTraffic,
                 trafficNodeFlowMap,
             );
+
+            // Competitor visual hierarchy: reduce opacity for non-player corps
+            const isPlayerNode = playerCorpId !== undefined && corp.id === playerCorpId;
+            if (!isPlayerNode && !isCongestion && !isTraffic) {
+                nodeColor[3] = Math.min(nodeColor[3], 200);
+            }
 
             allNodes.push({
                 id: node.id,
@@ -415,6 +497,7 @@ export function createInfraLayers(opts: {
                 tierRank,
                 x: node.x,
                 y: node.y,
+                isPlayer: isPlayerNode,
             });
         }
     }
@@ -509,6 +592,42 @@ export function createInfraLayers(opts: {
         } as any));
     }
 
+    // ── 3b. Cable vulnerability highlights for active disasters ─────────────
+    if (activeDisasters && activeDisasters.length > 0) {
+        const atRiskEdges = findAtRiskEdges(allEdges, activeDisasters);
+        if (atRiskEdges.length > 0) {
+            // Pulsing amber/red glow for at-risk edges
+            const riskPulse = 0.5 + 0.5 * Math.sin(currentTime * 0.006);
+
+            layers.push(new PathLayer({
+                id: 'infra-edges-at-risk',
+                data: atRiskEdges,
+                getPath: (d: AtRiskEdge) => d.edge.path,
+                getColor: (d: AtRiskEdge) => {
+                    const alpha = Math.floor((100 + 80 * riskPulse) * d.riskLevel);
+                    if (d.riskType === 'submarine') {
+                        // Wave interference: blue-white
+                        return [80, 160, 255, alpha];
+                    }
+                    // Amber warning for aerial/underground
+                    return [245, 158, 11, alpha];
+                },
+                getWidth: (d: AtRiskEdge) => d.edge.width * 2.5,
+                widthUnits: 'pixels',
+                jointRounded: true,
+                capRounded: true,
+                pickable: false,
+                getDashArray: (d: AtRiskEdge) =>
+                    d.riskType === 'submarine' ? [6, 4, 2, 4] : [0, 0],
+                dashJustified: true,
+                parameters: {
+                    blend: true,
+                    blendFunc: [WebGLRenderingContext.SRC_ALPHA, WebGLRenderingContext.ONE],
+                },
+            }));
+        }
+    }
+
     // ── 4. Construction pulsing rings ────────────────────────────────────────
     const constructionNodes = allNodes.filter(n => n.under_construction);
     if (constructionNodes.length > 0) {
@@ -545,7 +664,10 @@ export function createInfraLayers(opts: {
             extruded: true,
             getPosition: (d: ProcessedNode) => d.position,
             getFillColor: (d: ProcessedNode) => d.color,
-            getElevation: (d: ProcessedNode) => COLUMN_HEIGHT[d.network_level] || 200,
+            getElevation: (d: ProcessedNode) => {
+                const h = COLUMN_HEIGHT[d.network_level] || 200;
+                return d.isPlayer ? h : h * 0.85;
+            },
             pickable: true,
             autoHighlight: true,
             onClick: ({ object }: any) => {
@@ -566,10 +688,10 @@ export function createInfraLayers(opts: {
                 getIcon: (d: ProcessedNode) => d.icon,
                 iconAtlas: iconAtlas as any,
                 iconMapping: iconMapping,
-                getSize: (d: ProcessedNode) => d.tierSize * 0.8,
+                getSize: (d: ProcessedNode) => d.tierSize * (d.isPlayer ? 0.8 : 0.68),
                 sizeMinPixels: 10,
                 sizeMaxPixels: 48,
-                getColor: [255, 255, 255, 230],
+                getColor: (d: ProcessedNode) => d.isPlayer ? [255, 255, 255, 230] : [255, 255, 255, 180],
                 // Elevate icon above column top
                 getPixelOffset: [0, -20],
                 pickable: false,
@@ -586,7 +708,7 @@ export function createInfraLayers(opts: {
                 getIcon: (d: ProcessedNode) => d.icon,
                 iconAtlas: iconAtlas as any,
                 iconMapping: iconMapping,
-                getSize: (d: ProcessedNode) => d.tierSize,
+                getSize: (d: ProcessedNode) => d.isPlayer ? d.tierSize : d.tierSize * 0.85,
                 sizeMinPixels: 12,
                 sizeMaxPixels: 72,
                 getColor: (d: ProcessedNode) => d.color,
@@ -607,7 +729,7 @@ export function createInfraLayers(opts: {
                 data: allNodes,
                 getPosition: (d: ProcessedNode) => d.position,
                 getFillColor: (d: ProcessedNode) => d.color,
-                getRadius: (d: ProcessedNode) => d.tierSize * 500,
+                getRadius: (d: ProcessedNode) => d.isPlayer ? d.tierSize * 500 : d.tierSize * 425,
                 radiusMinPixels: 6,
                 radiusMaxPixels: 24,
                 pickable: true,
@@ -765,6 +887,102 @@ export function createInfraLayers(opts: {
     }
 
     return layers;
+}
+
+// ── Cable vulnerability detection ────────────────────────────────────────────
+
+interface AtRiskEdge {
+    edge: ProcessedEdge;
+    riskType: 'aerial' | 'underground' | 'submarine';
+    riskLevel: number; // 0-1 severity multiplier
+    disasterType: string;
+}
+
+/** Submarine edge types. */
+const SUBMARINE_TYPES = new Set([
+    'Submarine', 'SubseaFiberCable', 'SubseaTelegraphCable',
+]);
+
+/**
+ * Determine vulnerability for deployment type vs disaster type.
+ * - Aerial: vulnerable to storms, ice, wind (Hurricane, Landslide, storm-like)
+ * - Underground: vulnerable to earthquakes, floods
+ * - Submarine: vulnerable to earthquakes (underwater), anchor strikes
+ */
+function getVulnerability(
+    deployment: DeploymentMethod,
+    edgeType: string,
+    disasterType: string,
+): { vulnerable: boolean; riskType: 'aerial' | 'underground' | 'submarine' } | null {
+    const lower = disasterType.toLowerCase();
+    const isSubmarine = SUBMARINE_TYPES.has(edgeType);
+
+    if (isSubmarine) {
+        // Submarine cables: vulnerable to earthquakes and storms
+        if (lower.includes('earthquake') || lower.includes('hurricane') ||
+            lower.includes('typhoon') || lower.includes('storm')) {
+            return { vulnerable: true, riskType: 'submarine' };
+        }
+        return null;
+    }
+
+    if (deployment === 'Aerial') {
+        // Aerial: vulnerable to storms, ice, wind, hurricanes, landslides
+        if (lower.includes('hurricane') || lower.includes('typhoon') ||
+            lower.includes('storm') || lower.includes('thunder') ||
+            lower.includes('ice') || lower.includes('blizzard') ||
+            lower.includes('landslide') || lower.includes('cyclone')) {
+            return { vulnerable: true, riskType: 'aerial' };
+        }
+        return null;
+    }
+
+    // Underground
+    if (lower.includes('earthquake') || lower.includes('flood')) {
+        return { vulnerable: true, riskType: 'underground' };
+    }
+    return null;
+}
+
+/**
+ * Find all edges that are at risk from active disasters.
+ * Uses a simple distance check between edge midpoint and disaster center.
+ */
+function findAtRiskEdges(
+    allEdges: ProcessedEdge[],
+    disasters: ActiveDisaster[],
+): AtRiskEdge[] {
+    const results: AtRiskEdge[] = [];
+    const MAX_DIST_DEG = 5; // approximate degrees threshold for disaster influence
+
+    for (const edge of allEdges) {
+        // Edge midpoint
+        const midLon = (edge.src_x + edge.dst_x) / 2;
+        const midLat = (edge.src_y + edge.dst_y) / 2;
+
+        for (const disaster of disasters) {
+            const dlat = midLat - disaster.lat;
+            const dlon = midLon - disaster.lon;
+            const dist = Math.sqrt(dlat * dlat + dlon * dlon);
+            const effectRadius = MAX_DIST_DEG * disaster.severity;
+
+            if (dist > effectRadius) continue;
+
+            const vuln = getVulnerability(edge.deployment, edge.edge_type, disaster.disasterType);
+            if (!vuln) continue;
+
+            const proximityFactor = 1 - (dist / effectRadius);
+            results.push({
+                edge,
+                riskType: vuln.riskType,
+                riskLevel: proximityFactor * disaster.severity,
+                disasterType: disaster.disasterType,
+            });
+            break; // Only mark once per edge (use the first matching disaster)
+        }
+    }
+
+    return results;
 }
 
 // ── Edge tier estimation ─────────────────────────────────────────────────────

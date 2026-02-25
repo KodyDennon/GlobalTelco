@@ -10,13 +10,19 @@
 	import Tooltip from "./Tooltip.svelte";
 	import Tutorial from "./Tutorial.svelte";
 	import Chat from "./Chat.svelte";
+	import CableDrawingMode from "./CableDrawingMode.svelte";
 	import MiniMap from "./MiniMap.svelte";
+	import SearchOverlay from "./SearchOverlay.svelte";
 	import OverlayLegend from "./OverlayLegend.svelte";
 	import PerfMonitor from "./PerfMonitor.svelte";
 	import FloatingPanel from "$lib/ui/FloatingPanel.svelte";
 	import ConfirmDialog from "$lib/ui/ConfirmDialog.svelte";
 	import ComingSoon from "$lib/ui/ComingSoon.svelte";
-	import { initialized, playerCorp, regions } from "$lib/stores/gameState";
+	import { initialized, playerCorp, regions, notifications, worldInfo } from "$lib/stores/gameState";
+	import { eventType, eventData } from "$lib/wasm/types";
+	import type { ActiveDisaster } from "./WeatherLayer";
+	import { DISASTER_DISPLAY_DURATION } from "./WeatherLayer";
+	import DisasterAlert from "./DisasterAlert.svelte";
 	import {
 		activePanelGroup,
 		activeGroupTab,
@@ -47,6 +53,57 @@
 	let screenshotManager: ScreenshotManager | null = null;
 	let audioManager: AudioManager | null = null;
 	let spatialAudio: SpatialAudioController | null = null;
+
+	// ── Active disaster tracking ─────────────────────────────────────────────
+	// Disasters are extracted from notifications and kept alive for DISASTER_DISPLAY_DURATION ticks.
+	let activeDisasters: ActiveDisaster[] = $state([]);
+	let processedDisasterIds = new Set<string>();
+
+	// Derive active disasters from notifications: scan for DisasterStruck events
+	$effect(() => {
+		const notifs = $notifications;
+		const currentTick = $worldInfo.tick;
+		const regionList = $regions;
+
+		// Add new disasters from recent notifications
+		for (const notif of notifs) {
+			const type = eventType(notif.event);
+			if (type !== 'DisasterStruck') continue;
+
+			const data = eventData(notif.event);
+			const id = `disaster-${notif.tick}-${data.region}`;
+			if (processedDisasterIds.has(id)) continue;
+			processedDisasterIds.add(id);
+
+			// Find region center for positioning
+			const region = regionList.find(r => r.id === (data.region as number));
+			const lon = region?.center_lon ?? 0;
+			const lat = region?.center_lat ?? 0;
+			const regionName = region?.name ?? `Region ${data.region}`;
+
+			activeDisasters = [...activeDisasters, {
+				id,
+				disasterType: (data.disaster_type as string) ?? 'Unknown',
+				lon,
+				lat,
+				severity: (data.severity as number) ?? 0.3,
+				startTick: notif.tick,
+				regionName,
+				regionId: (data.region as number) ?? 0,
+				affectedCount: (data.affected_nodes as number) ?? 0,
+			}];
+		}
+
+		// Prune expired disasters
+		activeDisasters = activeDisasters.filter(
+			d => (currentTick - d.startTick) < DISASTER_DISPLAY_DURATION
+		);
+
+		// Dispatch to MapView for weather layer + infra layer visualization
+		window.dispatchEvent(new CustomEvent('active-disasters-update', {
+			detail: activeDisasters,
+		}));
+	});
 
 	onMount(() => {
 		// Keyboard shortcuts
@@ -120,6 +177,7 @@
 	const panelComponents: Record<string, () => Promise<any>> = {
 		dashboard: () => import("$lib/panels/DashboardPanel.svelte"),
 		infrastructure: () => import("$lib/panels/InfraPanel.svelte"),
+		network: () => import("$lib/panels/NetworkDashboard.svelte"),
 		contracts: () => import("$lib/panels/ContractPanel.svelte"),
 		region: () => import("$lib/panels/RegionPanel.svelte"),
 		research: () => import("$lib/panels/ResearchPanel.svelte"),
@@ -129,6 +187,7 @@
 		mergers: () => import("$lib/panels/MergerPanel.svelte"),
 		intel: () => import("$lib/panels/IntelPanel.svelte"),
 		achievements: () => import("$lib/panels/AchievementPanel.svelte"),
+		spectrum: () => import("$lib/panels/SpectrumPanel.svelte"),
 	};
 
 	let PanelComponent: any = $state(null);
@@ -227,6 +286,8 @@
 			</div>
 		{/if}
 		<HUD />
+		<DisasterAlert disasters={activeDisasters} />
+		<CableDrawingMode />
 		<InfoPanel />
 		<RadialBuildMenu />
 		<BuildHotbar />
@@ -234,6 +295,7 @@
 		<Tooltip />
 		<Tutorial />
 		<MiniMap />
+		<SearchOverlay />
 		<ConfirmDialog />
 		{#if $showWelcome}
 			<div class="welcome-overlay">
@@ -316,6 +378,13 @@
 							<div class="hk"><kbd>F1-F6</kbd> Panel Groups</div>
 							<div class="hk"><kbd>Tab</kbd> Next Tab</div>
 							<div class="hk"><kbd>Q</kbd> Close Panel</div>
+						</div>
+						<div class="hotkey-section">
+							<h4>Navigation</h4>
+							<div class="hk"><kbd>/</kbd> Search (cities, regions)</div>
+							<div class="hk"><kbd>M</kbd> Toggle Minimap</div>
+							<div class="hk"><kbd>Home</kbd> Reset View</div>
+							<div class="hk"><kbd>P</kbd> Toggle 3D Pitch</div>
 						</div>
 					</div>
 					<button class="hotkey-close" onclick={() => hotkeyOverlayVisible.set(false)}>Close</button>

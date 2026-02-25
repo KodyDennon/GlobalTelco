@@ -1,7 +1,7 @@
 import { writable, derived } from 'svelte/store';
 
-export type PanelType = 'none' | 'info' | 'dashboard' | 'infrastructure' | 'research' | 'contracts' | 'region' | 'workforce' | 'advisor' | 'auctions' | 'mergers' | 'intel' | 'achievements';
-export type OverlayType = 'none' | 'terrain' | 'ownership' | 'population' | 'demand' | 'disaster' | 'coverage' | 'congestion' | 'traffic';
+export type PanelType = 'none' | 'info' | 'dashboard' | 'infrastructure' | 'network' | 'research' | 'contracts' | 'region' | 'workforce' | 'advisor' | 'auctions' | 'mergers' | 'intel' | 'achievements' | 'spectrum';
+export type OverlayType = 'none' | 'terrain' | 'ownership' | 'population' | 'demand' | 'disaster' | 'coverage' | 'congestion' | 'traffic' | 'market_share' | 'ocean_depth' | 'spectrum';
 export type PanelGroupType = 'finance' | 'operations' | 'diplomacy' | 'research' | 'market' | 'info';
 
 // Panel group → tab definitions
@@ -13,7 +13,9 @@ export const PANEL_GROUP_TABS: Record<PanelGroupType, Array<{ key: string; label
 	],
 	operations: [
 		{ key: 'infrastructure', label: 'Infrastructure', component: 'infrastructure' },
+		{ key: 'network', label: 'Network', component: 'network' },
 		{ key: 'workforce', label: 'Workforce', component: 'workforce' },
+		{ key: 'spectrum', label: 'Spectrum', component: 'spectrum' },
 		{ key: 'maintenance', label: 'Maintenance', comingSoon: { feature: 'Maintenance Priority', phase: 'Phase 6', description: 'Set maintenance schedules and priority levels for your infrastructure.' } },
 		{ key: 'repair', label: 'Repair', comingSoon: { feature: 'Repair Queue', phase: 'Phase 6', description: 'Manage post-disaster repair queues and emergency response.' } },
 	],

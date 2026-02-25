@@ -1025,3 +1025,320 @@ Parallelizable pairs:
 | 11 | Minimap & Navigation | Corner minimap, search/jump-to, bookmarks |
 | 12 | Competitor Viz | Always-visible competitor infra, market share overlay, competitive analysis |
 | 13 | Polish & Testing | Performance, multiplayer sync, AI integration, save compat, testing |
+
+---
+
+## 18. Implementation Status & Audit (2026-02-25)
+
+> Full code audit performed against every sub-item in every phase.
+> Build verified: `cargo build` (0 errors), `cargo test` (79 pass), `wasm-pack build` (success), `bun run check` (1012 files, 0 errors), `bun run build` (success). WASM module: 1.60 MB raw / 480 KB gzipped.
+
+### Phase Status Overview
+
+| Phase | Status | Done | Partial | Missing | Completion |
+|-------|--------|------|---------|---------|------------|
+| 0 | DONE | 3/3 | 0 | 0 | 100% |
+| 1 | MOSTLY DONE | 4/6 | 2 | 0 | ~80% |
+| 2 | PARTIAL | 3/10 | 4 | 3 | ~45% |
+| 3 | PARTIAL | 2/8 | 2 | 4 | ~35% |
+| 4 | DONE | 8/9 | 0 | 1 | ~90% |
+| 5 | PARTIAL | 3/7 | 3 | 1 | ~55% |
+| 6 | MOSTLY DONE | 3/5 | 2 | 0 | ~75% |
+| 7 | PARTIAL | 2/5 | 1 | 2 | ~45% |
+| 8 | PARTIAL | 2/4 | 1 | 1 | ~55% |
+| 9 | PARTIAL | 2/5 | 2 | 1 | ~50% |
+| 10 | PARTIAL | 3/11 | 3 | 5 | ~35% |
+| 11 | MOSTLY DONE | 2/3 | 0 | 1 | ~75% |
+| 12 | DONE | 2/3 | 1 | 0 | ~90% |
+| 13 | DONE | — | — | — | builds pass |
+
+---
+
+### Phase 0 — Foundation Fixes: DONE (3/3)
+
+| Item | Status | Evidence |
+|------|--------|----------|
+| 0.1 City water placement | DONE | `cities.rs` line 37: `terrains[ci].is_land()` filter; `real_earth.rs` snaps to nearest land cell |
+| 0.2 Region boundary rendering | DONE | `bordersLayer.ts` PathLayer with opacity 0.47; both Real Earth + Procgen |
+| 0.3 WASM bridge extensibility | DONE | Typed arrays + delta sync + incremental batch apply working |
+
+---
+
+### Phase 1 — Build UX Revolution: MOSTLY DONE (4/6 done, 2 partial)
+
+| Item | Status | Evidence / Gap |
+|------|--------|----------------|
+| 1.1 Radial/Pie menu | DONE | `RadialBuildMenu.svelte`: 6 categories, flyouts, ESC close, right-click opens |
+| 1.2 Point placement mode | PARTIAL | Placement persists + ESC exit works. **MISSING:** ghost preview layer, cursor style change, terrain validation (green/red), cost-at-cursor |
+| 1.3 Cable drawing mode | DONE | `CableDrawingMode.svelte`: spline preview, double-click complete, right-click undo, aerial/underground toggle. Auto-suggest deferred to Phase 5 |
+| 1.4 Bottom hotbar | DONE | `BuildHotbar.svelte`: 9 slots, keys 1-9 bound. **MINOR:** no drag-and-drop rearrange, no localStorage persistence |
+| 1.5 Build HUD overlay | PARTIAL | Shows item name + waypoints (cable) + cash. **MISSING:** cost/terrain display during node placement |
+| 1.6 Remove old build flow | DONE | Old `BuildMenu.svelte` exists but not triggered; radial menu is primary |
+
+**Phase 1 Gaps:**
+1. Ghost entity preview layer during node placement (ScatterplotLayer following cursor)
+2. Terrain validation visual feedback (green=valid, red=invalid)
+3. Cost-at-cursor display during node placement
+4. Hotbar drag-and-drop rearrange + localStorage persistence
+
+---
+
+### Phase 2 — Terrain Quality: PARTIAL (3/10 done, 4 partial, 3 missing)
+
+| Item | Status | Evidence / Gap |
+|------|--------|----------------|
+| 2.1.1 Base map enhancement | PARTIAL | ESRI satellite + night dimming done. **MISSING:** hillshade overlay, river tint, coastline glow |
+| 2.1.2 Progressive zoom detail | PARTIAL | Road zoom levels work (motorway@4+, primary@6+). **GAP:** city labels at 7+ not 4-6, no terrain relief |
+| 2.1.3 Night-earth aesthetic | PARTIAL | Ocean dark blue done, dark theme done. **MISSING:** city glow proportional to population |
+| 2.2.1 Procgen vector polygons | DONE | `vectorTerrainLayer.ts`: Voronoi PolygonLayer, sharp edges, per-cell color variation |
+| 2.2.2 Terrain detail within cells | NOT DONE | No ridge/dune/canopy/grid patterns for terrain types |
+| 2.2.3 Water & coastlines | PARTIAL | Ocean depth gradient done (oceanDepthLayer). **MISSING:** rivers as blue lines, lakes, coastline foam/glow |
+| 2.2.4 Elevation visualization | PARTIAL | Mountain snow tint exists. **MISSING:** progressive altitude color scale, elevation contour overlay |
+| 2.3.1 Smooth zoom transitions | DONE | MapLibre opacity interpolation across all layers |
+| 2.3.2 Performance budget | DONE | 5K building cap, vector terrain efficient |
+| — City glow layer | NOT DONE | No ScatterplotLayer-based city light glow proportional to population |
+| — River rendering | NOT DONE | No river visualization in either mode |
+
+**Phase 2 Gaps:**
+1. Hillshade/terrain relief overlay for Real Earth
+2. River visualization layer (both modes)
+3. Lake rendering (Procgen)
+4. Coastline glow/foam effects
+5. City light glow proportional to population (warm blobs at low zoom)
+6. Terrain detail patterns within Procgen cells (ridges, dunes, canopy)
+7. Elevation-based contour overlay (non-ocean)
+
+---
+
+### Phase 3 — Roads & Urban Fabric: PARTIAL (2/8 done, 2 partial, 4 missing)
+
+| Item | Status | Evidence / Gap |
+|------|--------|----------------|
+| 3.1.1 Real Earth road layer | DONE | OpenFreeMap vector tiles: motorway/primary/secondary/minor styled by classification |
+| 3.1.2 Building footprint layer | DONE | `buildingsLayer.ts`: procedural buildings with shadow layer, zone-based coloring, zoom 7+ |
+| 3.1.3 Road-infrastructure interaction | NOT DONE | No cursor snap to roads, no road-based auto-routing, no cable offset from centerline |
+| 3.2.1 Inter-city road network | PARTIAL | `roadsLayer.ts`: MST + regional highways. **MISSING:** terrain avoidance |
+| 3.2.2 Intra-city street generation | NOT DONE | No Grid/Radial/Organic street layouts within cities |
+| 3.2.3 Building placement along streets | PARTIAL | Concentric zones done. **MISSING:** buildings aligned to street edges |
+| 3.2.4 Terrain-road interaction | NOT DONE | Straight-line roads, no mountain/water avoidance |
+| 3.3 Road network as data structure | NOT DONE | Roads visual-only (client-side). No backend queryable graph for sim/AI/auto-routing |
+
+**Phase 3 Gaps (MAJOR):**
+1. Backend road network graph (queryable for fiber auto-routing, AI, cost calculation)
+2. Intra-city street generation (Grid/Radial/Organic layouts)
+3. Road-based fiber auto-routing / cursor snapping
+4. Terrain-aware road generation (avoid mountains, water)
+5. Building placement along streets (instead of radial zones)
+6. Cable offset from road centerlines
+
+---
+
+### Phase 4 — Infrastructure Hierarchy: DONE (8/9 done, 1 missing)
+
+| Item | Status | Evidence / Gap |
+|------|--------|----------------|
+| 4.1 Era 1: Telegraph | DONE | 3 nodes + 2 edges with full specs |
+| 4.2 Era 2: Telephone | DONE | 4 nodes + 2 edges with full specs |
+| 4.3 Era 3: Early Digital | DONE | 5 nodes + 3 edges with full specs |
+| 4.4 Era 4: Internet | DONE | 5 nodes + 1 edge with full specs |
+| 4.5 Era 5: Modern | DONE | 10 nodes + 7 edges with full specs |
+| 4.6 Era 6: Near Future | DONE | 6 nodes + 3 edges with full specs |
+| 4.7 FTTH access game loop | NOT DONE | Individual types exist but no CO→Feeder→FDH→Distribution→NAP pipeline enforcement |
+| 4.8 Node data requirements | DONE | All fields: name, tier, cost, throughput, coverage, terrain, icon |
+| 4.9 Edge data requirements | DONE | All fields: name, tier connections, cost, bandwidth, deployment, visual style |
+
+**Phase 4 Gaps:**
+1. FTTH game loop enforcement (demand system should require proper access hierarchy)
+2. Tiered management scaling (small/medium/large company auto-management)
+3. NAP auto-coverage revenue with overhead deduction vs manual drop cables
+
+---
+
+### Phase 5 — Spline Routing: PARTIAL (3/7 done, 3 partial, 1 missing)
+
+| Item | Status | Evidence / Gap |
+|------|--------|----------------|
+| 5.1 Edge data model (waypoints) | DONE | `InfraEdge.waypoints: Vec<(f64,f64)>`, serde, multiplayer sync |
+| 5.2 Catmull-Rom rendering | DONE | `spline.ts`: full math, 10 segments/span, PathLayer rendering |
+| 5.3 Visual style by zoom | PARTIAL | Aerial dashed/underground solid done, health colors done, traffic particles done. **MISSING:** glow at low zoom, road-hugging at high zoom, pole dots on aerial |
+| 5.4 Waypoint editing (post-build) | NOT DONE | `UpdateEdgeWaypoints` Rust command exists but no frontend edit UI (draggable handles, insert/delete waypoints) |
+| 5.5 Auto-route along roads | PARTIAL | `GridPathfinder.ts` terrain A* pathfinding exists. **MISSING:** actual road network integration, road-based weights |
+| 5.6 Cable drawing mode | DONE | Click-chain waypoints, spline preview, cost calculation. **MINOR:** no drag gesture, no road snapping |
+| 5.7 Legacy edge migration | PARTIAL | Straight-line fallback works. **MISSING:** auto-fix tool to retroactively route old edges |
+
+**Phase 5 Gaps:**
+1. Post-build waypoint editing UI (click edge → drag handles → confirm)
+2. Road network integration for auto-routing (requires Phase 3.3 backend road graph)
+3. Glow lines at low zoom vs road-hugging at high zoom
+4. Pole dot indicators on aerial edges
+5. Auto-fix tool for legacy straight-line edges
+
+---
+
+### Phase 6 — City Density & Demand: MOSTLY DONE (3/5 done, 2 partial)
+
+| Item | Status | Evidence / Gap |
+|------|--------|----------------|
+| 6.1 City zone system | DONE | 5 zones: downtown/commercial/inner_res/outer_res/suburban, population-scaled radii |
+| 6.2 Building-as-demand-point | DONE | `BuildingFootprint` with position, zone, demand value, connection status, provider. **MINOR:** no explicit 15-20% overhead deduction for NAP auto-coverage vs manual drops |
+| 6.3 Demand visualization | DONE | Status-based colors (grey/dim-green/bright-green/red), zoom 7+ visibility |
+| 6.4 Revenue model update | PARTIAL | Revenue still cell-coverage-based (`revenue.rs`). **MISSING:** per-building subscriber revenue |
+| 6.5 Population growth impact | PARTIAL | Population system tracks growth. **MISSING:** dynamic building spawn/destruction in suburban fringe |
+
+**Phase 6 Gaps:**
+1. Per-building subscriber revenue model (replace cell-coverage abstraction)
+2. NAP auto-coverage overhead deduction (15-20% less revenue than manual drops)
+3. Dynamic building spawn in growing cities / abandoned buildings in declining cities
+
+---
+
+### Phase 7 — Submarine Cables: PARTIAL (2/5 done, 1 partial, 2 missing)
+
+| Item | Status | Evidence / Gap |
+|------|--------|----------------|
+| 7.1 Submarine cable placement | PARTIAL | SubseaLandingStation node + SubseaFiberCable edge exist. **MISSING:** coastal cell validation for landing stations |
+| 7.2 Bathymetry visualization | DONE | `oceanDepthLayer.ts`: depth-graded fills + contour lines at boundaries |
+| 7.3 Submarine cable properties | DONE | High capacity (1M bandwidth), high cost ($250K/km), vulnerability in disaster system |
+| 7.4 TeleGeography reference data | NOT DONE | No real-world cable route overlay or landing station suggestions |
+| 7.5 Cable ship mechanic | NOT DONE | No cable ship entity, no construction constraint |
+
+**Phase 7 Gaps:**
+1. Coastal cell validation for landing station placement
+2. TeleGeography reference data overlay (Real Earth mode)
+3. Cable ship construction constraint (one cable per ship)
+
+---
+
+### Phase 8 — Spectrum Management: PARTIAL (2/4 done, 1 partial, 1 missing)
+
+| Item | Status | Evidence / Gap |
+|------|--------|----------------|
+| 8.1 Spectrum bands | DONE | 9 bands (700MHz-39GHz) with coverage radius, bandwidth, cost, category methods |
+| 8.2 Spectrum auctions | DONE | `SpectrumAuction` + `SpectrumLicense` structs, bidding system, WASM queries, `SpectrumPanel.svelte` UI |
+| 8.3 Frequency assignment | PARTIAL | Licenses store band/region/owner. **MISSING:** wireless node band assignment, carrier aggregation, interference simulation |
+| 8.4 Spectrum visualization | NOT DONE | No spectrum allocation overlay, no frequency-colored coverage, no interference heat map |
+
+**Phase 8 Gaps:**
+1. Wireless node ↔ spectrum band assignment system
+2. Carrier aggregation (multiple bands per node)
+3. Interference simulation (nearby same-band degradation)
+4. Spectrum visualization overlay on map
+
+---
+
+### Phase 9 — Weather & Disasters: PARTIAL (2/5 done, 2 partial, 1 missing)
+
+| Item | Status | Evidence / Gap |
+|------|--------|----------------|
+| 9.1 Deployment vulnerability matrix | PARTIAL | `DeploymentMethod` enum exists. **MISSING:** damage multipliers by deployment type in `disaster.rs` (currently flat 0.2× for all) |
+| 9.2 Weather system | DONE | Regional disasters, weighted random types, tick-limited events. **MINOR:** no 5-10 tick forecast |
+| 9.3 Damage & repair | PARTIAL | Edge health degrades on disaster. **MISSING:** emergency repair command, type-based repair costs, crew speed bonus, offline state |
+| 9.4 Insurance integration | PARTIAL | Insurance payouts work (60% of damage cost). **MISSING:** premium calculation based on vulnerability/risk |
+| 9.5 Disaster visualization | DONE | Rich per-type animations (storm, hurricane spiral, earthquake ripples, flood, ice). **MINOR:** no repair progress bars |
+
+**Phase 9 Gaps:**
+1. Deployment-type vulnerability multipliers (Aerial=HIGH weather, Underground=HIGH earthquake, etc.)
+2. Emergency vs standard repair commands
+3. Type-based repair costs (aerial cheaper, submarine most expensive)
+4. Crew-based repair speed bonus
+5. Insurance premium calculation
+6. Disaster forecast (5-10 ticks ahead)
+
+---
+
+### Phase 10 — Network Dashboard: PARTIAL (3/11 done, 3 partial, 5 missing)
+
+| Item | Status | Evidence / Gap |
+|------|--------|----------------|
+| 10.1 Dashboard panel | DONE | `NetworkDashboard.svelte` with dark theme, monospace, Bloomberg aesthetic |
+| 10.2.1 Network health overview | DONE | Stats + 100-tick historical graph via `networkHistory.ts` |
+| 10.2.2 Traffic flow | DONE | Real-time volume, top 10 congested edges, node utilization histogram. **MINOR:** no OD traffic matrix |
+| 10.2.3 Bottleneck detection | PARTIAL | Congestion overlay colors edges >80%. **MISSING:** capacity upgrade suggestions |
+| 10.2.4 Revenue by infrastructure | NOT DONE | No revenue breakdown widget |
+| 10.2.5 SLA monitoring | NOT DONE | No SLA performance widget |
+| 10.2.6 Coverage map | PARTIAL | Coverage overlay exists. **MISSING:** per-corporation comparison |
+| 10.2.7 Maintenance queue | NOT DONE | No repair queue / crew allocation UI |
+| 10.2.8 Capacity planning | PARTIAL | Snapshot history exists. **MISSING:** projections, headroom analysis, "what if" |
+| 10.3 Map integration | PARTIAL | Overlays exist. **MISSING:** click-to-highlight, widget pinning |
+| — Traffic OD matrix | NOT DONE | No origin-destination flow visualization |
+
+**Phase 10 Gaps:**
+1. Revenue by infrastructure widget
+2. SLA monitoring widget
+3. Maintenance queue / crew allocation widget
+4. Capacity planning projections + "what if" scenarios
+5. Click-to-highlight map integration
+6. Traffic origin-destination matrix
+
+---
+
+### Phase 11 — Minimap & Navigation: MOSTLY DONE (2/3 done, 1 missing)
+
+| Item | Status | Evidence / Gap |
+|------|--------|----------------|
+| 11.1 Corner minimap | DONE | `MiniMap.svelte`: 200×150px, land/ocean/infra/cities/viewport rect, click-to-jump, drag-to-pan, M key toggle |
+| 11.2 Search/jump-to | DONE | `SearchOverlay.svelte`: `/` shortcut, city+region search, dropdown results, fly-to with zoom. **MINOR:** no recent searches |
+| 11.3 Bookmarks | NOT DONE | No bookmark system |
+
+**Phase 11 Gaps:**
+1. Bookmark system (right-click → bookmark, sidebar list, quick-jump)
+
+---
+
+### Phase 12 — Competitor Visualization: DONE (2/3 done, 1 partial)
+
+| Item | Status | Evidence / Gap |
+|------|--------|----------------|
+| 12.1 Competitor rendering | DONE | All competitor nodes/edges visible, color-coded, 0.7× opacity, 0.8× width, corp name on hover |
+| 12.2 Competitive overlay | PARTIAL | Market share overlay exists. **MINOR:** no explicit coverage overlap visualization |
+| 12.3 Competitor detail | DONE | Hover shows type/owner/status, click shows stats, espionage gates financials |
+
+---
+
+### Phase 13 — Polish & Integration Testing: DONE (builds pass)
+
+| Item | Status | Evidence / Gap |
+|------|--------|----------------|
+| 13.1 Performance | DONE | All builds pass, WASM 480KB gzipped (target <5MB) |
+| 13.7 Testing | DONE | 79 Rust tests pass, 1012 TS files check clean, production build succeeds |
+| 13.2-13.6 | DEFERRED | Multiplayer sync, AI FTTH integration, save compat, Tauri — depend on gap resolution |
+
+---
+
+### Consolidated Gap List (Prioritized)
+
+**CRITICAL (gameplay-affecting):**
+1. FTTH game loop enforcement (Phase 4.7) — CO→Feeder→FDH→NAP pipeline
+2. Per-building subscriber revenue model (Phase 6.4) — replaces cell-coverage abstraction
+3. Backend road network graph (Phase 3.3) — blocks auto-routing, AI, cost calc
+4. Deployment vulnerability multipliers (Phase 9.1) — aerial vs underground must matter
+
+**HIGH (significant missing features):**
+5. Post-build waypoint editing UI (Phase 5.4)
+6. Road-based fiber auto-routing (Phase 5.5, depends on #3)
+7. Intra-city street generation - Grid/Radial/Organic (Phase 3.2.2)
+8. Wireless node ↔ spectrum band assignment (Phase 8.3)
+9. Emergency + type-based repair system (Phase 9.3)
+10. Spectrum visualization overlay (Phase 8.4)
+
+**MEDIUM (feature completeness):**
+11. Ghost preview + terrain validation in node placement (Phase 1.2)
+12. River + coastline rendering (Phase 2.2.3)
+13. City glow proportional to population (Phase 2.1.3)
+14. Dynamic building spawn/destruction (Phase 6.5)
+15. NAP coverage overhead deduction (Phase 6.2)
+16. Terrain detail patterns in Procgen cells (Phase 2.2.2)
+17. Disaster forecast system (Phase 9.2)
+18. Insurance premium calculation (Phase 9.4)
+19. Dashboard: revenue + SLA + maintenance widgets (Phase 10.2.4/5/7)
+20. Bookmark system (Phase 11.3)
+
+**LOW (polish):**
+21. Hillshade overlay for Real Earth (Phase 2.1.1)
+22. Hotbar drag-drop + localStorage (Phase 1.4)
+23. Cable ship mechanic (Phase 7.5)
+24. TeleGeography reference data (Phase 7.4)
+25. Legacy edge auto-fix tool (Phase 5.7)
+26. Traffic OD matrix (Phase 10.2.2)
+27. Terrain-aware road generation (Phase 3.2.4)
+28. Capacity planning projections (Phase 10.2.8)

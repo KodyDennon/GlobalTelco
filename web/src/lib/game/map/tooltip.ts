@@ -2,6 +2,15 @@
 // Extracts entity pick + tooltip formatting from the map renderer.
 
 import { tooltipData } from '$lib/stores/uiState';
+import type { ActiveDisaster } from '../WeatherLayer';
+
+// ── Active disaster state (set by MapRenderer) ──────────────────────────────
+let _activeDisasters: ActiveDisaster[] = [];
+
+/** Update the active disaster list used for vulnerability tooltip lines. */
+export function setTooltipDisasters(disasters: ActiveDisaster[]): void {
+    _activeDisasters = disasters;
+}
 
 /** Layer ID to entity type mapping for deck.gl pick results. */
 const LAYER_TYPE_MAP: Record<string, string> = {
@@ -10,6 +19,7 @@ const LAYER_TYPE_MAP: Record<string, string> = {
     'infra-edges': 'edge',
     'cities-icons': 'city',
     'cities-dots-fallback': 'city',
+    'buildings-fill': 'building',
 };
 
 /** Result of a tooltip pick — either an entity hit or null (no hit). */
@@ -99,13 +109,97 @@ function formatTooltip(type: string, object: any): string {
     }
 
     if (type === 'edge') {
+        const deploy = object.deployment ? `\nDeployment: ${object.deployment}` : '';
+        const wps = Array.isArray(object.waypoints) && object.waypoints.length > 2
+            ? `\nWaypoints: ${object.waypoints.length}`
+            : '';
         const util = object.bandwidth > 0
             ? `\nUtil: ${Math.round((object.current_load / object.bandwidth) * 100)}%`
             : '';
         const bw = object.bandwidth ? ` | BW: ${shortNum(object.bandwidth)}` : '';
         const load = object.current_load !== undefined ? `\nLoad: ${Math.round(object.current_load)}` : '';
         const health = object.health !== undefined ? ` | HP: ${Math.round(object.health * 100)}%` : '';
-        return `${object.edge_type}\nLength: ${Math.round(object.length_km || 0)}km${bw}${util}${load}${health}`;
+        const owner = object.owner_name ? `\nOwner: ${object.owner_name}` : '';
+        const vulnerability = getEdgeVulnerabilityWarning(object);
+        return `${object.edge_type}${deploy}${wps}\nLength: ${Math.round(object.length_km || 0)}km${bw}${util}${load}${health}${owner}${vulnerability}`;
+    }
+
+    if (type === 'building') {
+        const ZONE_LABELS: Record<string, string> = {
+            downtown: 'Downtown',
+            commercial: 'Commercial',
+            residential_inner: 'Residential (Inner)',
+            residential_outer: 'Residential (Outer)',
+            suburban: 'Suburban',
+        };
+        const STATUS_LABELS: Record<string, string> = {
+            unserved: 'Unserved',
+            covered: 'Covered',
+            connected: 'Connected',
+            competitor: 'Competitor Served',
+        };
+        const zoneLabel = ZONE_LABELS[object.zone] ?? object.zone ?? 'Unknown';
+        const buildingType = object.zone === 'downtown' || object.zone === 'commercial'
+            ? 'Commercial Building'
+            : 'Residential Building';
+        const demand = object.demandValue !== undefined ? `\nDemand: ${object.demandValue}` : '';
+        const status = object.connectionStatus
+            ? `\nStatus: ${STATUS_LABELS[object.connectionStatus] ?? object.connectionStatus}`
+            : '';
+        return `${buildingType}\nZone: ${zoneLabel}${demand}${status}`;
+    }
+
+    return '';
+}
+
+// ── Edge vulnerability warning ──────────────────────────────────────────────
+
+/** Submarine edge types. */
+const SUBMARINE_EDGE_TYPES = new Set([
+    'Submarine', 'SubseaFiberCable', 'SubseaTelegraphCable',
+]);
+
+/**
+ * Check if an edge is vulnerable to any active disaster, and return
+ * a warning line for the tooltip. Returns empty string if no threat.
+ */
+function getEdgeVulnerabilityWarning(edge: any): string {
+    if (_activeDisasters.length === 0) return '';
+
+    const deployment = edge.deployment ?? 'Underground';
+    const edgeType = edge.edge_type ?? '';
+    const midLon = ((edge.src_x ?? 0) + (edge.dst_x ?? 0)) / 2;
+    const midLat = ((edge.src_y ?? 0) + (edge.dst_y ?? 0)) / 2;
+    const isSubmarine = SUBMARINE_EDGE_TYPES.has(edgeType);
+
+    for (const disaster of _activeDisasters) {
+        const dlat = midLat - disaster.lat;
+        const dlon = midLon - disaster.lon;
+        const dist = Math.sqrt(dlat * dlat + dlon * dlon);
+        const effectRadius = 5 * disaster.severity;
+
+        if (dist > effectRadius) continue;
+
+        const lower = disaster.disasterType.toLowerCase();
+
+        if (isSubmarine) {
+            if (lower.includes('earthquake') || lower.includes('hurricane') ||
+                lower.includes('typhoon') || lower.includes('storm')) {
+                return `\n!! ${disaster.disasterType} Warning - Submarine cable at risk`;
+            }
+        } else if (deployment === 'Aerial') {
+            if (lower.includes('hurricane') || lower.includes('typhoon') ||
+                lower.includes('storm') || lower.includes('thunder') ||
+                lower.includes('ice') || lower.includes('blizzard') ||
+                lower.includes('landslide') || lower.includes('cyclone')) {
+                return `\n!! ${disaster.disasterType} Warning - Aerial cable at risk`;
+            }
+        } else {
+            // Underground
+            if (lower.includes('earthquake') || lower.includes('flood')) {
+                return `\n!! ${disaster.disasterType} Warning - Underground cable at risk`;
+            }
+        }
     }
 
     return '';

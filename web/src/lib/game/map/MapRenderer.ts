@@ -5,7 +5,7 @@
 
 import maplibregl from 'maplibre-gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
-import { BitmapLayer, LineLayer, ScatterplotLayer, TextLayer, PathLayer, IconLayer } from '@deck.gl/layers';
+import { BitmapLayer, LineLayer, ScatterplotLayer, TextLayer, PathLayer, IconLayer, PolygonLayer } from '@deck.gl/layers';
 import type { Layer } from '@deck.gl/core';
 import { CollisionFilterExtension } from '@deck.gl/extensions';
 import { get } from 'svelte/store';
@@ -21,15 +21,23 @@ import { createLandLayer } from './layers/landLayer';
 import { createBordersLayer } from './layers/bordersLayer';
 import { createInfraLayers } from './layers/infraLayer';
 import { createVectorTerrainLayers, buildVectorTerrainData, disposeVectorTerrainData } from './layers/vectorTerrainLayer';
+import { createOceanDepthLayers as createOceanDepthLayersFn, buildOceanDepthData, disposeOceanDepthData } from './layers/oceanDepthLayer';
 import { createRoadsLayers, buildRoadData, disposeRoadData } from './layers/roadsLayer';
-import { createBuildingsLayers, buildBuildingData, disposeBuildingData } from './layers/buildingsLayer';
+import { createBuildingsLayers, buildBuildingData, disposeBuildingData, updateBuildingCoverage } from './layers/buildingsLayer';
+import { createRiversLayers, buildRiverData, disposeRiverData } from './layers/riversLayer';
+import { createTerrainDetailLayers, buildTerrainDetailData, disposeTerrainDetailData } from './layers/terrainDetailLayer';
+import { createCityGlowLayer } from './layers/cityGlowLayer';
 import type { IconMapping } from './iconAtlas';
 import { buildIconAtlas } from './iconAtlas';
 import { buildTerrainBitmapAsync, disposeTerrainWorker } from './terrainBitmap';
 import { CORP_COLORS, SATELLITE_COLORS, TERRAIN_OVERLAY_COLORS } from './constants';
 import { satelliteMapStyle, procgenMapStyle } from './tileConfig';
-import { handleMapMouseMove, type TooltipHit } from './tooltip';
-import { createWeatherLayers } from '../WeatherLayer';
+import { handleMapMouseMove, setTooltipDisasters, type TooltipHit } from './tooltip';
+import { createWeatherLayers, type ActiveDisaster } from '../WeatherLayer';
+import { createCablePreviewLayers, type CableDrawingState } from './layers/cablePreviewLayer';
+import { createWaypointEditorLayers, type WaypointEditorState } from './layers/waypointEditorLayer';
+import { NODE_TIER_SIZE } from './constants';
+import { selectedBuildItem, buildCategory } from '$lib/stores/uiState';
 
 // ── MapRenderer class ───────────────────────────────────────────────────────
 
@@ -69,6 +77,28 @@ export class MapRenderer {
     private gameTick: number = 0;
     private weatherEnabled: boolean = true;
     private dayNightCycle: boolean = true;
+    private activeDisasters: ActiveDisaster[] = [];
+
+    // Cable drawing preview state
+    private cableDrawingState: CableDrawingState = {
+        waypoints: [],
+        cursorPosition: null,
+        deployment: 'Underground',
+        sourceNodePos: null,
+        isDrawing: false,
+    };
+
+    // Waypoint editor state (post-build waypoint editing)
+    private waypointEditorState: WaypointEditorState = {
+        editing: false,
+        edgeId: null,
+        waypoints: [],
+        draggingIndex: null,
+        cursorPosition: null,
+    };
+
+    // Ghost preview state (cursor-following placement preview)
+    private ghostPreviewPosition: [number, number] | null = null;
 
     // Custom event listener references (for cleanup)
     private mapPanHandler: ((e: Event) => void) | null = null;
@@ -165,6 +195,31 @@ export class MapRenderer {
             }));
             window.dispatchEvent(new CustomEvent('map-clicked', {
                 detail: { lon: e.lngLat.lng, lat: e.lngLat.lat }
+            }));
+        });
+
+        // Double-click: dispatch for cable drawing completion
+        this.map.on('dblclick', (e: maplibregl.MapMouseEvent) => {
+            // Check if deck.gl picked a node at this point
+            let pickedNode: any = null;
+            if (this.overlay) {
+                const pickInfo = this.overlay.pickObject({
+                    x: e.point.x,
+                    y: e.point.y,
+                    radius: 8,
+                });
+                if (pickInfo && pickInfo.object && pickInfo.object.id !== undefined) {
+                    pickedNode = pickInfo.object;
+                }
+            }
+            window.dispatchEvent(new CustomEvent('map-dblclick', {
+                detail: {
+                    lon: e.lngLat.lng,
+                    lat: e.lngLat.lat,
+                    screenX: e.point.x,
+                    screenY: e.point.y,
+                    pickedNode,
+                }
             }));
         });
 
@@ -272,6 +327,11 @@ export class MapRenderer {
             // Procgen: vector terrain polygons + icon atlas in parallel
             const iconResult = await buildIconAtlas();
             buildVectorTerrainData(cells);
+            // Build ocean depth data from cached vector terrain polygons
+            buildOceanDepthData();
+            // Build river/lake/coastline glow and terrain detail data
+            buildRiverData(cells);
+            buildTerrainDetailData();
             this.iconAtlas = iconResult.canvas;
             this.iconMapping = iconResult.mapping;
             this.iconAtlasReady = true;
@@ -326,8 +386,8 @@ export class MapRenderer {
             ...this.createOceanDepthLayers(),
             // 3. Roads (procgen PathLayer — real earth roads come from MapLibre vector tiles)
             ...createRoadsLayers(this.isRealEarth, this.currentZoom),
-            // 4. Buildings (procedural footprints around cities)
-            ...createBuildingsLayers(this.currentZoom),
+            // 4. Buildings (procedural footprints around cities, demand overlay at zoom 7+)
+            ...createBuildingsLayers(this.currentZoom, this.activeOverlay === 'demand' && this.currentZoom >= 7),
             // 5. Borders
             createBordersLayer(this.cachedRegions, this.isRealEarth),
             // 6. Overlays (population, demand, terrain, etc.)
@@ -346,16 +406,20 @@ export class MapRenderer {
                 currentTime: this.currentTime,
                 pitch: this.pitch,
                 hoveredNodeId: this.hoveredNodeId,
+                playerCorpId: bridge.isInitialized() ? bridge.getPlayerCorpId() : undefined,
+                activeDisasters: this.activeDisasters,
             }),
-            // 9. Annotations and weather
+            // 9. Cable drawing preview (between infra and selection)
+            ...createCablePreviewLayers(this.cableDrawingState),
+            // 10. Annotations and weather
             ...createAnnotationLayers(get(annotations), get(routePlans)),
             ...createWeatherLayers({
                 enabled: this.weatherEnabled,
                 dayNightCycle: this.dayNightCycle,
                 gameTick: this.gameTick,
                 currentZoom: this.currentZoom,
-            }),
-            // 10. Selection/hover highlights (topmost)
+            }, this.activeDisasters),
+            // 11. Selection/hover highlights (topmost)
             this.createSelectionLayer(),
             ...this.createEdgeBuildHighlights(),
             this.createPathfindingPreviewLayer(),
@@ -439,12 +503,13 @@ export class MapRenderer {
     }
 
     // ── Ocean depth shading (procgen worlds only) ─────────────────────────
-    // Ocean depth is rendered as part of the terrain bitmap (buildTerrainBitmap)
-    // which already paints OceanShallow/OceanDeep/Ocean cells with distinct colors.
-    // No separate layer needed — the bitmap provides smooth, gapless coverage.
+    // When the 'ocean_depth' overlay is active, renders ocean cells with an
+    // enhanced depth-based blue gradient and subtle contour lines at depth
+    // boundaries. Reuses polygon geometry from vectorTerrainLayer.
 
     private createOceanDepthLayers(): Layer[] {
-        return [];
+        const visible = this.activeOverlay === 'ocean_depth' && !this.isRealEarth;
+        return createOceanDepthLayersFn(visible);
     }
 
     // ── Overlays ────────────────────────────────────────────────────────────
@@ -597,6 +662,96 @@ export class MapRenderer {
                     pickable: false,
                     parameters: { depthTest: false }
                 }));
+            }
+        }
+
+        if (this.activeOverlay === 'market_share') {
+            if (bridge.isInitialized() && this.cachedRegions.length > 0) {
+                const allInfra = bridge.getAllInfrastructure();
+                const corps = bridge.getAllCorporations();
+                const corpIndex = new Map<number, number>();
+                for (let i = 0; i < corps.length; i++) {
+                    corpIndex.set(corps[i].id, i);
+                }
+
+                // Count nodes per corporation per region using city region mapping
+                // Build a map of region_id -> { corp_id -> node_count }
+                const regionCorpCounts = new Map<number, Map<number, number>>();
+
+                // Build a quick lookup from cell_index to region_id via cities
+                const cellToRegion = new Map<number, number>();
+                for (const city of this.cachedCities) {
+                    for (const cp of city.cell_positions) {
+                        cellToRegion.set(cp.index, city.region_id);
+                    }
+                }
+
+                for (const node of allInfra.nodes) {
+                    const regionId = cellToRegion.get(node.cell_index);
+                    if (regionId === undefined) continue;
+                    if (!regionCorpCounts.has(regionId)) {
+                        regionCorpCounts.set(regionId, new Map());
+                    }
+                    const counts = regionCorpCounts.get(regionId)!;
+                    counts.set(node.owner, (counts.get(node.owner) ?? 0) + 1);
+                }
+
+                // Build polygon data for regions with a dominant corporation
+                interface MarketShareRegion {
+                    polygon: [number, number][];
+                    color: [number, number, number, number];
+                    regionName: string;
+                    dominantCorpName: string;
+                    nodeCount: number;
+                }
+                const polygonData: MarketShareRegion[] = [];
+
+                for (const region of this.cachedRegions) {
+                    if (!region.boundary_polygon || region.boundary_polygon.length < 3) continue;
+                    const counts = regionCorpCounts.get(region.id);
+                    if (!counts || counts.size === 0) continue;
+
+                    // Find dominant corporation (most nodes)
+                    let maxCount = 0;
+                    let dominantCorpId = 0;
+                    for (const [corpId, count] of counts) {
+                        if (count > maxCount) {
+                            maxCount = count;
+                            dominantCorpId = corpId;
+                        }
+                    }
+
+                    const idx = corpIndex.get(dominantCorpId);
+                    const baseColor = idx !== undefined
+                        ? CORP_COLORS[idx % CORP_COLORS.length]
+                        : [160, 160, 160] as [number, number, number];
+
+                    const dominantCorp = corps.find(c => c.id === dominantCorpId);
+
+                    polygonData.push({
+                        polygon: region.boundary_polygon,
+                        color: [baseColor[0], baseColor[1], baseColor[2], 80],
+                        regionName: region.name,
+                        dominantCorpName: dominantCorp?.name ?? 'Unknown',
+                        nodeCount: maxCount,
+                    });
+                }
+
+                if (polygonData.length > 0) {
+                    layers.push(new PolygonLayer({
+                        id: 'overlay-market-share',
+                        data: polygonData,
+                        getPolygon: (d: MarketShareRegion) => d.polygon,
+                        getFillColor: (d: MarketShareRegion) => d.color,
+                        getLineColor: (d: MarketShareRegion) => [d.color[0], d.color[1], d.color[2], 140],
+                        getLineWidth: 2,
+                        lineWidthUnits: 'pixels',
+                        filled: true,
+                        stroked: true,
+                        pickable: false,
+                        parameters: { depthTest: false },
+                    } as any));
+                }
             }
         }
 
@@ -814,7 +969,17 @@ export class MapRenderer {
 
     updateInfrastructure(): void {
         if (!bridge.isInitialized()) return;
+        // Refresh building coverage status based on current infrastructure
+        this.refreshBuildingCoverage();
         this.renderLayers();
+    }
+
+    /** Update building coverage/connection status from current infrastructure nodes. */
+    private refreshBuildingCoverage(): void {
+        if (!bridge.isInitialized()) return;
+        const allInfra = bridge.getAllInfrastructure();
+        const playerCorpId = bridge.getPlayerCorpId();
+        updateBuildingCoverage(allInfra.nodes, playerCorpId);
     }
 
     updateCities(): void {
@@ -880,6 +1045,42 @@ export class MapRenderer {
         this.renderLayers();
     }
 
+    /** Update active disaster events for weather and vulnerability visualization. */
+    setActiveDisasters(disasters: ActiveDisaster[]): void {
+        this.activeDisasters = disasters;
+        setTooltipDisasters(disasters);
+        // No explicit renderLayers() call needed — the animation loop handles it
+    }
+
+    /** Update the cable drawing preview state and re-render. */
+    setCableDrawingState(state: CableDrawingState): void {
+        this.cableDrawingState = state;
+        this.renderLayers();
+    }
+
+    /** Pick a deck.gl object at the given screen coordinates. Returns pick info or null. */
+    pickObject(x: number, y: number, radius: number = 4): any {
+        if (!this.overlay) return null;
+        return this.overlay.pickObject({ x, y, radius });
+    }
+
+    /** Convert screen pixel coordinates to map lon/lat. Returns [lon, lat] or null. */
+    screenToLngLat(x: number, y: number): [number, number] | null {
+        if (!this.map) return null;
+        const lngLat = this.map.unproject([x, y]);
+        return [lngLat.lng, lngLat.lat];
+    }
+
+    /** Fly the camera to a specific lon/lat with an optional zoom level. */
+    flyTo(lon: number, lat: number, zoom?: number): void {
+        if (!this.map) return;
+        this.map.flyTo({
+            center: [lon, lat],
+            zoom: zoom ?? this.map.getZoom(),
+            duration: 800,
+        });
+    }
+
     handleMouseMove(e: MouseEvent): void {
         if (!this.overlay) return;
 
@@ -895,6 +1096,22 @@ export class MapRenderer {
             this.hoveredNodeId = this.hoveredEntity.object?.id ?? null;
         } else {
             this.hoveredNodeId = null;
+        }
+
+        // Dispatch map-mousemove with geo coordinates for cable drawing
+        if (this.map) {
+            const rect = this.container.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const lngLat = this.map.unproject([x, y]);
+            window.dispatchEvent(new CustomEvent('map-mousemove', {
+                detail: {
+                    lon: lngLat.lng,
+                    lat: lngLat.lat,
+                    screenX: e.clientX,
+                    screenY: e.clientY,
+                }
+            }));
         }
     }
 
@@ -932,9 +1149,10 @@ export class MapRenderer {
             this.map = null;
         }
 
-        // Clean up the terrain worker, vector terrain data, roads, and buildings
+        // Clean up the terrain worker, vector terrain data, ocean depth, roads, and buildings
         disposeTerrainWorker();
         disposeVectorTerrainData();
+        disposeOceanDepthData();
         disposeRoadData();
         disposeBuildingData();
     }

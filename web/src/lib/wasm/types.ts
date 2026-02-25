@@ -430,6 +430,49 @@ export interface CorporationsTyped {
 	names_packed: Uint8Array;
 }
 
+// Phase 8: Spectrum & Frequency Management types
+
+export interface SpectrumLicense {
+	id: number;
+	band: string;
+	band_name: string;
+	band_category: 'low' | 'mid' | 'high';
+	region_id: number;
+	region_name: string;
+	owner: number;
+	owner_name: string;
+	bandwidth_mhz: number;
+	start_tick: number;
+	end_tick: number;
+	cost_per_tick: number;
+	coverage_radius_km: number;
+}
+
+export interface SpectrumAuction {
+	id: number;
+	band: string;
+	band_name: string;
+	band_category: 'low' | 'mid' | 'high';
+	region_id: number;
+	region_name: string;
+	bandwidth_mhz: number;
+	current_bid: number;
+	highest_bidder: number;
+	bidder_name: string;
+	end_tick: number;
+	ticks_remaining: number;
+	coverage_radius_km: number;
+}
+
+export interface AvailableSpectrum {
+	band: string;
+	band_name: string;
+	band_category: 'low' | 'mid' | 'high';
+	coverage_radius_km: number;
+	max_bandwidth_mhz: number;
+	min_bid: number;
+}
+
 // Multiplayer delta operations (mirrors Rust DeltaOp enum)
 export type DeltaOp =
 	| { NodeCreated: { entity_id: number; owner: number; node_type: string; network_level: string; lon: number; lat: number; under_construction: boolean } }

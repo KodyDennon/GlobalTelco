@@ -9,6 +9,7 @@ pub mod covert_ops;
 pub mod demand;
 pub mod disaster;
 pub mod finance;
+pub mod ftth;
 pub mod lobbying;
 pub mod maintenance;
 pub mod market;
@@ -29,6 +30,7 @@ pub fn run_all_systems(world: &mut GameWorld) {
     demand::run(world);         // Uses coverage data for satisfaction
     routing::run(world);
     utilization::run(world);
+    ftth::run(world);           // Validate FTTH chains and mark active NAPs (after coverage, before revenue)
     revenue::run(world);
     cost::run(world);
     finance::run(world);
@@ -42,4 +44,6 @@ pub fn run_all_systems(world: &mut GameWorld) {
     covert_ops::run(world);
     lobbying::run(world);
     achievement::run(world);
+    // Phase 8: Resolve spectrum auctions and expire licenses
+    world.resolve_spectrum_auctions();
 }

@@ -1247,6 +1247,132 @@ impl WasmBridge {
         let _ = js_sys::Reflect::set(&obj, &"names_packed".into(), &Uint8Array::from(&names_packed[..]).into());
         obj.into()
     }
+
+    // ── Phase 8: Spectrum & Frequency Management queries ──────────────
+
+    /// Get all spectrum licenses (active and expired).
+    pub fn get_spectrum_licenses(&self) -> String {
+        let tick = self.world.current_tick();
+        let licenses: Vec<serde_json::Value> = self
+            .world
+            .spectrum_licenses
+            .iter()
+            .filter(|(_, l)| l.is_active(tick))
+            .map(|(&id, l)| {
+                let region_name = self
+                    .world
+                    .regions
+                    .get(&l.region_id)
+                    .map(|r| r.name.as_str())
+                    .unwrap_or("Unknown");
+                let owner_name = self
+                    .world
+                    .corporations
+                    .get(&l.owner)
+                    .map(|c| c.name.as_str())
+                    .unwrap_or("Unknown");
+                serde_json::json!({
+                    "id": id,
+                    "band": format!("{:?}", l.band),
+                    "band_name": l.band.display_name(),
+                    "band_category": l.band.category(),
+                    "region_id": l.region_id,
+                    "region_name": region_name,
+                    "owner": l.owner,
+                    "owner_name": owner_name,
+                    "bandwidth_mhz": l.bandwidth_mhz,
+                    "start_tick": l.start_tick,
+                    "end_tick": l.end_tick(),
+                    "cost_per_tick": l.cost_per_tick(),
+                    "coverage_radius_km": l.band.coverage_radius_km(),
+                })
+            })
+            .collect();
+        serde_json::to_string(&licenses).unwrap_or_default()
+    }
+
+    /// Get all active spectrum auctions.
+    pub fn get_spectrum_auctions(&self) -> String {
+        let tick = self.world.current_tick();
+        let auctions: Vec<serde_json::Value> = self
+            .world
+            .spectrum_auctions
+            .iter()
+            .filter(|(_, a)| !a.is_ended(tick))
+            .map(|(&id, a)| {
+                let region_name = self
+                    .world
+                    .regions
+                    .get(&a.region_id)
+                    .map(|r| r.name.as_str())
+                    .unwrap_or("Unknown");
+                let (highest_bidder, current_bid) = a.highest_bid().unwrap_or((0, 0));
+                let bidder_name = self
+                    .world
+                    .corporations
+                    .get(&highest_bidder)
+                    .map(|c| c.name.as_str())
+                    .unwrap_or("None");
+                serde_json::json!({
+                    "id": id,
+                    "band": format!("{:?}", a.band),
+                    "band_name": a.band.display_name(),
+                    "band_category": a.band.category(),
+                    "region_id": a.region_id,
+                    "region_name": region_name,
+                    "bandwidth_mhz": a.bandwidth_mhz,
+                    "current_bid": current_bid,
+                    "highest_bidder": highest_bidder,
+                    "bidder_name": bidder_name,
+                    "end_tick": a.end_tick,
+                    "ticks_remaining": a.ticks_remaining(tick),
+                    "coverage_radius_km": a.band.coverage_radius_km(),
+                })
+            })
+            .collect();
+        serde_json::to_string(&auctions).unwrap_or_default()
+    }
+
+    /// Get available frequency bands for a region (not currently licensed or in auction).
+    pub fn get_available_spectrum(&self, region_id: u64) -> String {
+        use gt_common::types::FrequencyBand;
+        let tick = self.world.current_tick();
+
+        let licensed_bands: std::collections::HashSet<String> = self
+            .world
+            .spectrum_licenses
+            .values()
+            .filter(|l| l.region_id == region_id && l.is_active(tick))
+            .map(|l| format!("{:?}", l.band))
+            .collect();
+
+        let auction_bands: std::collections::HashSet<String> = self
+            .world
+            .spectrum_auctions
+            .values()
+            .filter(|a| a.region_id == region_id && !a.is_ended(tick))
+            .map(|a| format!("{:?}", a.band))
+            .collect();
+
+        let available: Vec<serde_json::Value> = FrequencyBand::all()
+            .iter()
+            .filter(|b| {
+                let name = format!("{:?}", b);
+                !licensed_bands.contains(&name) && !auction_bands.contains(&name)
+            })
+            .map(|b| {
+                serde_json::json!({
+                    "band": format!("{:?}", b),
+                    "band_name": b.display_name(),
+                    "band_category": b.category(),
+                    "coverage_radius_km": b.coverage_radius_km(),
+                    "max_bandwidth_mhz": b.max_bandwidth_mhz(),
+                    "min_bid": b.cost_per_mhz() * b.max_bandwidth_mhz() as i64,
+                })
+            })
+            .collect();
+        serde_json::to_string(&available).unwrap_or_default()
+    }
 }
 
 // ── BridgeQuery Trait Implementation ────────────────────────────────────

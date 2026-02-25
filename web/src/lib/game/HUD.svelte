@@ -94,6 +94,8 @@
 		disaster: 'Show disaster risk — green (safe) to red (dangerous)',
 		congestion: 'Show network congestion — green (free) to red (full)',
 		traffic: 'Show traffic flow — blue (low) to white (high)',
+		market_share: 'Show market share — regions colored by dominant corporation',
+		ocean_depth: 'Show ocean depth zones — shallow (lighter blue) to deep (dark abyss). Plan submarine cables!',
 	};
 
 	const OVERLAYS: Array<{ key: OverlayType; label: string; cls?: string }> = [
@@ -105,6 +107,8 @@
 		{ key: 'disaster', label: 'Risk', cls: 'disaster' },
 		{ key: 'congestion', label: 'Congest', cls: 'congestion' },
 		{ key: 'traffic', label: 'Traffic', cls: 'traffic' },
+		{ key: 'market_share', label: 'Market', cls: 'market-share' },
+		{ key: 'ocean_depth', label: 'Ocean', cls: 'ocean' },
 	];
 </script>
 
@@ -201,6 +205,8 @@
 					class:disaster={overlay.cls === 'disaster'}
 					class:congestion={overlay.cls === 'congestion'}
 					class:traffic={overlay.cls === 'traffic'}
+					class:market-share={overlay.cls === 'market-share'}
+					class:ocean={overlay.cls === 'ocean'}
 					onclick={() => toggleOverlay(overlay.key)}
 					use:tooltip={OVERLAY_TIPS[overlay.key] ?? overlay.label}
 					aria-pressed={currentOverlay === overlay.key}
@@ -439,6 +445,24 @@
 	.overlay-btn.traffic.active {
 		background: rgba(16, 185, 129, 0.2);
 		color: var(--green);
+	}
+
+	.overlay-btn.market-share {
+		color: #a78bfa;
+	}
+
+	.overlay-btn.market-share.active {
+		background: rgba(139, 92, 246, 0.2);
+		color: #c4b5fd;
+	}
+
+	.overlay-btn.ocean {
+		color: #3b82f6;
+	}
+
+	.overlay-btn.ocean.active {
+		background: rgba(59, 130, 246, 0.2);
+		color: #60a5fa;
 	}
 
 	.mp-status {

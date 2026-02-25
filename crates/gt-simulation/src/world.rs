@@ -52,6 +52,25 @@ pub struct GameWorld {
     pub achievements: HashMap<EntityId, AchievementTracker>,
     pub victory_state: Option<VictoryConditions>,
 
+    // Phase 8: Spectrum & Frequency Management
+    #[serde(default)]
+    pub spectrum_licenses: HashMap<EntityId, SpectrumLicense>,
+    #[serde(default)]
+    pub spectrum_auctions: HashMap<EntityId, SpectrumAuction>,
+
+    // Road network graph (backend spatial data for fiber routing)
+    #[serde(default)]
+    pub road_network: RoadNetwork,
+
+    // Cable ships per corporation: corp_id → ship count
+    #[serde(default)]
+    pub cable_ships: HashMap<EntityId, u32>,
+
+    // Active submarine cable builds: ship key (corp_id, ship_index) → edge entity being built
+    // Tracks which cable ships are currently busy with submarine construction
+    #[serde(default)]
+    pub active_submarine_builds: HashMap<EntityId, EntityId>,
+
     // Co-ownership proposals: node_id → (proposer_corp, target_corp, share_pct)
     // Pending until target corp accepts or rejects
     #[serde(default)]
@@ -130,6 +149,11 @@ impl GameWorld {
             lobbying_campaigns: HashMap::new(),
             achievements: HashMap::new(),
             victory_state: None,
+            spectrum_licenses: HashMap::new(),
+            spectrum_auctions: HashMap::new(),
+            road_network: RoadNetwork::new(),
+            cable_ships: HashMap::new(),
+            active_submarine_builds: HashMap::new(),
             co_ownership_proposals: HashMap::new(),
             intel_levels: HashMap::new(),
             cell_to_parcel: HashMap::new(),
@@ -393,6 +417,200 @@ impl GameWorld {
             // Add city to its region's city list
             if let Some(region) = self.regions.get_mut(&real_region_id) {
                 region.city_ids.push(id);
+            }
+        }
+
+        // Generate road network connecting cities
+        self.generate_road_network();
+    }
+
+    /// Build a road network graph:
+    /// 1. MST of cities within each region (Secondary roads)
+    /// 2. Inter-region highways connecting adjacent region capitals
+    fn generate_road_network(&mut self) {
+        let mut next_road_id: u64 = 1;
+
+        // Collect city positions: (city_id, lon, lat, region_id)
+        let city_data: Vec<(EntityId, f64, f64, EntityId)> = self
+            .cities
+            .iter()
+            .filter_map(|(&id, city)| {
+                let pos = self.positions.get(&id)?;
+                Some((id, pos.x, pos.y, city.region_id))
+            })
+            .collect();
+
+        // Group cities by region
+        let mut region_cities: HashMap<EntityId, Vec<(EntityId, f64, f64)>> = HashMap::new();
+        for &(city_id, lon, lat, region_id) in &city_data {
+            region_cities
+                .entry(region_id)
+                .or_default()
+                .push((city_id, lon, lat));
+        }
+
+        // For each region, build MST of cities (Prim's algorithm)
+        for (&region_id, cities) in &region_cities {
+            if cities.len() < 2 {
+                continue;
+            }
+
+            let n = cities.len();
+            let mut in_mst = vec![false; n];
+            let mut min_cost = vec![f64::MAX; n];
+            let mut min_from = vec![0usize; n];
+            in_mst[0] = true;
+
+            // Initialize costs from city 0
+            for j in 1..n {
+                let dist = haversine_km_deg(cities[0].1, cities[0].2, cities[j].1, cities[j].2);
+                min_cost[j] = dist;
+                min_from[j] = 0;
+            }
+
+            for _ in 1..n {
+                // Find closest city not yet in MST
+                let mut best_idx = 0;
+                let mut best_cost = f64::MAX;
+                for j in 0..n {
+                    if !in_mst[j] && min_cost[j] < best_cost {
+                        best_cost = min_cost[j];
+                        best_idx = j;
+                    }
+                }
+
+                in_mst[best_idx] = true;
+
+                // Add road segment between min_from[best_idx] and best_idx
+                let from_city = &cities[min_from[best_idx]];
+                let to_city = &cities[best_idx];
+                let length_km =
+                    haversine_km_deg(from_city.1, from_city.2, to_city.1, to_city.2);
+
+                // Road class based on city populations
+                let from_pop = self
+                    .cities
+                    .get(&from_city.0)
+                    .map(|c| c.population)
+                    .unwrap_or(0);
+                let to_pop = self
+                    .cities
+                    .get(&to_city.0)
+                    .map(|c| c.population)
+                    .unwrap_or(0);
+                let max_pop = from_pop.max(to_pop);
+                let road_class = if max_pop > 500_000 {
+                    RoadClass::Primary
+                } else if max_pop > 100_000 {
+                    RoadClass::Secondary
+                } else {
+                    RoadClass::Residential
+                };
+
+                self.road_network.add_segment(RoadSegment {
+                    id: next_road_id,
+                    from: (from_city.1, from_city.2),
+                    to: (to_city.1, to_city.2),
+                    road_class,
+                    length_km,
+                    region_id,
+                });
+                next_road_id += 1;
+
+                // Update costs
+                for j in 0..n {
+                    if !in_mst[j] {
+                        let dist = haversine_km_deg(
+                            cities[best_idx].1,
+                            cities[best_idx].2,
+                            cities[j].1,
+                            cities[j].2,
+                        );
+                        if dist < min_cost[j] {
+                            min_cost[j] = dist;
+                            min_from[j] = best_idx;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Inter-region highways: connect nearest cities between adjacent regions
+        // Two regions are "adjacent" if their centers are within a reasonable distance
+        let region_data: Vec<(EntityId, f64, f64)> = self
+            .regions
+            .iter()
+            .map(|(&id, r)| (id, r.center_lon, r.center_lat))
+            .collect();
+
+        // Find average inter-region distance for threshold
+        let mut all_dists: Vec<f64> = Vec::new();
+        for i in 0..region_data.len() {
+            for j in (i + 1)..region_data.len() {
+                let dist = haversine_km_deg(
+                    region_data[i].1,
+                    region_data[i].2,
+                    region_data[j].1,
+                    region_data[j].2,
+                );
+                all_dists.push(dist);
+            }
+        }
+        all_dists.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Use median distance * 1.5 as adjacency threshold, or a default
+        let adjacency_threshold = if all_dists.len() >= 2 {
+            all_dists[all_dists.len() / 2] * 1.5
+        } else {
+            5000.0 // fallback: 5000km
+        };
+
+        for i in 0..region_data.len() {
+            for j in (i + 1)..region_data.len() {
+                let region_dist = haversine_km_deg(
+                    region_data[i].1,
+                    region_data[i].2,
+                    region_data[j].1,
+                    region_data[j].2,
+                );
+                if region_dist > adjacency_threshold {
+                    continue;
+                }
+
+                let r1_id = region_data[i].0;
+                let r2_id = region_data[j].0;
+
+                // Find nearest pair of cities between the two regions
+                let r1_cities = match region_cities.get(&r1_id) {
+                    Some(c) => c,
+                    None => continue,
+                };
+                let r2_cities = match region_cities.get(&r2_id) {
+                    Some(c) => c,
+                    None => continue,
+                };
+
+                let mut best_pair: Option<((f64, f64), (f64, f64), f64)> = None;
+                for c1 in r1_cities {
+                    for c2 in r2_cities {
+                        let dist = haversine_km_deg(c1.1, c1.2, c2.1, c2.2);
+                        if best_pair.is_none() || dist < best_pair.unwrap().2 {
+                            best_pair = Some(((c1.1, c1.2), (c2.1, c2.2), dist));
+                        }
+                    }
+                }
+
+                if let Some((from, to, length_km)) = best_pair {
+                    self.road_network.add_segment(RoadSegment {
+                        id: next_road_id,
+                        from,
+                        to,
+                        road_class: RoadClass::Highway,
+                        length_km,
+                        region_id: r1_id, // assign to first region
+                    });
+                    next_road_id += 1;
+                }
             }
         }
     }
@@ -951,8 +1169,17 @@ impl GameWorld {
                 edge_type,
                 from,
                 to,
+                waypoints,
+                deployment,
             } => {
-                self.cmd_build_edge(edge_type, from, to)
+                self.cmd_build_edge(edge_type, from, to, waypoints, deployment)
+            }
+            Command::UpdateEdgeWaypoints {
+                edge,
+                waypoints,
+                deployment,
+            } => {
+                self.cmd_update_edge_waypoints(edge, waypoints, deployment)
             }
             Command::UpgradeNode { entity } => {
                 self.cmd_upgrade_node(entity)
@@ -1055,11 +1282,16 @@ impl GameWorld {
                 }
                 CommandResult::ok()
             }
-            Command::RepairNode { entity } => {
-                self.cmd_repair_node(entity, false);
+            Command::RepairNode { entity, emergency } => {
+                self.cmd_repair_node(entity, emergency);
+                CommandResult::ok()
+            }
+            Command::RepairEdge { edge, emergency } => {
+                self.cmd_repair_edge(edge, emergency);
                 CommandResult::ok()
             }
             Command::EmergencyRepair { entity } => {
+                // Legacy command — treat as emergency node repair
                 self.cmd_repair_node(entity, true);
                 CommandResult::ok()
             }
@@ -1156,6 +1388,24 @@ impl GameWorld {
             }
             Command::VoteUpgrade { node, approve } => {
                 self.cmd_vote_upgrade(node, approve);
+                CommandResult::ok()
+            }
+
+            // Spectrum & Frequency Management (Phase 8)
+            Command::BidSpectrum { band, region, bid } => {
+                self.cmd_bid_spectrum(&band, region, bid);
+                CommandResult::ok()
+            }
+
+            // Spectrum assignment
+            Command::AssignSpectrum { node, band } => {
+                self.cmd_assign_spectrum(node, &band);
+                CommandResult::ok()
+            }
+
+            // Cable ship purchase
+            Command::PurchaseCableShip => {
+                self.cmd_purchase_cable_ship();
                 CommandResult::ok()
             }
 
@@ -1447,6 +1697,8 @@ impl GameWorld {
         edge_type: EdgeType,
         from_node: EntityId,
         to_node: EntityId,
+        waypoints: Vec<(f64, f64)>,
+        deployment: Option<String>,
     ) -> gt_common::protocol::CommandResult {
         use gt_common::protocol::{CommandResult, DeltaOp};
 
@@ -1674,7 +1926,16 @@ impl GameWorld {
             // Note: we allow connecting two separate network components owned by same corp
         }
 
-        let edge = InfraEdge::new(edge_type, from_node, to_node, length_km, corp_id);
+        let mut edge = InfraEdge::new(edge_type, from_node, to_node, length_km, corp_id);
+        if !waypoints.is_empty() {
+            edge.waypoints = waypoints;
+        }
+        if let Some(ref d) = deployment {
+            match d.as_str() {
+                "Underground" => edge.deployment = crate::components::infra_edge::DeploymentMethod::Underground,
+                _ => edge.deployment = crate::components::infra_edge::DeploymentMethod::Aerial,
+            }
+        }
         let cost = edge.construction_cost;
         let maintenance = edge.maintenance_cost;
 
@@ -1726,6 +1987,42 @@ impl GameWorld {
             from_node,
             to_node,
         })
+    }
+
+    fn cmd_update_edge_waypoints(
+        &mut self,
+        edge_id: EntityId,
+        waypoints: Vec<(f64, f64)>,
+        deployment: Option<String>,
+    ) -> gt_common::protocol::CommandResult {
+        use gt_common::protocol::CommandResult;
+
+        // Verify the edge exists
+        let edge = match self.infra_edges.get(&edge_id) {
+            Some(e) => e,
+            None => return CommandResult::fail("Edge not found"),
+        };
+
+        // Verify ownership: the player's corporation must own this edge
+        let edge_owner = edge.owner;
+        if let Some(player_corp) = self.player_corp_id() {
+            if edge_owner != player_corp {
+                return CommandResult::fail("You do not own this edge");
+            }
+        }
+
+        // Update the edge
+        if let Some(edge) = self.infra_edges.get_mut(&edge_id) {
+            edge.waypoints = waypoints;
+            if let Some(ref d) = deployment {
+                match d.as_str() {
+                    "Underground" => edge.deployment = crate::components::infra_edge::DeploymentMethod::Underground,
+                    _ => edge.deployment = crate::components::infra_edge::DeploymentMethod::Aerial,
+                }
+            }
+        }
+
+        CommandResult::ok()
     }
 
     fn cmd_upgrade_node(&mut self, entity: EntityId) -> gt_common::protocol::CommandResult {
@@ -1826,10 +2123,15 @@ impl GameWorld {
     }
 
     fn cmd_repair_node(&mut self, entity: EntityId, emergency: bool) {
-        let corp_id = match self.infra_nodes.get(&entity) {
-            Some(n) => n.owner,
+        let (corp_id, base_cost) = match self.infra_nodes.get(&entity) {
+            Some(n) => (n.owner, n.construction_cost),
             None => return,
         };
+
+        // Don't allow repair while already repairing
+        if self.infra_nodes.get(&entity).map(|n| n.repairing).unwrap_or(false) {
+            return;
+        }
 
         let current_health = match self.healths.get(&entity) {
             Some(h) => h.condition,
@@ -1840,15 +2142,11 @@ impl GameWorld {
             return; // Already healthy
         }
 
-        let base_cost = match self.infra_nodes.get(&entity) {
-            Some(n) => n.construction_cost,
-            None => return,
-        };
-
-        // Repair cost is proportional to damage; emergency is 3x more expensive
+        // Cost = (1.0 - health) x construction_cost x rate_multiplier
+        // Standard: 0.3, Emergency: 0.8
         let damage = 1.0 - current_health;
-        let multiplier = if emergency { 0.6 } else { 0.2 };
-        let cost = (base_cost as f64 * damage * multiplier) as Money;
+        let rate_multiplier = if emergency { 0.8 } else { 0.3 };
+        let cost = (base_cost as f64 * damage * rate_multiplier) as Money;
 
         if let Some(fin) = self.financials.get(&corp_id) {
             if fin.cash < cost {
@@ -1860,39 +2158,95 @@ impl GameWorld {
             fin.cash -= cost;
         }
 
-        if emergency {
-            // Instant repair
-            if let Some(health) = self.healths.get_mut(&entity) {
-                health.condition = 1.0;
-            }
-            // Restore capacity
-            if let Some(node) = self.infra_nodes.get(&entity) {
-                let max_tp = node.max_throughput;
-                if let Some(cap) = self.capacities.get_mut(&entity) {
-                    cap.max_throughput = max_tp;
-                }
-            }
-            self.event_queue.push(
-                self.tick,
-                gt_common::events::GameEvent::RepairCompleted { entity },
-            );
-        } else {
-            // Gradual repair: boost health significantly
-            if let Some(health) = self.healths.get_mut(&entity) {
-                health.condition = (health.condition + 0.5).min(1.0);
-            }
-            // Partially restore capacity
-            if let Some(node) = self.infra_nodes.get(&entity) {
-                let max_tp = node.max_throughput;
-                if let Some(cap) = self.capacities.get_mut(&entity) {
-                    cap.max_throughput = cap.max_throughput.max(max_tp * 0.8);
-                }
-            }
-            self.event_queue.push(
-                self.tick,
-                gt_common::events::GameEvent::RepairStarted { entity, cost },
-            );
+        // Duration: standard = 10 ticks, emergency = 2 ticks
+        let duration = if emergency { 2u32 } else { 10u32 };
+        let health_per_tick = damage / duration as f64;
+
+        if let Some(node) = self.infra_nodes.get_mut(&entity) {
+            node.repairing = true;
+            node.repair_ticks_left = duration;
+            node.repair_health_per_tick = health_per_tick;
         }
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::RepairStarted { entity, cost },
+        );
+    }
+
+    fn cmd_repair_edge(&mut self, edge_id: EntityId, emergency: bool) {
+        use crate::components::infra_edge::DeploymentMethod;
+
+        let (corp_id, base_cost, health, deployment, edge_type, already_repairing) =
+            match self.infra_edges.get(&edge_id) {
+                Some(e) => (
+                    e.owner,
+                    e.construction_cost,
+                    e.health,
+                    e.deployment,
+                    e.edge_type,
+                    e.repairing,
+                ),
+                None => return,
+            };
+
+        // Don't allow repair while already repairing
+        if already_repairing {
+            return;
+        }
+
+        if health >= 0.95 {
+            return; // Already healthy
+        }
+
+        let damage = 1.0 - health;
+        let rate_multiplier = if emergency { 0.8 } else { 0.3 };
+
+        // Type-based cost multiplier: Aerial 0.7, Underground 1.5, Submarine 5.0
+        let is_submarine = matches!(
+            edge_type,
+            gt_common::types::EdgeType::Submarine
+                | gt_common::types::EdgeType::SubseaTelegraphCable
+                | gt_common::types::EdgeType::SubseaFiberCable
+        );
+        let type_multiplier = if is_submarine {
+            5.0
+        } else {
+            match deployment {
+                DeploymentMethod::Aerial => 0.7,
+                DeploymentMethod::Underground => 1.5,
+            }
+        };
+
+        let cost = (base_cost as f64 * damage * rate_multiplier * type_multiplier) as Money;
+
+        if let Some(fin) = self.financials.get(&corp_id) {
+            if fin.cash < cost {
+                return;
+            }
+        }
+
+        if let Some(fin) = self.financials.get_mut(&corp_id) {
+            fin.cash -= cost;
+        }
+
+        // Duration: standard = 10 ticks, emergency = 2 ticks
+        let duration = if emergency { 2u32 } else { 10u32 };
+        let health_per_tick = damage / duration as f64;
+
+        if let Some(edge) = self.infra_edges.get_mut(&edge_id) {
+            edge.repairing = true;
+            edge.repair_ticks_left = duration;
+            edge.repair_health_per_tick = health_per_tick;
+        }
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::RepairStarted {
+                entity: edge_id,
+                cost,
+            },
+        );
     }
 
     fn cmd_create_subsidiary(&mut self, parent: EntityId, name: &str) {
@@ -2748,6 +3102,229 @@ impl GameWorld {
                 self.tick,
                 gt_common::events::GameEvent::UpgradeVoteRejected { node },
             );
+        }
+    }
+
+    // === Phase 8: Spectrum & Frequency Management ===
+
+    fn cmd_bid_spectrum(&mut self, band_name: &str, region: EntityId, bid: Money) {
+        use gt_common::types::FrequencyBand;
+
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+
+        let band = match FrequencyBand::from_name(band_name) {
+            Some(b) => b,
+            None => {
+                self.event_queue.push(
+                    self.tick,
+                    gt_common::events::GameEvent::GlobalNotification {
+                        message: format!("Invalid frequency band: {}", band_name),
+                        level: "error".to_string(),
+                    },
+                );
+                return;
+            }
+        };
+
+        // Validate region exists
+        if !self.regions.contains_key(&region) {
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::GlobalNotification {
+                    message: "Invalid region for spectrum bid".to_string(),
+                    level: "error".to_string(),
+                },
+            );
+            return;
+        }
+
+        // Check player has funds
+        if let Some(fin) = self.financials.get(&corp_id) {
+            if fin.cash < bid {
+                self.event_queue.push(
+                    self.tick,
+                    gt_common::events::GameEvent::GlobalNotification {
+                        message: "Insufficient funds for spectrum bid".to_string(),
+                        level: "warning".to_string(),
+                    },
+                );
+                return;
+            }
+        } else {
+            return;
+        }
+
+        // Minimum bid = base cost for the band's max bandwidth
+        let min_bid = band.cost_per_mhz() * band.max_bandwidth_mhz() as Money;
+        if bid < min_bid {
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::GlobalNotification {
+                    message: format!(
+                        "Bid too low. Minimum: ${} for {} {}",
+                        min_bid,
+                        band.display_name(),
+                        band.max_bandwidth_mhz()
+                    ),
+                    level: "warning".to_string(),
+                },
+            );
+            return;
+        }
+
+        // Check if there's already an active auction for this band+region
+        let existing_auction = self
+            .spectrum_auctions
+            .iter()
+            .find(|(_, a)| a.band == band && a.region_id == region && !a.is_ended(self.tick))
+            .map(|(&id, _)| id);
+
+        if let Some(auction_id) = existing_auction {
+            // Update bid on existing auction
+            let auction = self.spectrum_auctions.get_mut(&auction_id).unwrap();
+            let current_highest = auction.highest_bid().map(|(_, amt)| amt).unwrap_or(0);
+            if bid <= current_highest {
+                self.event_queue.push(
+                    self.tick,
+                    gt_common::events::GameEvent::GlobalNotification {
+                        message: format!("Bid must exceed current highest: ${}", current_highest),
+                        level: "warning".to_string(),
+                    },
+                );
+                return;
+            }
+            auction.place_bid(corp_id, bid);
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::SpectrumBidPlaced {
+                    band: band_name.to_string(),
+                    region,
+                    bidder: corp_id,
+                    amount: bid,
+                },
+            );
+        } else {
+            // Check band isn't already licensed in this region
+            let already_licensed = self
+                .spectrum_licenses
+                .values()
+                .any(|l| l.band == band && l.region_id == region && l.is_active(self.tick));
+
+            if already_licensed {
+                self.event_queue.push(
+                    self.tick,
+                    gt_common::events::GameEvent::GlobalNotification {
+                        message: format!(
+                            "{} is already licensed in this region",
+                            band.display_name()
+                        ),
+                        level: "warning".to_string(),
+                    },
+                );
+                return;
+            }
+
+            // Create new auction — resolves after 10 ticks
+            let auction_id = self.allocate_entity();
+            let mut auction = SpectrumAuction::new(
+                band,
+                region,
+                band.max_bandwidth_mhz(),
+                self.tick,
+                10, // 10 tick auction duration
+            );
+            auction.place_bid(corp_id, bid);
+            self.spectrum_auctions.insert(auction_id, auction);
+
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::SpectrumAuctionStarted {
+                    band: band_name.to_string(),
+                    region,
+                },
+            );
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::SpectrumBidPlaced {
+                    band: band_name.to_string(),
+                    region,
+                    bidder: corp_id,
+                    amount: bid,
+                },
+            );
+        }
+    }
+
+    /// Resolve completed spectrum auctions and expire old licenses.
+    /// Called at the end of each tick.
+    pub fn resolve_spectrum_auctions(&mut self) {
+        // Find auctions that have ended this tick
+        let ended: Vec<EntityId> = self
+            .spectrum_auctions
+            .iter()
+            .filter(|(_, a)| a.is_ended(self.tick))
+            .map(|(&id, _)| id)
+            .collect();
+
+        for auction_id in ended {
+            let auction = match self.spectrum_auctions.remove(&auction_id) {
+                Some(a) => a,
+                None => continue,
+            };
+
+            if let Some((winner, price)) = auction.highest_bid() {
+                // Deduct funds from winner
+                if let Some(fin) = self.financials.get_mut(&winner) {
+                    fin.cash -= price;
+                }
+
+                // Create spectrum license (lasts 200 ticks)
+                let license_id = self.allocate_entity();
+                let license = SpectrumLicense::new(
+                    auction.band,
+                    auction.region_id,
+                    winner,
+                    auction.bandwidth_mhz,
+                    self.tick,
+                    200, // license duration: 200 ticks
+                    price,
+                );
+                self.spectrum_licenses.insert(license_id, license);
+
+                self.event_queue.push(
+                    self.tick,
+                    gt_common::events::GameEvent::SpectrumAuctionWon {
+                        band: format!("{:?}", auction.band),
+                        region: auction.region_id,
+                        winner,
+                        price,
+                    },
+                );
+            }
+        }
+
+        // Expire old licenses
+        let expired: Vec<EntityId> = self
+            .spectrum_licenses
+            .iter()
+            .filter(|(_, l)| !l.is_active(self.tick) && l.end_tick() <= self.tick)
+            .map(|(&id, _)| id)
+            .collect();
+
+        for license_id in expired {
+            if let Some(license) = self.spectrum_licenses.remove(&license_id) {
+                self.event_queue.push(
+                    self.tick,
+                    gt_common::events::GameEvent::SpectrumLicenseExpired {
+                        band: format!("{:?}", license.band),
+                        region: license.region_id,
+                        owner: license.owner,
+                    },
+                );
+            }
         }
     }
 }
