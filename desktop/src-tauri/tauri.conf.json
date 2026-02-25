@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../../web/build",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "cd ../../web && bun run dev",
-    "beforeBuildCommand": "cd ../../web && bun run build"
+    "beforeDevCommand": "",
+    "beforeBuildCommand": ""
   },
   "app": {
     "windows": [
@@ -28,7 +28,10 @@
   "plugins": {
     "fs": {
       "scope": {
-        "allow": ["$APPDATA/**", "$APPDATA/saves/**"]
+        "allow": [
+          "$APPDATA/**",
+          "$APPDATA/saves/**"
+        ]
       }
     }
   }
