@@ -45,6 +45,9 @@ export const simTickTime = writable<number>(0);
 // Loading stage for LoadingScreen (0-3)
 export const loadingStage = writable<number>(0);
 
+// Map asset loading complete (terrain bitmap, icon atlas, pathfinder)
+export const mapReady = writable<boolean>(false);
+
 // Auto-pause state
 export const autoPauseReason = writable<string | null>(null);
 
@@ -251,6 +254,7 @@ function yieldToUI(): Promise<void> {
 
 export async function initGame(config?: object) {
 	loadingStage.set(0);
+	mapReady.set(false);
 	await bridge.initWasm();
 	loadingStage.set(1);
 
@@ -296,6 +300,7 @@ export async function initGame(config?: object) {
 
 export async function initMultiplayer(saveData: string) {
 	isMultiplayerMode = true;
+	mapReady.set(false);
 	loadingStage.set(0);
 	await bridge.initWasm();
 	loadingStage.set(1);

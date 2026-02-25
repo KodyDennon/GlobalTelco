@@ -23,6 +23,7 @@
 	import * as bridge from "$lib/wasm/bridge";
 	import { gameCommand } from '$lib/game/commandRouter';
 	import { injectEventEffectStyles } from './EventEffects';
+	import { mapReady } from './GameLoop';
 
 	let container: HTMLElement;
 	let renderer: MapRenderer | null = null;
@@ -112,6 +113,7 @@
 			if (init && container && !renderer) {
 				renderer = new MapRenderer(container, get(mapQuality));
 				await renderer.buildMap();
+				mapReady.set(true);
 				renderer.updateInfrastructure();
 
 				// Track viewport bounds for minimap

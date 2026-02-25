@@ -32,7 +32,7 @@
 	} from "$lib/stores/tutorialState";
 	import { isMultiplayer } from "$lib/stores/multiplayerState";
 	import { showPerfMonitor } from "$lib/stores/settings";
-	import { loadingStage, showWelcome, setSpeed } from "./GameLoop";
+	import { loadingStage, showWelcome, setSpeed, mapReady } from "./GameLoop";
 	import { KeyboardManager, createDefaultBindings, hotkeyOverlayVisible } from "./KeyboardManager";
 	import { EventEffectManager } from "./EventEffects";
 	import { ScreenshotManager } from "./ScreenshotMode";
@@ -217,6 +217,14 @@
 {#if $initialized}
 	<div class="game-view" bind:this={gameViewEl}>
 		<MapView />
+		{#if !$mapReady}
+			<div class="map-loading-overlay">
+				<div class="map-loading-card">
+					<div class="map-loading-spinner"></div>
+					<span class="map-loading-text">Preparing map...</span>
+				</div>
+			</div>
+		{/if}
 		<HUD />
 		<InfoPanel />
 		<BuildMenu />
@@ -465,5 +473,54 @@
 
 	.hotkey-close:hover {
 		background: rgba(75, 85, 99, 0.5);
+	}
+
+	/* Map loading overlay — shown while terrain/icons are building after init */
+	.map-loading-overlay {
+		position: absolute;
+		inset: 0;
+		z-index: 80;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(6, 16, 31, 0.85);
+		backdrop-filter: blur(4px);
+		animation: fade-in 0.2s ease;
+	}
+
+	@keyframes fade-in {
+		from { opacity: 0; }
+		to { opacity: 1; }
+	}
+
+	.map-loading-card {
+		display: flex;
+		align-items: center;
+		gap: 14px;
+		background: rgba(17, 24, 39, 0.9);
+		border: 1px solid rgba(55, 65, 81, 0.4);
+		border-radius: 10px;
+		padding: 16px 28px;
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+	}
+
+	.map-loading-spinner {
+		width: 20px;
+		height: 20px;
+		border: 2.5px solid rgba(59, 130, 246, 0.2);
+		border-top: 2.5px solid #3b82f6;
+		border-radius: 50%;
+		animation: map-spin 0.8s linear infinite;
+	}
+
+	@keyframes map-spin {
+		to { transform: rotate(360deg); }
+	}
+
+	.map-loading-text {
+		font-size: 14px;
+		font-weight: 500;
+		color: #9ca3af;
+		letter-spacing: 0.02em;
 	}
 </style>
