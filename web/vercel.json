@@ -1,6 +1,7 @@
 {
   "installCommand": "sh scripts/vercel-install.sh",
   "buildCommand": "export PATH=\"/rust/bin:$PATH\" && cd .. && wasm-pack build crates/gt-wasm --target web --out-dir ../../web/src/lib/wasm/pkg && cd web && bun run build",
+  "outputDirectory": "build",
   "headers": [
     {
       "source": "/(.*)\\.wasm",
