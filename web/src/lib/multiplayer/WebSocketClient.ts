@@ -130,12 +130,15 @@ function handleServerMessage(msg: ServerMessage) {
 		const tick = update.tick as number;
 		const events = (update.events as Array<Record<string, unknown>>) || [];
 		const corpUpdates = (update.corp_updates as Array<Record<string, unknown>>) || [];
+
+		// Monotonic tick guard: only advance forward, never backward.
+		// This prevents stale/reordered messages from rolling the tick back.
 		worldInfo.update((info) => {
-			if (info) {
-				return { ...info, tick };
-			}
-			return info;
+			if (!info) return info;
+			if (tick <= info.tick) return info;
+			return { ...info, tick };
 		});
+
 		// Apply corporation deltas from server to keep stores in sync
 		window.dispatchEvent(new CustomEvent('mp-corp-deltas', {
 			detail: { tick, deltas: corpUpdates }

@@ -47,7 +47,8 @@ pub fn create_router(state: Arc<AppState>, tile_dir: Option<String>) -> Router {
         .route("/api/admin/worlds", post(admin_create_world))
         .route("/api/admin/worlds/{world_id}", delete(admin_delete_world))
         .route("/api/admin/worlds/{world_id}/speed", post(admin_set_speed))
-        .route("/api/admin/broadcast", post(admin_broadcast));
+        .route("/api/admin/broadcast", post(admin_broadcast))
+        .route("/api/admin/debug/{world_id}", get(admin_debug_world));
 
     // Mount tile serving if TILE_DIR is configured
     if let Some(ref dir) = tile_dir {
@@ -874,5 +875,77 @@ async fn admin_broadcast(
             StatusCode::OK,
             Json(serde_json::json!({ "broadcast": true, "scope": "all", "world_count": worlds.len() })),
         )
+    }
+}
+
+// ── Debug Endpoint ──────────────────────────────────────────────────────
+
+async fn admin_debug_world(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Path(world_id): Path<Uuid>,
+) -> impl IntoResponse {
+    if let Err(e) = extract_admin_claims(&headers) {
+        return e;
+    }
+
+    match state.get_world(&world_id).await {
+        Some(world) => {
+            let w = world.world.lock().await;
+            let tick = w.current_tick();
+            let speed = format!("{:?}", w.speed());
+
+            // Corporation summaries
+            let corps: Vec<serde_json::Value> = w.corporations.keys().map(|&cid| {
+                let fin = w.financials.get(&cid);
+                let nodes = w.corp_infra_nodes.get(&cid).map(|n| n.len()).unwrap_or(0);
+                serde_json::json!({
+                    "corp_id": cid,
+                    "name": w.corporations.get(&cid).map(|c| c.name.as_str()).unwrap_or("?"),
+                    "cash": fin.map(|f| f.cash),
+                    "revenue": fin.map(|f| f.revenue_per_tick),
+                    "cost": fin.map(|f| f.cost_per_tick),
+                    "debt": fin.map(|f| f.debt),
+                    "nodes": nodes,
+                })
+            }).collect();
+
+            // Connected players in this world
+            let players = state.players.read().await;
+            let world_players: Vec<serde_json::Value> = players.values()
+                .filter(|p| p.world_id == Some(world_id))
+                .map(|p| serde_json::json!({
+                    "id": p.id,
+                    "username": p.username,
+                    "corp_id": p.corp_id,
+                    "is_guest": p.is_guest,
+                }))
+                .collect();
+
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "world_id": world_id,
+                    "world_name": world.name,
+                    "tick": tick,
+                    "speed": speed,
+                    "tick_rate_ms": world.tick_rate_ms,
+                    "broadcast_subscribers": world.broadcast_tx.receiver_count(),
+                    "corporations": corps,
+                    "connected_players": world_players,
+                    "entity_counts": {
+                        "corporations": w.corporations.len(),
+                        "infra_nodes": w.infra_nodes.len(),
+                        "infra_edges": w.infra_edges.len(),
+                        "regions": w.regions.len(),
+                        "cities": w.cities.len(),
+                    },
+                })),
+            )
+        }
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "World not found" })),
+        ),
     }
 }

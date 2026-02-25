@@ -39,6 +39,12 @@ const AUTO_SAVE_INTERVAL = 50; // ticks between auto-saves
 let mpCleanupFns: Array<() => void> = [];
 let isMultiplayerMode = false; // true when game is server-driven
 
+// High-water mark: the highest tick we've applied from the server.
+// Prevents stale snapshots from rolling back the displayed tick.
+let mpHighWaterTick = 0;
+// Guard to prevent concurrent snapshot loads from racing
+let mpSnapshotLoading = false;
+
 // Performance profiling stores
 export const simTickTime = writable<number>(0);
 
@@ -324,21 +330,28 @@ export async function initMultiplayer(saveData: string) {
 	await yieldToUI();
 	// Server drives ticks in multiplayer — no local tick advancement
 	currentSpeed = 0;
+	mpHighWaterTick = 0;
+	mpSnapshotLoading = false;
 	initialized.set(true);
 	updateStores();
 
-	// Listen for corp delta updates from WebSocket TickUpdate messages
+	// Listen for corp delta updates from WebSocket TickUpdate messages.
+	// These arrive every server tick and carry lightweight financial deltas.
+	// The tick value is authoritative — we only advance forward, never backward.
 	const handleCorpDeltas = (e: Event) => {
 		const { deltas, tick } = (e as CustomEvent).detail;
 		if (!Array.isArray(deltas)) return;
 
-		// Update tick in worldInfo
-		worldInfo.update((info) => info ? { ...info, tick } : info);
+		// Monotonic tick guard: never go backward
+		if (tick < mpHighWaterTick) return;
+		mpHighWaterTick = tick;
+
+		// Tick is already set by WebSocketClient's TickUpdate handler.
+		// We only apply corp financial deltas here — no redundant worldInfo update.
+		const info = bridge.getWorldInfo();
 
 		for (const delta of deltas) {
 			const corpId = delta.corp_id as number;
-			// Update player corp store if this delta is for the player
-			const info = bridge.getWorldInfo();
 			if (corpId === info.player_corp_id) {
 				playerCorp.update((corp) => {
 					if (!corp) return corp;
@@ -352,7 +365,6 @@ export async function initMultiplayer(saveData: string) {
 					};
 				});
 			}
-			// Update allCorporations store
 			allCorporations.update((corps) =>
 				corps.map((c) => {
 					if (c.id !== corpId) return c;
@@ -367,16 +379,50 @@ export async function initMultiplayer(saveData: string) {
 		}
 	};
 
-	// Listen for full snapshot reloads (pushed by server every 5 ticks)
+	// Listen for full snapshot reloads (pushed by server every 5 ticks).
+	// Snapshots fully replace WASM state. Guard against:
+	//   1. Stale snapshots (tick < high-water mark)
+	//   2. Concurrent loads (skip if another snapshot is being applied)
 	const handleSnapshotReload = (e: Event) => {
 		const { state_json, tick } = (e as CustomEvent).detail;
+
+		// Skip stale snapshots — a newer tick update already arrived
+		if (tick < mpHighWaterTick) {
+			console.log(`[MP] Skipping stale snapshot tick=${tick} (current=${mpHighWaterTick})`);
+			return;
+		}
+
+		// Prevent concurrent loadGame calls from racing
+		if (mpSnapshotLoading) {
+			console.log(`[MP] Skipping snapshot tick=${tick} (another load in progress)`);
+			return;
+		}
+
 		try {
+			mpSnapshotLoading = true;
 			bridge.loadGame(state_json);
-			// Full store refresh from WASM after loading server state
-			updateStores();
+			mpHighWaterTick = tick;
+
+			// Refresh stores from WASM, but force the tick to our high-water mark
+			// to prevent any drift from the WASM internal tick counter.
+			const info = bridge.getWorldInfo();
+			worldInfo.set({ ...info, tick: mpHighWaterTick });
+
+			if (info.player_corp_id > 0) {
+				const corpData = bridge.getCorporationData(info.player_corp_id);
+				playerCorp.set(corpData);
+			}
+
+			// Full entity refresh (regions, cities, corps) every snapshot
+			regions.set(bridge.getRegions());
+			cities.set(bridge.getCities());
+			allCorporations.set(bridge.getAllCorporations());
+
 			console.log(`[MP] Synced snapshot at tick ${tick}`);
 		} catch (err) {
 			console.error('[MP] Failed to reload snapshot:', err);
+		} finally {
+			mpSnapshotLoading = false;
 		}
 	};
 
@@ -386,7 +432,7 @@ export async function initMultiplayer(saveData: string) {
 	mpCleanupFns.push(
 		() => window.removeEventListener('mp-corp-deltas', handleCorpDeltas),
 		() => window.removeEventListener('mp-snapshot', handleSnapshotReload),
-		() => { isMultiplayerMode = false; },
+		() => { isMultiplayerMode = false; mpHighWaterTick = 0; },
 	);
 }
 
