@@ -161,6 +161,20 @@ interface Component {
   files: ComponentFile[];
 }
 
+function makeVersionFile(): ComponentFile {
+  const path = rootPath("VERSION");
+  return {
+    path,
+    read() {
+      if (!existsSync(path)) return "0.0.0";
+      return readFileSync(path, "utf-8").trim();
+    },
+    write(version) {
+      writeFileSync(path, version + "\n");
+    },
+  };
+}
+
 function makeCargoWorkspaceVersion(): ComponentFile {
   const path = rootPath("Cargo.toml");
   return {
@@ -240,6 +254,7 @@ const COMPONENTS: Component[] = [
     tagPrefix: "app-v",
     color: c.cyan,
     files: [
+      makeVersionFile(),
       makeCargoWorkspaceVersion(),
       makePackageJson("web/package.json"),
     ],
