@@ -11,6 +11,7 @@ import {
 	allCorporations,
 	recordSnapshot
 } from '$lib/stores/gameState';
+import { recordNetworkSnapshot } from '$lib/stores/networkHistory';
 import { saveToSlot, loadFromSlot, getNextAutoSaveSlot, QUICK_SAVE_SLOT } from '$lib/saves/SaveManager';
 import { get } from 'svelte/store';
 import { audioManager } from '$lib/audio/AudioManager';
@@ -116,6 +117,11 @@ function updateStores() {
 		// Record finance snapshot every 10 ticks
 		if (info.tick % 10 === 0) {
 			recordSnapshot(info.tick, corpData.revenue_per_tick, corpData.cost_per_tick, corpData.cash);
+
+			// Record network snapshot for the Network Dashboard
+			const trafficData = bridge.getTrafficFlows();
+			const infraData = bridge.getInfrastructureList(info.player_corp_id);
+			recordNetworkSnapshot(info.tick, trafficData, infraData);
 		}
 
 		// Update ambient music intensity based on game state

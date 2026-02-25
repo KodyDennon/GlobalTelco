@@ -55,6 +55,9 @@ function isInputFocused(e: KeyboardEvent): boolean {
 import { writable } from 'svelte/store';
 export const hotkeyOverlayVisible = writable<boolean>(false);
 
+// Store for search overlay visibility (toggled by / key)
+export const searchOverlayVisible = writable<boolean>(false);
+
 export class KeyboardManager {
 	private bindings: Map<string, KeyAction> = new Map();
 	private enabled: boolean = true;
@@ -299,4 +302,10 @@ export function createDefaultBindings(manager: KeyboardManager): void {
 	// Help / Hotkey overlay
 	manager.bind('h', () => hotkeyOverlayVisible.update((v) => !v));
 	manager.bind('shift+?', () => hotkeyOverlayVisible.update((v) => !v));
+
+	// Search overlay (/ key)
+	manager.bind('/', () => searchOverlayVisible.set(true));
+
+	// Minimap toggle
+	manager.bind('m', () => window.dispatchEvent(new CustomEvent('minimap-toggle')));
 }

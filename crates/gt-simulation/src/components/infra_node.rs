@@ -15,6 +15,23 @@ pub struct InfraNode {
     pub owner: EntityId,
     pub insured: bool,
     pub insurance_premium: Money,
+    /// Spectrum band assigned to this wireless node (e.g. "Band700MHz", "Band3500MHz").
+    /// Wireless nodes without an assigned band operate at 50% throughput.
+    #[serde(default)]
+    pub assigned_band: Option<String>,
+    /// Whether this NAP has a validated FTTH chain (CO -> FeederFiber -> FDH -> DistributionFiber -> NAP).
+    /// Set by the FTTH system each tick. Only meaningful for NetworkAccessPoint nodes.
+    #[serde(default)]
+    pub active_ftth: bool,
+    /// Whether this node is currently being repaired (standard or emergency).
+    #[serde(default)]
+    pub repairing: bool,
+    /// Ticks remaining until repair completes.
+    #[serde(default)]
+    pub repair_ticks_left: u32,
+    /// Health to restore per tick during active repair.
+    #[serde(default)]
+    pub repair_health_per_tick: f64,
 }
 
 impl InfraNode {
@@ -137,6 +154,11 @@ impl InfraNode {
             owner,
             insured: false,
             insurance_premium: cost / 50, // 2% of construction cost per tick cycle
+            assigned_band: None,
+            active_ftth: false,
+            repairing: false,
+            repair_ticks_left: 0,
+            repair_health_per_tick: 0.0,
         }
     }
 

@@ -13,6 +13,16 @@ pub enum Command {
         edge_type: crate::types::EdgeType,
         from: EntityId,
         to: EntityId,
+        #[serde(default)]
+        waypoints: Vec<(f64, f64)>,
+        #[serde(default)]
+        deployment: Option<String>,
+    },
+    UpdateEdgeWaypoints {
+        edge: EntityId,
+        waypoints: Vec<(f64, f64)>,
+        #[serde(default)]
+        deployment: Option<String>,
     },
     UpgradeNode {
         entity: EntityId,
@@ -22,6 +32,13 @@ pub enum Command {
     },
     RepairNode {
         entity: EntityId,
+        #[serde(default)]
+        emergency: bool,
+    },
+    RepairEdge {
+        edge: EntityId,
+        #[serde(default)]
+        emergency: bool,
     },
     EmergencyRepair {
         entity: EntityId,
@@ -165,6 +182,22 @@ pub enum Command {
         node: EntityId,
         approve: bool,
     },
+
+    // Spectrum & Frequency Management (Phase 8)
+    BidSpectrum {
+        band: String,
+        region: EntityId,
+        bid: Money,
+    },
+
+    // Spectrum Assignment — assign a wireless node to a specific spectrum band
+    AssignSpectrum {
+        node: EntityId,
+        band: String, // e.g. "Band700MHz", "Band3500MHz"
+    },
+
+    // Cable Ship — purchase a cable ship for submarine cable construction
+    PurchaseCableShip,
 
     // Game control
     SetSpeed(GameSpeed),

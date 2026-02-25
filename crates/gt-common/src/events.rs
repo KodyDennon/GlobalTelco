@@ -243,6 +243,41 @@ pub enum GameEvent {
         price: Money,
     },
 
+    // Spectrum & Frequency Management (Phase 8)
+    SpectrumAuctionStarted {
+        band: String,
+        region: EntityId,
+    },
+    SpectrumBidPlaced {
+        band: String,
+        region: EntityId,
+        bidder: EntityId,
+        amount: Money,
+    },
+    SpectrumAuctionWon {
+        band: String,
+        region: EntityId,
+        winner: EntityId,
+        price: Money,
+    },
+    SpectrumLicenseExpired {
+        band: String,
+        region: EntityId,
+        owner: EntityId,
+    },
+
+    // Spectrum Assignment
+    SpectrumAssigned {
+        node: EntityId,
+        band: String,
+        corp: EntityId,
+    },
+
+    // Cable Ship
+    CableShipPurchased {
+        corp: EntityId,
+    },
+
     // Achievements & Victory
     AchievementUnlocked {
         corporation: EntityId,
@@ -343,6 +378,18 @@ impl GameEvent {
             | GameEvent::UpgradeVotePassed { .. }
             | GameEvent::UpgradeVoteRejected { .. }
             | GameEvent::BuyoutCompleted { .. } => vec![],
+
+            // Spectrum — global (auctions are public)
+            GameEvent::SpectrumAuctionStarted { .. }
+            | GameEvent::SpectrumAuctionWon { .. } => vec![],
+            GameEvent::SpectrumBidPlaced { bidder, .. } => vec![*bidder],
+            GameEvent::SpectrumLicenseExpired { owner, .. } => vec![*owner],
+
+            // Spectrum Assignment — private to the corp
+            GameEvent::SpectrumAssigned { corp, .. } => vec![*corp],
+
+            // Cable Ship — private to the corp
+            GameEvent::CableShipPurchased { corp } => vec![*corp],
 
             // Achievements — private
             GameEvent::AchievementUnlocked { corporation, .. }

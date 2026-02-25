@@ -396,6 +396,11 @@
 	// Build terrain once data is available
 	let terrainBuilt = false;
 
+	// Handle minimap-toggle event from keyboard shortcut (M key)
+	function handleMinimapToggle() {
+		toggleVisibility();
+	}
+
 	onMount(() => {
 		// Restore visibility from localStorage
 		try {
@@ -411,10 +416,13 @@
 
 		// Listen for mouseup on window to catch drag release outside the minimap
 		window.addEventListener('mouseup', handleMouseUp);
+		// Listen for keyboard toggle (M key)
+		window.addEventListener('minimap-toggle', handleMinimapToggle);
 	});
 
 	onDestroy(() => {
 		window.removeEventListener('mouseup', handleMouseUp);
+		window.removeEventListener('minimap-toggle', handleMinimapToggle);
 	});
 
 	// Reactively rebuild terrain when regions become available

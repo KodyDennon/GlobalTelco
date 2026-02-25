@@ -212,11 +212,18 @@
 					map.flyTo({ center: [lon, lat], duration: 400 });
 				};
 
+				// Search / fly-to navigation (with optional zoom)
+				const handleMapFlyTo = (e: Event) => {
+					const { lon, lat, zoom } = (e as CustomEvent).detail;
+					renderer?.flyTo(lon, lat, zoom);
+				};
+
 				window.addEventListener('map-pan', handleMapPan);
 				window.addEventListener('map-zoom', handleMapZoom);
 				window.addEventListener('map-reset-view', handleMapResetView);
 				window.addEventListener('map-toggle-pitch', handleMapTogglePitch);
 				window.addEventListener('minimap-navigate', handleMinimapNavigate);
+				window.addEventListener('map-fly-to', handleMapFlyTo);
 
 				// Event-driven map updates: re-render on delta broadcasts + 2s fallback
 				const handleMapDirty = () => {
@@ -276,6 +283,20 @@
 					renderer?.setSelected(id);
 				});
 
+				// Cable drawing preview state relay
+				const handleCableDrawingUpdate = (e: Event) => {
+					const state = (e as CustomEvent).detail;
+					renderer?.setCableDrawingState(state);
+				};
+				window.addEventListener('cable-drawing-update', handleCableDrawingUpdate);
+
+				// Active disasters relay for weather + vulnerability visualization
+				const handleDisasterUpdate = (e: Event) => {
+					const disasters = (e as CustomEvent).detail;
+					renderer?.setActiveDisasters(disasters);
+				};
+				window.addEventListener('active-disasters-update', handleDisasterUpdate);
+
 				// Mouse move for tooltips
 				container.addEventListener("mousemove", handleMouseMove);
 				container.addEventListener("mouseleave", handleMouseLeave);
@@ -304,6 +325,9 @@
 					window.removeEventListener('map-reset-view', handleMapResetView);
 					window.removeEventListener('map-toggle-pitch', handleMapTogglePitch);
 					window.removeEventListener('minimap-navigate', handleMinimapNavigate);
+					window.removeEventListener('map-fly-to', handleMapFlyTo);
+					window.removeEventListener('cable-drawing-update', handleCableDrawingUpdate);
+					window.removeEventListener('active-disasters-update', handleDisasterUpdate);
 					container?.removeEventListener("mousemove", handleMouseMove);
 					container?.removeEventListener(
 						"mouseleave",

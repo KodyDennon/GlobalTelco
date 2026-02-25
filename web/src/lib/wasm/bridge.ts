@@ -27,7 +27,10 @@ import type {
 	WorldPreviewData,
 	InfraNodesTyped,
 	InfraEdgesTyped,
-	CorporationsTyped
+	CorporationsTyped,
+	SpectrumLicense,
+	SpectrumAuction,
+	AvailableSpectrum
 } from './types';
 
 let wasmModule: any = null;
@@ -496,6 +499,38 @@ export function getCorporationsTyped(): CorporationsTyped {
 		onBridgeError(e, 'getCorporationsTyped');
 	}
 	return { count: 0, ids: EMPTY_U32, financials: EMPTY_F64, name_offsets: EMPTY_U32, names_packed: EMPTY_U8 };
+}
+
+// ── Phase 8: Spectrum & Frequency Management ──────────────────────────
+
+export function getSpectrumLicenses(): SpectrumLicense[] {
+	try {
+		const json = bridge?.get_spectrum_licenses() ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getSpectrumLicenses');
+		return [];
+	}
+}
+
+export function getSpectrumAuctions(): SpectrumAuction[] {
+	try {
+		const json = bridge?.get_spectrum_auctions() ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getSpectrumAuctions');
+		return [];
+	}
+}
+
+export function getAvailableSpectrum(regionId: number): AvailableSpectrum[] {
+	try {
+		const json = bridge?.get_available_spectrum(BigInt(regionId)) ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getAvailableSpectrum');
+		return [];
+	}
 }
 
 // ── Tauri Native Filesystem ───────────────────────────────────────────

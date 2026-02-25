@@ -1,16 +1,53 @@
-import { BitmapLayer, ScatterplotLayer } from '@deck.gl/layers';
+import { BitmapLayer, ScatterplotLayer, PolygonLayer } from '@deck.gl/layers';
 import type { Layer } from '@deck.gl/core';
-import type { City, Region, CellCoverage } from '$lib/wasm/types';
+import type { City, Region, CellCoverage, SpectrumLicense, AllInfraNode } from '$lib/wasm/types';
 import { CORP_COLORS } from '../constants';
 import * as bridge from '$lib/wasm/bridge';
 
+// ── Spectrum band color + coverage mappings ────────────────────────────────
+
+/** RGBA color per frequency band for spectrum overlay coverage circles. */
+const BAND_COLORS: Record<string, [number, number, number]> = {
+    '700MHz':  [100, 200, 100],
+    '850MHz':  [100, 200, 180],
+    '1800MHz': [100, 150, 255],
+    '2100MHz': [100, 220, 255],
+    '2600MHz': [180, 100, 255],
+    '3500MHz': [255, 100, 200],
+    '28GHz':   [255, 180, 60],
+    '39GHz':   [255, 100, 80],
+};
+
+/** Default grey for nodes with no assigned band. */
+const UNASSIGNED_BAND_COLOR: [number, number, number] = [128, 128, 128];
+
+/** Coverage radius in meters per frequency band. */
+const BAND_COVERAGE_M: Record<string, number> = {
+    '700MHz':  30000,
+    '850MHz':  25000,
+    '1800MHz': 10000,
+    '2100MHz': 8000,
+    '2600MHz': 5000,
+    '3500MHz': 2000,
+    '28GHz':   500,
+    '39GHz':   300,
+};
+
+/** Default coverage radius for nodes without a recognized band. */
+const DEFAULT_COVERAGE_M = 5000;
+
+/** Wireless node types that emit coverage circles in the spectrum overlay. */
+const WIRELESS_OVERLAY_TYPES = new Set(['MacroCell', 'SmallCell', 'CellTower', 'WirelessRelay']);
+
 /**
  * Creates overlay visualization layers: terrain, demand, disaster, coverage,
- * ownership, congestion, and traffic. Each uses ScatterplotLayer with color
- * gradients (except terrain which uses BitmapLayer).
+ * ownership, market_share, spectrum, congestion, and traffic. Each uses ScatterplotLayer
+ * with color gradients (except terrain which uses BitmapLayer, and market_share / spectrum
+ * which use PolygonLayer).
  *
  * Note: congestion and traffic overlays are handled by infraLayer coloring.
- * This function handles terrain, demand, disaster, coverage, and ownership.
+ * This function handles terrain, demand, disaster, coverage, ownership, market_share,
+ * and spectrum.
  */
 export function createOverlayLayers(opts: {
     activeOverlay: string;
@@ -127,6 +164,339 @@ export function createOverlayLayers(opts: {
                 getRadius: overlayRadius,
                 radiusMinPixels: 6,
                 pickable: false
+            }));
+        }
+    }
+
+    if (activeOverlay === 'market_share') {
+        if (bridge.isInitialized() && regions.length > 0) {
+            const allInfra = bridge.getAllInfrastructure();
+            const corps = bridge.getAllCorporations();
+            const corpIndex = new Map<number, number>();
+            for (let i = 0; i < corps.length; i++) {
+                corpIndex.set(corps[i].id, i);
+            }
+
+            // Count nodes per corporation per region
+            const cellToRegion = new Map<number, number>();
+            for (const city of cities) {
+                for (const cp of city.cell_positions) {
+                    cellToRegion.set(cp.index, city.region_id);
+                }
+            }
+
+            const regionCorpCounts = new Map<number, Map<number, number>>();
+            for (const node of allInfra.nodes) {
+                const regionId = cellToRegion.get(node.cell_index);
+                if (regionId === undefined) continue;
+                if (!regionCorpCounts.has(regionId)) {
+                    regionCorpCounts.set(regionId, new Map());
+                }
+                const counts = regionCorpCounts.get(regionId)!;
+                counts.set(node.owner, (counts.get(node.owner) ?? 0) + 1);
+            }
+
+            interface MarketShareRegion {
+                polygon: [number, number][];
+                color: [number, number, number, number];
+            }
+            const polygonData: MarketShareRegion[] = [];
+
+            for (const region of regions) {
+                if (!region.boundary_polygon || region.boundary_polygon.length < 3) continue;
+                const counts = regionCorpCounts.get(region.id);
+                if (!counts || counts.size === 0) continue;
+
+                let maxCount = 0;
+                let dominantCorpId = 0;
+                for (const [corpId, count] of counts) {
+                    if (count > maxCount) {
+                        maxCount = count;
+                        dominantCorpId = corpId;
+                    }
+                }
+
+                const idx = corpIndex.get(dominantCorpId);
+                const baseColor = idx !== undefined
+                    ? CORP_COLORS[idx % CORP_COLORS.length]
+                    : [160, 160, 160] as [number, number, number];
+
+                polygonData.push({
+                    polygon: region.boundary_polygon,
+                    color: [baseColor[0], baseColor[1], baseColor[2], 80],
+                });
+            }
+
+            if (polygonData.length > 0) {
+                layers.push(new PolygonLayer({
+                    id: 'overlay-market-share',
+                    data: polygonData,
+                    getPolygon: (d: MarketShareRegion) => d.polygon,
+                    getFillColor: (d: MarketShareRegion) => d.color,
+                    getLineColor: (d: MarketShareRegion) => [d.color[0], d.color[1], d.color[2], 140],
+                    getLineWidth: 2,
+                    lineWidthUnits: 'pixels',
+                    filled: true,
+                    stroked: true,
+                    pickable: false,
+                    parameters: { depthTest: false },
+                } as any));
+            }
+        }
+    }
+
+    // ── Spectrum overlay ──────────────────────────────────────────────────────
+    if (activeOverlay === 'spectrum') {
+        if (bridge.isInitialized()) {
+            layers.push(...createSpectrumOverlayLayers(regions, cities));
+        }
+    }
+
+    return layers;
+}
+
+// ── Spectrum overlay implementation ───────────────────────────────────────────
+
+/**
+ * Builds spectrum visualization layers:
+ * (a) Region polygons colored by dominant license holder
+ * (b) Wireless node coverage circles colored by frequency band
+ * (c) Interference indicators where same-band circles overlap
+ */
+function createSpectrumOverlayLayers(regions: Region[], cities: City[]): Layer[] {
+    const layers: Layer[] = [];
+    const licenses = bridge.getSpectrumLicenses();
+    const allInfra = bridge.getAllInfrastructure();
+    const corps = bridge.getAllCorporations();
+
+    // Build corp index for color lookup
+    const corpIndex = new Map<number, number>();
+    for (let i = 0; i < corps.length; i++) {
+        corpIndex.set(corps[i].id, i);
+    }
+
+    // ── (a) Region polygons colored by dominant spectrum license holder ──────
+
+    // Count licenses per corp per region
+    const regionCorpLicenseCounts = new Map<number, Map<number, number>>();
+    for (const lic of licenses) {
+        if (!regionCorpLicenseCounts.has(lic.region_id)) {
+            regionCorpLicenseCounts.set(lic.region_id, new Map());
+        }
+        const counts = regionCorpLicenseCounts.get(lic.region_id)!;
+        counts.set(lic.owner, (counts.get(lic.owner) ?? 0) + 1);
+    }
+
+    interface SpectrumRegionPoly {
+        polygon: [number, number][];
+        color: [number, number, number, number];
+    }
+    const regionPolys: SpectrumRegionPoly[] = [];
+
+    for (const region of regions) {
+        if (!region.boundary_polygon || region.boundary_polygon.length < 3) continue;
+        const counts = regionCorpLicenseCounts.get(region.id);
+        if (!counts || counts.size === 0) continue;
+
+        // Find corp with the most licenses in this region
+        let maxCount = 0;
+        let dominantCorpId = 0;
+        for (const [cId, count] of counts) {
+            if (count > maxCount) {
+                maxCount = count;
+                dominantCorpId = cId;
+            }
+        }
+
+        const idx = corpIndex.get(dominantCorpId);
+        const baseColor = idx !== undefined
+            ? CORP_COLORS[idx % CORP_COLORS.length]
+            : [160, 160, 160] as [number, number, number];
+
+        regionPolys.push({
+            polygon: region.boundary_polygon,
+            color: [baseColor[0], baseColor[1], baseColor[2], 51], // ~0.2 opacity (51/255)
+        });
+    }
+
+    if (regionPolys.length > 0) {
+        layers.push(new PolygonLayer({
+            id: 'overlay-spectrum-regions',
+            data: regionPolys,
+            getPolygon: (d: SpectrumRegionPoly) => d.polygon,
+            getFillColor: (d: SpectrumRegionPoly) => d.color,
+            getLineColor: (d: SpectrumRegionPoly) => [d.color[0], d.color[1], d.color[2], 100],
+            getLineWidth: 1,
+            lineWidthUnits: 'pixels',
+            filled: true,
+            stroked: true,
+            pickable: false,
+            parameters: { depthTest: false },
+        } as any));
+    }
+
+    // ── (b) Wireless node coverage circles colored by frequency band ────────
+
+    // Build a region-lookup for nodes via city cell positions
+    const cellToRegion = new Map<number, number>();
+    for (const city of cities) {
+        for (const cp of city.cell_positions) {
+            cellToRegion.set(cp.index, city.region_id);
+        }
+    }
+
+    // Build a map: regionId -> { band -> ownerId } from licenses for matching
+    // nodes to their assigned band. A wireless node in a region uses the band
+    // from the license held by its owner in that region. If the owner holds
+    // multiple bands, pick the first matching license.
+    const regionOwnerBands = new Map<string, string>(); // "regionId-ownerId" -> band
+    for (const lic of licenses) {
+        const key = `${lic.region_id}-${lic.owner}`;
+        // Only store the first band per region+owner (simplification)
+        if (!regionOwnerBands.has(key)) {
+            regionOwnerBands.set(key, lic.band);
+        }
+    }
+
+    interface CoverageCircle {
+        position: [number, number];
+        radius: number;
+        color: [number, number, number, number];
+        band: string;
+    }
+    const coverageCircles: CoverageCircle[] = [];
+
+    // Filter to wireless nodes
+    const wirelessNodes = allInfra.nodes.filter(n => WIRELESS_OVERLAY_TYPES.has(n.node_type));
+
+    for (const node of wirelessNodes) {
+        const regionId = cellToRegion.get(node.cell_index);
+        const ownerKey = regionId !== undefined ? `${regionId}-${node.owner}` : '';
+        const band = regionOwnerBands.get(ownerKey) ?? '';
+
+        const bandColor = band ? (BAND_COLORS[band] ?? UNASSIGNED_BAND_COLOR) : UNASSIGNED_BAND_COLOR;
+        const coverageM = band ? (BAND_COVERAGE_M[band] ?? DEFAULT_COVERAGE_M) : DEFAULT_COVERAGE_M;
+
+        coverageCircles.push({
+            position: [node.x, node.y],
+            radius: coverageM,
+            color: [bandColor[0], bandColor[1], bandColor[2], 80],
+            band: band || 'unassigned',
+        });
+    }
+
+    if (coverageCircles.length > 0) {
+        // Filled coverage circles
+        layers.push(new ScatterplotLayer({
+            id: 'overlay-spectrum-coverage',
+            data: coverageCircles,
+            getPosition: (d: CoverageCircle) => d.position,
+            getFillColor: (d: CoverageCircle) => d.color,
+            getRadius: (d: CoverageCircle) => d.radius,
+            radiusMinPixels: 8,
+            pickable: false,
+            parameters: {
+                depthTest: false,
+                blend: true,
+                blendFunc: [WebGLRenderingContext.SRC_ALPHA, WebGLRenderingContext.ONE_MINUS_SRC_ALPHA],
+            },
+        }));
+
+        // Coverage border rings
+        layers.push(new ScatterplotLayer({
+            id: 'overlay-spectrum-coverage-ring',
+            data: coverageCircles,
+            getPosition: (d: CoverageCircle) => d.position,
+            getFillColor: [0, 0, 0, 0],
+            getLineColor: (d: CoverageCircle) => [d.color[0], d.color[1], d.color[2], 140],
+            getLineWidth: 1,
+            lineWidthUnits: 'pixels' as const,
+            stroked: true,
+            filled: false,
+            getRadius: (d: CoverageCircle) => d.radius,
+            radiusMinPixels: 8,
+            pickable: false,
+            parameters: { depthTest: false },
+        }));
+
+        // ── (c) Interference indicators — same-band overlap ────────────────
+
+        // For each pair of same-band circles that overlap, place a warning dot
+        // at the midpoint with red tint. Only check within same band groups.
+        const bandGroups = new Map<string, CoverageCircle[]>();
+        for (const c of coverageCircles) {
+            if (c.band === 'unassigned') continue;
+            if (!bandGroups.has(c.band)) bandGroups.set(c.band, []);
+            bandGroups.get(c.band)!.push(c);
+        }
+
+        interface InterferencePoint {
+            position: [number, number];
+            radius: number;
+        }
+        const interferencePoints: InterferencePoint[] = [];
+
+        for (const [, group] of bandGroups) {
+            for (let i = 0; i < group.length; i++) {
+                for (let j = i + 1; j < group.length; j++) {
+                    const a = group[i];
+                    const b = group[j];
+                    // Approximate distance in meters using equirectangular projection
+                    const dLon = (b.position[0] - a.position[0]) * Math.PI / 180;
+                    const dLat = (b.position[1] - a.position[1]) * Math.PI / 180;
+                    const midLat = (a.position[1] + b.position[1]) / 2 * Math.PI / 180;
+                    const R = 6371000; // Earth radius in meters
+                    const dx = dLon * Math.cos(midLat) * R;
+                    const dy = dLat * R;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    // Circles overlap if distance < sum of radii
+                    if (dist < a.radius + b.radius) {
+                        const midLon = (a.position[0] + b.position[0]) / 2;
+                        const midLatDeg = (a.position[1] + b.position[1]) / 2;
+                        // Overlap radius = proportional to how much they overlap
+                        const overlap = (a.radius + b.radius - dist) / 2;
+                        interferencePoints.push({
+                            position: [midLon, midLatDeg],
+                            radius: Math.max(overlap * 0.6, 1000),
+                        });
+                    }
+                }
+            }
+        }
+
+        if (interferencePoints.length > 0) {
+            // Red-tinted interference zones
+            layers.push(new ScatterplotLayer({
+                id: 'overlay-spectrum-interference',
+                data: interferencePoints,
+                getPosition: (d: InterferencePoint) => d.position,
+                getFillColor: [255, 60, 60, 60],
+                getRadius: (d: InterferencePoint) => d.radius,
+                radiusMinPixels: 6,
+                pickable: false,
+                parameters: {
+                    depthTest: false,
+                    blend: true,
+                    blendFunc: [WebGLRenderingContext.SRC_ALPHA, WebGLRenderingContext.ONE_MINUS_SRC_ALPHA],
+                },
+            }));
+
+            // Hatched-like ring around interference zones
+            layers.push(new ScatterplotLayer({
+                id: 'overlay-spectrum-interference-ring',
+                data: interferencePoints,
+                getPosition: (d: InterferencePoint) => d.position,
+                getFillColor: [0, 0, 0, 0],
+                getLineColor: [255, 80, 80, 120],
+                getLineWidth: 2,
+                lineWidthUnits: 'pixels' as const,
+                stroked: true,
+                filled: false,
+                getRadius: (d: InterferencePoint) => d.radius,
+                radiusMinPixels: 6,
+                pickable: false,
+                parameters: { depthTest: false },
             }));
         }
     }

@@ -18,41 +18,41 @@ export const EDGE_STYLES: Record<string, { color: [number, number, number]; widt
     // Original 7
     FiberLocal:    { color: [34, 211, 160], width: 2 },
     FiberRegional: { color: [96, 165, 250], width: 3 },
-    FiberNational: { color: [129, 140, 248], width: 5 },
-    Copper:        { color: [217, 119, 6], width: 1 },
-    Microwave:     { color: [34, 211, 238], width: 2 },
+    FiberNational: { color: [129, 140, 248], width: 4 },
+    Copper:        { color: [217, 119, 6], width: 2 },
+    Microwave:     { color: [34, 211, 238], width: 3 },
     Satellite:     { color: [251, 191, 36], width: 3 },
     Submarine:     { color: [59, 130, 246], width: 5 },
 
     // Era 1: Telegraph
-    TelegraphWire:         { color: [139, 115, 85], width: 1 },   // old rope brown
-    SubseaTelegraphCable:  { color: [139, 115, 85], width: 2 },
+    TelegraphWire:         { color: [139, 115, 85], width: 2 },   // old rope brown
+    SubseaTelegraphCable:  { color: [139, 115, 85], width: 5 },   // submarine class
 
     // Era 2: Telephone
-    CopperTrunkLine:       { color: [184, 115, 51], width: 2 },   // copper
-    LongDistanceCopper:    { color: [184, 115, 51], width: 3 },
+    CopperTrunkLine:       { color: [184, 115, 51], width: 2 },   // copper, local/access
+    LongDistanceCopper:    { color: [184, 115, 51], width: 3 },   // metro/regional
 
     // Era 3: Early Digital
-    CoaxialCable:          { color: [105, 105, 105], width: 2 },   // grey
-    MicrowaveLink:         { color: [34, 211, 238], width: 2 },    // same as Microwave
-    EarlySatelliteLink:    { color: [251, 191, 36], width: 2 },    // same as Satellite, thinner
+    CoaxialCable:          { color: [105, 105, 105], width: 2 },   // grey, local/access
+    MicrowaveLink:         { color: [34, 211, 238], width: 3 },    // metro/regional
+    EarlySatelliteLink:    { color: [251, 191, 36], width: 3 },    // satellite class
 
     // Era 4: Internet
-    SubseaFiberCable:      { color: [59, 130, 246], width: 7 },    // deep blue, thick
+    SubseaFiberCable:      { color: [59, 130, 246], width: 5 },    // submarine class
 
     // Era 5: Modern
-    FiberMetro:            { color: [129, 140, 248], width: 3 },    // violet
-    FiberLongHaul:         { color: [99, 102, 241], width: 5 },     // indigo
-    DWDM_Backbone:         { color: [79, 70, 229], width: 7 },      // deep indigo
-    SatelliteLEOLink:      { color: [251, 191, 36], width: 3 },     // gold
-    FeederFiber:           { color: [34, 211, 160], width: 3 },     // emerald, thicker
-    DistributionFiber:     { color: [52, 211, 153], width: 2 },     // lighter emerald
-    DropCable:             { color: [110, 231, 183], width: 1 },    // lightest emerald
+    FiberMetro:            { color: [129, 140, 248], width: 3 },    // metro/regional
+    FiberLongHaul:         { color: [99, 102, 241], width: 4 },     // national/long-haul
+    DWDM_Backbone:         { color: [79, 70, 229], width: 5 },      // backbone
+    SatelliteLEOLink:      { color: [251, 191, 36], width: 3 },     // satellite class
+    FeederFiber:           { color: [34, 211, 160], width: 3 },     // feeder
+    DistributionFiber:     { color: [52, 211, 153], width: 2 },     // distribution
+    DropCable:             { color: [110, 231, 183], width: 1 },    // drop cable, thinnest
 
     // Era 6: Near Future
-    QuantumFiberLink:      { color: [192, 132, 252], width: 6 },    // purple glow
-    TerahertzBeam:         { color: [244, 114, 182], width: 3 },    // pink
-    LaserInterSatelliteLink: { color: [251, 191, 36], width: 4 },   // gold
+    QuantumFiberLink:      { color: [192, 132, 252], width: 6 },    // near-future
+    TerahertzBeam:         { color: [244, 114, 182], width: 6 },    // near-future
+    LaserInterSatelliteLink: { color: [251, 191, 36], width: 6 },   // near-future
 };
 
 /** Night-earth satellite palette for terrain — high contrast against #030810 background. */

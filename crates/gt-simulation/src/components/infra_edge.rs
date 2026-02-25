@@ -32,6 +32,18 @@ pub struct InfraEdge {
     /// How this edge is physically deployed.
     #[serde(default)]
     pub deployment: DeploymentMethod,
+    /// Whether this edge is currently being repaired (standard or emergency).
+    #[serde(default)]
+    pub repairing: bool,
+    /// Ticks remaining until repair completes.
+    #[serde(default)]
+    pub repair_ticks_left: u32,
+    /// Health to restore per tick during active repair.
+    #[serde(default)]
+    pub repair_health_per_tick: f64,
+    /// Last tick this edge was damaged by a disaster (for insurance premium calculation).
+    #[serde(default)]
+    pub last_damage_tick: Option<u64>,
 }
 
 impl InfraEdge {
@@ -129,6 +141,10 @@ impl InfraEdge {
             health: 1.0,
             waypoints: Vec::new(),
             deployment: DeploymentMethod::default(),
+            repairing: false,
+            repair_ticks_left: 0,
+            repair_health_per_tick: 0.0,
+            last_damage_tick: None,
         }
     }
 

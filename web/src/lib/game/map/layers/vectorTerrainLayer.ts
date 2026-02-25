@@ -315,6 +315,14 @@ export function hasVectorTerrainData(): boolean {
     return cachedPolygons !== null && cachedPolygons.length > 0;
 }
 
+/** Get the cached cell polygons for reuse by other layers (e.g. ocean depth). */
+export function getCachedPolygons(): CellPolygon[] | null {
+    return cachedPolygons;
+}
+
+// Re-export CellPolygon type for use by ocean depth layer
+export type { CellPolygon };
+
 /** Dispose cached terrain data to free memory. */
 export function disposeVectorTerrainData(): void {
     cachedPolygons = null;

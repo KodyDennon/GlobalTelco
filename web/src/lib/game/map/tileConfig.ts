@@ -11,6 +11,12 @@ const ESRI_SATELLITE_URL =
 // OpenFreeMap — free vector tiles for borders, labels, roads overlay
 const VECTOR_TILES_URL = 'https://tiles.openfreemap.org/planet';
 
+// AWS Terrain Tiles — free DEM raster tiles (Terrarium encoding), global coverage
+// Used for hillshade relief effect in Real Earth mode.
+// Terrarium encoding: elevation = (R * 256 + G + B / 256) - 32768
+const TERRAIN_DEM_URL =
+    'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
+
 // Shared glyphs URL for text rendering in both styles
 const GLYPHS_URL = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
 
@@ -41,6 +47,15 @@ export const satelliteMapStyle: StyleSpecification = {
             attribution:
                 '<a href="https://openfreemap.org">OpenFreeMap</a> | <a href="https://openstreetmap.org">OSM</a>',
         },
+        'terrain-dem': {
+            type: 'raster-dem',
+            tiles: [TERRAIN_DEM_URL],
+            tileSize: 256,
+            maxzoom: 15,
+            encoding: 'terrarium',
+            attribution:
+                '<a href="https://registry.opendata.aws/terrain-tiles/">AWS Terrain Tiles</a>',
+        },
     },
     layers: [
         // Background — deep space (visible before tiles load)
@@ -59,6 +74,28 @@ export const satelliteMapStyle: StyleSpecification = {
                 'raster-brightness-min': 0.0,
                 'raster-contrast': 0.15,
                 'raster-saturation': -0.3,
+            },
+        },
+        // Hillshade relief — subtle terrain depth from DEM, visible at zoom 4+
+        // Uses AWS Terrain Tiles (Terrarium encoding). Low opacity to add depth
+        // without overwhelming satellite imagery. Dimmed to match night-earth aesthetic.
+        {
+            id: 'hillshade-relief',
+            type: 'hillshade',
+            source: 'terrain-dem',
+            minzoom: 4,
+            paint: {
+                'hillshade-exaggeration': [
+                    'interpolate', ['linear'], ['zoom'],
+                    4, 0.15,
+                    6, 0.25,
+                    10, 0.3,
+                ],
+                'hillshade-shadow-color': 'rgba(0, 0, 10, 0.6)',
+                'hillshade-highlight-color': 'rgba(180, 190, 210, 0.3)',
+                'hillshade-accent-color': 'rgba(0, 0, 10, 0.4)',
+                'hillshade-illumination-direction': 315,
+                'hillshade-illumination-anchor': 'viewport',
             },
         },
         // Country boundaries — bold at low zoom, subtle at high zoom

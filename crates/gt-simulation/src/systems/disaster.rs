@@ -3,8 +3,14 @@
 //! Disasters now damage both nodes AND edges. When critical infrastructure
 //! is damaged, traffic reroutes through alternate paths. If no alternate
 //! path exists, traffic is dropped and affected cities lose satisfaction.
+//!
+//! Deployment vulnerability: aerial, underground, and submarine edges take
+//! different amounts of damage depending on the disaster type. See
+//! `deployment_vulnerability_multiplier` for the full matrix.
 
+use crate::components::infra_edge::DeploymentMethod;
 use crate::world::GameWorld;
+use gt_common::types::EdgeType;
 
 const DISASTER_TYPES: &[(&str, f64)] = &[
     ("Earthquake", 0.15),
@@ -45,7 +51,7 @@ pub fn run(world: &mut GameWorld) {
         let disaster_name = pick_disaster_type(world);
 
         let (affected_node_count, affected_edge_count) =
-            apply_disaster_damage(world, &cells, severity, tick);
+            apply_disaster_damage(world, &cells, severity, tick, disaster_name);
 
         apply_population_displacement(world, &cells, severity);
 
@@ -78,6 +84,87 @@ fn pick_disaster_type(world: &mut GameWorld) -> &'static str {
     "Earthquake"
 }
 
+// ─── Deployment Vulnerability ─────────────────────────────────────────────────
+
+/// Categorize a disaster type string into a canonical disaster category.
+fn disaster_category(disaster_type: &str) -> &'static str {
+    let lower = disaster_type.to_lowercase();
+    if lower.contains("ice") || lower.contains("blizzard") {
+        "ice_storm"
+    } else if lower.contains("storm") || lower.contains("hurricane")
+        || lower.contains("typhoon") || lower.contains("cyclone")
+    {
+        "storm"
+    } else if lower.contains("earthquake") {
+        "earthquake"
+    } else if lower.contains("flood") {
+        "flood"
+    } else if lower.contains("landslide") {
+        "landslide"
+    } else if lower.contains("heat") {
+        "heat_wave"
+    } else {
+        // CyberAttack, PoliticalUnrest, RegulatoryChange, EquipmentFailure, etc.
+        // These don't have deployment-specific modifiers — use 1.0 (neutral).
+        "other"
+    }
+}
+
+/// Returns true if the edge type represents submarine/subsea infrastructure.
+fn is_submarine_edge(edge_type: &EdgeType) -> bool {
+    matches!(
+        edge_type,
+        EdgeType::Submarine | EdgeType::SubseaTelegraphCable | EdgeType::SubseaFiberCable
+    )
+}
+
+/// Damage multiplier based on deployment method and disaster category.
+///
+/// Aerial edges are highly vulnerable to storms/ice but resilient to earthquakes.
+/// Underground edges are resilient to weather but vulnerable to earthquakes/flooding.
+/// Submarine edges are mainly vulnerable to earthquakes (seabed movement).
+fn deployment_vulnerability_multiplier(
+    deployment: DeploymentMethod,
+    edge_type: &EdgeType,
+    disaster_type: &str,
+) -> f64 {
+    let category = disaster_category(disaster_type);
+
+    // Submarine edges override deployment method — cable ships, seabed environment
+    if is_submarine_edge(edge_type) {
+        return match category {
+            "earthquake" => 1.5,
+            "storm" => 0.3,
+            "ice_storm" => 0.1,
+            "flood" => 0.1,
+            "landslide" => 0.1,
+            "heat_wave" => 0.1,
+            _ => 0.1,
+        };
+    }
+
+    match deployment {
+        DeploymentMethod::Aerial => match category {
+            "storm" => 1.5,
+            "ice_storm" => 1.8,
+            "earthquake" => 0.3,
+            "flood" => 0.7,
+            "landslide" => 1.0,
+            "heat_wave" => 0.2,
+            _ => 1.0,
+        },
+        DeploymentMethod::Underground => match category {
+            "storm" => 0.2,
+            "ice_storm" => 0.1,
+            "earthquake" => 1.5,
+            "flood" => 1.5,
+            "landslide" => 1.2,
+            "heat_wave" => 0.1,
+            _ => 1.0,
+        },
+    }
+}
+
 // ─── Damage Application ───────────────────────────────────────────────────────
 
 fn apply_disaster_damage(
@@ -85,6 +172,7 @@ fn apply_disaster_damage(
     cells: &[usize],
     severity: f64,
     tick: u64,
+    disaster_type: &str,
 ) -> (u32, u32) {
     // Damage nodes
     let mut affected_nodes: Vec<u64> = world
@@ -106,8 +194,8 @@ fn apply_disaster_damage(
         apply_insurance_payout(world, node_id, damage, tick);
     }
 
-    // Damage edges in affected region (50% chance per edge, severity * 0.2)
-    let mut affected_edges: Vec<u64> = world
+    // Damage edges in affected region (50% chance per edge, deployment-modified damage)
+    let mut affected_edges: Vec<(u64, DeploymentMethod, EdgeType)> = world
         .infra_edges
         .iter()
         .filter(|(_, edge)| {
@@ -116,22 +204,27 @@ fn apply_disaster_damage(
             src_cell.map(|c| cells.contains(&c)).unwrap_or(false)
                 || dst_cell.map(|c| cells.contains(&c)).unwrap_or(false)
         })
-        .map(|(&id, _)| id)
+        .map(|(&id, edge)| (id, edge.deployment, edge.edge_type))
         .collect();
-    affected_edges.sort_unstable();
+    affected_edges.sort_unstable_by_key(|t| t.0);
 
     let mut edge_count: u32 = 0;
-    for &edge_id in &affected_edges {
+    for &(edge_id, deployment, edge_type) in &affected_edges {
         // 50% chance to damage each edge
         let roll = world.deterministic_random();
         if roll > 0.5 {
             continue;
         }
 
-        let damage = severity * 0.2;
-        if let Some(edge) = world.infra_edges.get_mut(&edge_id) {
-            edge.health = (edge.health - damage).max(0.0);
-            edge_count += 1;
+        let vuln = deployment_vulnerability_multiplier(deployment, &edge_type, disaster_type);
+        let damage = severity * 0.2 * vuln;
+
+        if damage > 0.0 {
+            if let Some(edge) = world.infra_edges.get_mut(&edge_id) {
+                edge.health = (edge.health - damage).max(0.0);
+                edge.last_damage_tick = Some(tick);
+                edge_count += 1;
+            }
         }
     }
 

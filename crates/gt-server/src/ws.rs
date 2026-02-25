@@ -43,6 +43,7 @@ fn command_target_corp(command: &Command) -> Option<EntityId> {
         | Command::UpgradeNode { .. }
         | Command::DecommissionNode { .. }
         | Command::RepairNode { .. }
+        | Command::RepairEdge { .. }
         | Command::EmergencyRepair { .. }
         | Command::FireEmployee { .. }
         | Command::AssignTeam { .. }
@@ -63,6 +64,8 @@ fn command_target_corp(command: &Command) -> Option<EntityId> {
         | Command::RespondCoOwnership { .. }
         | Command::ProposeBuyout { .. }
         | Command::VoteUpgrade { .. }
+        | Command::UpdateEdgeWaypoints { .. }
+        | Command::BidSpectrum { .. }
         | Command::SetSpeed(_)
         | Command::TogglePause
         | Command::SaveGame { .. }
@@ -163,7 +166,9 @@ fn categorize_command(command: &Command) -> CommandCategory {
         | Command::UpgradeNode { .. }
         | Command::DecommissionNode { .. }
         | Command::RepairNode { .. }
-        | Command::EmergencyRepair { .. } => CommandCategory::Build,
+        | Command::RepairEdge { .. }
+        | Command::EmergencyRepair { .. }
+        | Command::UpdateEdgeWaypoints { .. } => CommandCategory::Build,
 
         Command::TakeLoan { .. }
         | Command::RepayLoan { .. }
