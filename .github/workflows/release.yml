@@ -3,8 +3,10 @@ name: Release
 on:
   push:
     tags:
-      - 'app-v*'
+      - 'engine-v*'
       - 'server-v*'
+      - 'web-v*'
+      - 'desktop-v*'
 
 permissions:
   contents: write
@@ -15,15 +17,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Read VERSION
-        id: version
-        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+      - name: Extract component and version from tag
+        id: meta
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          COMPONENT="${TAG%%-v*}"
+          VERSION="${TAG#*-v}"
+          echo "component=${COMPONENT}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Component: ${COMPONENT}, Version: ${VERSION}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: "GlobalTelco ${{ github.ref_name }}"
+          name: "GlobalTelco ${{ steps.meta.outputs.component }} v${{ steps.meta.outputs.version }}"
           draft: true
           generate_release_notes: true
         env:

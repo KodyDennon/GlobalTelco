@@ -58,3 +58,6 @@ coverage/
 # OS files
 Thumbs.db
 desktop.ini
+
+# Go release manager binary
+/gt
