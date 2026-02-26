@@ -67,6 +67,8 @@
 		const notifs = $notifications;
 		const currentTick = $worldInfo.tick;
 		const regionList = $regions;
+		let updated = false;
+		let currentDisasters = untrack(() => activeDisasters);
 
 		// Add new disasters from recent notifications
 		for (const notif of notifs) {
@@ -84,7 +86,7 @@
 			const lat = region?.center_lat ?? 0;
 			const regionName = region?.name ?? `Region ${data.region}`;
 
-			activeDisasters = [...activeDisasters, {
+			currentDisasters = [...currentDisasters, {
 				id,
 				disasterType: (data.disaster_type as string) ?? 'Unknown',
 				lon,
@@ -95,17 +97,24 @@
 				regionId: (data.region as number) ?? 0,
 				affectedCount: (data.affected_nodes as number) ?? 0,
 			}];
+			updated = true;
 		}
 
 		// Prune expired disasters
-		activeDisasters = activeDisasters.filter(
+		const initialCount = currentDisasters.length;
+		currentDisasters = currentDisasters.filter(
 			d => (currentTick - d.startTick) < DISASTER_DISPLAY_DURATION
 		);
+		if (currentDisasters.length !== initialCount) updated = true;
 
-		// Dispatch to MapView for weather layer + infra layer visualization
-		window.dispatchEvent(new CustomEvent('active-disasters-update', {
-			detail: activeDisasters,
-		}));
+		if (updated) {
+			activeDisasters = currentDisasters;
+
+			// Dispatch to MapView for weather layer + infra layer visualization
+			window.dispatchEvent(new CustomEvent('active-disasters-update', {
+				detail: activeDisasters,
+			}));
+		}
 	});
 
 	// ── Disaster forecast tracking ────────────────────────────────────────────
