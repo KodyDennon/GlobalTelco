@@ -1,19 +1,43 @@
 <script lang="ts">
-	import { chatMessages } from '$lib/stores/multiplayerState';
+	import { chatMessages, playerUsername } from '$lib/stores/multiplayerState';
 	import { tr } from '$lib/i18n/index';
 	import * as wsClient from '$lib/multiplayer/WebSocketClient';
 	import { tooltip } from '$lib/ui/tooltip';
+	import { get } from 'svelte/store';
 
 	let collapsed = $state(false);
 	let inputText = $state('');
 	let chatContainer: HTMLDivElement | undefined = $state();
+	let pendingMessages: Array<{ text: string; timestamp: number }> = $state([]);
 
 	function sendMessage() {
 		const text = inputText.trim();
 		if (!text) return;
+
+		// Show message optimistically as pending
+		const timestamp = Math.floor(Date.now() / 1000);
+		pendingMessages = [...pendingMessages, { text, timestamp }];
+
 		wsClient.sendChat(text);
 		inputText = '';
+
+		// Remove pending message after 5 seconds (server broadcast should arrive by then)
+		setTimeout(() => {
+			pendingMessages = pendingMessages.filter(m => m.timestamp !== timestamp);
+		}, 5000);
 	}
+
+	// Remove pending messages when matching broadcast arrives
+	$effect(() => {
+		const msgs = $chatMessages;
+		const username = get(playerUsername);
+		if (msgs.length > 0 && username && pendingMessages.length > 0) {
+			const latest = msgs[msgs.length - 1];
+			if (latest.sender === username || latest.sender === `[Spectator] ${username}`) {
+				pendingMessages = pendingMessages.filter(p => p.text !== latest.message);
+			}
+		}
+	});
 
 	function handleKeyDown(e: KeyboardEvent) {
 		if (e.key === 'Enter') {
@@ -24,7 +48,7 @@
 
 	$effect(() => {
 		// Auto-scroll to bottom when new messages arrive
-		if (chatContainer && $chatMessages.length > 0) {
+		if (chatContainer && ($chatMessages.length > 0 || pendingMessages.length > 0)) {
 			chatContainer.scrollTop = chatContainer.scrollHeight;
 		}
 	});
@@ -44,7 +68,13 @@
 					<span class="text">{msg.message}</span>
 				</div>
 			{/each}
-			{#if $chatMessages.length === 0}
+			{#each pendingMessages as pending}
+				<div class="chat-msg pending">
+					<span class="sender">You:</span>
+					<span class="text">{pending.text}</span>
+				</div>
+			{/each}
+			{#if $chatMessages.length === 0 && pendingMessages.length === 0}
 				<div class="chat-empty">{$tr('game.no_messages')}</div>
 			{/if}
 		</div>
@@ -112,6 +142,11 @@
 		margin-bottom: 4px;
 		color: #d1d5db;
 		word-break: break-word;
+	}
+
+	.chat-msg.pending {
+		opacity: 0.5;
+		font-style: italic;
 	}
 
 	.sender {

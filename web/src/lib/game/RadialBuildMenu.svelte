@@ -96,6 +96,23 @@
 
 	let hoveredCategory: string | null = $state(null);
 	let buildOptions: BuildOption[] = $state([]);
+	let closeTimer: ReturnType<typeof setTimeout> | null = null;
+
+	/** Delay clearing hoveredCategory so the flyout has time to receive mouseenter */
+	function scheduleClose() {
+		closeTimer = setTimeout(() => {
+			hoveredCategory = null;
+			closeTimer = null;
+		}, 150);
+	}
+
+	/** Cancel any pending close (mouse entered flyout or another segment) */
+	function cancelClose() {
+		if (closeTimer !== null) {
+			clearTimeout(closeTimer);
+			closeTimer = null;
+		}
+	}
 
 	// Load build options when radial menu opens at a geo position
 	$effect(() => {
@@ -137,6 +154,7 @@
 	}
 
 	function close() {
+		cancelClose();
 		radialMenuOpen.set(false);
 		hoveredCategory = null;
 	}
@@ -249,8 +267,8 @@
 					<g
 						class="segment"
 						class:hovered={hoveredCategory === cat.key}
-						onmouseenter={() => hoveredCategory = cat.key}
-						onmouseleave={() => hoveredCategory = null}
+						onmouseenter={() => { cancelClose(); hoveredCategory = cat.key; }}
+						onmouseleave={() => scheduleClose()}
 						onclick={() => { /* handled by sub-menu items */ }}
 					>
 						<path
@@ -287,7 +305,8 @@
 				<div
 					class="flyout"
 					style="transform: translate({screenFlyout.x}px, {screenFlyout.y}px);"
-					onmouseenter={() => hoveredCategory = hoveredCategoryData?.key ?? null}
+					onmouseenter={() => { cancelClose(); hoveredCategory = hoveredCategoryData?.key ?? null; }}
+					onmouseleave={() => scheduleClose()}
 				>
 					<div class="flyout-header" style="border-color: {hoveredCategoryData.color}">
 						{hoveredCategoryData.label}

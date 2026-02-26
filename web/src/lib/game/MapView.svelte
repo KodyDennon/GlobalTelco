@@ -24,6 +24,8 @@
 		radialMenuGeoPosition,
 		selectedBuildItem,
 		buildCategory,
+		activePanelGroup,
+		closePanelGroup,
 	} from "$lib/stores/uiState";
 	import * as bridge from "$lib/wasm/bridge";
 	import { gameCommand } from '$lib/game/commandRouter';
@@ -103,6 +105,11 @@
 	}
 
 	function handleMapClicked(e: CustomEvent) {
+		// Close any open floating panel when clicking the map
+		if (get(activePanelGroup) !== 'none') {
+			closePanelGroup();
+		}
+
 		const currentBuildMode = get(buildMode);
 		const currentBuildItem = get(selectedBuildItem);
 		const currentBuildCat = get(buildCategory);

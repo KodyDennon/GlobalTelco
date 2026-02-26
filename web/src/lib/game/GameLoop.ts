@@ -470,6 +470,21 @@ export async function initMultiplayer(saveData: string) {
 				{ tick: effective_tick || 0, event: { GlobalNotification: { message: error, level: 'warning' } } },
 				...n
 			].slice(0, 50));
+			// Exit placement mode on build failure (e.g., insufficient funds)
+			if (get(buildMode)) {
+				buildMode.set(null);
+				buildMenuLocation.set(null);
+				buildEdgeSource.set(null);
+			}
+		}
+		// On successful build, refresh corp data to update HUD counters immediately
+		if (success && entity_id != null) {
+			const info = bridge.getWorldInfo();
+			if (info.player_corp_id > 0) {
+				const corpData = bridge.getCorporationData(info.player_corp_id);
+				playerCorp.set(corpData);
+			}
+			window.dispatchEvent(new CustomEvent('map-dirty'));
 		}
 	};
 

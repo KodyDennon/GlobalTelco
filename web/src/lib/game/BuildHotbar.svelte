@@ -9,6 +9,9 @@
 	} from '$lib/stores/uiState';
 	import type { HotbarSlot } from '$lib/stores/uiState';
 	import { tooltip } from '$lib/ui/tooltip';
+	import { playerCorp, notifications } from '$lib/stores/gameState';
+	import * as bridge from '$lib/wasm/bridge';
+	import { get } from 'svelte/store';
 
 	// Display names for item types
 	const ITEM_NAMES: Record<string, string> = {
@@ -110,6 +113,18 @@
 		dragOverIndex = null;
 	}
 
+	/** Check if player can afford the cheapest build option for this node type. */
+	function canAfford(nodeType: string): boolean {
+		const corp = get(playerCorp);
+		if (!corp) return false;
+		// Get build options at center of current view (approximate)
+		const options = bridge.getBuildableNodes(0, 0);
+		const opt = options.find(o => o.node_type === nodeType);
+		if (opt) return opt.affordable;
+		// If not in build options, check raw cost estimate
+		return corp.cash > 0;
+	}
+
 	function activateSlot(index: number) {
 		const slot = $hotbarSlots[index];
 		if (!slot || !slot.itemType || !slot.category) return;
@@ -117,6 +132,16 @@
 		// Toggle off if already active
 		if ($selectedBuildItem === slot.itemType && $buildCategory === slot.category) {
 			exitPlacementMode();
+			return;
+		}
+
+		// Affordability check for node placements
+		if (slot.category === 'node' && !canAfford(slot.itemType)) {
+			const info = bridge.getWorldInfo();
+			notifications.update((n) => [
+				{ tick: info.tick, event: { GlobalNotification: { message: 'Insufficient funds', level: 'warning' } } },
+				...n
+			].slice(0, 50));
 			return;
 		}
 

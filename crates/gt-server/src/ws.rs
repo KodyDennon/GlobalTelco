@@ -1226,26 +1226,50 @@ async fn handle_client_message(
                 }
             };
 
-            if let Some(p) = player {
-                if let Some(world_id) = &p.world_id {
-                    if let Some(world) = state.get_world(world_id).await {
-                        let sender_name = if p.is_spectator {
-                            format!("[Spectator] {}", p.username)
-                        } else {
-                            p.username.clone()
-                        };
-                        let _ = world.broadcast_tx.send(ServerMessage::ChatBroadcast {
-                            sender: sender_name,
-                            message: sanitized,
-                            timestamp: std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs(),
-                        });
-                    }
+            let p = match player {
+                Some(p) => p,
+                None => {
+                    return Some(ServerMessage::Error {
+                        code: ErrorCode::NotAuthenticated,
+                        message: "Not authenticated".to_string(),
+                    });
                 }
-            }
-            None // No direct response for chat, it's broadcast
+            };
+
+            let world_id = match &p.world_id {
+                Some(id) => id.clone(),
+                None => {
+                    return Some(ServerMessage::Error {
+                        code: ErrorCode::InvalidCommand,
+                        message: "Not in a world".to_string(),
+                    });
+                }
+            };
+
+            let world = match state.get_world(&world_id).await {
+                Some(w) => w,
+                None => {
+                    return Some(ServerMessage::Error {
+                        code: ErrorCode::InvalidCommand,
+                        message: "World not found".to_string(),
+                    });
+                }
+            };
+
+            let sender_name = if p.is_spectator {
+                format!("[Spectator] {}", p.username)
+            } else {
+                p.username.clone()
+            };
+            let _ = world.broadcast_tx.send(ServerMessage::ChatBroadcast {
+                sender: sender_name,
+                message: sanitized,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            });
+            None // Chat is broadcast to all, sender sees it via broadcast
         }
 
         ClientMessage::UploadSave {

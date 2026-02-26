@@ -35,6 +35,9 @@ export function createLabelLayers(opts: {
             getAlignmentBaseline: 'bottom',
             getPixelOffset: [0, -10],
             fontFamily: 'Inter, sans-serif',
+            outlineWidth: 2,
+            outlineColor: [0, 0, 0, 200],
+            fontSettings: { sdf: true, buffer: 8 },
             parameters: { depthTest: false }
         }));
     }
@@ -51,6 +54,9 @@ export function createLabelLayers(opts: {
             getAlignmentBaseline: 'center',
             fontFamily: 'Inter, sans-serif',
             fontWeight: 'bold',
+            outlineWidth: 3,
+            outlineColor: [0, 0, 0, 160],
+            fontSettings: { sdf: true, buffer: 8 },
             parameters: { depthTest: false }
         }));
     }

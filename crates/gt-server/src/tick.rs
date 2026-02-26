@@ -16,7 +16,7 @@ use crate::state::SharedDb;
 fn build_corp_delta(w: &GameWorld, corp_id: EntityId) -> Option<CorpDelta> {
     let fin = w.financials.get(&corp_id)?;
     let node_ids = w.corp_infra_nodes.get(&corp_id);
-    let node_count = node_ids.map(|n| n.len() as u32);
+    let node_count = Some(node_ids.map(|n| n.len()).unwrap_or(0) as u32);
 
     // Compute operational stats across all nodes
     let (avg_util, avg_hp, total_tp) = if let Some(ids) = node_ids {
