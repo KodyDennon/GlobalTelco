@@ -70,7 +70,12 @@
 		"preview_ocean": "Ocean",
 		"preview_unavailable": "World preview not available",
 		"preview_placeholder": "Adjust settings and click Preview to generate a world preview",
-		"randomize_seed": "Randomize"
+		"randomize_seed": "Randomize",
+		"disaster_severity": "Disaster Severity",
+		"disaster_severity_low": "Low",
+		"disaster_severity_moderate": "Moderate",
+		"disaster_severity_high": "High",
+		"disaster_severity_extreme": "Extreme"
 	},
 	"multiplayer": {
 		"title": "Multiplayer",

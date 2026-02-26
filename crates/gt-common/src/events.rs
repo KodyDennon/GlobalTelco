@@ -243,6 +243,79 @@ pub enum GameEvent {
         price: Money,
     },
 
+    // Alliance (Phase 5.1)
+    AllianceFormed {
+        alliance_id: EntityId,
+        members: Vec<EntityId>,
+    },
+    AllianceDissolved {
+        alliance_id: EntityId,
+        reason: String,
+    },
+
+    // Legal (Phase 5.2)
+    LawsuitFiled {
+        lawsuit_id: EntityId,
+        plaintiff: EntityId,
+        defendant: EntityId,
+    },
+    LawsuitResolved {
+        lawsuit_id: EntityId,
+        plaintiff: EntityId,
+        defendant: EntityId,
+        outcome: String,
+    },
+    SettlementReached {
+        lawsuit_id: EntityId,
+        plaintiff: EntityId,
+        defendant: EntityId,
+        amount: Money,
+    },
+
+    // Patents & Licensing (Phase 5.3)
+    PatentFiled {
+        patent_id: EntityId,
+        tech_id: EntityId,
+        holder: EntityId,
+    },
+    LicenseGranted {
+        license_id: EntityId,
+        patent_id: EntityId,
+        licensee: EntityId,
+        price: Money,
+    },
+    LicenseRevoked {
+        license_id: EntityId,
+        patent_id: EntityId,
+        licensee: EntityId,
+    },
+    IndependentResearchStarted {
+        corporation: EntityId,
+        tech_id: EntityId,
+        cost_multiplier: f64,
+    },
+
+    // Government Grants (Phase 5.4)
+    GrantAvailable {
+        grant_id: EntityId,
+        region: EntityId,
+        reward: Money,
+    },
+    GrantAwarded {
+        grant_id: EntityId,
+        corporation: EntityId,
+        region: EntityId,
+    },
+    GrantCompleted {
+        grant_id: EntityId,
+        corporation: EntityId,
+        reward: Money,
+    },
+    GrantExpired {
+        grant_id: EntityId,
+        region: EntityId,
+    },
+
     // Spectrum & Frequency Management (Phase 8)
     SpectrumAuctionStarted {
         band: String,
@@ -283,6 +356,19 @@ pub enum GameEvent {
     // Cable Ship
     CableShipPurchased {
         corp: EntityId,
+    },
+
+    // Regional Pricing
+    PricingChanged {
+        corporation: EntityId,
+        region: EntityId,
+        tier: String,
+    },
+
+    // Maintenance Priority
+    MaintenancePrioritySet {
+        entity: EntityId,
+        priority: String,
     },
 
     // Achievements & Victory
@@ -386,6 +472,15 @@ impl GameEvent {
             | GameEvent::UpgradeVoteRejected { .. }
             | GameEvent::BuyoutCompleted { .. } => vec![],
 
+            // Alliance — relevant to all members
+            GameEvent::AllianceFormed { members, .. } => members.clone(),
+            GameEvent::AllianceDissolved { .. } => vec![],
+
+            // Legal — relevant to both parties
+            GameEvent::LawsuitFiled { plaintiff, defendant, .. }
+            | GameEvent::LawsuitResolved { plaintiff, defendant, .. }
+            | GameEvent::SettlementReached { plaintiff, defendant, .. } => vec![*plaintiff, *defendant],
+
             // Spectrum — global (auctions are public)
             GameEvent::SpectrumAuctionStarted { .. }
             | GameEvent::SpectrumAuctionWon { .. } => vec![],
@@ -398,6 +493,12 @@ impl GameEvent {
 
             // Cable Ship — private to the corp
             GameEvent::CableShipPurchased { corp } => vec![*corp],
+
+            // Pricing — private
+            GameEvent::PricingChanged { corporation, .. } => vec![*corporation],
+
+            // Maintenance — private
+            GameEvent::MaintenancePrioritySet { .. } => vec![],
 
             // Achievements — private
             GameEvent::AchievementUnlocked { corporation, .. }

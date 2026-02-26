@@ -285,6 +285,7 @@
 						type="password"
 						class="input-field"
 						placeholder="Enter admin key..."
+						autocomplete="current-password"
 						bind:value={keyInput}
 						disabled={authLoading}
 					/>

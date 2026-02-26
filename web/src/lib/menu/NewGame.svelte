@@ -15,6 +15,7 @@
 	let era = $state('Internet');
 	let difficulty = $state('Normal');
 	let aiCount = $state(4);
+	let disasterSeverity = $state(5);
 	let seed = $state(Math.floor(Math.random() * 999999));
 
 	// ── Procgen settings ────────────────────────────────────────────────────
@@ -31,6 +32,30 @@
 	let previewLoading = $state(false);
 
 	let isRealEarth = $derived(preset === 'real_earth');
+
+	/** Default disaster severity per difficulty preset. */
+	const DIFFICULTY_DISASTER: Record<string, number> = {
+		Easy: 3, Normal: 5, Hard: 7, Expert: 9,
+	};
+
+	// Sync disaster severity when difficulty changes
+	$effect(() => {
+		disasterSeverity = DIFFICULTY_DISASTER[difficulty] ?? 5;
+	});
+
+	/** Map slider value (1-10) to disaster_frequency for the sim engine.
+	 *  1=0.1 (rare), 5=1.0 (normal), 10=3.0 (extreme). Uses exponential curve. */
+	let disasterFrequency = $derived(
+		+(0.1 * Math.pow(10, (disasterSeverity - 1) / 9 * Math.log10(30))).toFixed(2)
+	);
+
+	/** Human-readable label for the current disaster severity. */
+	let disasterLabel = $derived(
+		disasterSeverity <= 2 ? $tr('menu.disaster_severity_low') :
+		disasterSeverity <= 5 ? $tr('menu.disaster_severity_moderate') :
+		disasterSeverity <= 8 ? $tr('menu.disaster_severity_high') :
+		$tr('menu.disaster_severity_extreme')
+	);
 
 	// ── Preset definitions ──────────────────────────────────────────────────
 	const PRESETS: Record<
@@ -124,6 +149,7 @@
 			difficulty,
 			map_size: mapSize,
 			ai_corporations: aiCount,
+			disaster_frequency: disasterFrequency,
 			use_real_earth: isRealEarth,
 			corp_name: corpName || 'Player Corp',
 			continent_count: continentCount,
@@ -238,6 +264,23 @@
 						/>
 						<span class="slider-value">{aiCount}</span>
 					</div>
+				</div>
+			</div>
+
+			<div class="form-group">
+				<label for="disaster-severity">
+					{$tr('menu.disaster_severity')}: {disasterSeverity}
+					<span class="disaster-label">{disasterLabel}</span>
+				</label>
+				<div class="slider-row">
+					<input
+						id="disaster-severity"
+						type="range"
+						min="1"
+						max="10"
+						bind:value={disasterSeverity}
+					/>
+					<span class="slider-value">{disasterSeverity}</span>
 				</div>
 			</div>
 
@@ -430,6 +473,10 @@
 					<span class="summary-value">{aiCount}</span>
 				</div>
 				<div class="summary-row">
+					<span class="summary-label">{$tr('menu.disaster_severity')}</span>
+					<span class="summary-value">{disasterSeverity}/10 ({disasterLabel})</span>
+				</div>
+				<div class="summary-row">
 					<span class="summary-label">{$tr('menu.world_seed')}</span>
 					<span class="summary-value mono">{seed}</span>
 				</div>
@@ -610,6 +657,13 @@
 		color: #d1d5db;
 		min-width: 24px;
 		text-align: right;
+	}
+
+	.disaster-label {
+		margin-left: 6px;
+		font-size: 11px;
+		color: #6b7280;
+		font-weight: 400;
 	}
 
 	.seed-row {

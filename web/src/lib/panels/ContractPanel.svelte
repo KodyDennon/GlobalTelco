@@ -9,7 +9,18 @@
 	let contracts: ContractInfo[] = $state([]);
 	let showProposeForm = $state(false);
 	let proposeTarget = $state(0);
-	let proposeTerms = $state('bandwidth:1000,price:5000,duration:100');
+
+	// Structured contract term fields (replacing hardcoded string)
+	let proposeBandwidth = $state(1000);
+	let proposePrice = $state(5000);
+	let proposeDuration = $state(100);
+
+	// Validation
+	let bandwidthValid = $derived(proposeBandwidth >= 100 && proposeBandwidth <= 100000);
+	let priceValid = $derived(proposePrice >= 100 && proposePrice <= 10000000);
+	let durationValid = $derived(proposeDuration >= 10 && proposeDuration <= 1000);
+	let formValid = $derived(proposeTarget > 0 && bandwidthValid && priceValid && durationValid);
+	let pricePerUnit = $derived(proposeBandwidth > 0 ? proposePrice / proposeBandwidth : 0);
 
 	$effect(() => {
 		const corp = $playerCorp;
@@ -30,12 +41,16 @@
 
 	function proposeContract() {
 		const corp = $playerCorp;
-		if (!corp || !proposeTarget) return;
+		if (!corp || !formValid) return;
+		const terms = `bandwidth:${proposeBandwidth},price:${proposePrice},duration:${proposeDuration}`;
 		gameCommand({
-			ProposeContract: { from: corp.id, to: proposeTarget, terms: proposeTerms }
+			ProposeContract: { from: corp.id, to: proposeTarget, terms }
 		});
 		showProposeForm = false;
 		proposeTarget = 0;
+		proposeBandwidth = 1000;
+		proposePrice = 5000;
+		proposeDuration = 100;
 		if (corp) contracts = bridge.getContracts(corp.id);
 	}
 
@@ -80,8 +95,65 @@
 						<option value={corp.id}>{corp.name}</option>
 					{/each}
 				</select>
-				<input type="text" bind:value={proposeTerms} placeholder="bandwidth:1000,price:5000,duration:100" />
-				<button class="confirm-btn" onclick={proposeContract} disabled={!proposeTarget} use:tooltip={'Send contract proposal\nThe target corporation will accept or reject based on their strategy'}>Send Proposal</button>
+
+				<div class="form-field">
+					<label class="field-label">
+						Bandwidth
+						<span class="field-value mono">{proposeBandwidth.toLocaleString()}</span>
+					</label>
+					<input type="range" min={100} max={100000} step={100} bind:value={proposeBandwidth} />
+					{#if !bandwidthValid}
+						<span class="field-error">100 - 100,000</span>
+					{/if}
+				</div>
+
+				<div class="form-field">
+					<label class="field-label">
+						Price per tick
+						<span class="field-value mono">{formatMoney(proposePrice)}</span>
+					</label>
+					<input type="range" min={100} max={10000000} step={100} bind:value={proposePrice} />
+					{#if !priceValid}
+						<span class="field-error">$100 - $10M</span>
+					{/if}
+				</div>
+
+				<div class="form-field">
+					<label class="field-label">
+						Duration (ticks)
+						<span class="field-value mono">{proposeDuration}</span>
+					</label>
+					<input type="range" min={10} max={1000} step={10} bind:value={proposeDuration} />
+					{#if !durationValid}
+						<span class="field-error">10 - 1,000 ticks</span>
+					{/if}
+				</div>
+
+				<div class="contract-preview">
+					<span class="preview-label">Preview</span>
+					<div class="preview-row">
+						<span class="muted">Bandwidth:</span>
+						<span class="mono">{proposeBandwidth.toLocaleString()}</span>
+					</div>
+					<div class="preview-row">
+						<span class="muted">Price/tick:</span>
+						<span class="mono green">{formatMoney(proposePrice)}</span>
+					</div>
+					<div class="preview-row">
+						<span class="muted">Duration:</span>
+						<span class="mono">{proposeDuration} ticks</span>
+					</div>
+					<div class="preview-row">
+						<span class="muted">Total value:</span>
+						<span class="mono green">{formatMoney(proposePrice * proposeDuration)}</span>
+					</div>
+					<div class="preview-row">
+						<span class="muted">Price/unit:</span>
+						<span class="mono">{formatMoney(pricePerUnit)}/bw</span>
+					</div>
+				</div>
+
+				<button class="confirm-btn" onclick={proposeContract} disabled={!formValid} use:tooltip={'Send contract proposal\nThe target corporation will accept or reject based on their strategy'}>Send Proposal</button>
 			</div>
 		{/if}
 	</div>

@@ -163,6 +163,59 @@ pub enum Command {
         lobby_id: EntityId,
     },
 
+    // Alliance (Phase 5.1)
+    ProposeAlliance {
+        target_corp: EntityId,
+        name: String,
+        revenue_share: f64,
+    },
+    AcceptAlliance {
+        alliance_id: EntityId,
+    },
+    DissolveAlliance {
+        alliance_id: EntityId,
+    },
+
+    // Legal (Phase 5.2)
+    FileLawsuit {
+        defendant: EntityId,
+        lawsuit_type: String,
+        damages: Money,
+    },
+    SettleLawsuit {
+        lawsuit_id: EntityId,
+    },
+    DefendLawsuit {
+        lawsuit_id: EntityId,
+    },
+
+    // Patents & Licensing (Phase 5.3)
+    FilePatent {
+        tech_id: EntityId,
+    },
+    RequestLicense {
+        patent_id: EntityId,
+    },
+    SetLicensePrice {
+        patent_id: EntityId,
+        price: Money,
+        license_type: String, // "Permanent", "Royalty", "PerUnit", "Lease"
+    },
+    RevokeLicense {
+        license_id: EntityId,
+    },
+    StartIndependentResearch {
+        tech_id: EntityId,
+    },
+
+    // Government Grants (Phase 5.4)
+    BidForGrant {
+        grant_id: EntityId,
+    },
+    CompleteGrant {
+        grant_id: EntityId,
+    },
+
     // Cooperative Infrastructure
     ProposeCoOwnership {
         node: EntityId,
@@ -204,6 +257,20 @@ pub enum Command {
 
     // Cable Ship — purchase a cable ship for submarine cable construction
     PurchaseCableShip,
+
+    // Regional Pricing (Phase 5.5)
+    SetRegionPricing {
+        region: EntityId,
+        tier: String, // "Budget", "Standard", "Premium"
+        price_per_unit: Money,
+    },
+
+    // Maintenance Priority (Phase 5.6)
+    SetMaintenancePriority {
+        entity: EntityId,
+        priority: String, // "Critical", "Standard", "Low", "Deferred"
+        auto_repair: bool,
+    },
 
     // Game control
     SetSpeed(GameSpeed),

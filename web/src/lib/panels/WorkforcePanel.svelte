@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { playerCorp, formatMoney } from '$lib/stores/gameState';
+	import { playerCorp, formatMoney, worldInfo } from '$lib/stores/gameState';
 	import { showConfirm } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
 	import { gameCommand } from '$lib/game/commandRouter';
@@ -27,6 +27,9 @@
 	let maintenanceSpeed = $derived(Math.min(100, ($playerCorp?.employee_count ?? 0) * 5));
 	let researchSpeed = $derived(Math.min(100, ($playerCorp?.employee_count ?? 0) * 4));
 	let constructionSpeed = $derived(Math.min(100, ($playerCorp?.employee_count ?? 0) * 3));
+
+	// Infrastructure count: prefer corp-specific count, fall back to world-level count
+	let infraCount = $derived($playerCorp?.infrastructure_count ?? $worldInfo.infra_node_count ?? 0);
 </script>
 
 <div class="panel" role="region" aria-label={$tr('panels.workforce')}>
@@ -97,9 +100,9 @@
 				</span>
 			</div>
 			<div class="factor">
-				<span>{$tr('panels.workload')}</span>
-				<span class={($playerCorp?.employee_count ?? 0) > ($playerCorp?.infrastructure_count ?? 0) * 2 ? 'green' : 'amber'}>
-					{($playerCorp?.employee_count ?? 0) > ($playerCorp?.infrastructure_count ?? 0) * 2 ? '+10%' : '-5%'}
+				<span>{$tr('panels.workload')} ({infraCount} infra)</span>
+				<span class={($playerCorp?.employee_count ?? 0) > infraCount * 2 ? 'green' : 'amber'}>
+					{($playerCorp?.employee_count ?? 0) > infraCount * 2 ? '+10%' : '-5%'}
 				</span>
 			</div>
 		</div>

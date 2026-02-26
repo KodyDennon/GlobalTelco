@@ -9,7 +9,7 @@ export const PANEL_GROUP_TABS: Record<PanelGroupType, Array<{ key: string; label
 	finance: [
 		{ key: 'dashboard', label: 'Dashboard', component: 'dashboard' },
 		{ key: 'pricing', label: 'Pricing', comingSoon: { feature: 'Regional Pricing', phase: 'Phase 5', description: 'Set per-region pricing strategies and dynamic rate adjustments.' } },
-		{ key: 'insurance', label: 'Insurance', comingSoon: { feature: 'Insurance', phase: 'Phase 8', description: 'Insure infrastructure against disasters and market crashes.' } },
+		{ key: 'insurance', label: 'Insurance', component: 'insurance' },
 	],
 	operations: [
 		{ key: 'infrastructure', label: 'Infrastructure', component: 'infrastructure' },
@@ -17,13 +17,13 @@ export const PANEL_GROUP_TABS: Record<PanelGroupType, Array<{ key: string; label
 		{ key: 'workforce', label: 'Workforce', component: 'workforce' },
 		{ key: 'spectrum', label: 'Spectrum', component: 'spectrum' },
 		{ key: 'maintenance', label: 'Maintenance', comingSoon: { feature: 'Maintenance Priority', phase: 'Phase 6', description: 'Set maintenance schedules and priority levels for your infrastructure.' } },
-		{ key: 'repair', label: 'Repair', comingSoon: { feature: 'Repair Queue', phase: 'Phase 6', description: 'Manage post-disaster repair queues and emergency response.' } },
+		{ key: 'repair', label: 'Repair', component: 'repair' },
 	],
 	diplomacy: [
 		{ key: 'intel', label: 'Intel', component: 'intel' },
 		{ key: 'alliance', label: 'Alliance', comingSoon: { feature: 'Alliances', phase: 'Phase 9', description: 'Form strategic alliances for shared routing and infrastructure.' } },
 		{ key: 'legal', label: 'Legal', comingSoon: { feature: 'Legal Actions', phase: 'Phase 10', description: 'File lawsuits, defend patents, and handle regulatory disputes.' } },
-		{ key: 'coownership', label: 'Co-ownership', comingSoon: { feature: 'Co-ownership', phase: 'Phase 9', description: 'Jointly own infrastructure with shared revenue and voting.' } },
+		{ key: 'coownership', label: 'Co-ownership', component: 'coownership' },
 	],
 	research: [
 		{ key: 'research', label: 'Research', component: 'research' },

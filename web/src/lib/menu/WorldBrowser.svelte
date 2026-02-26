@@ -171,54 +171,59 @@
 				>
 			</div>
 
-			{#if authMode !== "guest"}
-				<div class="form-group">
-					<label for="login-username">Username</label>
-					<input
-						id="login-username"
-						type="text"
-						bind:value={loginUsername}
-						placeholder="Username"
-					/>
-				</div>
-				<div class="form-group">
-					<label for="login-password">Password</label>
-					<input
-						id="login-password"
-						type="password"
-						bind:value={loginPassword}
-						placeholder="Password"
-					/>
-				</div>
-			{/if}
-
-			{#if authMode === "register"}
-				<div class="form-group">
-					<label for="login-email">Email</label>
-					<input
-						id="login-email"
-						type="email"
-						bind:value={loginEmail}
-						placeholder="you@example.com"
-					/>
-				</div>
-			{/if}
-
-			{#if $authError}
-				<div class="error">{$authError}</div>
-			{/if}
-
-			<button
-				class="btn-connect"
-				onclick={connectAndAuth}
-				disabled={$connectionState === "connecting"}
-			>
-				{#if $connectionState === "connecting"}
-					Connecting...
-				{:else}
-					Connect
+			<form onsubmit={(e) => { e.preventDefault(); connectAndAuth(); }}>
+				{#if authMode !== "guest"}
+					<div class="form-group">
+						<label for="login-username">Username</label>
+						<input
+							id="login-username"
+							type="text"
+							autocomplete="username"
+							bind:value={loginUsername}
+							placeholder="Username"
+						/>
+					</div>
+					<div class="form-group">
+						<label for="login-password">Password</label>
+						<input
+							id="login-password"
+							type="password"
+							autocomplete={authMode === "register" ? "new-password" : "current-password"}
+							bind:value={loginPassword}
+							placeholder="Password"
+						/>
+					</div>
 				{/if}
-			</button>
+
+				{#if authMode === "register"}
+					<div class="form-group">
+						<label for="login-email">Email</label>
+						<input
+							id="login-email"
+							type="email"
+							autocomplete="email"
+							bind:value={loginEmail}
+							placeholder="you@example.com"
+						/>
+					</div>
+				{/if}
+
+				{#if $authError}
+					<div class="error">{$authError}</div>
+				{/if}
+
+				<button
+					class="btn-connect"
+					type="submit"
+					disabled={$connectionState === "connecting"}
+				>
+					{#if $connectionState === "connecting"}
+						Connecting...
+					{:else}
+						Connect
+					{/if}
+				</button>
+			</form>
 		</div>
 	{:else}
 		<div class="world-list">

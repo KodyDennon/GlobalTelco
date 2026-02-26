@@ -105,6 +105,22 @@ pub struct GameWorld {
     #[serde(default)]
     pub city_building_census: HashMap<EntityId, crate::components::CityBuildingCensus>,
 
+    // Alliance system (Phase 5.1)
+    #[serde(default)]
+    pub alliances: HashMap<EntityId, crate::components::alliance::Alliance>,
+
+    // Legal system (Phase 5.2)
+    #[serde(default)]
+    pub lawsuits: HashMap<EntityId, crate::components::lawsuit::Lawsuit>,
+
+    // Regional pricing: (corp_id, region_id) → RegionPricing
+    #[serde(default)]
+    pub region_pricing: HashMap<(EntityId, EntityId), crate::components::RegionPricing>,
+
+    // Maintenance priorities: entity_id → MaintenancePriority
+    #[serde(default)]
+    pub maintenance_priorities: HashMap<EntityId, crate::components::MaintenancePriority>,
+
     // Intel levels: (spy_corp, target_corp) → intel level (0..3)
     // 0 = infra positions only (default), 1 = basic financials (ranges),
     // 2 = detailed financials (exact), 3 = operational data (utilization, health, throughput)
@@ -186,6 +202,10 @@ impl GameWorld {
             co_ownership_proposals: HashMap::new(),
             building_footprints: HashMap::new(),
             city_building_census: HashMap::new(),
+            alliances: HashMap::new(),
+            lawsuits: HashMap::new(),
+            region_pricing: HashMap::new(),
+            maintenance_priorities: HashMap::new(),
             intel_levels: HashMap::new(),
             cell_to_parcel: HashMap::new(),
             cell_to_region: HashMap::new(),
@@ -1522,6 +1542,39 @@ impl GameWorld {
             // Cable ship purchase
             Command::PurchaseCableShip => {
                 self.cmd_purchase_cable_ship();
+                CommandResult::ok()
+            }
+
+            // Regional Pricing
+            Command::SetRegionPricing { region, tier, price_per_unit } => {
+                if let Some(corp_id) = self.player_corp_id {
+                    let price_tier = crate::components::PriceTier::from_str(&tier);
+                    self.region_pricing.insert((corp_id, region), crate::components::RegionPricing {
+                        corp_id,
+                        region_id: region,
+                        tier: price_tier,
+                        price_per_unit,
+                    });
+                    self.event_queue.push(self.tick, gt_common::events::GameEvent::PricingChanged {
+                        corporation: corp_id,
+                        region,
+                        tier,
+                    });
+                }
+                CommandResult::ok()
+            }
+
+            // Maintenance Priority
+            Command::SetMaintenancePriority { entity, priority, auto_repair } => {
+                let tier = crate::components::MaintenanceTier::from_str(&priority);
+                self.maintenance_priorities.insert(entity, crate::components::MaintenancePriority {
+                    tier,
+                    auto_repair,
+                });
+                self.event_queue.push(self.tick, gt_common::events::GameEvent::MaintenancePrioritySet {
+                    entity,
+                    priority,
+                });
                 CommandResult::ok()
             }
 

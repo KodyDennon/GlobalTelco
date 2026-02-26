@@ -1,5 +1,6 @@
 pub mod achievement;
 pub mod ai;
+pub mod alliance;
 pub mod auction;
 pub mod construction;
 pub mod contract;
@@ -10,6 +11,7 @@ pub mod demand;
 pub mod disaster;
 pub mod finance;
 pub mod ftth;
+pub mod legal;
 pub mod lobbying;
 pub mod maintenance;
 pub mod market;
@@ -45,6 +47,8 @@ pub fn run_all_systems(world: &mut GameWorld) {
     auction::run(world);
     covert_ops::run(world);
     lobbying::run(world);
+    alliance::run(world);       // Trust scoring + auto-dissolution (Phase 5.1)
+    legal::run(world);          // Lawsuit resolution + financial outcomes (Phase 5.2)
     achievement::run(world);
     // Phase 8: Resolve spectrum auctions and expire licenses
     world.resolve_spectrum_auctions();

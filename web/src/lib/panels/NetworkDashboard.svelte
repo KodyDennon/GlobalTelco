@@ -58,9 +58,16 @@
 	});
 
 	// ── Revenue by Infrastructure (Gap #19a) ─────────────────────────────────
-	// Since per-infrastructure revenue isn't directly available, we estimate it
-	// from utilization * throughput/bandwidth (the simulation generates revenue
-	// proportionally to traffic served). We use maintenance_cost for profitability.
+	// TODO(backend #19a): Replace estimated revenue with real per-infrastructure revenue data.
+	// Needed: bridge.getRevenueByInfrastructure(corpId) returning per-node and per-edge
+	// revenue_per_tick from the revenue system (gt-economy). Currently the revenue system
+	// calculates total corp revenue but does not attribute it per-asset. The Rust revenue
+	// system (revenue.rs) should track per-node revenue contribution and expose it via bridge.
+	//
+	// Current estimation approach:
+	//   Node revenue = utilization * max_throughput * 0.01 (arbitrary factor)
+	//   Edge revenue = utilization * bandwidth * 0.005 (arbitrary factor)
+	//   Edge maintenance = length_km * 0.5 (edges lack maintenance_cost field)
 
 	interface RevenueRow {
 		type: string;
@@ -74,14 +81,14 @@
 
 	let revenueRows = $derived.by((): RevenueRow[] => {
 		const rows: RevenueRow[] = [];
-		// Node revenue: estimate from utilization * max_throughput * revenue factor
+		// TODO(backend #19a): Use real per-node revenue from bridge query instead of estimate
 		const nodeByType: Record<string, { count: number; totalRev: number; totalMaint: number }> = {};
 		for (const n of infra.nodes) {
 			if (n.under_construction) continue;
 			const key = n.node_type;
 			if (!nodeByType[key]) nodeByType[key] = { count: 0, totalRev: 0, totalMaint: 0 };
 			nodeByType[key].count++;
-			// Estimate revenue: traffic served proportional to utilization * throughput
+			// ESTIMATED: traffic served proportional to utilization * throughput
 			const estRevenue = n.utilization * n.max_throughput * 0.01;
 			nodeByType[key].totalRev += estRevenue;
 			nodeByType[key].totalMaint += n.maintenance_cost;
@@ -97,15 +104,16 @@
 				profitable: data.totalRev > data.totalMaint,
 			});
 		}
-		// Edge revenue: estimate from utilization * bandwidth
+		// TODO(backend #19a): Use real per-edge revenue from bridge query instead of estimate
 		const edgeByType: Record<string, { count: number; totalRev: number; totalMaint: number }> = {};
 		for (const e of infra.edges) {
 			const key = e.edge_type;
 			if (!edgeByType[key]) edgeByType[key] = { count: 0, totalRev: 0, totalMaint: 0 };
 			edgeByType[key].count++;
+			// ESTIMATED: revenue from utilization * bandwidth
 			const estRevenue = e.utilization * e.bandwidth * 0.005;
 			edgeByType[key].totalRev += estRevenue;
-			// Edges don't have maintenance_cost directly; estimate from length
+			// ESTIMATED: edges lack maintenance_cost field, approximate from length
 			const estMaint = e.length_km * 0.5;
 			edgeByType[key].totalMaint += estMaint;
 		}
@@ -126,6 +134,15 @@
 	});
 
 	// ── SLA Monitoring (Gap #19b) ────────────────────────────────────────────
+	// TODO(backend #19b): Replace estimated SLA data with real per-contract SLA fields.
+	// Needed: Add sla_target (uptime %), sla_current_performance, sla_status, and
+	// sla_penalty_accrued fields to the ContractInfo type returned by bridge.getContracts().
+	// The contract system (gt-economy) should track SLA compliance per-tick using actual
+	// uptime measurements from the routing/utilization systems.
+	//
+	// Current estimation approach:
+	//   SLA target = derived from contract capacity tier (98-99.5%)
+	//   Performance = network avg health - (drop rate * 0.5) -- global, not per-contract
 
 	interface SLARow {
 		id: number;
@@ -141,9 +158,9 @@
 		return contracts
 			.filter(c => c.status === 'Active')
 			.map(c => {
-				// SLA target: derive from contract type (capacity contracts have higher SLA)
+				// ESTIMATED: SLA target derived from contract capacity tier
 				const slaTarget = c.capacity > 5000 ? 99.5 : c.capacity > 1000 ? 99.0 : 98.0;
-				// Current performance: estimate from network health + drop rate
+				// ESTIMATED: performance from global network health + drop rate (not per-contract)
 				const healthPct = avgHealth() * 100;
 				const dropPenalty = dropPct * 0.5;
 				const currentPerformance = Math.max(0, Math.min(100, healthPct - dropPenalty));
@@ -177,6 +194,16 @@
 	}
 
 	// ── Maintenance Queue (Gap #19c) ─────────────────────────────────────────
+	// TODO(backend #19c): Replace estimated repair state and cost with real data.
+	// Needed: Expose `is_repairing`, `repair_ticks_left`, `repair_health_per_tick`
+	// fields on InfraNode and InfraEdge through bridge.getInfrastructureList().
+	// The maintenance system tracks repair state in gt-infrastructure but doesn't
+	// expose it through the bridge query yet.
+	//
+	// Current estimation approach:
+	//   isRepairing = always false (no repair state exposed)
+	//   Node estCost = maintenance_cost * (1 - health) * 10
+	//   Edge estCost = length_km * (1 - health) * 5 (edges lack repair_cost field)
 
 	interface MaintenanceItem {
 		id: number;
@@ -200,7 +227,9 @@
 					health: n.health,
 					x: n.x,
 					y: n.y,
-					isRepairing: false, // would need repair state from sim
+					// TODO(backend #19c): Use real is_repairing from bridge when available
+					isRepairing: false,
+					// ESTIMATED: real repair cost should come from bridge
 					estCost: n.maintenance_cost * (1 - n.health) * 10,
 				});
 			}
@@ -214,7 +243,9 @@
 					health: e.health,
 					x: (e.src_x + e.dst_x) / 2,
 					y: (e.src_y + e.dst_y) / 2,
+					// TODO(backend #19c): Use real is_repairing from bridge when available
 					isRepairing: false,
+					// ESTIMATED: edges lack repair_cost field
 					estCost: e.length_km * (1 - e.health) * 5,
 				});
 			}
@@ -247,6 +278,14 @@
 	}
 
 	// ── Capacity Planning (Gap #19d + #28) ───────────────────────────────────
+	// TODO(backend #19d): Replace frontend-side linear regression with real historical
+	// utilization time series from the backend. Needed: bridge.getUtilizationHistory(corpId)
+	// returning per-tick utilization snapshots (last 100 ticks per node/edge) from
+	// gt-infrastructure. Currently we rely on networkHistory store snapshots collected
+	// client-side, which are lost on page refresh and may miss ticks at high speed.
+	//
+	// TODO(backend #28): Add server-side capacity projection API that runs regression
+	// on authoritative data and returns projected throughput + ticks-to-exceed estimates.
 
 	let growthSlider = $state(1.0); // What-if growth multiplier (1.0x to 3.0x)
 	let whatIfGrowthPct = $state(10); // What-if traffic growth rate (0% to 50%, step 5%)

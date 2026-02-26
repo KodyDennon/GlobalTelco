@@ -45,6 +45,27 @@
 
 	let totalDebt = $derived(debts.reduce((s, d) => s + d.principal, 0));
 	let totalPayments = $derived(debts.reduce((s, d) => s + d.payment_per_tick, 0));
+
+	// Budget & Policy state — tracks values sent via commands.
+	// TODO: Replace with bridge query (e.g. bridge.getPolicies(corpId)) when backend exposes policy read API
+	let maintenanceBudget = $state(500_000);
+	let expansionPriority = $state('balanced');
+	let pricingStrategy = $state('market');
+
+	function setMaintenanceBudget(val: number) {
+		maintenanceBudget = val;
+		gameCommand({ SetBudget: { corporation: $playerCorp?.id ?? 0, category: 'maintenance', amount: val } });
+	}
+
+	function setExpansionPriority(val: string) {
+		expansionPriority = val;
+		gameCommand({ SetPolicy: { corporation: $playerCorp?.id ?? 0, policy: 'expansion_priority', value: val } });
+	}
+
+	function setPricingStrategy(val: string) {
+		pricingStrategy = val;
+		gameCommand({ SetPolicy: { corporation: $playerCorp?.id ?? 0, policy: 'pricing_strategy', value: val } });
+	}
 </script>
 
 <div class="panel" aria-label={$tr('panels.dashboard')}>
@@ -135,18 +156,18 @@
 		<h3>Budgets & Policies</h3>
 		<div class="policy-row">
 			<span class="policy-label">Maintenance Budget</span>
-			<input type="range" min={0} max={5000000} step={50000} value={500000}
+			<input type="range" min={0} max={5000000} step={50000} bind:value={maintenanceBudget}
 				oninput={(e) => {
 					const val = Number((e.target as HTMLInputElement).value);
-					gameCommand({ SetBudget: { corporation: $playerCorp?.id ?? 0, category: 'maintenance', amount: val } });
+					setMaintenanceBudget(val);
 				}} />
-			<span class="policy-val mono">Auto</span>
+			<span class="policy-val mono">{formatMoney(maintenanceBudget)}</span>
 		</div>
 		<div class="policy-row">
 			<span class="policy-label">Expansion Priority</span>
-			<select class="policy-select"
+			<select class="policy-select" bind:value={expansionPriority}
 				onchange={(e) => {
-					gameCommand({ SetPolicy: { corporation: $playerCorp?.id ?? 0, policy: 'expansion_priority', value: (e.target as HTMLSelectElement).value } });
+					setExpansionPriority((e.target as HTMLSelectElement).value);
 				}}>
 				<option value="balanced">Balanced</option>
 				<option value="aggressive">Aggressive</option>
@@ -155,9 +176,9 @@
 		</div>
 		<div class="policy-row">
 			<span class="policy-label">Pricing Strategy</span>
-			<select class="policy-select"
+			<select class="policy-select" bind:value={pricingStrategy}
 				onchange={(e) => {
-					gameCommand({ SetPolicy: { corporation: $playerCorp?.id ?? 0, policy: 'pricing_strategy', value: (e.target as HTMLSelectElement).value } });
+					setPricingStrategy((e.target as HTMLSelectElement).value);
 				}}>
 				<option value="market">Market Rate</option>
 				<option value="undercut">Undercut (-10%)</option>

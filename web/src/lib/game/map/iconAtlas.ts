@@ -62,7 +62,13 @@ export async function buildIconAtlas(): Promise<{
                 URL.revokeObjectURL(url);
                 resolve();
             };
-            img.onerror = () => {
+            img.onerror = (event) => {
+                // Log the failure so missing/broken SVG icons can be diagnosed
+                console.error(
+                    `[iconAtlas] Failed to load SVG icon "${name}" at atlas position (${col}, ${row}). ` +
+                    `Blob URL: ${url}. SVG length: ${svg?.length ?? 0} chars.`,
+                    event,
+                );
                 // Draw a fallback colored square so missing icons are visible
                 ctx.fillStyle = '#666';
                 ctx.fillRect(x + 8, y + 8, ICON_SIZE - 16, ICON_SIZE - 16);

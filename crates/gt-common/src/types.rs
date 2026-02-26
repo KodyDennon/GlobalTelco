@@ -1454,6 +1454,12 @@ pub struct WorldConfig {
     /// Density of city placement (0.0-1.0). Default 0.5.
     #[serde(default = "default_city_density")]
     pub city_density: f64,
+    /// Disaster frequency multiplier (0.1-3.0). Default determined by difficulty.
+    #[serde(default = "default_disaster_frequency")]
+    pub disaster_frequency: f64,
+    /// Sandbox mode: infinite money, instant build, all tech unlocked.
+    #[serde(default)]
+    pub sandbox: bool,
 }
 
 fn default_continent_count() -> u8 { 4 }
@@ -1461,6 +1467,7 @@ fn default_ocean_percentage() -> f64 { 0.7 }
 fn default_terrain_roughness() -> f64 { 0.5 }
 fn default_climate_variation() -> f64 { 0.5 }
 fn default_city_density() -> f64 { 0.5 }
+fn default_disaster_frequency() -> f64 { 1.0 }
 
 impl Default for WorldConfig {
     fn default() -> Self {
@@ -1477,6 +1484,8 @@ impl Default for WorldConfig {
             terrain_roughness: 0.5,
             climate_variation: 0.5,
             city_density: 0.5,
+            disaster_frequency: 1.0,
+            sandbox: false,
         }
     }
 }

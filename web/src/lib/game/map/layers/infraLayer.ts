@@ -168,11 +168,31 @@ function offsetPathFromCenterline(
     return result;
 }
 
-/** Get the corp color for an owner ID. Falls back to grey if unknown. */
+/** Get the corp color for an owner ID. Falls back to grey if unknown.
+ *  Validates that the returned color has valid non-zero RGB values. */
 function getCorpColor(ownerId: number, corpIndex: Map<number, number>): [number, number, number] {
     const idx = corpIndex.get(ownerId);
-    if (idx !== undefined) return CORP_COLORS[idx % CORP_COLORS.length];
+    if (idx !== undefined) {
+        const color = CORP_COLORS[idx % CORP_COLORS.length];
+        // Guard against corrupted/empty color entries
+        if (color && color[0] + color[1] + color[2] > 0) return color;
+        console.warn(`[infraLayer] CORP_COLORS[${idx % CORP_COLORS.length}] returned invalid color for corp ${ownerId}:`, color);
+    }
     return [160, 160, 160];
+}
+
+/** Validate RGBA color values are in the 0-255 range and not all zeros.
+ *  Returns the color clamped to valid range, or a visible fallback if all zeros. */
+function validateRGBA(color: [number, number, number, number]): [number, number, number, number] {
+    const r = Math.max(0, Math.min(255, Math.round(color[0])));
+    const g = Math.max(0, Math.min(255, Math.round(color[1])));
+    const b = Math.max(0, Math.min(255, Math.round(color[2])));
+    const a = Math.max(0, Math.min(255, Math.round(color[3])));
+    // If RGB are all zero and alpha is non-zero, the node would be invisible — fallback to grey
+    if (r === 0 && g === 0 && b === 0 && a > 0) {
+        return [160, 160, 160, a];
+    }
+    return [r, g, b, a];
 }
 
 /** Compute tinted node color based on health and construction state. */
@@ -527,13 +547,13 @@ export function createInfraLayers(opts: {
             const tierRank = TIER_RANK[node.network_level] || 1;
             if (tierRank < minTier) continue; // LOD cull
 
-            const nodeColor = getNodeDisplayColor(
+            const nodeColor = validateRGBA(getNodeDisplayColor(
                 { ...node, owner: corp.id, owner_name: corp.name } as AllInfraNode,
                 baseColor,
                 isCongestion,
                 isTraffic,
                 trafficNodeFlowMap,
-            );
+            ));
 
             // Competitor visual hierarchy: reduce opacity for non-player corps
             const isPlayerNode = playerCorpId !== undefined && corp.id === playerCorpId;
@@ -791,7 +811,7 @@ export function createInfraLayers(opts: {
                 id: 'infra-nodes-fallback',
                 data: allNodes,
                 getPosition: (d: ProcessedNode) => d.position,
-                getFillColor: (d: ProcessedNode) => d.color,
+                getFillColor: (d: ProcessedNode) => validateRGBA(d.color),
                 getRadius: (d: ProcessedNode) => d.isPlayer ? d.tierSize * 500 : d.tierSize * 425,
                 radiusMinPixels: 6,
                 radiusMaxPixels: 24,
