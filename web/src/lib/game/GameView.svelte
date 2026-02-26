@@ -47,7 +47,7 @@
 	import { ScreenshotManager } from "./ScreenshotMode";
 	import { AudioManager } from "$lib/audio/AudioManager";
 	import { SpatialAudioController } from "$lib/audio/SpatialAudio";
-	import { onMount, onDestroy } from "svelte";
+	import { onMount, onDestroy, untrack } from "svelte";
 
 	let gameViewEl: HTMLElement = $state(null!);
 	let bookmarksPanelVisible = $state(false);

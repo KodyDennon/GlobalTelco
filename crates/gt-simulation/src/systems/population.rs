@@ -524,7 +524,9 @@ fn update_buildings_dynamic(world: &mut GameWorld) {
                 let fringe_demand = base_demand * 0.6;
 
                 // Pick fringe cells: last third of city cells (outermost ring)
-                let fringe_start = cells.len().saturating_sub(cells.len() / 3).max(1);
+                // Ensure we have at least one cell even for very small cities
+                let fringe_size = (cells.len() / 3).max(1);
+                let fringe_start = cells.len().saturating_sub(fringe_size);
                 let fringe_cells = &cells[fringe_start..];
 
                 // Distribute new buildings across fringe cells deterministically
