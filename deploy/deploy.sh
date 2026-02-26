@@ -18,7 +18,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-BINARY="$PROJECT_DIR/target/x86_64-unknown-linux-musl/release/gt-server"
+BINARY="$PROJECT_DIR/target/x86_64-unknown-linux-gnu/release/gt-server"
 ENV_FILE="$PROJECT_DIR/.env"
 
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/oracle_globaltelco}"
@@ -98,9 +98,11 @@ SETUP_SCRIPT
 # ── Step 2: Cross-compile ──────────────────────────────────────────────────
 
 build_binary() {
-    echo ">>> Cross-compiling gt-server for x86_64 Linux (static musl)..."
+    echo ">>> Cross-compiling gt-server for x86_64 Linux (Ubuntu 24.04 glibc 2.39)..."
     cd "$PROJECT_DIR"
-    cargo zigbuild --target x86_64-unknown-linux-musl --release --bin gt-server --features postgres 2>&1 | tail -3
+    cargo zigbuild --target x86_64-unknown-linux-gnu.2.39 --release --bin gt-server --features postgres 2>&1 | tail -3
+    # Update binary path to use gnu instead of musl
+    BINARY="$PROJECT_DIR/target/x86_64-unknown-linux-gnu/release/gt-server"
     echo "    Binary: $(ls -lh "$BINARY" | awk '{print $5}') at $BINARY"
 }
 
