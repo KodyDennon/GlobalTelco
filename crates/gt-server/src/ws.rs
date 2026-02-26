@@ -71,8 +71,23 @@ fn command_target_corp(command: &Command) -> Option<EntityId> {
         | Command::PurchaseCableShip
         | Command::SetSpeed(_)
         | Command::TogglePause
+        | Command::LoadGame { .. }
         | Command::SaveGame { .. }
-        | Command::LoadGame { .. } => None,
+        | Command::ProposeAlliance { .. }
+        | Command::AcceptAlliance { .. }
+        | Command::DissolveAlliance { .. }
+        | Command::FileLawsuit { .. }
+        | Command::SettleLawsuit { .. }
+        | Command::DefendLawsuit { .. }
+        | Command::FilePatent { .. }
+        | Command::RequestLicense { .. }
+        | Command::SetLicensePrice { .. }
+        | Command::RevokeLicense { .. }
+        | Command::StartIndependentResearch { .. }
+        | Command::BidForGrant { .. }
+        | Command::CompleteGrant { .. }
+        | Command::SetRegionPricing { .. }
+        | Command::SetMaintenancePriority { .. } => None,
     }
 }
 

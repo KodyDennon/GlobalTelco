@@ -409,12 +409,13 @@ impl GameEvent {
             | GameEvent::Bankruptcy { corporation } => vec![*corporation],
 
             // Corporation lifecycle — global
-            GameEvent::CorporationFounded { .. }
-            | GameEvent::CorporationMerged { .. } => vec![],
+            GameEvent::CorporationFounded { .. } | GameEvent::CorporationMerged { .. } => vec![],
 
             // Contracts — relevant to both parties
             GameEvent::ContractProposed { from, to, .. } => vec![*from, *to],
-            GameEvent::ContractAccepted { entity } | GameEvent::ContractExpired { entity } => vec![*entity],
+            GameEvent::ContractAccepted { entity } | GameEvent::ContractExpired { entity } => {
+                vec![*entity]
+            }
 
             // Research — private
             GameEvent::ResearchStarted { corporation, .. }
@@ -448,16 +449,26 @@ impl GameEvent {
             | GameEvent::AuctionCancelled { .. } => vec![],
 
             // M&A — relevant to both parties
-            GameEvent::AcquisitionProposed { acquirer, target, .. }
+            GameEvent::AcquisitionProposed {
+                acquirer, target, ..
+            }
             | GameEvent::AcquisitionAccepted { acquirer, target }
             | GameEvent::AcquisitionRejected { acquirer, target } => vec![*acquirer, *target],
             GameEvent::MergerCompleted { absorbed, absorber } => vec![*absorbed, *absorber],
 
             // Espionage — relevant to both spy and target
             GameEvent::EspionageCompleted { spy, target }
-            | GameEvent::SabotageCompleted { saboteur: spy, target, .. }
+            | GameEvent::SabotageCompleted {
+                saboteur: spy,
+                target,
+                ..
+            }
             | GameEvent::EspionageDetected { spy, target, .. }
-            | GameEvent::SabotageDetected { saboteur: spy, target, .. } => vec![*spy, *target],
+            | GameEvent::SabotageDetected {
+                saboteur: spy,
+                target,
+                ..
+            } => vec![*spy, *target],
             GameEvent::SecurityUpgraded { corporation, .. } => vec![*corporation],
 
             // Lobbying — private
@@ -477,13 +488,26 @@ impl GameEvent {
             GameEvent::AllianceDissolved { .. } => vec![],
 
             // Legal — relevant to both parties
-            GameEvent::LawsuitFiled { plaintiff, defendant, .. }
-            | GameEvent::LawsuitResolved { plaintiff, defendant, .. }
-            | GameEvent::SettlementReached { plaintiff, defendant, .. } => vec![*plaintiff, *defendant],
+            GameEvent::LawsuitFiled {
+                plaintiff,
+                defendant,
+                ..
+            }
+            | GameEvent::LawsuitResolved {
+                plaintiff,
+                defendant,
+                ..
+            }
+            | GameEvent::SettlementReached {
+                plaintiff,
+                defendant,
+                ..
+            } => vec![*plaintiff, *defendant],
 
             // Spectrum — global (auctions are public)
-            GameEvent::SpectrumAuctionStarted { .. }
-            | GameEvent::SpectrumAuctionWon { .. } => vec![],
+            GameEvent::SpectrumAuctionStarted { .. } | GameEvent::SpectrumAuctionWon { .. } => {
+                vec![]
+            }
             GameEvent::SpectrumBidPlaced { bidder, .. } => vec![*bidder],
             GameEvent::SpectrumLicenseExpired { owner, .. } => vec![*owner],
 
@@ -503,6 +527,17 @@ impl GameEvent {
             // Achievements — private
             GameEvent::AchievementUnlocked { corporation, .. }
             | GameEvent::VictoryAchieved { corporation, .. } => vec![*corporation],
+
+            // Patents & Licensing (Phase 5.3)
+            GameEvent::PatentFiled { holder, .. } => vec![*holder],
+            GameEvent::LicenseGranted { licensee, .. }
+            | GameEvent::LicenseRevoked { licensee, .. } => vec![*licensee],
+            GameEvent::IndependentResearchStarted { corporation, .. } => vec![*corporation],
+
+            // Government Grants (Phase 5.4)
+            GameEvent::GrantAvailable { .. } | GameEvent::GrantExpired { .. } => vec![],
+            GameEvent::GrantAwarded { corporation, .. }
+            | GameEvent::GrantCompleted { corporation, .. } => vec![*corporation],
 
             // Global notifications — all players
             GameEvent::GlobalNotification { .. } => vec![],

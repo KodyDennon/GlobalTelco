@@ -536,8 +536,7 @@ impl GameWorld {
                 // Add road segment between min_from[best_idx] and best_idx
                 let from_city = &cities[min_from[best_idx]];
                 let to_city = &cities[best_idx];
-                let length_km =
-                    haversine_km_deg(from_city.1, from_city.2, to_city.1, to_city.2);
+                let length_km = haversine_km_deg(from_city.1, from_city.2, to_city.1, to_city.2);
 
                 // Road class based on city populations
                 let from_pop = self
@@ -916,10 +915,7 @@ impl GameWorld {
 
             for &(spoke_id, _spoke_cell) in &placed_node_ids[1..] {
                 // Calculate distance using actual node positions (haversine)
-                let length_km = match (
-                    self.positions.get(&hub_id),
-                    self.positions.get(&spoke_id),
-                ) {
+                let length_km = match (self.positions.get(&hub_id), self.positions.get(&spoke_id)) {
                     (Some(p1), Some(p2)) => {
                         let dlat = (p1.y - p2.y).to_radians();
                         let dlon = (p1.x - p2.x).to_radians();
@@ -1093,18 +1089,31 @@ impl GameWorld {
                 } => {
                     // Find nearest cell for terrain lookup
                     let (cell_index, _) = self.find_nearest_cell(*lon, *lat).unwrap_or((0, 0.0));
-                    let terrain = self.get_cell_terrain(cell_index).unwrap_or(TerrainType::Rural);
+                    let terrain = self
+                        .get_cell_terrain(cell_index)
+                        .unwrap_or(TerrainType::Rural);
                     let node = InfraNode::new_on_terrain(*node_type, cell_index, *owner, terrain);
                     self.infra_nodes.insert(*entity_id, node);
                     let region_id = self.cell_to_region.get(&cell_index).copied();
-                    self.positions.insert(*entity_id, Position { x: *lon, y: *lat, region_id });
+                    self.positions.insert(
+                        *entity_id,
+                        Position {
+                            x: *lon,
+                            y: *lat,
+                            region_id,
+                        },
+                    );
                     self.ownerships.insert(*entity_id, Ownership::sole(*owner));
                     self.healths.insert(*entity_id, Health::new());
                     self.capacities.insert(*entity_id, Capacity::new(0.0));
                     if *under_construction {
-                        self.constructions.insert(*entity_id, Construction::new(self.tick, 10));
+                        self.constructions
+                            .insert(*entity_id, Construction::new(self.tick, 10));
                     }
-                    self.corp_infra_nodes.entry(*owner).or_default().push(*entity_id);
+                    self.corp_infra_nodes
+                        .entry(*owner)
+                        .or_default()
+                        .push(*entity_id);
                     // Ensure next_entity_id stays ahead
                     if *entity_id >= self.next_entity_id {
                         self.next_entity_id = *entity_id + 1;
@@ -1133,7 +1142,8 @@ impl GameWorld {
                     };
                     let edge = InfraEdge::new(*edge_type, *from_node, *to_node, length_km, *owner);
                     self.infra_edges.insert(*entity_id, edge);
-                    self.network.add_edge_with_id(*from_node, *to_node, *entity_id);
+                    self.network
+                        .add_edge_with_id(*from_node, *to_node, *entity_id);
                     if *entity_id >= self.next_entity_id {
                         self.next_entity_id = *entity_id + 1;
                     }
@@ -1292,31 +1302,25 @@ impl GameWorld {
                 };
                 CommandResult::ok()
             }
-            Command::BuildNode { node_type, lon, lat } => {
-                self.cmd_build_node(node_type, lon, lat)
-            }
+            Command::BuildNode {
+                node_type,
+                lon,
+                lat,
+            } => self.cmd_build_node(node_type, lon, lat),
             Command::BuildEdge {
                 edge_type,
                 from,
                 to,
                 waypoints,
                 deployment,
-            } => {
-                self.cmd_build_edge(edge_type, from, to, waypoints, deployment)
-            }
+            } => self.cmd_build_edge(edge_type, from, to, waypoints, deployment),
             Command::UpdateEdgeWaypoints {
                 edge,
                 waypoints,
                 deployment,
-            } => {
-                self.cmd_update_edge_waypoints(edge, waypoints, deployment)
-            }
-            Command::UpgradeNode { entity } => {
-                self.cmd_upgrade_node(entity)
-            }
-            Command::DecommissionNode { entity } => {
-                self.cmd_decommission_node(entity)
-            }
+            } => self.cmd_update_edge_waypoints(edge, waypoints, deployment),
+            Command::UpgradeNode { entity } => self.cmd_upgrade_node(entity),
+            Command::DecommissionNode { entity } => self.cmd_decommission_node(entity),
             Command::TakeLoan {
                 corporation,
                 amount,
@@ -1546,36 +1550,78 @@ impl GameWorld {
             }
 
             // Regional Pricing
-            Command::SetRegionPricing { region, tier, price_per_unit } => {
+            Command::SetRegionPricing {
+                region,
+                tier,
+                price_per_unit,
+            } => {
                 if let Some(corp_id) = self.player_corp_id {
                     let price_tier = crate::components::PriceTier::from_str(&tier);
-                    self.region_pricing.insert((corp_id, region), crate::components::RegionPricing {
-                        corp_id,
-                        region_id: region,
-                        tier: price_tier,
-                        price_per_unit,
-                    });
-                    self.event_queue.push(self.tick, gt_common::events::GameEvent::PricingChanged {
-                        corporation: corp_id,
-                        region,
-                        tier,
-                    });
+                    self.region_pricing.insert(
+                        (corp_id, region),
+                        crate::components::RegionPricing {
+                            corp_id,
+                            region_id: region,
+                            tier: price_tier,
+                            price_per_unit,
+                        },
+                    );
+                    self.event_queue.push(
+                        self.tick,
+                        gt_common::events::GameEvent::PricingChanged {
+                            corporation: corp_id,
+                            region,
+                            tier,
+                        },
+                    );
                 }
                 CommandResult::ok()
             }
 
             // Maintenance Priority
-            Command::SetMaintenancePriority { entity, priority, auto_repair } => {
+            Command::SetMaintenancePriority {
+                entity,
+                priority,
+                auto_repair,
+            } => {
                 let tier = crate::components::MaintenanceTier::from_str(&priority);
-                self.maintenance_priorities.insert(entity, crate::components::MaintenancePriority {
-                    tier,
-                    auto_repair,
-                });
-                self.event_queue.push(self.tick, gt_common::events::GameEvent::MaintenancePrioritySet {
+                self.maintenance_priorities.insert(
                     entity,
-                    priority,
-                });
+                    crate::components::MaintenancePriority { tier, auto_repair },
+                );
+                self.event_queue.push(
+                    self.tick,
+                    gt_common::events::GameEvent::MaintenancePrioritySet { entity, priority },
+                );
                 CommandResult::ok()
+            }
+
+            // Alliance (Phase 5.1)
+            Command::ProposeAlliance { .. }
+            | Command::AcceptAlliance { .. }
+            | Command::DissolveAlliance { .. } => {
+                CommandResult::fail("Alliance system not yet implemented")
+            }
+
+            // Legal (Phase 5.2)
+            Command::FileLawsuit { .. }
+            | Command::SettleLawsuit { .. }
+            | Command::DefendLawsuit { .. } => {
+                CommandResult::fail("Legal system not yet implemented")
+            }
+
+            // Patents & Licensing (Phase 5.3)
+            Command::FilePatent { .. }
+            | Command::RequestLicense { .. }
+            | Command::SetLicensePrice { .. }
+            | Command::RevokeLicense { .. }
+            | Command::StartIndependentResearch { .. } => {
+                CommandResult::fail("Patents & Licensing not yet implemented")
+            }
+
+            // Government Grants (Phase 5.4)
+            Command::BidForGrant { .. } | Command::CompleteGrant { .. } => {
+                CommandResult::fail("Government Grants not yet implemented")
             }
 
             Command::AssignTeam { .. } | Command::SaveGame { .. } | Command::LoadGame { .. } => {
@@ -1735,16 +1781,30 @@ impl GameWorld {
     /// Query the road network for A* pathfinding between two (lon, lat) points.
     /// Returns a list of waypoints along the road network.
     /// If no road path exists, falls back to a direct line [from, to].
-    pub fn road_pathfind(&self, from_lon: f64, from_lat: f64, to_lon: f64, to_lat: f64) -> Vec<(f64, f64)> {
-        self.road_network.pathfind((from_lon, from_lat), (to_lon, to_lat))
+    pub fn road_pathfind(
+        &self,
+        from_lon: f64,
+        from_lat: f64,
+        to_lon: f64,
+        to_lat: f64,
+    ) -> Vec<(f64, f64)> {
+        self.road_network
+            .pathfind((from_lon, from_lat), (to_lon, to_lat))
     }
 
     /// Query the cost of routing fiber along the road network between two points.
     /// Uses A* pathfinding to find the road route, then sums segment costs
     /// with road class fiber cost multipliers applied.
     /// Returns the cost in km-equivalents (weighted by road class).
-    pub fn road_fiber_route_cost(&self, from_lon: f64, from_lat: f64, to_lon: f64, to_lat: f64) -> f64 {
-        self.road_network.fiber_route_cost((from_lon, from_lat), (to_lon, to_lat))
+    pub fn road_fiber_route_cost(
+        &self,
+        from_lon: f64,
+        from_lat: f64,
+        to_lon: f64,
+        to_lat: f64,
+    ) -> f64 {
+        self.road_network
+            .fiber_route_cost((from_lon, from_lat), (to_lon, to_lat))
     }
 
     /// Get all road segments for rendering on the map.
@@ -1834,7 +1894,8 @@ impl GameWorld {
                     self.event_queue.push(
                         self.tick,
                         gt_common::events::GameEvent::GlobalNotification {
-                            message: "Cannot build: Underwater data center requires ocean terrain.".to_string(),
+                            message: "Cannot build: Underwater data center requires ocean terrain."
+                                .to_string(),
                             level: "error".to_string(),
                         },
                     );
@@ -2065,16 +2126,25 @@ impl GameWorld {
             if !edge_type.can_connect(ft, tt) {
                 // Build a suggestion of which edge types CAN connect these two node types
                 let all_types = [
-                    EdgeType::Copper, EdgeType::FiberLocal, EdgeType::Microwave,
-                    EdgeType::FiberRegional, EdgeType::FiberNational,
-                    EdgeType::Satellite, EdgeType::Submarine,
+                    EdgeType::Copper,
+                    EdgeType::FiberLocal,
+                    EdgeType::Microwave,
+                    EdgeType::FiberRegional,
+                    EdgeType::FiberNational,
+                    EdgeType::Satellite,
+                    EdgeType::Submarine,
                 ];
-                let suggestions: Vec<&str> = all_types.iter()
+                let suggestions: Vec<&str> = all_types
+                    .iter()
                     .filter(|et| et.can_connect(ft, tt))
                     .map(|et| et.display_name())
                     .collect();
                 let hint = if suggestions.is_empty() {
-                    format!("{} and {} are too far apart in tier — build intermediate nodes.", ft.display_name(), tt.display_name())
+                    format!(
+                        "{} and {} are too far apart in tier — build intermediate nodes.",
+                        ft.display_name(),
+                        tt.display_name()
+                    )
                 } else {
                     format!("Try: {}", suggestions.join(", "))
                 };
@@ -2084,8 +2154,10 @@ impl GameWorld {
                         message: format!(
                             "{} cannot connect {} ({}) to {} ({}). {}",
                             edge_type.display_name(),
-                            ft.display_name(), ft.tier().display_name(),
-                            tt.display_name(), tt.tier().display_name(),
+                            ft.display_name(),
+                            ft.tier().display_name(),
+                            tt.display_name(),
+                            tt.tier().display_name(),
                             hint
                         ),
                         level: "error".to_string(),
@@ -2119,17 +2191,33 @@ impl GameWorld {
             let from_ft = self.infra_nodes.get(&from_node).map(|n| n.node_type);
             let to_ft = self.infra_nodes.get(&to_node).map(|n| n.node_type);
             let all_types = [
-                EdgeType::Copper, EdgeType::FiberLocal, EdgeType::Microwave,
-                EdgeType::FiberRegional, EdgeType::FiberNational,
-                EdgeType::Satellite, EdgeType::Submarine,
+                EdgeType::Copper,
+                EdgeType::FiberLocal,
+                EdgeType::Microwave,
+                EdgeType::FiberRegional,
+                EdgeType::FiberNational,
+                EdgeType::Satellite,
+                EdgeType::Submarine,
             ];
             let suggestion = if let (Some(ft), Some(tt)) = (from_ft, to_ft) {
-                all_types.iter()
-                    .filter(|et| et.can_connect(ft, tt) && self.cell_spacing_km * et.distance_multiplier() >= length_km)
-                    .map(|et| format!("{} ({:.0}km range)", et.display_name(), self.cell_spacing_km * et.distance_multiplier()))
+                all_types
+                    .iter()
+                    .filter(|et| {
+                        et.can_connect(ft, tt)
+                            && self.cell_spacing_km * et.distance_multiplier() >= length_km
+                    })
+                    .map(|et| {
+                        format!(
+                            "{} ({:.0}km range)",
+                            et.display_name(),
+                            self.cell_spacing_km * et.distance_multiplier()
+                        )
+                    })
                     .next()
                     .map(|s| format!(" Try: {}", s))
-                    .unwrap_or_else(|| " Build intermediate relay nodes to bridge the gap.".to_string())
+                    .unwrap_or_else(|| {
+                        " Build intermediate relay nodes to bridge the gap.".to_string()
+                    })
             } else {
                 String::new()
             };
@@ -2138,7 +2226,10 @@ impl GameWorld {
                 gt_common::events::GameEvent::GlobalNotification {
                     message: format!(
                         "Too far for {}: {:.0}km distance, {:.0}km max range.{}",
-                        edge_type.display_name(), length_km, max_distance_km, suggestion
+                        edge_type.display_name(),
+                        length_km,
+                        max_distance_km,
+                        suggestion
                     ),
                     level: "warning".to_string(),
                 },
@@ -2164,9 +2255,7 @@ impl GameWorld {
 
         match edge_type {
             // Subsea cables require at least one endpoint on ocean/coastal
-            EdgeType::Submarine
-            | EdgeType::SubseaTelegraphCable
-            | EdgeType::SubseaFiberCable => {
+            EdgeType::Submarine | EdgeType::SubseaTelegraphCable | EdgeType::SubseaFiberCable => {
                 let is_water = |t: Option<TerrainType>| {
                     matches!(
                         t,
@@ -2292,7 +2381,9 @@ impl GameWorld {
         }
         if let Some(ref d) = deployment {
             match d.as_str() {
-                "Underground" => edge.deployment = crate::components::infra_edge::DeploymentMethod::Underground,
+                "Underground" => {
+                    edge.deployment = crate::components::infra_edge::DeploymentMethod::Underground
+                }
                 _ => edge.deployment = crate::components::infra_edge::DeploymentMethod::Aerial,
             }
         }
@@ -2307,7 +2398,9 @@ impl GameWorld {
                     gt_common::events::GameEvent::GlobalNotification {
                         message: format!(
                             "Insufficient funds: {} costs ${}, you have ${}.",
-                            edge_type.display_name(), cost, fin.cash
+                            edge_type.display_name(),
+                            cost,
+                            fin.cash
                         ),
                         level: "warning".to_string(),
                     },
@@ -2334,10 +2427,8 @@ impl GameWorld {
             EdgeType::Submarine | EdgeType::SubseaTelegraphCable | EdgeType::SubseaFiberCable
         ) {
             let build_ticks = 80 + (length_km / 100.0 * 2.0) as u64;
-            self.constructions.insert(
-                edge_id,
-                Construction::new(self.tick, build_ticks),
-            );
+            self.constructions
+                .insert(edge_id, Construction::new(self.tick, build_ticks));
             // Track in active_submarine_builds: edge_id → corp_id
             self.active_submarine_builds.insert(edge_id, corp_id);
         }
@@ -2391,7 +2482,10 @@ impl GameWorld {
             edge.waypoints = waypoints;
             if let Some(ref d) = deployment {
                 match d.as_str() {
-                    "Underground" => edge.deployment = crate::components::infra_edge::DeploymentMethod::Underground,
+                    "Underground" => {
+                        edge.deployment =
+                            crate::components::infra_edge::DeploymentMethod::Underground
+                    }
                     _ => edge.deployment = crate::components::infra_edge::DeploymentMethod::Aerial,
                 }
             }
@@ -2504,7 +2598,12 @@ impl GameWorld {
         };
 
         // Don't allow repair while already repairing
-        if self.infra_nodes.get(&entity).map(|n| n.repairing).unwrap_or(false) {
+        if self
+            .infra_nodes
+            .get(&entity)
+            .map(|n| n.repairing)
+            .unwrap_or(false)
+        {
             return;
         }
 
@@ -3176,8 +3275,9 @@ impl GameWorld {
             self.corp_infra_nodes
                 .get(&target)
                 .and_then(|nodes| {
-                    if nodes.is_empty() { None }
-                    else {
+                    if nodes.is_empty() {
+                        None
+                    } else {
                         // Use tick as a simple deterministic "random" index
                         let idx = self.tick as usize % nodes.len();
                         nodes.iter().nth(idx).copied()
@@ -3347,15 +3447,17 @@ impl GameWorld {
         }
 
         // Store pending proposal — target corp must accept before it takes effect
-        self.co_ownership_proposals.insert(node, (corp_id, target_corp, share_pct));
+        self.co_ownership_proposals
+            .insert(node, (corp_id, target_corp, share_pct));
     }
 
     fn cmd_respond_co_ownership(&mut self, proposal_node: EntityId, accept: bool) {
         // Look up pending proposal by node ID
-        let (_proposer, target, share_pct) = match self.co_ownership_proposals.remove(&proposal_node) {
-            Some(p) => p,
-            None => return,
-        };
+        let (_proposer, target, share_pct) =
+            match self.co_ownership_proposals.remove(&proposal_node) {
+                Some(p) => p,
+                None => return,
+            };
 
         // Verify the responding corp is the target of the proposal
         // (In single-player the player_corp_id may be the target for AI-initiated proposals,
@@ -3381,7 +3483,10 @@ impl GameWorld {
             self.event_queue.push(
                 self.tick,
                 gt_common::events::GameEvent::GlobalNotification {
-                    message: format!("Co-ownership proposal for node {} was rejected", proposal_node),
+                    message: format!(
+                        "Co-ownership proposal for node {} was rejected",
+                        proposal_node
+                    ),
                     level: "info".to_string(),
                 },
             );
@@ -3446,7 +3551,9 @@ impl GameWorld {
                 (1.0 - co_owner_total) > 0.5
             } else {
                 // Co-owner — check their share
-                ownership.co_owners.iter()
+                ownership
+                    .co_owners
+                    .iter()
                     .find(|(id, _)| *id == corp_id)
                     .map(|(_, share)| *share > 0.5)
                     .unwrap_or(false)
@@ -3459,7 +3566,8 @@ impl GameWorld {
             self.event_queue.push(
                 self.tick,
                 gt_common::events::GameEvent::GlobalNotification {
-                    message: "Upgrade vote failed: insufficient ownership stake (need >50%)".to_string(),
+                    message: "Upgrade vote failed: insufficient ownership stake (need >50%)"
+                        .to_string(),
                     level: "warning".to_string(),
                 },
             );
@@ -3895,10 +4003,7 @@ impl GameWorld {
             self.event_queue.push(
                 self.tick,
                 gt_common::events::GameEvent::GlobalNotification {
-                    message: format!(
-                        "Band {} is not assigned to this node",
-                        band.display_name()
-                    ),
+                    message: format!("Band {} is not assigned to this node", band.display_name()),
                     level: "warning".to_string(),
                 },
             );
