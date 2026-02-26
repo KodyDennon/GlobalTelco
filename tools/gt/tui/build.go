@@ -106,9 +106,6 @@ func (b BuildModel) Update(msg tea.Msg) (BuildModel, tea.Cmd) {
 func (b BuildModel) View(width, height int) string {
 	var sb strings.Builder
 
-	sb.WriteString(StyleTitle.Render("  Build"))
-	sb.WriteString("\n\n")
-
 	if b.building {
 		sb.WriteString("  " + b.spinner.View() + " Building...\n\n")
 		b.renderOutput(&sb, height-6)
@@ -141,10 +138,6 @@ func (b BuildModel) View(width, height int) string {
 			sb.WriteString(fmt.Sprintf("%s%s %s\n", prefix, check, name))
 		}
 
-		sb.WriteString("\n")
-		sb.WriteString("  " + StyleKey.Render("space") + " " + StyleDim.Render("toggle") +
-			"  " + StyleKey.Render("enter") + " " + StyleDim.Render("build") +
-			"  " + StyleKey.Render("esc") + " " + StyleDim.Render("back"))
 	}
 
 	return sb.String()

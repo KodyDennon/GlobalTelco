@@ -100,9 +100,6 @@ func (d DeployModel) Update(msg tea.Msg) (DeployModel, tea.Cmd) {
 func (d DeployModel) View(width, height int) string {
 	var sb strings.Builder
 
-	sb.WriteString(StyleTitle.Render("  Deploy Server"))
-	sb.WriteString("\n\n")
-
 	// Show deploy target info
 	sb.WriteString(fmt.Sprintf("  Host:    %s\n", StyleBright.Render(d.config.Host)))
 	sb.WriteString(fmt.Sprintf("  Domain:  %s\n", StyleBright.Render(d.config.Domain)))
@@ -140,10 +137,6 @@ func (d DeployModel) View(width, height int) string {
 		}
 		sb.WriteString(fmt.Sprintf("\n%s%s\n", prefix1, StyleAccent.Render("Deploy now")))
 
-		sb.WriteString("\n")
-		sb.WriteString("  " + StyleKey.Render("space") + " " + StyleDim.Render("toggle") +
-			"  " + StyleKey.Render("enter") + " " + StyleDim.Render("deploy") +
-			"  " + StyleKey.Render("esc") + " " + StyleDim.Render("back"))
 	}
 
 	return sb.String()

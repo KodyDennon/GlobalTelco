@@ -85,9 +85,6 @@ func (v ValidateModel) Update(msg tea.Msg) (ValidateModel, tea.Cmd) {
 func (v ValidateModel) View(width, height int) string {
 	var sb strings.Builder
 
-	sb.WriteString(StyleTitle.Render("  Validate"))
-	sb.WriteString("\n\n")
-
 	if !v.done {
 		sb.WriteString("  " + v.spinner.View() + " Checking version consistency...\n")
 	} else {
@@ -144,9 +141,6 @@ func (v ValidateModel) View(width, height int) string {
 		}
 		sb.WriteString("\n")
 	}
-
-	sb.WriteString("\n")
-	sb.WriteString("  " + StyleKey.Render("esc") + " " + StyleDim.Render("back"))
 
 	return sb.String()
 }

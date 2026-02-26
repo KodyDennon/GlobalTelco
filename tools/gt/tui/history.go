@@ -76,9 +76,6 @@ func (h HistoryModel) Update(msg tea.Msg) (HistoryModel, tea.Cmd) {
 func (h HistoryModel) View(width, height int) string {
 	var sb strings.Builder
 
-	sb.WriteString(StyleTitle.Render("  Release History"))
-	sb.WriteString("\n\n")
-
 	// Filter tabs
 	filters := []string{"All", "Engine", "Server", "Web", "Desktop"}
 	var tabs []string
@@ -125,10 +122,6 @@ func (h HistoryModel) View(width, height int) string {
 			sb.WriteString(StyleDim.Render(fmt.Sprintf("\n  Showing %d-%d of %d", start+1, end, len(entries))))
 		}
 	}
-
-	sb.WriteString("\n\n")
-	sb.WriteString("  " + StyleKey.Render("tab") + " " + StyleDim.Render("filter") +
-		"  " + StyleKey.Render("esc") + " " + StyleDim.Render("back"))
 
 	return sb.String()
 }

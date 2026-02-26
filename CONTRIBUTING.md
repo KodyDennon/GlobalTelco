@@ -5,7 +5,7 @@ Thanks for your interest in contributing! This project welcomes contributions of
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/GlobalTelco.git`
+2. Clone your fork: `git clone https://github.com/KodyDennon/GlobalTelco.git`
 3. Create a feature branch: `git checkout -b my-feature`
 4. Make your changes
 5. Ensure builds pass:

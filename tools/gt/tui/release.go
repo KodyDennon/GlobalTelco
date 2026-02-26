@@ -186,9 +186,6 @@ func (r ReleaseModel) handleKey(msg tea.KeyMsg) (ReleaseModel, tea.Cmd) {
 func (r ReleaseModel) View(width, height int) string {
 	var sb strings.Builder
 
-	sb.WriteString(StyleTitle.Render("  Release"))
-	sb.WriteString("\n\n")
-
 	switch r.step {
 	case ReleaseSelectComponent:
 		sb.WriteString(StyleSubtitle.Render("  Select component to release:"))
@@ -281,9 +278,6 @@ func (r ReleaseModel) View(width, height int) string {
 		sb.WriteString("\n")
 		sb.WriteString(StyleDim.Render("  Press enter to return to dashboard"))
 	}
-
-	sb.WriteString("\n\n")
-	sb.WriteString("  " + StyleKey.Render("esc") + " " + StyleDim.Render("back"))
 
 	return sb.String()
 }

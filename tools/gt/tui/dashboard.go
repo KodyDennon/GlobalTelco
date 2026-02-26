@@ -7,13 +7,21 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"gt/config"
 	"gt/core"
 )
 
-// DashboardModel displays the component status table.
+// ServerStatusMsg carries fetched server status.
+type ServerStatusMsg struct {
+	Status core.ServerStatus
+}
+
+// DashboardModel displays component cards and server status.
 type DashboardModel struct {
-	statuses []core.ComponentStatus
-	cursor   int
+	statuses     []core.ComponentStatus
+	serverStatus core.ServerStatus
+	cursor       int
+	serverFetched bool
 }
 
 // NewDashboard creates a new dashboard model.
@@ -33,151 +41,176 @@ func (d DashboardModel) SetStatuses(statuses []core.ComponentStatus) DashboardMo
 func (d DashboardModel) Update(msg tea.Msg) (DashboardModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		maxIdx := len(d.statuses) // components + server panel
 		switch msg.String() {
 		case "up", "k":
 			if d.cursor > 0 {
 				d.cursor--
 			}
 		case "down", "j":
-			if d.cursor < len(d.statuses)-1 {
+			if d.cursor < maxIdx {
 				d.cursor++
+			}
+		case "left", "h":
+			if d.cursor >= 2 && d.cursor <= 3 {
+				d.cursor -= 2
+			}
+		case "right", "l":
+			if d.cursor <= 1 {
+				d.cursor += 2
 			}
 		}
 	}
 	return d, nil
 }
 
+func (d DashboardModel) FetchServer() tea.Cmd {
+	cfg := config.DefaultDeployConfig()
+	return func() tea.Msg {
+		status := core.FetchServerInfo(cfg)
+		return ServerStatusMsg{Status: status}
+	}
+}
+
 func (d DashboardModel) View(width, height int) string {
-	var sb strings.Builder
+	if width < 40 {
+		width = 80
+	}
+	if height < 10 {
+		height = 24
+	}
 
-	// Title
-	title := StyleTitle.Render("  GlobalTelco Release Manager")
-	sb.WriteString(title)
-	sb.WriteString("\n\n")
+	var sections []string
 
-	// Component table
+	// Component cards (2x2 grid)
+	sections = append(sections, d.renderCards(width))
+
+	// Server status panel
+	sections = append(sections, d.renderServerPanel(width))
+
+	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
+	return content
+}
+
+func (d DashboardModel) renderCards(width int) string {
 	if len(d.statuses) == 0 {
-		sb.WriteString(StyleDim.Render("  Loading component status..."))
-	} else {
-		sb.WriteString(d.renderTable(width))
+		return Indent(StyleDim.Render("Loading component status..."), 2)
 	}
 
-	sb.WriteString("\n\n")
-
-	// Help bar
-	sb.WriteString(d.renderHelp())
-
-	return sb.String()
-}
-
-func (d DashboardModel) renderTable(width int) string {
-	var sb strings.Builder
-
-	// Header
-	headerStyle := lipgloss.NewStyle().
-		Foreground(ColorDim).
-		Bold(true)
-
-	header := fmt.Sprintf("  %-12s %-12s %-22s %-8s %-10s %s",
-		"Component", "Version", "Latest Tag", "Status", "Suggest", "Changes")
-	sb.WriteString(headerStyle.Render(header))
-	sb.WriteString("\n")
-
-	// Separator
-	sepWidth := 82
-	if width > 0 && width-4 < sepWidth {
-		sepWidth = width - 4
+	cardWidth := (width - 8) / 2
+	if cardWidth < 30 {
+		cardWidth = 30
 	}
-	sb.WriteString(StyleDim.Render("  " + strings.Repeat("─", sepWidth)))
-	sb.WriteString("\n")
+	if cardWidth > 50 {
+		cardWidth = 50
+	}
 
-	// Rows
+	var cards []string
 	for i, s := range d.statuses {
-		sb.WriteString(d.renderRow(i, s))
-		sb.WriteString("\n")
+		cards = append(cards, d.renderComponentCard(i, s, cardWidth))
 	}
 
-	return sb.String()
+	// Arrange in 2x2 grid
+	var rows []string
+	for i := 0; i < len(cards); i += 2 {
+		if i+1 < len(cards) {
+			row := lipgloss.JoinHorizontal(lipgloss.Top, cards[i], " ", cards[i+1])
+			rows = append(rows, row)
+		} else {
+			rows = append(rows, cards[i])
+		}
+	}
+
+	return Indent(lipgloss.JoinVertical(lipgloss.Left, rows...), 2)
 }
 
-func (d DashboardModel) renderRow(idx int, s core.ComponentStatus) string {
-	isSelected := idx == d.cursor
+func (d DashboardModel) renderComponentCard(idx int, s core.ComponentStatus, width int) string {
+	selected := idx == d.cursor
 
-	// Component name with color
-	nameStyle := lipgloss.NewStyle().Foreground(ComponentColor(s.Component.ID))
-	if isSelected {
-		nameStyle = nameStyle.Bold(true)
-	}
-	name := nameStyle.Render(fmt.Sprintf("%-12s", s.Component.Name))
+	// Version line
+	verStyle := lipgloss.NewStyle().Foreground(ColorBright).Bold(true)
+	version := verStyle.Render("v" + s.Version)
 
-	// Version
-	versionStyle := StyleBright
-	version := versionStyle.Render(fmt.Sprintf("%-12s", s.Version))
-
-	// Latest tag
-	tag := s.LatestTag
-	if tag == "" {
-		tag = "(none)"
-	}
-	tagStyle := StyleDim
-	tagStr := tagStyle.Render(fmt.Sprintf("%-22s", tag))
-
-	// Status indicator
+	// Status
 	var status string
 	if s.IsDirty {
-		status = StyleWarning.Render(fmt.Sprintf("%-8s", "dirty"))
+		status = RenderStatusDot(false) + " " + StyleWarning.Render("dirty")
 	} else {
-		status = StyleProfit.Render(fmt.Sprintf("%-8s", "clean"))
+		status = RenderStatusDot(true) + " " + StyleProfit.Render("clean")
 	}
 
-	// Suggested bump
-	var suggest string
-	if s.IsDirty && len(s.Commits) > 0 {
+	// Tag
+	tag := s.LatestTag
+	if tag == "" {
+		tag = StyleDim.Render("(none)")
+	}
+
+	// Build content
+	var lines []string
+	lines = append(lines, RenderLabelValue("Version", version))
+	lines = append(lines, RenderLabelValue("Status", status))
+	lines = append(lines, RenderLabelValue("Tag", tag))
+
+	if s.IsDirty {
+		changes := StyleWarning.Render(fmt.Sprintf("%d files", len(s.ChangedFiles)))
+		lines = append(lines, RenderLabelValue("Changes", changes))
+
+		var suggest string
 		switch s.SuggestedBump {
 		case core.BumpMajor:
-			suggest = StyleLoss.Render(fmt.Sprintf("%-10s", "MAJOR"))
+			suggest = StyleLoss.Render("MAJOR")
 		case core.BumpMinor:
-			suggest = StyleWarning.Render(fmt.Sprintf("%-10s", "minor"))
-		case core.BumpPatch:
-			suggest = StyleNeutral.Render(fmt.Sprintf("%-10s", "patch"))
+			suggest = StyleWarning.Render("minor")
+		default:
+			suggest = StyleNeutral.Render("patch")
 		}
-	} else {
-		suggest = StyleDim.Render(fmt.Sprintf("%-10s", "-"))
+		lines = append(lines, RenderLabelValue("Suggest", suggest))
 	}
 
-	// Changes count
-	var changes string
-	if len(s.ChangedFiles) > 0 {
-		changes = StyleDim.Render(fmt.Sprintf("%d files, %d commits", len(s.ChangedFiles), len(s.Commits)))
-	}
-
-	// Row prefix
-	prefix := "  "
-	if isSelected {
-		prefix = StyleAccent.Render("> ")
-	}
-
-	return prefix + name + " " + version + " " + tagStr + " " + status + " " + suggest + " " + changes
+	content := strings.Join(lines, "\n")
+	return RenderCard(s.Component.Name, ComponentColor(s.Component.ID), content, width, selected)
 }
 
-func (d DashboardModel) renderHelp() string {
-	keys := []struct {
-		key  string
-		desc string
-	}{
-		{"r", "Release"},
-		{"b", "Build"},
-		{"d", "Deploy"},
-		{"h", "History"},
-		{"v", "Validate"},
-		{"R", "Refresh"},
-		{"q", "Quit"},
+func (d DashboardModel) renderServerPanel(width int) string {
+	panelWidth := width - 6
+	if panelWidth > 104 {
+		panelWidth = 104
 	}
 
-	var parts []string
-	for _, k := range keys {
-		parts = append(parts, StyleKey.Render(k.key)+" "+StyleDim.Render(k.desc))
+	selected := d.cursor == len(d.statuses)
+
+	var lines []string
+
+	if !d.serverFetched {
+		lines = append(lines, StyleDim.Render("Fetching server status..."))
+	} else if !d.serverStatus.Online {
+		errMsg := d.serverStatus.Error
+		if errMsg == "" {
+			errMsg = "unreachable"
+		}
+		lines = append(lines, RenderLabelValue("Status", RenderStatusDot(false)+" "+StyleLoss.Render("Offline")+" "+StyleDim.Render("("+errMsg+")")))
+	} else {
+		lines = append(lines, RenderLabelValue("Status", RenderStatusDot(true)+" "+StyleProfit.Render("Online")))
+
+		if d.serverStatus.Version != "" {
+			lines = append(lines, RenderLabelValue("Version", StyleBright.Render("v"+d.serverStatus.Version)))
+		}
+		if d.serverStatus.UptimeSecs > 0 {
+			lines = append(lines, RenderLabelValue("Uptime", StyleBright.Render(d.serverStatus.UptimeString())))
+		}
+
+		playersStyle := StyleBright
+		if d.serverStatus.ConnectedPlayers > 0 {
+			playersStyle = StyleProfit
+		}
+		lines = append(lines, RenderLabelValue("Players", playersStyle.Render(fmt.Sprintf("%d online", d.serverStatus.ConnectedPlayers))))
+		lines = append(lines, RenderLabelValue("Worlds", StyleBright.Render(fmt.Sprintf("%d active", d.serverStatus.ActiveWorlds))))
 	}
 
-	return "  " + strings.Join(parts, "  ")
+	cfg := config.DefaultDeployConfig()
+	lines = append(lines, RenderLabelValue("Host", StyleDim.Render(cfg.Host)))
+	lines = append(lines, RenderLabelValue("Domain", StyleDim.Render(cfg.Domain)))
+
+	content := strings.Join(lines, "\n")
+	return Indent(RenderCard("Game Server", ColorServer, content, panelWidth, selected), 2)
 }

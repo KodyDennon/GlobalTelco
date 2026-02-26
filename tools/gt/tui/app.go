@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"strings"
+
+	"gt/config"
 	"gt/core"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -17,6 +20,7 @@ const (
 	ViewDeploy
 	ViewHistory
 	ViewValidate
+	ViewServer
 )
 
 // StatusMsg carries refreshed component status data.
@@ -32,26 +36,40 @@ type App struct {
 	width     int
 	height    int
 	statuses  []core.ComponentStatus
+	engineVer string
+	branch    string
 	dashboard DashboardModel
 	release   ReleaseModel
 	build     BuildModel
 	deploy    DeployModel
 	history   HistoryModel
 	validate  ValidateModel
+	server    ServerModel
 	err       error
 }
 
 // NewApp creates the root TUI model.
 func NewApp(root string) App {
+	engineVer := "?.?.?"
+	if comp := config.FindComponent("engine"); comp != nil {
+		if v, err := core.ReadComponentVersion(root, *comp); err == nil {
+			engineVer = v
+		}
+	}
+	branch := core.CurrentBranch(root)
+
 	return App{
 		root:      root,
 		view:      ViewDashboard,
+		engineVer: engineVer,
+		branch:    branch,
 		dashboard: NewDashboard(),
 		release:   NewRelease(),
 		build:     NewBuild(),
 		deploy:    NewDeploy(),
 		history:   NewHistory(),
 		validate:  NewValidate(),
+		server:    NewServer(),
 	}
 }
 
@@ -59,6 +77,7 @@ func (a App) Init() tea.Cmd {
 	return tea.Batch(
 		a.dashboard.Init(),
 		a.refreshStatus(),
+		a.dashboard.FetchServer(),
 	)
 }
 
@@ -76,7 +95,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.view == ViewDashboard {
 				return a, tea.Quit
 			}
-			// Return to dashboard from any view
 			a.view = ViewDashboard
 			return a, a.refreshStatus()
 		case "esc":
@@ -90,6 +108,19 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.statuses = msg.Statuses
 		a.err = msg.Err
 		a.dashboard = a.dashboard.SetStatuses(msg.Statuses)
+		a.branch = core.CurrentBranch(a.root)
+		for _, s := range msg.Statuses {
+			if s.Component.ID == "engine" {
+				a.engineVer = s.Version
+				break
+			}
+		}
+
+	case ServerStatusMsg:
+		a.dashboard.serverStatus = msg.Status
+		a.dashboard.serverFetched = true
+		a.server.status = msg.Status
+		a.server.statusFetched = true
 	}
 
 	// Route to current view
@@ -107,30 +138,139 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a, cmd = a.updateHistory(msg)
 	case ViewValidate:
 		a, cmd = a.updateValidate(msg)
+	case ViewServer:
+		a, cmd = a.updateServer(msg)
 	}
 
 	return a, cmd
 }
 
 func (a App) View() string {
-	var content string
-
-	switch a.view {
-	case ViewDashboard:
-		content = a.dashboard.View(a.width, a.height)
-	case ViewRelease:
-		content = a.release.View(a.width, a.height)
-	case ViewBuild:
-		content = a.build.View(a.width, a.height)
-	case ViewDeploy:
-		content = a.deploy.View(a.width, a.height)
-	case ViewHistory:
-		content = a.history.View(a.width, a.height)
-	case ViewValidate:
-		content = a.validate.View(a.width, a.height)
+	if a.width == 0 {
+		return "Loading..."
 	}
 
-	return lipgloss.Place(a.width, a.height, lipgloss.Left, lipgloss.Top, content)
+	w := a.width
+	h := a.height
+
+	// Header bar
+	header := a.renderHeader(w)
+	headerH := lipgloss.Height(header)
+
+	// Footer help bar
+	footer := RenderHelpBar(a.footerKeys(), w)
+	footerH := lipgloss.Height(footer)
+
+	// Content fills remaining space
+	contentH := h - headerH - footerH
+	if contentH < 4 {
+		contentH = 4
+	}
+
+	var content string
+	switch a.view {
+	case ViewDashboard:
+		content = a.dashboard.View(w, contentH)
+	case ViewRelease:
+		content = a.release.View(w, contentH)
+	case ViewBuild:
+		content = a.build.View(w, contentH)
+	case ViewDeploy:
+		content = a.deploy.View(w, contentH)
+	case ViewHistory:
+		content = a.history.View(w, contentH)
+	case ViewValidate:
+		content = a.validate.View(w, contentH)
+	case ViewServer:
+		content = a.server.View(w, contentH)
+	}
+
+	// Pad content to push footer to bottom
+	rendered := lipgloss.Height(content)
+	if rendered < contentH {
+		content += strings.Repeat("\n", contentH-rendered)
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, header, content, footer)
+}
+
+func (a App) renderHeader(width int) string {
+	left := StyleTitle.Render("GT") + StyleDim.Render(" v"+a.engineVer)
+	right := StyleDim.Render(a.branch) + "  " + StyleAccent.Render(a.viewName())
+	return RenderHeaderBar(left, right, width)
+}
+
+func (a App) viewName() string {
+	switch a.view {
+	case ViewDashboard:
+		return "Dashboard"
+	case ViewRelease:
+		return "Release"
+	case ViewBuild:
+		return "Build"
+	case ViewDeploy:
+		return "Deploy"
+	case ViewHistory:
+		return "History"
+	case ViewValidate:
+		return "Validate"
+	case ViewServer:
+		return "Server"
+	default:
+		return ""
+	}
+}
+
+func (a App) footerKeys() []KeyBind {
+	switch a.view {
+	case ViewDashboard:
+		return []KeyBind{
+			{Key: "r", Desc: "release"},
+			{Key: "b", Desc: "build"},
+			{Key: "d", Desc: "deploy"},
+			{Key: "s", Desc: "server"},
+			{Key: "h", Desc: "history"},
+			{Key: "v", Desc: "validate"},
+			{Key: "R", Desc: "refresh"},
+			{Key: "q", Desc: "quit"},
+		}
+	case ViewRelease:
+		return []KeyBind{
+			{Key: "j/k", Desc: "navigate"},
+			{Key: "enter", Desc: "select"},
+			{Key: "esc", Desc: "back"},
+		}
+	case ViewBuild:
+		return []KeyBind{
+			{Key: "space", Desc: "toggle"},
+			{Key: "enter", Desc: "build"},
+			{Key: "esc", Desc: "back"},
+		}
+	case ViewDeploy:
+		return []KeyBind{
+			{Key: "space", Desc: "toggle"},
+			{Key: "enter", Desc: "deploy"},
+			{Key: "esc", Desc: "back"},
+		}
+	case ViewHistory:
+		return []KeyBind{
+			{Key: "j/k", Desc: "navigate"},
+			{Key: "tab", Desc: "filter"},
+			{Key: "esc", Desc: "back"},
+		}
+	case ViewServer:
+		return []KeyBind{
+			{Key: "tab", Desc: "switch tab"},
+			{Key: "l", Desc: "fetch logs"},
+			{Key: "r", Desc: "restart"},
+			{Key: "R", Desc: "refresh"},
+			{Key: "esc", Desc: "back"},
+		}
+	default:
+		return []KeyBind{
+			{Key: "esc", Desc: "back"},
+		}
+	}
 }
 
 func (a App) refreshStatus() tea.Cmd {
@@ -157,6 +297,10 @@ func (a App) updateDashboard(msg tea.Msg) (App, tea.Cmd) {
 			a.view = ViewDeploy
 			a.deploy = a.deploy.Start(a.root)
 			return a, nil
+		case "s":
+			a.view = ViewServer
+			a.server = a.server.Start()
+			return a, a.server.Init()
 		case "h":
 			a.view = ViewHistory
 			a.history = a.history.Start(a.root)
@@ -166,7 +310,7 @@ func (a App) updateDashboard(msg tea.Msg) (App, tea.Cmd) {
 			a.validate = a.validate.Start(a.root)
 			return a, a.validate.Init()
 		case "R":
-			return a, a.refreshStatus()
+			return a, tea.Batch(a.refreshStatus(), a.dashboard.FetchServer())
 		}
 	}
 
@@ -206,5 +350,11 @@ func (a App) updateHistory(msg tea.Msg) (App, tea.Cmd) {
 func (a App) updateValidate(msg tea.Msg) (App, tea.Cmd) {
 	v, cmd := a.validate.Update(msg)
 	a.validate = v
+	return a, cmd
+}
+
+func (a App) updateServer(msg tea.Msg) (App, tea.Cmd) {
+	s, cmd := a.server.Update(msg)
+	a.server = s
 	return a, cmd
 }
