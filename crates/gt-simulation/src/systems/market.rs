@@ -1,4 +1,6 @@
+use crate::components::*;
 use crate::world::GameWorld;
+use gt_common::types::*;
 
 pub fn run(world: &mut GameWorld) {
     let tick = world.current_tick();
@@ -144,4 +146,144 @@ pub fn run(world: &mut GameWorld) {
             },
         );
     }
+
+    // 5. Check for underserved markets and spawn new AI corporations
+    check_market_gaps(world);
+}
+
+// ─── Dynamic AI Spawning ────────────────────────────────────────────────────
+
+/// Check for underserved regions and spawn new AI corporations to fill market gaps.
+/// Only runs every 100 ticks. At most 1 new AI corp per check.
+fn check_market_gaps(world: &mut GameWorld) {
+    let tick = world.current_tick();
+
+    // Only check every 100 ticks
+    if !tick.is_multiple_of(100) || tick == 0 {
+        return;
+    }
+
+    // Count current AI corporations
+    let ai_corp_count = world
+        .ai_states
+        .len() as u32;
+
+    let max_ai = world.config().max_ai_corporations;
+    if ai_corp_count >= max_ai {
+        return;
+    }
+
+    // Find underserved regions: population > 10000 and < 2 corporations serving them
+    let mut region_ids: Vec<EntityId> = world.regions.keys().copied().collect();
+    region_ids.sort_unstable();
+
+    let mut underserved_regions: Vec<EntityId> = Vec::new();
+
+    for &region_id in &region_ids {
+        let region = match world.regions.get(&region_id) {
+            Some(r) => r,
+            None => continue,
+        };
+
+        // Calculate total population in this region
+        let region_population: u64 = region
+            .city_ids
+            .iter()
+            .filter_map(|&city_id| world.cities.get(&city_id))
+            .map(|city| city.population)
+            .sum();
+
+        if region_population < 10_000 {
+            continue;
+        }
+
+        // Count unique corporations with nodes in this region
+        let region_cells = &region.cells;
+        let corps_in_region: std::collections::HashSet<EntityId> = world
+            .infra_nodes
+            .values()
+            .filter(|n| region_cells.contains(&n.cell_index))
+            .map(|n| n.owner)
+            .collect();
+
+        if corps_in_region.len() < 2 {
+            underserved_regions.push(region_id);
+        }
+    }
+
+    if underserved_regions.is_empty() {
+        return;
+    }
+
+    // Pick a deterministic "random" underserved region
+    let region_index = ((tick.wrapping_mul(7919)) % underserved_regions.len() as u64) as usize;
+    let _target_region = underserved_regions[region_index];
+
+    // Name pool for dynamically spawned AI corps
+    let spawn_names = [
+        "Apex Telecom",
+        "Horizon Networks",
+        "Pinnacle Connect",
+        "Nova Communications",
+        "Vertex Global",
+        "Summit Wireless",
+        "Citadel Net",
+        "Vanguard Telecom",
+    ];
+
+    // Pick a name not already in use
+    let existing_names: std::collections::HashSet<&str> = world
+        .corporations
+        .values()
+        .map(|c| c.name.as_str())
+        .collect();
+
+    let name = spawn_names
+        .iter()
+        .find(|&&n| !existing_names.contains(n))
+        .unwrap_or(&"NewCo Telecom");
+
+    // Pick archetype based on tick for deterministic variety
+    let archetypes = [
+        AIArchetype::AggressiveExpander,
+        AIArchetype::DefensiveConsolidator,
+        AIArchetype::TechInnovator,
+        AIArchetype::BudgetOperator,
+    ];
+    let archetype_index = ((tick.wrapping_mul(ai_corp_count as u64 + 1)) % 4) as usize;
+    let archetype = archetypes[archetype_index];
+
+    // Spawn the new AI corporation
+    let ai_id = world.allocate_entity();
+
+    world.corporations.insert(ai_id, Corporation::new(*name, false));
+    world.financials.insert(
+        ai_id,
+        Financial {
+            cash: 500_000,
+            revenue_per_tick: 0,
+            cost_per_tick: 0,
+            debt: 0,
+        },
+    );
+    world.ai_states.insert(ai_id, AiState::new(archetype));
+    world.policies.insert(ai_id, Policy::default());
+    world.workforces.insert(
+        ai_id,
+        Workforce {
+            employee_count: 10,
+            skill_level: 0.5,
+            morale: 0.7,
+            salary_per_tick: 1000,
+            maintenance_crew_count: 1,
+        },
+    );
+
+    world.event_queue.push(
+        tick,
+        gt_common::events::GameEvent::CorporationFounded {
+            entity: ai_id,
+            name: name.to_string(),
+        },
+    );
 }

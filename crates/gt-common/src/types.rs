@@ -1460,6 +1460,9 @@ pub struct WorldConfig {
     /// Sandbox mode: infinite money, instant build, all tech unlocked.
     #[serde(default)]
     pub sandbox: bool,
+    /// Maximum number of AI corporations allowed (including dynamically spawned ones). Default 8.
+    #[serde(default = "default_max_ai_corporations")]
+    pub max_ai_corporations: u32,
 }
 
 fn default_continent_count() -> u8 { 4 }
@@ -1468,6 +1471,7 @@ fn default_terrain_roughness() -> f64 { 0.5 }
 fn default_climate_variation() -> f64 { 0.5 }
 fn default_city_density() -> f64 { 0.5 }
 fn default_disaster_frequency() -> f64 { 1.0 }
+fn default_max_ai_corporations() -> u32 { 8 }
 
 impl Default for WorldConfig {
     fn default() -> Self {
@@ -1486,6 +1490,7 @@ impl Default for WorldConfig {
             city_density: 0.5,
             disaster_frequency: 1.0,
             sandbox: false,
+            max_ai_corporations: 8,
         }
     }
 }

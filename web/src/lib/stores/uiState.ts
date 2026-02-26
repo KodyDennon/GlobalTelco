@@ -10,6 +10,7 @@ export const PANEL_GROUP_TABS: Record<PanelGroupType, Array<{ key: string; label
 		{ key: 'dashboard', label: 'Dashboard', component: 'dashboard' },
 		{ key: 'pricing', label: 'Pricing', component: 'pricing' },
 		{ key: 'insurance', label: 'Insurance', component: 'insurance' },
+		{ key: 'stockmarket', label: 'Stock Market', component: 'stockmarket' },
 	],
 	operations: [
 		{ key: 'infrastructure', label: 'Infrastructure', component: 'infrastructure' },

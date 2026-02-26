@@ -60,6 +60,11 @@ pub fn run(world: &mut GameWorld) {
 
         run_corporation(world, corp_id, &ai_state, &financial, tick);
     }
+
+    // Check for AI-to-AI mergers (DefensiveConsolidator acquires small neighbors)
+    if tick > 0 && tick % 200 == 0 {
+        check_ai_mergers(world);
+    }
 }
 
 // ─── Proxy Maintenance (disconnected player corps) ──────────────────────────
@@ -291,6 +296,133 @@ fn execute_compete(
                     helpers::build_edge(world, corp_id, nearest, new_id, tick);
                 }
             }
+        }
+    }
+}
+
+// ─── AI-to-AI Mergers ───────────────────────────────────────────────────────
+
+/// DefensiveConsolidator AI corps check for small nearby AI corps to acquire.
+/// Requirements: consolidator has > 1_000_000 cash, target has < 10 nodes.
+/// At most one merger per 200-tick cycle.
+fn check_ai_mergers(world: &mut GameWorld) {
+    let tick = world.current_tick();
+
+    // Collect DefensiveConsolidator AIs with sufficient cash
+    let mut consolidators: Vec<(EntityId, i64)> = world
+        .ai_states
+        .iter()
+        .filter(|(_, ai)| ai.archetype == AIArchetype::DefensiveConsolidator && !ai.proxy_mode)
+        .filter_map(|(&id, _)| {
+            let cash = world.financials.get(&id)?.cash;
+            if cash > 1_000_000 {
+                Some((id, cash))
+            } else {
+                None
+            }
+        })
+        .collect();
+    consolidators.sort_unstable_by_key(|t| t.0);
+
+    // Collect small AI corps (< 10 nodes, not player)
+    let mut small_corps: Vec<(EntityId, usize)> = world
+        .ai_states
+        .keys()
+        .copied()
+        .filter_map(|id| {
+            let node_count = world
+                .corp_infra_nodes
+                .get(&id)
+                .map(|n| n.len())
+                .unwrap_or(0);
+            if node_count < 10 {
+                Some((id, node_count))
+            } else {
+                None
+            }
+        })
+        .collect();
+    small_corps.sort_unstable_by_key(|t| t.0);
+
+    // Try one merger per cycle
+    for (consolidator_id, consolidator_cash) in &consolidators {
+        for (target_id, _target_nodes) in &small_corps {
+            // Can't merge with yourself
+            if consolidator_id == target_id {
+                continue;
+            }
+
+            // Check that target is still an AI corp (not already merged this cycle)
+            if !world.ai_states.contains_key(target_id) {
+                continue;
+            }
+
+            // Check that the target has nodes in a nearby region (shares at least one region)
+            let consolidator_regions: std::collections::HashSet<Option<EntityId>> = world
+                .corp_infra_nodes
+                .get(consolidator_id)
+                .unwrap_or(&Vec::new())
+                .iter()
+                .filter_map(|&nid| world.positions.get(&nid).map(|p| p.region_id))
+                .collect();
+
+            let target_regions: std::collections::HashSet<Option<EntityId>> = world
+                .corp_infra_nodes
+                .get(target_id)
+                .unwrap_or(&Vec::new())
+                .iter()
+                .filter_map(|&nid| world.positions.get(&nid).map(|p| p.region_id))
+                .collect();
+
+            let shares_region = consolidator_regions.intersection(&target_regions).next().is_some();
+
+            // Also allow merger if target has zero nodes (startup with no infra)
+            let target_has_no_nodes = world
+                .corp_infra_nodes
+                .get(target_id)
+                .map(|n| n.is_empty())
+                .unwrap_or(true);
+
+            if !shares_region && !target_has_no_nodes {
+                continue;
+            }
+
+            // Calculate acquisition cost: target's asset value + cash
+            let target_asset_value: i64 = world
+                .corp_infra_nodes
+                .get(target_id)
+                .unwrap_or(&Vec::new())
+                .iter()
+                .filter_map(|&nid| world.infra_nodes.get(&nid).map(|n| n.construction_cost))
+                .sum();
+            let target_cash = world
+                .financials
+                .get(target_id)
+                .map(|f| f.cash.max(0))
+                .unwrap_or(0);
+            let acquisition_cost = ((target_asset_value + target_cash) as f64 * 1.2) as i64;
+
+            if *consolidator_cash < acquisition_cost {
+                continue;
+            }
+
+            // Execute the merger: deduct cost, transfer assets, emit event
+            if let Some(fin) = world.financials.get_mut(consolidator_id) {
+                fin.cash -= acquisition_cost;
+            }
+
+            world.transfer_corporation_assets(*target_id, *consolidator_id);
+
+            world.event_queue.push(
+                tick,
+                gt_common::events::GameEvent::CorporationMerged {
+                    absorbed: *target_id,
+                    absorber: *consolidator_id,
+                },
+            );
+
+            // Only one merger per cycle
+            return;
         }
     }
 }

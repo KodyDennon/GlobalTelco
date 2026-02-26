@@ -153,6 +153,9 @@ mod tests {
             terrain_roughness: 0.1,
             climate_variation: 0.1,
             city_density: 0.1,
+            disaster_frequency: 1.0,
+            sandbox: false,
+            max_ai_corporations: 8,
         };
         apply_preset(&mut config, WorldPreset::Continents);
 

@@ -16,6 +16,7 @@
 	let difficulty = $state('Normal');
 	let aiCount = $state(4);
 	let disasterSeverity = $state(5);
+	let sandboxMode = $state(false);
 	let seed = $state(Math.floor(Math.random() * 999999));
 
 	// ── Procgen settings ────────────────────────────────────────────────────
@@ -150,6 +151,7 @@
 			map_size: mapSize,
 			ai_corporations: aiCount,
 			disaster_frequency: disasterFrequency,
+			sandbox: sandboxMode,
 			use_real_earth: isRealEarth,
 			corp_name: corpName || 'Player Corp',
 			continent_count: continentCount,
@@ -282,6 +284,14 @@
 					/>
 					<span class="slider-value">{disasterSeverity}</span>
 				</div>
+			</div>
+
+			<div class="form-group sandbox-toggle">
+				<label class="checkbox-label">
+					<input type="checkbox" bind:checked={sandboxMode} />
+					<span>Sandbox Mode</span>
+				</label>
+				<span class="form-hint">Unlimited funds, no bankruptcy, free building</span>
 			</div>
 
 			<div class="form-group">

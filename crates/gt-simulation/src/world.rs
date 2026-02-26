@@ -123,6 +123,10 @@ pub struct GameWorld {
     #[serde(default)]
     pub grants: HashMap<EntityId, GovernmentGrant>,
 
+    // Stock Market (Phase 6.1)
+    #[serde(default)]
+    pub stock_market: HashMap<EntityId, StockMarket>,
+
     // Regional pricing: (corp_id, region_id) → RegionPricing
     #[serde(default)]
     pub region_pricing: HashMap<(EntityId, EntityId), crate::components::RegionPricing>,
@@ -217,6 +221,7 @@ impl GameWorld {
             patents: HashMap::new(),
             licenses: HashMap::new(),
             grants: HashMap::new(),
+            stock_market: HashMap::new(),
             region_pricing: HashMap::new(),
             maintenance_priorities: HashMap::new(),
             intel_levels: HashMap::new(),

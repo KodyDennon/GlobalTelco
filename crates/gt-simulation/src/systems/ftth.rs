@@ -142,6 +142,9 @@ mod tests {
             terrain_roughness: 0.5,
             climate_variation: 0.5,
             city_density: 0.5,
+            disaster_frequency: 1.0,
+            sandbox: false,
+            max_ai_corporations: 8,
         };
         // Build a bare-bones world — we only need infra_nodes, infra_edges, constructions
         let mut world = GameWorld::new(config);

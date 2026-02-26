@@ -228,6 +228,7 @@
 		alliance: () => import("$lib/panels/AlliancePanel.svelte"),
 		legal: () => import("$lib/panels/LegalPanel.svelte"),
 		patents: () => import("$lib/panels/PatentPanel.svelte"),
+		stockmarket: () => import("$lib/panels/StockMarketPanel.svelte"),
 	};
 
 	let PanelComponent: any = $state(null);

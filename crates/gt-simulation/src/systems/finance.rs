@@ -1,5 +1,5 @@
 use crate::world::GameWorld;
-use gt_common::types::CreditRating;
+use gt_common::types::{CreditRating, EntityId};
 
 pub fn run(world: &mut GameWorld) {
     let tick = world.current_tick();
@@ -29,6 +29,21 @@ pub fn run(world: &mut GameWorld) {
 
     for id in paid_off {
         world.debt_instruments.remove(&id);
+    }
+
+    // Sandbox mode: keep player corporation flush with cash
+    let is_sandbox = world.config().sandbox;
+    if is_sandbox {
+        if let Some(player_id) = world.player_corp_id() {
+            if let Some(fin) = world.financials.get_mut(&player_id) {
+                // Ensure player always has at least 10M cash in sandbox
+                if fin.cash < 10_000_000 {
+                    fin.cash = 10_000_000;
+                }
+                // Clear any debt
+                fin.debt = 0;
+            }
+        }
     }
 
     // Update credit ratings based on financial health
@@ -87,6 +102,10 @@ pub fn run(world: &mut GameWorld) {
             .unwrap_or(false);
 
         if is_insolvent {
+            // Skip insolvency for player in sandbox mode
+            if is_player && is_sandbox {
+                continue;
+            }
             if is_player {
                 // Player gets a warning and must choose bailout or bankruptcy via command
                 world.event_queue.push(
@@ -192,5 +211,111 @@ pub fn run(world: &mut GameWorld) {
                 }
             }
         }
+    }
+
+    // Track deep negative cash for AI bankruptcy liquidation
+    check_ai_bankruptcy_liquidation(world);
+}
+
+// ─── AI Bankruptcy Liquidation ──────────────────────────────────────────────
+
+/// Track AI corporations with sustained deep negative cash (< -500_000).
+/// After 50 consecutive ticks in this state, liquidate the corporation entirely,
+/// removing it and all its assets. This frees market space for new AI spawning.
+fn check_ai_bankruptcy_liquidation(world: &mut GameWorld) {
+    let tick = world.current_tick();
+
+    // Collect AI corps and their cash positions
+    let ai_corps: Vec<(EntityId, i64)> = world
+        .ai_states
+        .keys()
+        .copied()
+        .filter_map(|id| {
+            let cash = world.financials.get(&id)?.cash;
+            Some((id, cash))
+        })
+        .collect();
+
+    let mut to_liquidate: Vec<EntityId> = Vec::new();
+
+    for (corp_id, cash) in ai_corps {
+        if cash < -500_000 {
+            // Increment bankruptcy counter
+            if let Some(ai) = world.ai_states.get_mut(&corp_id) {
+                ai.bankruptcy_ticks += 1;
+                if ai.bankruptcy_ticks >= 50 {
+                    to_liquidate.push(corp_id);
+                }
+            }
+        } else {
+            // Reset counter if cash recovers
+            if let Some(ai) = world.ai_states.get_mut(&corp_id) {
+                ai.bankruptcy_ticks = 0;
+            }
+        }
+    }
+
+    for corp_id in to_liquidate {
+        // Emit bankruptcy event
+        world.event_queue.push(
+            tick,
+            gt_common::events::GameEvent::BankruptcyDeclared {
+                corporation: corp_id,
+            },
+        );
+
+        // Remove all infrastructure nodes
+        let nodes = world.corp_infra_nodes.remove(&corp_id).unwrap_or_default();
+        for node_id in &nodes {
+            world.infra_nodes.remove(node_id);
+            world.positions.remove(node_id);
+            world.healths.remove(node_id);
+            world.capacities.remove(node_id);
+            world.ownerships.remove(node_id);
+            world.constructions.remove(node_id);
+            world.network.remove_node(*node_id);
+        }
+
+        // Remove all edges owned by this corp
+        let edge_ids: Vec<EntityId> = world
+            .infra_edges
+            .iter()
+            .filter(|(_, e)| e.owner == corp_id)
+            .map(|(&id, _)| id)
+            .collect();
+        for edge_id in edge_ids {
+            world.infra_edges.remove(&edge_id);
+        }
+
+        // Remove debt instruments
+        let debts: Vec<EntityId> = world
+            .debt_instruments
+            .iter()
+            .filter(|(_, d)| d.holder == corp_id)
+            .map(|(&id, _)| id)
+            .collect();
+        for id in debts {
+            world.debt_instruments.remove(&id);
+        }
+
+        // Remove contracts involving this corp
+        let contracts: Vec<EntityId> = world
+            .contracts
+            .iter()
+            .filter(|(_, c)| c.from == corp_id || c.to == corp_id)
+            .map(|(&id, _)| id)
+            .collect();
+        for id in contracts {
+            world.contracts.remove(&id);
+        }
+
+        // Remove all corporation components
+        world.corporations.remove(&corp_id);
+        world.financials.remove(&corp_id);
+        world.ai_states.remove(&corp_id);
+        world.policies.remove(&corp_id);
+        world.workforces.remove(&corp_id);
+        world.covert_ops.remove(&corp_id);
+        world.achievements.remove(&corp_id);
     }
 }

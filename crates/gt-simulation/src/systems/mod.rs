@@ -23,6 +23,7 @@ pub mod research;
 pub mod revenue;
 pub mod routing;
 pub mod spectrum;
+pub mod stock_market;
 pub mod utilization;
 
 use crate::world::GameWorld;
@@ -54,6 +55,7 @@ pub fn run_all_systems(world: &mut GameWorld) {
     legal::run(world);          // Lawsuit resolution + financial outcomes (Phase 5.2)
     grants::run(world);         // Grant generation + progress tracking + payouts (Phase 5.4)
     achievement::run(world);
+    stock_market::run(world);   // Stock market price updates + auto-IPO (Phase 6.1)
     // Phase 8: Resolve spectrum auctions and expire licenses
     world.resolve_spectrum_auctions();
 }

@@ -690,6 +690,7 @@ pub async fn handle_socket(socket: WebSocket, state: Arc<AppState>, ip: IpAddr) 
                             aggression: 0.2,
                             risk_tolerance: 0.1,
                             proxy_mode: true,
+                            bankruptcy_ticks: 0,
                         };
                         w.ai_states.insert(corp_id, proxy_ai);
                         info!(

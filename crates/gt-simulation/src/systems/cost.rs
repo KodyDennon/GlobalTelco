@@ -60,9 +60,17 @@ pub fn run(world: &mut GameWorld) {
             .sum();
         total_cost += contract_costs;
 
+        // Sandbox mode: player doesn't pay costs
+        let is_player = world.player_corp_id() == Some(corp_id);
+        let effective_cost = if world.config().sandbox && is_player {
+            0
+        } else {
+            total_cost
+        };
+
         if let Some(fin) = world.financials.get_mut(&corp_id) {
-            fin.cost_per_tick = total_cost;
-            fin.cash -= total_cost;
+            fin.cost_per_tick = total_cost; // Still show true cost for informational purposes
+            fin.cash -= effective_cost;
         }
 
         if total_cost > 0 {

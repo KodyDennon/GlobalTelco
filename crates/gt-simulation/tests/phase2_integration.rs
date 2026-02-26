@@ -78,7 +78,7 @@ fn ai_builds_infrastructure_over_500_ticks() {
             .get(&corp_id)
             .map(|v| v.len())
             .unwrap_or(0);
-        let initial = initial_counts[&corp_id];
+        let initial = initial_counts.get(&corp_id).copied().unwrap_or(0);
         if current > initial {
             any_grew = true;
         }

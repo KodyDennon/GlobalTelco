@@ -9,6 +9,10 @@ pub struct AiState {
     pub risk_tolerance: f64,
     /// When true, this is a proxy for a disconnected player — policy-only execution, no strategic changes
     pub proxy_mode: bool,
+    /// Consecutive ticks the corporation has been in deep negative cash (< -500_000).
+    /// Used by the finance system to trigger bankruptcy liquidation.
+    #[serde(default)]
+    pub bankruptcy_ticks: u32,
 }
 
 impl AiState {
@@ -25,6 +29,7 @@ impl AiState {
             aggression,
             risk_tolerance,
             proxy_mode: false,
+            bankruptcy_ticks: 0,
         }
     }
 }
