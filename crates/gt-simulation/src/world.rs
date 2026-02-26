@@ -113,6 +113,16 @@ pub struct GameWorld {
     #[serde(default)]
     pub lawsuits: HashMap<EntityId, crate::components::lawsuit::Lawsuit>,
 
+    // Patent system (Phase 5.3)
+    #[serde(default)]
+    pub patents: HashMap<EntityId, Patent>,
+    #[serde(default)]
+    pub licenses: HashMap<EntityId, License>,
+
+    // Government Grants (Phase 5.4)
+    #[serde(default)]
+    pub grants: HashMap<EntityId, GovernmentGrant>,
+
     // Regional pricing: (corp_id, region_id) → RegionPricing
     #[serde(default)]
     pub region_pricing: HashMap<(EntityId, EntityId), crate::components::RegionPricing>,
@@ -204,6 +214,9 @@ impl GameWorld {
             city_building_census: HashMap::new(),
             alliances: HashMap::new(),
             lawsuits: HashMap::new(),
+            patents: HashMap::new(),
+            licenses: HashMap::new(),
+            grants: HashMap::new(),
             region_pricing: HashMap::new(),
             maintenance_priorities: HashMap::new(),
             intel_levels: HashMap::new(),
@@ -1597,31 +1610,76 @@ impl GameWorld {
             }
 
             // Alliance (Phase 5.1)
-            Command::ProposeAlliance { .. }
-            | Command::AcceptAlliance { .. }
-            | Command::DissolveAlliance { .. } => {
-                CommandResult::fail("Alliance system not yet implemented")
+            Command::ProposeAlliance {
+                target_corp,
+                name,
+                revenue_share,
+            } => {
+                self.cmd_propose_alliance(target_corp, &name, revenue_share);
+                CommandResult::ok()
+            }
+            Command::AcceptAlliance { alliance_id } => {
+                self.cmd_accept_alliance(alliance_id);
+                CommandResult::ok()
+            }
+            Command::DissolveAlliance { alliance_id } => {
+                self.cmd_dissolve_alliance(alliance_id);
+                CommandResult::ok()
             }
 
             // Legal (Phase 5.2)
-            Command::FileLawsuit { .. }
-            | Command::SettleLawsuit { .. }
-            | Command::DefendLawsuit { .. } => {
-                CommandResult::fail("Legal system not yet implemented")
+            Command::FileLawsuit {
+                defendant,
+                lawsuit_type,
+                damages,
+            } => {
+                self.cmd_file_lawsuit(defendant, &lawsuit_type, damages);
+                CommandResult::ok()
+            }
+            Command::SettleLawsuit { lawsuit_id } => {
+                self.cmd_settle_lawsuit(lawsuit_id);
+                CommandResult::ok()
+            }
+            Command::DefendLawsuit { lawsuit_id } => {
+                // Defend is a no-op acknowledgement — lawsuit proceeds to resolution naturally
+                let _ = lawsuit_id;
+                CommandResult::ok()
             }
 
             // Patents & Licensing (Phase 5.3)
-            Command::FilePatent { .. }
-            | Command::RequestLicense { .. }
-            | Command::SetLicensePrice { .. }
-            | Command::RevokeLicense { .. }
-            | Command::StartIndependentResearch { .. } => {
-                CommandResult::fail("Patents & Licensing not yet implemented")
+            Command::FilePatent { tech_id } => {
+                self.cmd_file_patent(tech_id);
+                CommandResult::ok()
+            }
+            Command::RequestLicense { patent_id } => {
+                self.cmd_request_license(patent_id);
+                CommandResult::ok()
+            }
+            Command::SetLicensePrice {
+                patent_id,
+                price,
+                license_type,
+            } => {
+                self.cmd_set_license_price(patent_id, price, &license_type);
+                CommandResult::ok()
+            }
+            Command::RevokeLicense { license_id } => {
+                self.cmd_revoke_license(license_id);
+                CommandResult::ok()
+            }
+            Command::StartIndependentResearch { tech_id } => {
+                self.cmd_start_independent_research(tech_id);
+                CommandResult::ok()
             }
 
             // Government Grants (Phase 5.4)
-            Command::BidForGrant { .. } | Command::CompleteGrant { .. } => {
-                CommandResult::fail("Government Grants not yet implemented")
+            Command::BidForGrant { grant_id } => {
+                self.cmd_bid_for_grant(grant_id);
+                CommandResult::ok()
+            }
+            Command::CompleteGrant { grant_id } => {
+                self.cmd_complete_grant(grant_id);
+                CommandResult::ok()
             }
 
             Command::AssignTeam { .. } | Command::SaveGame { .. } | Command::LoadGame { .. } => {
@@ -3588,6 +3646,270 @@ impl GameWorld {
         }
     }
 
+    // === Phase 5.3: Patents & Licensing ===
+
+    fn cmd_file_patent(&mut self, tech_id: EntityId) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+        let tech = match self.tech_research.get(&tech_id) {
+            Some(t) if t.completed => t,
+            _ => return,
+        };
+        if tech.researcher != Some(corp_id) {
+            return;
+        }
+        if self.patents.values().any(|p| p.tech_id == tech_id) {
+            return;
+        }
+        let patent_id = self.allocate_entity();
+        let patent = Patent::new(tech_id, corp_id, self.tick);
+        self.patents.insert(patent_id, patent);
+        if let Some(t) = self.tech_research.get_mut(&tech_id) {
+            t.patent_status = crate::components::tech_research::PatentStatus::Patented;
+            t.patent_owner = Some(corp_id);
+        }
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::PatentFiled {
+                patent_id,
+                tech_id,
+                holder: corp_id,
+            },
+        );
+    }
+
+    fn cmd_request_license(&mut self, patent_id: EntityId) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+        let patent = match self.patents.get(&patent_id) {
+            Some(p) => p.clone(),
+            None => return,
+        };
+        if patent.holder_corp == corp_id {
+            return;
+        }
+        if self.licenses.values().any(|l| {
+            l.patent_id == patent_id && l.licensee_corp == corp_id && l.is_active(self.tick)
+        }) {
+            return;
+        }
+        let price = patent.license_price;
+        if let Some(fin) = self.financials.get(&corp_id) {
+            if fin.cash < price {
+                return;
+            }
+        } else {
+            return;
+        }
+        if let Some(fin) = self.financials.get_mut(&corp_id) {
+            fin.cash -= price;
+        }
+        if let Some(fin) = self.financials.get_mut(&patent.holder_corp) {
+            fin.cash += price;
+        }
+        let license_id = self.allocate_entity();
+        let license =
+            License::new(patent_id, corp_id, patent.license_type, price, self.tick);
+        self.licenses.insert(license_id, license);
+        if let Some(tech) = self.tech_research.get_mut(&patent.tech_id) {
+            if !tech.licensed_to.contains(&corp_id) {
+                tech.licensed_to.push(corp_id);
+            }
+        }
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::LicenseGranted {
+                license_id,
+                patent_id,
+                licensee: corp_id,
+                price,
+            },
+        );
+    }
+
+    fn cmd_set_license_price(&mut self, patent_id: EntityId, price: Money, license_type: &str) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+        let patent = match self.patents.get(&patent_id) {
+            Some(p) if p.holder_corp == corp_id => p,
+            _ => return,
+        };
+        let lt = match license_type {
+            "Permanent" => LicenseType::Permanent,
+            "Royalty" => LicenseType::Royalty,
+            "PerUnit" => LicenseType::PerUnit,
+            "Lease" => LicenseType::Lease {
+                expires_tick: self.tick + 500,
+            },
+            _ => patent.license_type,
+        };
+        if let Some(p) = self.patents.get_mut(&patent_id) {
+            p.license_price = price;
+            p.license_type = lt;
+        }
+    }
+
+    fn cmd_revoke_license(&mut self, license_id: EntityId) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+        let (patent_id, licensee) = match self.licenses.get(&license_id) {
+            Some(l) => (l.patent_id, l.licensee_corp),
+            None => return,
+        };
+        match self.patents.get(&patent_id) {
+            Some(p) if p.holder_corp == corp_id => {}
+            _ => return,
+        }
+        self.licenses.remove(&license_id);
+        if let Some(patent) = self.patents.get(&patent_id) {
+            let tech_id = patent.tech_id;
+            if let Some(tech) = self.tech_research.get_mut(&tech_id) {
+                tech.licensed_to.retain(|&id| id != licensee);
+            }
+        }
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::LicenseRevoked {
+                license_id,
+                patent_id,
+                licensee,
+            },
+        );
+    }
+
+    fn cmd_start_independent_research(&mut self, tech_id: EntityId) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+        let tech = match self.tech_research.get(&tech_id) {
+            Some(t) if t.completed => t,
+            _ => return,
+        };
+        let is_patented_by_other = self
+            .patents
+            .values()
+            .any(|p| p.tech_id == tech_id && p.holder_corp != corp_id);
+        if !is_patented_by_other {
+            return;
+        }
+        // Clone needed fields to release immutable borrow before mutable operations
+        let tech_name = tech.name.clone();
+        let tech_category = tech.category;
+        let tech_total_cost = tech.total_cost;
+        let tech_throughput_bonus = tech.throughput_bonus;
+        let tech_cost_reduction = tech.cost_reduction;
+        let tech_reliability_bonus = tech.reliability_bonus;
+        let tech_prerequisites = tech.prerequisites.clone();
+        let _ = tech;
+
+        let already_researching = self.tech_research.values().any(|r| {
+            r.name.starts_with("[Independent] ")
+                && r.name.ends_with(&tech_name)
+                && r.researcher == Some(corp_id)
+                && !r.completed
+        });
+        if already_researching {
+            return;
+        }
+        let cost_multiplier = 1.5;
+        let independent_cost = (tech_total_cost as f64 * cost_multiplier) as Money;
+        let research_id = self.allocate_entity();
+        let mut independent = TechResearch::with_details(
+            tech_category,
+            format!("[Independent] {}", tech_name),
+            format!("Independent research to bypass patent on {}", tech_name),
+            independent_cost,
+            tech_throughput_bonus,
+            tech_cost_reduction,
+            tech_reliability_bonus,
+            tech_prerequisites,
+        );
+        independent.researcher = Some(corp_id);
+        self.tech_research.insert(research_id, independent);
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::IndependentResearchStarted {
+                corporation: corp_id,
+                tech_id,
+                cost_multiplier,
+            },
+        );
+    }
+
+    // === Phase 5.4: Government Grants ===
+
+    fn cmd_bid_for_grant(&mut self, grant_id: EntityId) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+        let grant = match self.grants.get(&grant_id) {
+            Some(g) if g.is_available() => g,
+            _ => return,
+        };
+        if self.tick >= grant.deadline_tick {
+            return;
+        }
+        let region = grant.region_id;
+        if let Some(g) = self.grants.get_mut(&grant_id) {
+            g.awarded_corp = Some(corp_id);
+            g.status = GrantStatus::Awarded;
+        }
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::GrantAwarded {
+                grant_id,
+                corporation: corp_id,
+                region,
+            },
+        );
+    }
+
+    fn cmd_complete_grant(&mut self, grant_id: EntityId) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+        let grant = match self.grants.get(&grant_id) {
+            Some(g) => g.clone(),
+            None => return,
+        };
+        if grant.awarded_corp != Some(corp_id) {
+            return;
+        }
+        if grant.progress < 1.0 {
+            return;
+        }
+        if let Some(fin) = self.financials.get_mut(&corp_id) {
+            fin.cash += grant.reward_cash;
+        }
+        if grant.tax_break_pct > 0.0 {
+            if let Some(region) = self.regions.get_mut(&grant.region_id) {
+                region.tax_rate = (region.tax_rate * (1.0 - grant.tax_break_pct)).max(0.01);
+            }
+        }
+        if let Some(g) = self.grants.get_mut(&grant_id) {
+            g.status = GrantStatus::Completed;
+        }
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::GrantCompleted {
+                grant_id,
+                corporation: corp_id,
+                reward: grant.reward_cash,
+            },
+        );
+    }
+
     // === Phase 8: Spectrum & Frequency Management ===
 
     fn cmd_bid_spectrum(&mut self, band_name: &str, region: EntityId, bid: Money) {
@@ -4073,6 +4395,242 @@ impl GameWorld {
             gt_common::events::GameEvent::GlobalNotification {
                 message: format!("Cable ship purchased! You now own {} ship(s).", count),
                 level: "info".to_string(),
+            },
+        );
+    }
+
+    // === Phase 5.1: Alliance System ===
+
+    fn cmd_propose_alliance(&mut self, target_corp: EntityId, name: &str, revenue_share: f64) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+
+        // Validate target corp exists
+        if !self.corporations.contains_key(&target_corp) {
+            return;
+        }
+
+        // Can't ally with yourself
+        if corp_id == target_corp {
+            return;
+        }
+
+        // Check neither corp is already in an alliance (max 1 alliance per corp)
+        for alliance in self.alliances.values() {
+            if alliance.member_corp_ids.contains(&corp_id)
+                || alliance.member_corp_ids.contains(&target_corp)
+            {
+                return;
+            }
+        }
+
+        // Clamp revenue share to valid range
+        let revenue_share = revenue_share.clamp(0.0, 0.5);
+
+        // Create pending alliance with just the proposer; target must accept
+        let alliance_id = self.allocate_entity();
+        let alliance = crate::components::alliance::Alliance::new(
+            alliance_id,
+            name.to_string(),
+            vec![corp_id], // Only proposer initially; target joins on accept
+            revenue_share,
+            self.tick,
+        );
+        self.alliances.insert(alliance_id, alliance);
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::GlobalNotification {
+                message: format!(
+                    "Alliance \"{}\" proposed to corp {}. Awaiting acceptance.",
+                    name, target_corp
+                ),
+                level: "info".to_string(),
+            },
+        );
+    }
+
+    fn cmd_accept_alliance(&mut self, alliance_id: EntityId) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+
+        // All validation with immutable borrows first
+        {
+            let alliance = match self.alliances.get(&alliance_id) {
+                Some(a) => a,
+                None => return,
+            };
+
+            // Can't join if already a member
+            if alliance.member_corp_ids.contains(&corp_id) {
+                return;
+            }
+
+            // Max 3 members
+            if alliance.member_corp_ids.len() >= 3 {
+                return;
+            }
+
+            // Check this corp is not already in another alliance
+            for (id, a) in &self.alliances {
+                if *id != alliance_id && a.member_corp_ids.contains(&corp_id) {
+                    return;
+                }
+            }
+        }
+
+        // Now mutate — all validation passed
+        let members = if let Some(alliance) = self.alliances.get_mut(&alliance_id) {
+            alliance.member_corp_ids.push(corp_id);
+            alliance.trust_scores.insert(corp_id, 0.5);
+            alliance.member_corp_ids.clone()
+        } else {
+            return;
+        };
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::AllianceFormed {
+                alliance_id,
+                members,
+            },
+        );
+    }
+
+    fn cmd_dissolve_alliance(&mut self, alliance_id: EntityId) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+
+        // Only members can dissolve
+        let is_member = self
+            .alliances
+            .get(&alliance_id)
+            .map(|a| a.member_corp_ids.contains(&corp_id))
+            .unwrap_or(false);
+
+        if !is_member {
+            return;
+        }
+
+        self.alliances.remove(&alliance_id);
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::AllianceDissolved {
+                alliance_id,
+                reason: format!("Dissolved by corporation {}", corp_id),
+            },
+        );
+    }
+
+    // === Phase 5.2: Legal System ===
+
+    fn cmd_file_lawsuit(&mut self, defendant: EntityId, lawsuit_type: &str, damages: Money) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+
+        // Validate defendant exists and is a different corp
+        if !self.corporations.contains_key(&defendant) || corp_id == defendant {
+            return;
+        }
+
+        // Parse lawsuit type
+        let lt = match lawsuit_type {
+            "PatentInfringement" => crate::components::lawsuit::LawsuitType::PatentInfringement,
+            "OwnershipDispute" => crate::components::lawsuit::LawsuitType::OwnershipDispute,
+            "SabotageClaim" => crate::components::lawsuit::LawsuitType::SabotageClaim,
+            "RegulatoryComplaint" => crate::components::lawsuit::LawsuitType::RegulatoryComplaint,
+            _ => return,
+        };
+
+        // Filing cost is 10% of damages claimed
+        let filing_cost = damages / 10;
+
+        // Check plaintiff has enough cash for filing cost
+        if let Some(fin) = self.financials.get(&corp_id) {
+            if fin.cash < filing_cost {
+                return;
+            }
+        } else {
+            return;
+        }
+
+        // Deduct filing cost from plaintiff
+        if let Some(fin) = self.financials.get_mut(&corp_id) {
+            fin.cash -= filing_cost;
+        }
+
+        // Deterministic resolution timing: 20-50 ticks based on entity ID
+        let lawsuit_id = self.allocate_entity();
+        let resolution_ticks = 20 + (lawsuit_id % 31); // 20-50 range
+
+        let lawsuit = crate::components::lawsuit::Lawsuit::new(
+            lawsuit_id,
+            corp_id,
+            defendant,
+            lt,
+            damages,
+            self.tick,
+            resolution_ticks,
+        );
+        self.lawsuits.insert(lawsuit_id, lawsuit);
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::LawsuitFiled {
+                lawsuit_id,
+                plaintiff: corp_id,
+                defendant,
+            },
+        );
+    }
+
+    fn cmd_settle_lawsuit(&mut self, lawsuit_id: EntityId) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+
+        let lawsuit = match self.lawsuits.get(&lawsuit_id) {
+            Some(l) if l.status == crate::components::lawsuit::LawsuitStatus::Active => l.clone(),
+            _ => return,
+        };
+
+        // Only defendant can settle
+        if lawsuit.defendant != corp_id {
+            return;
+        }
+
+        // Settlement: defendant pays 60% of claimed damages
+        let settlement_amount = (lawsuit.damages_claimed as f64 * 0.6) as Money;
+
+        // Deduct from defendant, credit plaintiff
+        if let Some(fin) = self.financials.get_mut(&lawsuit.defendant) {
+            fin.cash -= settlement_amount;
+        }
+        if let Some(fin) = self.financials.get_mut(&lawsuit.plaintiff) {
+            fin.cash += settlement_amount;
+        }
+
+        // Mark as settled
+        if let Some(l) = self.lawsuits.get_mut(&lawsuit_id) {
+            l.settle();
+        }
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::SettlementReached {
+                lawsuit_id,
+                plaintiff: lawsuit.plaintiff,
+                defendant: lawsuit.defendant,
+                amount: settlement_amount,
             },
         );
     }

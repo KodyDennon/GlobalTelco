@@ -11,10 +11,12 @@ pub mod demand;
 pub mod disaster;
 pub mod finance;
 pub mod ftth;
+pub mod grants;
 pub mod legal;
 pub mod lobbying;
 pub mod maintenance;
 pub mod market;
+pub mod patent;
 pub mod population;
 pub mod regulation;
 pub mod research;
@@ -43,12 +45,14 @@ pub fn run_all_systems(world: &mut GameWorld) {
     disaster::run(world);
     regulation::run(world);
     research::run(world);
+    patent::run(world);         // Royalty collection + lease expiration (Phase 5.3, after research)
     market::run(world);
     auction::run(world);
     covert_ops::run(world);
     lobbying::run(world);
     alliance::run(world);       // Trust scoring + auto-dissolution (Phase 5.1)
     legal::run(world);          // Lawsuit resolution + financial outcomes (Phase 5.2)
+    grants::run(world);         // Grant generation + progress tracking + payouts (Phase 5.4)
     achievement::run(world);
     // Phase 8: Resolve spectrum auctions and expire licenses
     world.resolve_spectrum_auctions();

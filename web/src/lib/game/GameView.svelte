@@ -222,6 +222,12 @@
 		insurance: () => import("$lib/panels/InsurancePanel.svelte"),
 		repair: () => import("$lib/panels/RepairPanel.svelte"),
 		coownership: () => import("$lib/panels/CoOwnershipPanel.svelte"),
+		grants: () => import("$lib/panels/GrantPanel.svelte"),
+		pricing: () => import("$lib/panels/PricingPanel.svelte"),
+		maintenance: () => import("$lib/panels/MaintenancePanel.svelte"),
+		alliance: () => import("$lib/panels/AlliancePanel.svelte"),
+		legal: () => import("$lib/panels/LegalPanel.svelte"),
+		patents: () => import("$lib/panels/PatentPanel.svelte"),
 	};
 
 	let PanelComponent: any = $state(null);

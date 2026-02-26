@@ -96,38 +96,38 @@
 					{/each}
 				</select>
 
-				<div class="form-field">
-					<label class="field-label">
+				<label class="form-field">
+					<span class="field-label">
 						Bandwidth
 						<span class="field-value mono">{proposeBandwidth.toLocaleString()}</span>
-					</label>
+					</span>
 					<input type="range" min={100} max={100000} step={100} bind:value={proposeBandwidth} />
 					{#if !bandwidthValid}
 						<span class="field-error">100 - 100,000</span>
 					{/if}
-				</div>
+				</label>
 
-				<div class="form-field">
-					<label class="field-label">
+				<label class="form-field">
+					<span class="field-label">
 						Price per tick
 						<span class="field-value mono">{formatMoney(proposePrice)}</span>
-					</label>
+					</span>
 					<input type="range" min={100} max={10000000} step={100} bind:value={proposePrice} />
 					{#if !priceValid}
 						<span class="field-error">$100 - $10M</span>
 					{/if}
-				</div>
+				</label>
 
-				<div class="form-field">
-					<label class="field-label">
+				<label class="form-field">
+					<span class="field-label">
 						Duration (ticks)
 						<span class="field-value mono">{proposeDuration}</span>
-					</label>
+					</span>
 					<input type="range" min={10} max={1000} step={10} bind:value={proposeDuration} />
 					{#if !durationValid}
 						<span class="field-error">10 - 1,000 ticks</span>
 					{/if}
-				</div>
+				</label>
 
 				<div class="contract-preview">
 					<span class="preview-label">Preview</span>
@@ -407,5 +407,54 @@
 	.confirm-btn:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
+	}
+
+	.form-field {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.field-label {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		font-size: 11px;
+		color: var(--text-muted);
+	}
+
+	.field-value {
+		color: var(--text-primary);
+		font-size: 12px;
+	}
+
+	.field-error {
+		font-size: 10px;
+		color: var(--red);
+	}
+
+	.contract-preview {
+		background: rgba(17, 24, 39, 0.6);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		padding: 8px 10px;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.preview-label {
+		font-size: 10px;
+		font-weight: 600;
+		color: var(--text-dim);
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+		margin-bottom: 2px;
+	}
+
+	.preview-row {
+		display: flex;
+		justify-content: space-between;
+		font-size: 11px;
 	}
 </style>

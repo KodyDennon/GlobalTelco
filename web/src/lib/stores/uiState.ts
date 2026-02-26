@@ -8,7 +8,7 @@ export type PanelGroupType = 'finance' | 'operations' | 'diplomacy' | 'research'
 export const PANEL_GROUP_TABS: Record<PanelGroupType, Array<{ key: string; label: string; component?: string; comingSoon?: { feature: string; phase: string; description: string } }>> = {
 	finance: [
 		{ key: 'dashboard', label: 'Dashboard', component: 'dashboard' },
-		{ key: 'pricing', label: 'Pricing', comingSoon: { feature: 'Regional Pricing', phase: 'Phase 5', description: 'Set per-region pricing strategies and dynamic rate adjustments.' } },
+		{ key: 'pricing', label: 'Pricing', component: 'pricing' },
 		{ key: 'insurance', label: 'Insurance', component: 'insurance' },
 	],
 	operations: [
@@ -16,24 +16,24 @@ export const PANEL_GROUP_TABS: Record<PanelGroupType, Array<{ key: string; label
 		{ key: 'network', label: 'Network', component: 'network' },
 		{ key: 'workforce', label: 'Workforce', component: 'workforce' },
 		{ key: 'spectrum', label: 'Spectrum', component: 'spectrum' },
-		{ key: 'maintenance', label: 'Maintenance', comingSoon: { feature: 'Maintenance Priority', phase: 'Phase 6', description: 'Set maintenance schedules and priority levels for your infrastructure.' } },
+		{ key: 'maintenance', label: 'Maintenance', component: 'maintenance' },
 		{ key: 'repair', label: 'Repair', component: 'repair' },
 	],
 	diplomacy: [
 		{ key: 'intel', label: 'Intel', component: 'intel' },
-		{ key: 'alliance', label: 'Alliance', comingSoon: { feature: 'Alliances', phase: 'Phase 9', description: 'Form strategic alliances for shared routing and infrastructure.' } },
-		{ key: 'legal', label: 'Legal', comingSoon: { feature: 'Legal Actions', phase: 'Phase 10', description: 'File lawsuits, defend patents, and handle regulatory disputes.' } },
+		{ key: 'alliance', label: 'Alliance', component: 'alliance' },
+		{ key: 'legal', label: 'Legal', component: 'legal' },
 		{ key: 'coownership', label: 'Co-ownership', component: 'coownership' },
 	],
 	research: [
 		{ key: 'research', label: 'Research', component: 'research' },
-		{ key: 'patents', label: 'Patents', comingSoon: { feature: 'Patents', phase: 'Phase 7', description: 'File patents on technologies and license them to competitors.' } },
+		{ key: 'patents', label: 'Patents', component: 'patents' },
 	],
 	market: [
 		{ key: 'contracts', label: 'Contracts', component: 'contracts' },
 		{ key: 'auctions', label: 'Auctions', component: 'auctions' },
 		{ key: 'mergers', label: 'M&A', component: 'mergers' },
-		{ key: 'grants', label: 'Grants', comingSoon: { feature: 'Government Grants', phase: 'Phase 11', description: 'Apply for government infrastructure subsidies and grants.' } },
+		{ key: 'grants', label: 'Grants', component: 'grants' },
 	],
 	info: [
 		{ key: 'region', label: 'Region', component: 'region' },
