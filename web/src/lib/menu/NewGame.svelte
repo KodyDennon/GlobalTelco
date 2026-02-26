@@ -490,6 +490,12 @@
 					<span class="summary-label">{$tr('menu.world_seed')}</span>
 					<span class="summary-value mono">{seed}</span>
 				</div>
+				{#if sandboxMode}
+					<div class="summary-row">
+						<span class="summary-label">Mode</span>
+						<span class="summary-value sandbox-badge">SANDBOX</span>
+					</div>
+				{/if}
 			</div>
 		</div>
 	</div>
@@ -892,6 +898,47 @@
 
 	.summary-value.mono {
 		font-family: 'SF Mono', 'Fira Code', monospace;
+	}
+
+	.sandbox-badge {
+		color: #f59e0b;
+		font-weight: 700;
+		font-size: 11px;
+		letter-spacing: 0.05em;
+	}
+
+	/* Sandbox toggle */
+
+	.sandbox-toggle {
+		padding: 10px 12px;
+		background: rgba(31, 41, 55, 0.4);
+		border: 1px solid rgba(55, 65, 81, 0.3);
+		border-radius: 8px;
+	}
+
+	.checkbox-label {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		cursor: pointer;
+		font-size: 13px;
+		color: #d1d5db;
+		font-weight: 500;
+	}
+
+	.checkbox-label input[type='checkbox'] {
+		accent-color: #f59e0b;
+		width: 16px;
+		height: 16px;
+		cursor: pointer;
+	}
+
+	.form-hint {
+		display: block;
+		font-size: 11px;
+		color: #6b7280;
+		margin-top: 4px;
+		margin-left: 24px;
 	}
 
 	/* ── Responsive ─────────────────────────────────────────────────────── */

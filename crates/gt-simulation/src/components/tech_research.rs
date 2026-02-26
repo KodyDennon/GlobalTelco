@@ -62,6 +62,17 @@ pub enum PatentStatus {
     Proprietary,
 }
 
+/// Tier of independent research — determines cost multiplier and patent rights.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum IndependentTier {
+    /// Not independent research (normal research)
+    None,
+    /// 150% cost, normal stats, CANNOT patent
+    Standard,
+    /// 200% cost, +10% bonus on throughput/reliability/cost_reduction, CAN patent
+    Premium,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TechResearch {
     pub category: ResearchCategory,
@@ -79,6 +90,8 @@ pub struct TechResearch {
     pub throughput_bonus: f64,
     pub cost_reduction: f64,
     pub reliability_bonus: f64,
+    /// Whether this is independent research and which tier
+    pub independent_tier: IndependentTier,
 }
 
 impl TechResearch {
@@ -99,6 +112,7 @@ impl TechResearch {
             licensed_to: Vec::new(),
             prerequisites: Vec::new(),
             reliability_bonus: 0.0,
+            independent_tier: IndependentTier::None,
         }
     }
 
@@ -129,6 +143,7 @@ impl TechResearch {
             patent_owner: None,
             license_price: 0,
             licensed_to: Vec::new(),
+            independent_tier: IndependentTier::None,
         }
     }
 

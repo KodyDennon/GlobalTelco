@@ -1415,6 +1415,8 @@ pub enum GameSpeed {
     Fast,
     VeryFast,
     Ultra,
+    /// 32x speed — only available in sandbox mode
+    Ludicrous,
 }
 
 impl GameSpeed {
@@ -1425,6 +1427,7 @@ impl GameSpeed {
             GameSpeed::Fast => 2,
             GameSpeed::VeryFast => 4,
             GameSpeed::Ultra => 8,
+            GameSpeed::Ludicrous => 32,
         }
     }
 }

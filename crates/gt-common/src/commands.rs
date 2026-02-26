@@ -200,12 +200,21 @@ pub enum Command {
         patent_id: EntityId,
         price: Money,
         license_type: String, // "Permanent", "Royalty", "PerUnit", "Lease"
+        /// Per-unit price for PerUnit licenses (charged per node built using the tech)
+        #[serde(default)]
+        per_unit_price: Money,
+        /// Duration in ticks for Lease licenses (0 = use default 500 ticks)
+        #[serde(default)]
+        lease_duration: u64,
     },
     RevokeLicense {
         license_id: EntityId,
     },
     StartIndependentResearch {
         tech_id: EntityId,
+        /// When true, research costs 200% (vs 150%) but grants +10% stat bonuses and patent rights
+        #[serde(default)]
+        premium: bool,
     },
 
     // Government Grants (Phase 5.4)

@@ -183,7 +183,9 @@
 		"label_1x": "1x",
 		"label_2x": "2x",
 		"label_4x": "4x",
-		"label_8x": "8x"
+		"label_8x": "8x",
+		"label_32x": "32x",
+		"ludicrous": "Ludicrous Speed"
 	},
 	"panels": {
 		"dashboard": "Financial Dashboard",

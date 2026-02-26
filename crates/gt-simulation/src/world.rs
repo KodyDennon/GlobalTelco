@@ -1664,16 +1664,18 @@ impl GameWorld {
                 patent_id,
                 price,
                 license_type,
+                per_unit_price,
+                lease_duration,
             } => {
-                self.cmd_set_license_price(patent_id, price, &license_type);
+                self.cmd_set_license_price(patent_id, price, &license_type, per_unit_price, lease_duration);
                 CommandResult::ok()
             }
             Command::RevokeLicense { license_id } => {
                 self.cmd_revoke_license(license_id);
                 CommandResult::ok()
             }
-            Command::StartIndependentResearch { tech_id } => {
-                self.cmd_start_independent_research(tech_id);
+            Command::StartIndependentResearch { tech_id, premium } => {
+                self.cmd_start_independent_research(tech_id, premium);
                 CommandResult::ok()
             }
 
@@ -2028,6 +2030,9 @@ impl GameWorld {
         if let Some(fin) = self.financials.get_mut(&corp_id) {
             fin.cash -= cost;
         }
+
+        // Charge PerUnit license fees for any patented tech the builder is licensed to use
+        self.charge_per_unit_fees(corp_id);
 
         // Create construction (takes time)
         let difficulty = gt_common::config::DifficultyConfig::from_preset(self.config.difficulty);
@@ -3717,8 +3722,15 @@ impl GameWorld {
             fin.cash += price;
         }
         let license_id = self.allocate_entity();
+        // For Lease licenses, recalculate expires_tick from current tick + patent lease_duration
+        let actual_license_type = match patent.license_type {
+            LicenseType::Lease { .. } => LicenseType::Lease {
+                expires_tick: self.tick + patent.lease_duration,
+            },
+            other => other,
+        };
         let license =
-            License::new(patent_id, corp_id, patent.license_type, price, self.tick);
+            License::new(patent_id, corp_id, actual_license_type, price, self.tick);
         self.licenses.insert(license_id, license);
         if let Some(tech) = self.tech_research.get_mut(&patent.tech_id) {
             if !tech.licensed_to.contains(&corp_id) {
@@ -3736,7 +3748,14 @@ impl GameWorld {
         );
     }
 
-    fn cmd_set_license_price(&mut self, patent_id: EntityId, price: Money, license_type: &str) {
+    fn cmd_set_license_price(
+        &mut self,
+        patent_id: EntityId,
+        price: Money,
+        license_type: &str,
+        per_unit_price: Money,
+        lease_duration: u64,
+    ) {
         let corp_id = match self.player_corp_id {
             Some(id) => id,
             None => return,
@@ -3745,18 +3764,29 @@ impl GameWorld {
             Some(p) if p.holder_corp == corp_id => p,
             _ => return,
         };
+        let duration = if lease_duration > 0 {
+            lease_duration
+        } else {
+            patent.lease_duration
+        };
         let lt = match license_type {
             "Permanent" => LicenseType::Permanent,
             "Royalty" => LicenseType::Royalty,
             "PerUnit" => LicenseType::PerUnit,
             "Lease" => LicenseType::Lease {
-                expires_tick: self.tick + 500,
+                expires_tick: self.tick + duration,
             },
             _ => patent.license_type,
         };
         if let Some(p) = self.patents.get_mut(&patent_id) {
             p.license_price = price;
             p.license_type = lt;
+            p.per_unit_price = if per_unit_price > 0 {
+                per_unit_price
+            } else {
+                p.per_unit_price
+            };
+            p.lease_duration = duration;
         }
     }
 
@@ -3790,7 +3820,9 @@ impl GameWorld {
         );
     }
 
-    fn cmd_start_independent_research(&mut self, tech_id: EntityId) {
+    fn cmd_start_independent_research(&mut self, tech_id: EntityId, premium: bool) {
+        use crate::components::tech_research::IndependentTier;
+
         let corp_id = match self.player_corp_id {
             Some(id) => id,
             None => return,
@@ -3825,13 +3857,26 @@ impl GameWorld {
         if already_researching {
             return;
         }
-        let cost_multiplier = 1.5;
+
+        // Standard tier: 150% cost, normal stats, cannot patent
+        // Premium tier: 200% cost, +10% bonus on all stats, can patent
+        let (cost_multiplier, tier) = if premium {
+            (2.0, IndependentTier::Premium)
+        } else {
+            (1.5, IndependentTier::Standard)
+        };
+
         let independent_cost = (tech_total_cost as f64 * cost_multiplier) as Money;
         let research_id = self.allocate_entity();
+
+        let tier_label = if premium { "Premium" } else { "Standard" };
         let mut independent = TechResearch::with_details(
             tech_category,
             format!("[Independent] {}", tech_name),
-            format!("Independent research to bypass patent on {}", tech_name),
+            format!(
+                "{} independent research to bypass patent on {} ({}x cost)",
+                tier_label, tech_name, cost_multiplier
+            ),
             independent_cost,
             tech_throughput_bonus,
             tech_cost_reduction,
@@ -3839,6 +3884,7 @@ impl GameWorld {
             tech_prerequisites,
         );
         independent.researcher = Some(corp_id);
+        independent.independent_tier = tier;
         self.tech_research.insert(research_id, independent);
         self.event_queue.push(
             self.tick,
@@ -3848,6 +3894,48 @@ impl GameWorld {
                 cost_multiplier,
             },
         );
+    }
+
+    /// Charge PerUnit license fees when a corporation builds a new node.
+    /// Finds all active PerUnit licenses where this corp is the licensee
+    /// and charges the per_unit_price for each, paying the patent holder.
+    fn charge_per_unit_fees(&mut self, corp_id: EntityId) {
+        let mut charges: Vec<(EntityId, EntityId, Money)> = Vec::new(); // (license_id, holder_corp, charge)
+
+        for (&license_id, license) in self.licenses.iter() {
+            if license.licensee_corp != corp_id {
+                continue;
+            }
+            if !matches!(license.license_type, LicenseType::PerUnit) {
+                continue;
+            }
+            if !license.is_active(self.tick) {
+                continue;
+            }
+            let patent = match self.patents.get(&license.patent_id) {
+                Some(p) => p,
+                None => continue,
+            };
+            let charge = patent.per_unit_charge();
+            if charge > 0 {
+                charges.push((license_id, patent.holder_corp, charge));
+            }
+        }
+
+        for (license_id, holder_corp, charge) in charges {
+            // Deduct from licensee
+            if let Some(fin) = self.financials.get_mut(&corp_id) {
+                fin.cash -= charge;
+            }
+            // Pay to patent holder
+            if let Some(fin) = self.financials.get_mut(&holder_corp) {
+                fin.cash += charge;
+            }
+            // Record usage on the license
+            if let Some(license) = self.licenses.get_mut(&license_id) {
+                license.record_use(charge);
+            }
+        }
     }
 
     // === Phase 5.4: Government Grants ===

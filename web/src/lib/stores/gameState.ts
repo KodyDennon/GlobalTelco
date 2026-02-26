@@ -12,7 +12,8 @@ export const worldInfo = writable<WorldInfo>({
 	infra_node_count: 0,
 	infra_edge_count: 0,
 	player_corp_id: 0,
-	cell_spacing_km: 100
+	cell_spacing_km: 100,
+	sandbox: false
 });
 export const playerCorp = writable<CorporationData | null>(null);
 export const regions = writable<Region[]>([]);

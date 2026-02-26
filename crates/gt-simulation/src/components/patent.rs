@@ -22,6 +22,10 @@ pub struct Patent {
     pub filed_tick: Tick,
     pub license_price: Money,
     pub license_type: LicenseType,
+    /// Per-unit charge for PerUnit licenses (charged each time a node is built using the tech)
+    pub per_unit_price: Money,
+    /// Duration in ticks for Lease licenses
+    pub lease_duration: u64,
 }
 
 impl Patent {
@@ -32,6 +36,8 @@ impl Patent {
             filed_tick,
             license_price: 1_000_000, // default $1M
             license_type: LicenseType::Royalty,
+            per_unit_price: 50_000, // default $50k per node
+            lease_duration: 500, // default 500 ticks
         }
     }
 
@@ -39,6 +45,14 @@ impl Patent {
     pub fn royalty_per_tick(&self) -> Money {
         match self.license_type {
             LicenseType::Royalty => self.license_price / 100, // 1% of price per tick
+            _ => 0,
+        }
+    }
+
+    /// Per-unit charge for PerUnit-type licenses.
+    pub fn per_unit_charge(&self) -> Money {
+        match self.license_type {
+            LicenseType::PerUnit => self.per_unit_price,
             _ => 0,
         }
     }
@@ -52,6 +66,10 @@ pub struct License {
     pub license_type: LicenseType,
     pub price_paid: Money,
     pub granted_tick: Tick,
+    /// Number of times this license has been used (for PerUnit tracking)
+    pub uses: u32,
+    /// Total amount paid in royalties/per-unit fees over the lifetime of this license
+    pub total_fees_paid: Money,
 }
 
 impl License {
@@ -68,6 +86,8 @@ impl License {
             license_type,
             price_paid,
             granted_tick,
+            uses: 0,
+            total_fees_paid: 0,
         }
     }
 
@@ -79,5 +99,12 @@ impl License {
             LicenseType::PerUnit => true, // active indefinitely
             LicenseType::Lease { expires_tick } => tick < expires_tick,
         }
+    }
+
+    /// Record a per-unit use of the license. Returns the charge amount.
+    pub fn record_use(&mut self, per_unit_price: Money) -> Money {
+        self.uses += 1;
+        self.total_fees_paid += per_unit_price;
+        per_unit_price
     }
 }

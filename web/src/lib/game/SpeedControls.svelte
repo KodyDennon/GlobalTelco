@@ -5,14 +5,19 @@
 	import { tooltip } from '$lib/ui/tooltip';
 
 	let currentSpeed = $derived($worldInfo.speed);
+	let isSandbox = $derived($worldInfo.sandbox);
 
-	const speeds = [
+	const baseSpeedList = [
 		{ labelKey: 'speed.label_paused', value: 0, key: 'Paused', ariaKey: 'speed.paused', tip: 'Pause — game time stops. Use this to plan your next move.' },
 		{ labelKey: 'speed.label_1x', value: 1, key: 'Normal', ariaKey: 'speed.normal', tip: 'Normal speed (1x) — one tick per second' },
 		{ labelKey: 'speed.label_2x', value: 2, key: 'Fast', ariaKey: 'speed.fast', tip: 'Fast speed (2x) — two ticks per second' },
 		{ labelKey: 'speed.label_4x', value: 4, key: 'VeryFast', ariaKey: 'speed.very_fast', tip: 'Very fast (4x) — four ticks per second' },
 		{ labelKey: 'speed.label_8x', value: 8, key: 'Ultra', ariaKey: 'speed.ultra', tip: 'Ultra speed (8x) — eight ticks per second.\nUseful for skipping ahead.' }
 	];
+
+	const ludicrousSpeed = { labelKey: 'speed.label_32x', value: 32, key: 'Ludicrous', ariaKey: 'speed.ludicrous', tip: 'Ludicrous speed (32x) — sandbox only.\n32 ticks per second!' };
+
+	let speeds = $derived(isSandbox ? [...baseSpeedList, ludicrousSpeed] : baseSpeedList);
 </script>
 
 <div class="speed-controls" role="radiogroup" aria-label={$tr('speed.normal')}>

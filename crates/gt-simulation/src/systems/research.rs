@@ -64,8 +64,43 @@ pub fn run(world: &mut GameWorld) {
 
     // Apply completed research bonuses
     for (research_id, researcher, category) in completed {
-        let throughput_bonus = category.throughput_bonus();
-        let cost_reduction = category.cost_reduction();
+        use crate::components::tech_research::IndependentTier;
+
+        // Determine the independent tier and apply premium bonus if applicable
+        let independent_tier = world
+            .tech_research
+            .get(&research_id)
+            .map(|r| r.independent_tier)
+            .unwrap_or(IndependentTier::None);
+
+        // Premium independent research gets +10% bonus on all stat bonuses
+        let premium_multiplier = match independent_tier {
+            IndependentTier::Premium => 1.1,
+            _ => 1.0,
+        };
+
+        let base_throughput = category.throughput_bonus();
+        let base_cost_reduction = category.cost_reduction();
+        let throughput_bonus = base_throughput * premium_multiplier;
+        let cost_reduction = base_cost_reduction * premium_multiplier;
+
+        // Also apply premium multiplier to the stored research bonuses
+        if independent_tier == IndependentTier::Premium {
+            if let Some(research) = world.tech_research.get_mut(&research_id) {
+                research.throughput_bonus *= 1.1;
+                research.cost_reduction *= 1.1;
+                research.reliability_bonus *= 1.1;
+            }
+        }
+
+        // Premium independent research can be patented by the researcher
+        if independent_tier == IndependentTier::Premium {
+            if let Some(research) = world.tech_research.get_mut(&research_id) {
+                research.patent_status =
+                    crate::components::tech_research::PatentStatus::Proprietary;
+                research.patent_owner = Some(researcher);
+            }
+        }
 
         // Apply throughput bonus to all owned nodes
         if throughput_bonus > 0.0 {

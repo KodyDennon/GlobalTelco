@@ -246,7 +246,8 @@ export function setSpeed(speed: number) {
 			1: 'Normal',
 			2: 'Fast',
 			4: 'VeryFast',
-			8: 'Ultra'
+			8: 'Ultra',
+			32: 'Ludicrous'
 		};
 		bridge.processCommand({ SetSpeed: speedMap[speed] || 'Normal' });
 	}

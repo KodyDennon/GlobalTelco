@@ -10,8 +10,24 @@
 	import { initGame, initMultiplayer, start, loadFromSave, setSpeed } from '$lib/game/GameLoop';
 	import { initWasm } from '$lib/wasm/bridge';
 
-	type Screen = 'splash' | 'main' | 'newGame' | 'loadGame' | 'settings' | 'multiplayer' | 'credits';
+	type Screen = 'splash' | 'main' | 'newGame' | 'loadGame' | 'settings' | 'multiplayer' | 'credits' | 'loading';
 	let screen: Screen = $state('splash');
+	let loadingTip = $state('');
+
+	const LOADING_TIPS = [
+		'Tip: Right-click the map to open the radial build menu',
+		'Tip: Use hotbar keys 1-9 for quick building',
+		'Tip: Check the Advisor panel for strategic suggestions',
+		'Tip: Build backbone infrastructure first, then extend to cities',
+		'Tip: Monitor your cash flow — bankruptcy means game over!',
+		'Tip: Research new tech to unlock more powerful infrastructure',
+		'Tip: Keep infrastructure health above 50% to avoid outages',
+		'Tip: Contracts provide steady income — propose them to AI corps',
+		'Tip: Use the Coverage overlay to find underserved areas',
+		'Tip: Insure your expensive infrastructure against disasters',
+		'Tip: AI corporations will compete — watch their expansion patterns',
+		'Tip: Overlays help you make strategic decisions about where to build',
+	];
 
 	onMount(() => {
 		setTimeout(() => {
@@ -20,6 +36,10 @@
 	});
 
 	async function handleStart(config: object) {
+		loadingTip = LOADING_TIPS[Math.floor(Math.random() * LOADING_TIPS.length)];
+		screen = 'loading';
+		// Yield to let the loading screen render before blocking WASM init
+		await new Promise(r => setTimeout(r, 50));
 		await initGame(config);
 		start();
 		goto('/game');
@@ -63,7 +83,13 @@
 	<title>GlobalTelco</title>
 </svelte:head>
 
-{#if screen === 'splash'}
+{#if screen === 'loading'}
+	<div class="loading-screen">
+		<h1 class="loading-title">Generating World...</h1>
+		<div class="loading-spinner"></div>
+		<p class="loading-tip">{loadingTip}</p>
+	</div>
+{:else if screen === 'splash'}
 	<div class="splash">
 		<h1 class="splash-title">GlobalTelco</h1>
 		<p class="splash-sub">Build your telecom empire</p>
@@ -120,5 +146,46 @@
 	@keyframes pulseGlow {
 		from { filter: brightness(0.8); }
 		to { filter: brightness(1.2); }
+	}
+
+	.loading-screen {
+		width: 100vw;
+		height: 100vh;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		background: #0a0e17;
+		gap: 24px;
+		animation: fadeIn 0.3s ease-out;
+	}
+
+	.loading-title {
+		font-size: 28px;
+		font-weight: 700;
+		color: #d1d5db;
+		font-family: system-ui, sans-serif;
+	}
+
+	.loading-spinner {
+		width: 48px;
+		height: 48px;
+		border: 3px solid rgba(55, 65, 81, 0.5);
+		border-top-color: #10b981;
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
+	}
+
+	.loading-tip {
+		color: #6b7280;
+		font-size: 14px;
+		font-family: system-ui, sans-serif;
+		max-width: 400px;
+		text-align: center;
+		line-height: 1.5;
 	}
 </style>

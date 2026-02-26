@@ -1,8 +1,28 @@
 import { writable, derived } from 'svelte/store';
+import { playerCorp } from './gameState';
 
 export type PanelType = 'none' | 'info' | 'dashboard' | 'infrastructure' | 'network' | 'research' | 'contracts' | 'region' | 'workforce' | 'advisor' | 'auctions' | 'mergers' | 'intel' | 'achievements' | 'spectrum';
 export type OverlayType = 'none' | 'terrain' | 'ownership' | 'population' | 'demand' | 'disaster' | 'coverage' | 'congestion' | 'traffic' | 'market_share' | 'ocean_depth' | 'spectrum' | 'elevation_contour' | 'submarine_reference' | 'coverage_overlap';
 export type PanelGroupType = 'finance' | 'operations' | 'diplomacy' | 'research' | 'market' | 'info';
+
+// ── Company Size Tier (Management Scaling) ───────────────────────────────────
+// Small: 1-10 nodes (hands-on), Medium: 11-100 (teams/budgets), Large: 101+ (policies/departments)
+export type CompanyTier = 'small' | 'medium' | 'large';
+
+export const companyTier = derived(playerCorp, ($corp): CompanyTier => {
+	const count = $corp?.infrastructure_count ?? 0;
+	if (count > 100) return 'large';
+	if (count > 10) return 'medium';
+	return 'small';
+});
+
+export const companyTierLabel = derived(companyTier, ($tier): string => {
+	switch ($tier) {
+		case 'small': return 'Startup';
+		case 'medium': return 'Regional Operator';
+		case 'large': return 'Enterprise';
+	}
+});
 
 // Panel group → tab definitions
 export const PANEL_GROUP_TABS: Record<PanelGroupType, Array<{ key: string; label: string; component?: string; comingSoon?: { feature: string; phase: string; description: string } }>> = {

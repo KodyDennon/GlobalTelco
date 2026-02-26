@@ -138,6 +138,9 @@
 			<span class="tick" use:tooltip={'Current simulation tick — each tick represents one time unit'}>{$tr('game.tick', { tick: $worldInfo.tick })}</span>
 			<span class="rating" use:tooltip={() => `Credit rating: ${$playerCorp?.credit_rating ?? '---'}\nAffects loan interest rates and contract trust`}>{$playerCorp?.credit_rating ?? '---'}</span>
 			<span class="infra" use:tooltip={() => `Total infrastructure: ${$playerCorp?.infrastructure_count ?? 0} nodes\nIncludes towers, offices, data centers, and more`}>{$tr('game.nodes', { count: $playerCorp?.infrastructure_count ?? 0 })}</span>
+			{#if $worldInfo.sandbox}
+				<span class="sandbox-indicator" use:tooltip={'Sandbox mode — unlimited funds, no bankruptcy'}>SANDBOX</span>
+			{/if}
 		</div>
 
 		<div class="hud-right" role="status">
@@ -569,6 +572,17 @@
 	.overlay-btn.overlap.active {
 		background: rgba(244, 114, 182, 0.2);
 		color: #f9a8d4;
+	}
+
+	.sandbox-indicator {
+		font-size: 10px;
+		font-weight: 800;
+		letter-spacing: 0.1em;
+		padding: 2px 8px;
+		border-radius: 4px;
+		background: rgba(245, 158, 11, 0.2);
+		color: #f59e0b;
+		border: 1px solid rgba(245, 158, 11, 0.3);
 	}
 
 	.mp-status {

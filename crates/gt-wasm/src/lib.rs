@@ -89,6 +89,7 @@ impl WasmBridge {
             "infra_edge_count": self.world.infra_edges.len(),
             "player_corp_id": self.world.player_corp_id(),
             "cell_spacing_km": self.world.cell_spacing_km,
+            "sandbox": self.world.config().sandbox,
         });
         serde_json::to_string(&info).unwrap_or_default()
     }
@@ -458,6 +459,14 @@ impl WasmBridge {
                 let patent_owner_name = r.patent_owner.and_then(|oid| {
                     self.world.corporations.get(&oid).map(|c| c.name.clone())
                 });
+                // Look up per_unit_price and lease_duration from patent if this tech is patented
+                let patent_data = self.world.patents.values().find(|p| p.tech_id == id);
+                let per_unit_price = patent_data.map(|p| p.per_unit_price).unwrap_or(0);
+                let lease_duration = patent_data.map(|p| p.lease_duration).unwrap_or(0);
+                let patent_license_type = patent_data
+                    .map(|p| format!("{:?}", p.license_type))
+                    .unwrap_or_default();
+
                 serde_json::json!({
                     "id": id,
                     "category": format!("{:?}", r.category),
@@ -478,6 +487,10 @@ impl WasmBridge {
                     "throughput_bonus": r.throughput_bonus,
                     "cost_reduction": r.cost_reduction,
                     "reliability_bonus": r.reliability_bonus,
+                    "independent_tier": format!("{:?}", r.independent_tier),
+                    "per_unit_price": per_unit_price,
+                    "lease_duration": lease_duration,
+                    "patent_license_type": patent_license_type,
                 })
             })
             .collect();
