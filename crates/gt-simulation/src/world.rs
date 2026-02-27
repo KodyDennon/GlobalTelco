@@ -127,6 +127,34 @@ pub struct GameWorld {
     #[serde(default)]
     pub stock_market: HashMap<EntityId, StockMarket>,
 
+    // Satellite System
+    #[serde(default)]
+    pub satellites: HashMap<EntityId, Satellite>,
+    #[serde(default)]
+    pub constellations: HashMap<EntityId, Constellation>,
+    #[serde(default)]
+    pub orbital_shells: Vec<crate::components::satellite::OrbitalShell>,
+    /// Dynamic satellite edges (ISL + downlinks) — cleared and rebuilt each tick.
+    #[serde(default)]
+    pub dynamic_satellite_edges: Vec<EntityId>,
+    #[serde(default)]
+    pub satellite_factories: HashMap<EntityId, crate::components::satellite::SatelliteFactoryComponent>,
+    #[serde(default)]
+    pub terminal_factories: HashMap<EntityId, crate::components::satellite::TerminalFactoryComponent>,
+    #[serde(default)]
+    pub warehouses: HashMap<EntityId, crate::components::satellite::WarehouseComponent>,
+    #[serde(default)]
+    pub launch_pads: HashMap<EntityId, crate::components::satellite::LaunchPadComponent>,
+    /// (city_id, corp_id) → SatelliteSubscription
+    #[serde(default)]
+    pub satellite_subscriptions: HashMap<(EntityId, EntityId), crate::components::satellite::SatelliteSubscription>,
+    /// Pending contract launches: (rocket_type_str, satellite_ids)
+    #[serde(default)]
+    pub pending_contract_launches: Vec<(String, Vec<EntityId>)>,
+    /// Active satellite service missions
+    #[serde(default)]
+    pub service_missions: Vec<crate::components::satellite::ServiceMission>,
+
     // Regional pricing: (corp_id, region_id) → RegionPricing
     #[serde(default)]
     pub region_pricing: HashMap<(EntityId, EntityId), crate::components::RegionPricing>,
@@ -231,6 +259,17 @@ impl GameWorld {
             licenses: HashMap::new(),
             grants: HashMap::new(),
             stock_market: HashMap::new(),
+            satellites: HashMap::new(),
+            constellations: HashMap::new(),
+            orbital_shells: crate::components::satellite::OrbitalShell::standard_shells(),
+            dynamic_satellite_edges: Vec::new(),
+            satellite_factories: HashMap::new(),
+            terminal_factories: HashMap::new(),
+            warehouses: HashMap::new(),
+            launch_pads: HashMap::new(),
+            satellite_subscriptions: HashMap::new(),
+            pending_contract_launches: Vec::new(),
+            service_missions: Vec::new(),
             region_pricing: HashMap::new(),
             maintenance_priorities: HashMap::new(),
             intel_levels: HashMap::new(),
@@ -1196,6 +1235,24 @@ impl GameWorld {
                 DeltaOp::ConstructionCompleted { entity_id } => {
                     self.constructions.remove(entity_id);
                 }
+                DeltaOp::SatelliteLaunched {
+                    entity_id,
+                    owner: _,
+                    orbit_type: _,
+                    lon: _,
+                    lat: _,
+                    altitude_km: _,
+                } => {
+                    if let Some(sat) = self.satellites.get_mut(entity_id) {
+                        sat.status = gt_common::types::SatelliteStatus::Operational;
+                        sat.launched_tick = self.tick;
+                    }
+                }
+                DeltaOp::SatelliteRemoved { entity_id } => {
+                    if let Some(sat) = self.satellites.get_mut(entity_id) {
+                        sat.status = gt_common::types::SatelliteStatus::Dead;
+                    }
+                }
             }
         }
     }
@@ -1688,6 +1745,130 @@ impl GameWorld {
             }
             Command::CompleteGrant { grant_id } => {
                 self.cmd_complete_grant(grant_id);
+                CommandResult::ok()
+            }
+
+            // Satellite System
+            Command::BuildConstellation {
+                name,
+                orbit_type,
+                num_planes,
+                sats_per_plane,
+                altitude_km,
+                inclination_deg,
+            } => self.cmd_build_constellation(name, &orbit_type, num_planes, sats_per_plane, altitude_km, inclination_deg),
+
+            Command::OrderSatellites {
+                factory,
+                constellation_id,
+                count,
+            } => {
+                if let Some(f) = self.satellite_factories.get_mut(&factory) {
+                    f.queue.push((constellation_id, count));
+                }
+                CommandResult::ok()
+            }
+
+            Command::ScheduleLaunch {
+                launch_pad,
+                rocket_type,
+                satellites,
+            } => {
+                if let Some(pad) = self.launch_pads.get_mut(&launch_pad) {
+                    pad.launch_queue.push((rocket_type, satellites));
+                }
+                CommandResult::ok()
+            }
+
+            Command::ContractLaunch {
+                rocket_type,
+                satellites,
+            } => {
+                self.pending_contract_launches
+                    .push((rocket_type, satellites));
+                CommandResult::ok()
+            }
+
+            Command::DeorbitSatellite { satellite } => {
+                if let Some(sat) = self.satellites.get_mut(&satellite) {
+                    sat.status = gt_common::types::SatelliteStatus::Deorbiting;
+                    let owner = self.ownerships.get(&satellite).map(|o| o.owner).unwrap_or(0);
+                    self.event_queue.push(
+                        self.tick,
+                        gt_common::events::GameEvent::SatelliteDeorbited {
+                            satellite_id: satellite,
+                            owner,
+                        },
+                    );
+                }
+                CommandResult::ok()
+            }
+
+            Command::OrderTerminals { factory, count } => {
+                // Terminals are produced continuously; this just sets target
+                let _ = (factory, count);
+                CommandResult::ok()
+            }
+
+            Command::ShipTerminals {
+                factory,
+                warehouse,
+                count,
+            } => {
+                // Transfer terminals from factory to warehouse
+                if let Some(f) = self.terminal_factories.get_mut(&factory) {
+                    let actual = count.min(f.produced_stored);
+                    f.produced_stored -= actual;
+                    if let Some(w) = self.warehouses.get_mut(&warehouse) {
+                        w.terminal_inventory += actual;
+                    }
+                }
+                CommandResult::ok()
+            }
+
+            Command::SetSatellitePricing {
+                region,
+                monthly_rate,
+            } => {
+                if let Some(corp_id) = self.player_corp_id {
+                    let sub_key = (region, corp_id);
+                    // Update pricing for all subscriptions in this region for this corp
+                    // Actually set it on a per-region basis
+                    for ((city_id, cid), sub) in &mut self.satellite_subscriptions {
+                        if *cid == corp_id {
+                            // Check if city is in this region
+                            if let Some(city) = self.cities.get(city_id) {
+                                if city.region_id == region {
+                                    sub.monthly_rate = monthly_rate;
+                                }
+                            }
+                        }
+                    }
+                    let _ = sub_key;
+                }
+                CommandResult::ok()
+            }
+
+            Command::ServiceSatellite {
+                satellite,
+                service_type,
+            } => {
+                let st = match service_type.as_str() {
+                    "Refuel" => gt_common::types::ServiceType::Refuel,
+                    "Repair" => gt_common::types::ServiceType::Repair,
+                    _ => gt_common::types::ServiceType::Refuel,
+                };
+                let cost = match st {
+                    gt_common::types::ServiceType::Refuel => 2_000_000,
+                    gt_common::types::ServiceType::Repair => 5_000_000,
+                };
+                self.service_missions
+                    .push(crate::components::satellite::ServiceMission {
+                        satellite_id: satellite,
+                        service_type: st,
+                        ticks_remaining: 50, // ~50 ticks for service
+                        cost,
+                    });
                 CommandResult::ok()
             }
 
@@ -2264,6 +2445,15 @@ impl GameWorld {
             NodeType::UnderwaterDataCenter => 150,
             NodeType::NeuromorphicEdgeNode => 40,
             NodeType::TerahertzRelay => 10,
+            // Satellite infrastructure
+            NodeType::LEO_Satellite | NodeType::MEO_Satellite
+            | NodeType::GEO_Satellite | NodeType::HEO_Satellite => 0, // Manufactured, not built
+            NodeType::LEO_GroundStation => 60,
+            NodeType::MEO_GroundStation => 50,
+            NodeType::SatelliteFactory => 80,
+            NodeType::TerminalFactory => 40,
+            NodeType::SatelliteWarehouse => 20,
+            NodeType::LaunchPad => 100,
         };
         let duration = (base_duration as f64 * difficulty.construction_time_multiplier) as Tick;
 
@@ -4761,6 +4951,68 @@ impl GameWorld {
         );
     }
 
+    // === Satellite System ===
+
+    fn cmd_build_constellation(
+        &mut self,
+        name: String,
+        orbit_type_str: &str,
+        num_planes: u32,
+        sats_per_plane: u32,
+        altitude_km: f64,
+        inclination_deg: f64,
+    ) -> gt_common::protocol::CommandResult {
+        use gt_common::protocol::CommandResult;
+
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return CommandResult::fail("No player corporation"),
+        };
+
+        let orbit_type = match orbit_type_str {
+            "LEO" => gt_common::types::OrbitType::LEO,
+            "MEO" => gt_common::types::OrbitType::MEO,
+            "GEO" => gt_common::types::OrbitType::GEO,
+            "HEO" => gt_common::types::OrbitType::HEO,
+            _ => return CommandResult::fail("Invalid orbit type"),
+        };
+
+        // Validate altitude
+        let (min_alt, max_alt) = orbit_type.altitude_range_km();
+        if altitude_km < min_alt || altitude_km > max_alt {
+            return CommandResult::fail(format!(
+                "Altitude {:.0}km outside range for {:?}: {:.0}-{:.0}km",
+                altitude_km, orbit_type, min_alt, max_alt
+            ));
+        }
+
+        let constellation_id = self.allocate_entity();
+        let constellation = crate::components::Constellation {
+            name: name.clone(),
+            owner: corp_id,
+            orbit_type,
+            target_altitude_km: altitude_km,
+            target_inclination_deg: inclination_deg,
+            num_planes,
+            sats_per_plane,
+            satellite_ids: Vec::new(),
+            operational_count: 0,
+        };
+
+        self.constellations.insert(constellation_id, constellation);
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::ConstellationCreated {
+                constellation_id,
+                owner: corp_id,
+                name,
+            },
+        );
+
+        CommandResult::ok_with_entity(constellation_id)
+    }
+
     // === Phase 5.1: Alliance System ===
 
     fn cmd_propose_alliance(&mut self, target_corp: EntityId, name: &str, revenue_share: f64) {
@@ -5015,6 +5267,7 @@ fn archetype_skill_bonus(archetype: AIArchetype) -> f64 {
         AIArchetype::DefensiveConsolidator => 0.2,
         AIArchetype::AggressiveExpander => 0.1,
         AIArchetype::BudgetOperator => 0.0,
+        AIArchetype::SatellitePioneer => 0.25,
     }
 }
 

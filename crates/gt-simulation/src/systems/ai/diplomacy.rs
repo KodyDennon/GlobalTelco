@@ -45,6 +45,7 @@ pub fn bid_on_auctions(
             AIArchetype::DefensiveConsolidator => (0.4, 0.3),
             AIArchetype::TechInnovator => (0.5, 0.4),
             AIArchetype::BudgetOperator => (0.6, 0.25),
+            AIArchetype::SatellitePioneer => (0.5, 0.35),
         };
 
         let check =
@@ -112,6 +113,7 @@ pub fn evaluate_acquisitions(
             AIArchetype::DefensiveConsolidator => 1.3,
             AIArchetype::TechInnovator => 1.5,
             AIArchetype::BudgetOperator => 1.2,
+            AIArchetype::SatellitePioneer => 1.5,
         };
 
         let accept = offer >= (book_value as f64 * required_premium) as i64
@@ -236,6 +238,7 @@ pub fn lobby(
         AIArchetype::DefensiveConsolidator => 0.2,
         AIArchetype::TechInnovator => 0.3,
         AIArchetype::BudgetOperator => 0.7,
+        AIArchetype::SatellitePioneer => 0.3,
     };
 
     let check = ((tick.wrapping_mul(corp_id) >> 6) % 100) as f64 / 100.0;
@@ -260,6 +263,7 @@ pub fn lobby(
             }
             AIArchetype::TechInnovator => gt_common::types::LobbyPolicy::SubsidyRequest,
             AIArchetype::DefensiveConsolidator => gt_common::types::LobbyPolicy::RelaxZoning,
+            AIArchetype::SatellitePioneer => gt_common::types::LobbyPolicy::SubsidyRequest,
         };
 
         let budget = fin.cash / 10;
@@ -297,6 +301,8 @@ pub fn evaluate_co_ownership_proposals(
             AIArchetype::TechInnovator => share_pct <= 0.3,
             // Aggressive expanders generally reject co-ownership
             AIArchetype::AggressiveExpander => false,
+            // Satellite pioneers accept co-ownership for shared ground stations
+            AIArchetype::SatellitePioneer => share_pct <= 0.4,
         };
 
         if accept {

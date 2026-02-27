@@ -74,6 +74,15 @@ impl StrategySelector {
                     AIStrategy::Consolidate
                 }
             }
+            AIArchetype::SatellitePioneer => {
+                if cash_ratio > 3.0 {
+                    AIStrategy::Expand
+                } else if profit > 0 {
+                    AIStrategy::Consolidate
+                } else {
+                    AIStrategy::Compete
+                }
+            }
         }
     }
 

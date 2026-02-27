@@ -404,6 +404,73 @@ pub enum GameEvent {
         score: f64,
     },
 
+    // Satellite System
+    ConstellationCreated {
+        constellation_id: EntityId,
+        owner: EntityId,
+        name: String,
+    },
+    SatelliteManufactured {
+        satellite_id: EntityId,
+        owner: EntityId,
+        constellation_id: EntityId,
+    },
+    LaunchAttempted {
+        owner: EntityId,
+        rocket_type: String,
+        satellite_count: u32,
+    },
+    LaunchSucceeded {
+        owner: EntityId,
+        satellite_count: u32,
+    },
+    LaunchFailed {
+        owner: EntityId,
+        satellite_count: u32,
+        debris_created: u32,
+    },
+    SatelliteOperational {
+        satellite_id: EntityId,
+        owner: EntityId,
+    },
+    SatelliteDecaying {
+        satellite_id: EntityId,
+        owner: EntityId,
+    },
+    SatelliteDeorbited {
+        satellite_id: EntityId,
+        owner: EntityId,
+    },
+    SatelliteDead {
+        satellite_id: EntityId,
+        owner: EntityId,
+    },
+    DebrisCollision {
+        satellite_id: EntityId,
+        owner: EntityId,
+        debris_created: u32,
+    },
+    KesslerCascadeStarted {
+        shell_min_km: f64,
+        shell_max_km: f64,
+        debris_count: u32,
+    },
+    SatelliteServiced {
+        satellite_id: EntityId,
+        service_type: String,
+        cost: Money,
+    },
+    TerminalsDeployed {
+        city_id: EntityId,
+        count: u32,
+        owner: EntityId,
+    },
+    SatelliteSubscribersGained {
+        city_id: EntityId,
+        owner: EntityId,
+        new_subscribers: u32,
+    },
+
     // UI & System
     GlobalNotification {
         message: String,
@@ -569,6 +636,22 @@ impl GameEvent {
             GameEvent::GrantAvailable { .. } | GameEvent::GrantExpired { .. } => vec![],
             GameEvent::GrantAwarded { corporation, .. }
             | GameEvent::GrantCompleted { corporation, .. } => vec![*corporation],
+
+            // Satellite System
+            GameEvent::ConstellationCreated { owner, .. } => vec![*owner],
+            GameEvent::SatelliteManufactured { owner, .. } => vec![*owner],
+            GameEvent::LaunchAttempted { owner, .. }
+            | GameEvent::LaunchSucceeded { owner, .. }
+            | GameEvent::LaunchFailed { owner, .. } => vec![*owner],
+            GameEvent::SatelliteOperational { owner, .. }
+            | GameEvent::SatelliteDecaying { owner, .. }
+            | GameEvent::SatelliteDeorbited { owner, .. }
+            | GameEvent::SatelliteDead { owner, .. } => vec![*owner],
+            GameEvent::DebrisCollision { owner, .. } => vec![*owner],
+            GameEvent::KesslerCascadeStarted { .. } => vec![],  // global event
+            GameEvent::SatelliteServiced { .. } => vec![],
+            GameEvent::TerminalsDeployed { owner, .. } => vec![*owner],
+            GameEvent::SatelliteSubscribersGained { owner, .. } => vec![*owner],
 
             // Global notifications — all players
             GameEvent::GlobalNotification { .. } => vec![],

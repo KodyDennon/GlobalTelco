@@ -96,6 +96,13 @@ impl InfraEdge {
             EdgeType::QuantumFiberLink => (500_000.0, 0.001, 500_000, 3_000),
             EdgeType::TerahertzBeam => (100_000.0, 0.001, 100_000, 800),
             EdgeType::LaserInterSatelliteLink => (2_000_000.0, 0.0005, 0, 1_000),
+
+            // Dynamic satellite edges (created/destroyed per tick, not player-built)
+            EdgeType::SatelliteDownlink => (50_000.0, 0.01, 0, 0),
+            EdgeType::IntraplaneISL => (100_000.0, 0.002, 0, 0),
+            EdgeType::CrossplaneISL => (80_000.0, 0.003, 0, 0),
+            EdgeType::GEO_GroundLink => (10_000.0, 0.3, 0, 0),
+            EdgeType::MEO_GroundLink => (30_000.0, 0.05, 0, 0),
         };
 
         let is_flat_cost = matches!(
@@ -104,6 +111,11 @@ impl InfraEdge {
                 | EdgeType::EarlySatelliteLink
                 | EdgeType::SatelliteLEOLink
                 | EdgeType::LaserInterSatelliteLink
+                | EdgeType::SatelliteDownlink
+                | EdgeType::IntraplaneISL
+                | EdgeType::CrossplaneISL
+                | EdgeType::GEO_GroundLink
+                | EdgeType::MEO_GroundLink
         );
 
         let construction_cost = if is_flat_cost {
@@ -112,6 +124,11 @@ impl InfraEdge {
                 EdgeType::EarlySatelliteLink => 2_000_000,
                 EdgeType::SatelliteLEOLink => 10_000_000,
                 EdgeType::LaserInterSatelliteLink => 50_000_000,
+                EdgeType::SatelliteDownlink
+                | EdgeType::IntraplaneISL
+                | EdgeType::CrossplaneISL
+                | EdgeType::GEO_GroundLink
+                | EdgeType::MEO_GroundLink => 0, // Dynamic edges, no construction cost
                 _ => 5_000_000,
             }
         } else {
@@ -124,6 +141,11 @@ impl InfraEdge {
                 EdgeType::EarlySatelliteLink => 20_000,
                 EdgeType::SatelliteLEOLink => 50_000,
                 EdgeType::LaserInterSatelliteLink => 80_000,
+                EdgeType::SatelliteDownlink
+                | EdgeType::IntraplaneISL
+                | EdgeType::CrossplaneISL
+                | EdgeType::GEO_GroundLink
+                | EdgeType::MEO_GroundLink => 0,
                 _ => 30_000,
             }
         } else {
@@ -208,7 +230,14 @@ impl InfraEdge {
             EdgeType::Submarine
             | EdgeType::SubseaTelegraphCable
             | EdgeType::SubseaFiberCable
-            | EdgeType::LaserInterSatelliteLink => NetworkLevel::GlobalBackbone,
+            | EdgeType::LaserInterSatelliteLink
+            | EdgeType::IntraplaneISL
+            | EdgeType::CrossplaneISL => NetworkLevel::GlobalBackbone,
+
+            // Satellite downlinks
+            EdgeType::SatelliteDownlink
+            | EdgeType::GEO_GroundLink
+            | EdgeType::MEO_GroundLink => NetworkLevel::Continental,
         }
     }
 }

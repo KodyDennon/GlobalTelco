@@ -262,6 +262,16 @@ pub fn build_node(
         NodeType::UnderwaterDataCenter => 150,
         NodeType::NeuromorphicEdgeNode => 40,
         NodeType::TerahertzRelay => 10,
+
+        // Satellite infrastructure
+        NodeType::LEO_Satellite | NodeType::MEO_Satellite
+        | NodeType::GEO_Satellite | NodeType::HEO_Satellite => 0,
+        NodeType::LEO_GroundStation => 60,
+        NodeType::MEO_GroundStation => 50,
+        NodeType::SatelliteFactory => 80,
+        NodeType::TerminalFactory => 40,
+        NodeType::SatelliteWarehouse => 20,
+        NodeType::LaunchPad => 100,
     };
 
     acquire_parcel(world, corp_id, cell_index);

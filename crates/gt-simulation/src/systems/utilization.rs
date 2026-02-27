@@ -143,6 +143,12 @@ fn reset_edge_latency(world: &mut GameWorld) {
                     EdgeType::TerahertzBeam => 0.001,
                     // Laser inter-satellite
                     EdgeType::LaserInterSatelliteLink => 0.0005,
+                    // Dynamic satellite edges
+                    EdgeType::SatelliteDownlink => 0.01,
+                    EdgeType::IntraplaneISL => 0.002,
+                    EdgeType::CrossplaneISL => 0.003,
+                    EdgeType::GEO_GroundLink => 0.3,
+                    EdgeType::MEO_GroundLink => 0.05,
                 };
                 (id, latency_per_km * edge.length_km)
             })
@@ -904,6 +910,19 @@ fn scaled_coverage_radius(node_type: NodeType, cell_spacing: f64) -> f64 {
         // Telegraph
         NodeType::TelegraphOffice => 1.5,
         NodeType::TelegraphRelay => 0.8,
+        // Satellite nodes — orbital coverage
+        NodeType::LEO_Satellite
+        | NodeType::MEO_Satellite
+        | NodeType::GEO_Satellite
+        | NodeType::HEO_Satellite => 10.0,
+        // Satellite ground stations
+        NodeType::LEO_GroundStation
+        | NodeType::MEO_GroundStation => 4.0,
+        // Satellite infrastructure (no coverage)
+        NodeType::SatelliteFactory
+        | NodeType::TerminalFactory
+        | NodeType::SatelliteWarehouse
+        | NodeType::LaunchPad => 0.0,
     };
     base_radius.max(cell_spacing * min_cells)
 }

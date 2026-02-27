@@ -216,6 +216,16 @@ fn select_strategy(ai: &AiState, fin: &Financial) -> AIStrategy {
                 AIStrategy::Consolidate
             }
         }
+        AIArchetype::SatellitePioneer => {
+            // Similar to TechInnovator — expand when cash is healthy, consolidate otherwise
+            if cash_ratio > 3.5 {
+                AIStrategy::Expand
+            } else if profit > 0 {
+                AIStrategy::Compete
+            } else {
+                AIStrategy::Consolidate
+            }
+        }
     }
 }
 

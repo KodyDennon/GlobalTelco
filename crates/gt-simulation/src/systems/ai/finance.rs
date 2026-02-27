@@ -48,6 +48,7 @@ fn maybe_take_loan(
         AIArchetype::DefensiveConsolidator => 0.5,
         AIArchetype::TechInnovator => 2.0,
         AIArchetype::BudgetOperator => 0.3,
+        AIArchetype::SatellitePioneer => 2.5,
     };
 
     let current_debt_ratio = if fin.cash > 0 {

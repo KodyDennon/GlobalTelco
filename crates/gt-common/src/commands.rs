@@ -281,6 +281,59 @@ pub enum Command {
         auto_repair: bool,
     },
 
+    // Satellite System
+    /// Define a new constellation (creates the constellation entity, sats must be manufactured + launched)
+    BuildConstellation {
+        name: String,
+        orbit_type: String,     // "LEO", "MEO", "GEO", "HEO"
+        num_planes: u32,
+        sats_per_plane: u32,
+        altitude_km: f64,
+        inclination_deg: f64,
+    },
+    /// Order satellites to be produced by a factory for a constellation
+    OrderSatellites {
+        factory: EntityId,
+        constellation_id: EntityId,
+        count: u32,
+    },
+    /// Schedule a launch from an owned launch pad
+    ScheduleLaunch {
+        launch_pad: EntityId,
+        rocket_type: String,    // "Small", "Medium", "Heavy", "SuperHeavy"
+        satellites: Vec<EntityId>,
+    },
+    /// Purchase a contract launch (no owned pad needed)
+    ContractLaunch {
+        rocket_type: String,
+        satellites: Vec<EntityId>,
+    },
+    /// Command a satellite to deorbit
+    DeorbitSatellite {
+        satellite: EntityId,
+    },
+    /// Order customer terminals from a terminal factory
+    OrderTerminals {
+        factory: EntityId,
+        count: u32,
+    },
+    /// Ship terminals from factory to a regional warehouse
+    ShipTerminals {
+        factory: EntityId,
+        warehouse: EntityId,
+        count: u32,
+    },
+    /// Set satellite service pricing for a region
+    SetSatellitePricing {
+        region: EntityId,
+        monthly_rate: Money,
+    },
+    /// Service a satellite (refuel or repair)
+    ServiceSatellite {
+        satellite: EntityId,
+        service_type: String,   // "Refuel", "Repair"
+    },
+
     // Game control
     SetSpeed(GameSpeed),
     TogglePause,

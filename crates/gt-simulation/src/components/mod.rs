@@ -29,6 +29,7 @@ pub mod position;
 pub mod pricing;
 pub mod region;
 pub mod road_graph;
+pub mod satellite;
 pub mod spectrum;
 pub mod stock_market;
 pub mod tech_research;
@@ -67,6 +68,10 @@ pub use position::Position;
 pub use pricing::{PriceTier, RegionPricing};
 pub use region::RegionComponent;
 pub use road_graph::{RoadClass, RoadNetwork, RoadSegment};
+pub use satellite::{
+    Constellation, LaunchPadComponent, OrbitalShell, Satellite, SatelliteFactoryComponent,
+    SatelliteSubscription, ServiceMission, TerminalFactoryComponent, WarehouseComponent,
+};
 pub use spectrum::{SpectrumAuction, SpectrumLicense};
 pub use stock_market::StockMarket;
 pub use tech_research::{PatentStatus, ResearchCategory, TechResearch};

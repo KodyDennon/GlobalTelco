@@ -245,6 +245,28 @@ pub enum NodeType {
     UnderwaterDataCenter,
     NeuromorphicEdgeNode,
     TerahertzRelay,
+
+    // ── Satellite System ──
+    /// LEO satellite in orbit (~160-2000km)
+    LEO_Satellite,
+    /// MEO satellite in orbit (~2000-35786km)
+    MEO_Satellite,
+    /// GEO satellite in geostationary orbit (~35786km)
+    GEO_Satellite,
+    /// HEO satellite in highly elliptical orbit
+    HEO_Satellite,
+    /// Ground station for LEO satellite constellations (Era 5)
+    LEO_GroundStation,
+    /// Ground station for MEO satellite constellations (Era 4)
+    MEO_GroundStation,
+    /// Factory that produces satellites
+    SatelliteFactory,
+    /// Factory that produces customer terminals
+    TerminalFactory,
+    /// Regional warehouse for terminal distribution
+    SatelliteWarehouse,
+    /// Launch pad for rocket launches
+    LaunchPad,
 }
 
 impl NodeType {
@@ -298,6 +320,17 @@ impl NodeType {
         NodeType::UnderwaterDataCenter,
         NodeType::NeuromorphicEdgeNode,
         NodeType::TerahertzRelay,
+        // Satellite System
+        NodeType::LEO_Satellite,
+        NodeType::MEO_Satellite,
+        NodeType::GEO_Satellite,
+        NodeType::HEO_Satellite,
+        NodeType::LEO_GroundStation,
+        NodeType::MEO_GroundStation,
+        NodeType::SatelliteFactory,
+        NodeType::TerminalFactory,
+        NodeType::SatelliteWarehouse,
+        NodeType::LaunchPad,
     ];
 
     /// Human-readable display name for UI.
@@ -357,6 +390,18 @@ impl NodeType {
             NodeType::UnderwaterDataCenter => "Underwater Data Center",
             NodeType::NeuromorphicEdgeNode => "Neuromorphic Edge Node",
             NodeType::TerahertzRelay => "Terahertz Relay",
+
+            // Satellite System
+            NodeType::LEO_Satellite => "LEO Satellite",
+            NodeType::MEO_Satellite => "MEO Satellite",
+            NodeType::GEO_Satellite => "GEO Satellite",
+            NodeType::HEO_Satellite => "HEO Satellite",
+            NodeType::LEO_GroundStation => "LEO Ground Station",
+            NodeType::MEO_GroundStation => "MEO Ground Station",
+            NodeType::SatelliteFactory => "Satellite Factory",
+            NodeType::TerminalFactory => "Terminal Factory",
+            NodeType::SatelliteWarehouse => "Satellite Warehouse",
+            NodeType::LaunchPad => "Launch Pad",
         }
     }
 
@@ -412,7 +457,21 @@ impl NodeType {
             | NodeType::CableHut
             | NodeType::SubseaLandingStation
             | NodeType::LEO_SatelliteGateway
-            | NodeType::UnderwaterDataCenter => NetworkTier::Global,
+            | NodeType::UnderwaterDataCenter
+            | NodeType::LEO_Satellite
+            | NodeType::MEO_Satellite
+            | NodeType::GEO_Satellite
+            | NodeType::HEO_Satellite => NetworkTier::Global,
+
+            // Satellite ground infrastructure
+            NodeType::LEO_GroundStation
+            | NodeType::MEO_GroundStation => NetworkTier::Backbone,
+
+            // Satellite manufacturing & logistics
+            NodeType::SatelliteFactory => NetworkTier::Core,
+            NodeType::TerminalFactory
+            | NodeType::SatelliteWarehouse => NetworkTier::Aggregation,
+            NodeType::LaunchPad => NetworkTier::Backbone,
         }
     }
 
@@ -473,6 +532,18 @@ impl NodeType {
             NodeType::UnderwaterDataCenter => 0.5,
             NodeType::NeuromorphicEdgeNode => 2.0,
             NodeType::TerahertzRelay => 0.5,
+
+            // Satellite System — orbital coverage (dynamic, but base values)
+            NodeType::LEO_Satellite => 1000.0,     // ~1000km footprint radius at 550km alt
+            NodeType::MEO_Satellite => 3000.0,     // ~3000km footprint at 8000km alt
+            NodeType::GEO_Satellite => 5000.0,     // ~5000km footprint at 35786km
+            NodeType::HEO_Satellite => 2000.0,     // variable, average coverage
+            NodeType::LEO_GroundStation => 50.0,   // ground station facility coverage
+            NodeType::MEO_GroundStation => 50.0,
+            NodeType::SatelliteFactory => 0.0,     // no coverage
+            NodeType::TerminalFactory => 0.0,
+            NodeType::SatelliteWarehouse => 0.0,
+            NodeType::LaunchPad => 0.0,
         }
     }
 
@@ -490,6 +561,10 @@ impl NodeType {
                 | NodeType::LEO_SatelliteGateway
                 | NodeType::MeshDroneRelay
                 | NodeType::TerahertzRelay
+                | NodeType::LEO_Satellite
+                | NodeType::MEO_Satellite
+                | NodeType::GEO_Satellite
+                | NodeType::HEO_Satellite
         )
     }
 
@@ -550,6 +625,18 @@ impl NodeType {
             NodeType::UnderwaterDataCenter => 0.02,
             NodeType::NeuromorphicEdgeNode => 0.3,
             NodeType::TerahertzRelay => 0.8,
+
+            // Satellite System
+            NodeType::LEO_Satellite => 0.7,
+            NodeType::MEO_Satellite => 0.6,
+            NodeType::GEO_Satellite => 0.5,
+            NodeType::HEO_Satellite => 0.6,
+            NodeType::LEO_GroundStation => 0.1,   // mostly backhaul
+            NodeType::MEO_GroundStation => 0.1,
+            NodeType::SatelliteFactory => 0.0,
+            NodeType::TerminalFactory => 0.0,
+            NodeType::SatelliteWarehouse => 0.0,
+            NodeType::LaunchPad => 0.0,
         }
     }
 
@@ -610,6 +697,18 @@ impl NodeType {
             NodeType::UnderwaterDataCenter => 200_000_000,
             NodeType::NeuromorphicEdgeNode => 15_000_000,
             NodeType::TerahertzRelay => 3_000_000,
+
+            // Satellite System
+            NodeType::LEO_Satellite => 5_000_000,         // per satellite (manufactured, then launched)
+            NodeType::MEO_Satellite => 15_000_000,
+            NodeType::GEO_Satellite => 50_000_000,
+            NodeType::HEO_Satellite => 25_000_000,
+            NodeType::LEO_GroundStation => 10_000_000,
+            NodeType::MEO_GroundStation => 15_000_000,
+            NodeType::SatelliteFactory => 100_000_000,
+            NodeType::TerminalFactory => 20_000_000,
+            NodeType::SatelliteWarehouse => 5_000_000,
+            NodeType::LaunchPad => 200_000_000,
         }
     }
 
@@ -671,6 +770,18 @@ impl NodeType {
             NodeType::UnderwaterDataCenter => 0.4,
             NodeType::NeuromorphicEdgeNode => 2.0,
             NodeType::TerahertzRelay => 6.0,
+
+            // Satellite System
+            NodeType::LEO_Satellite => 2.0,
+            NodeType::MEO_Satellite => 1.5,
+            NodeType::GEO_Satellite => 1.0,
+            NodeType::HEO_Satellite => 1.5,
+            NodeType::LEO_GroundStation => 0.5,
+            NodeType::MEO_GroundStation => 0.5,
+            NodeType::SatelliteFactory => 0.0,
+            NodeType::TerminalFactory => 0.0,
+            NodeType::SatelliteWarehouse => 0.0,
+            NodeType::LaunchPad => 0.0,
         }
     }
 
@@ -729,6 +840,20 @@ impl NodeType {
             | NodeType::UnderwaterDataCenter
             | NodeType::NeuromorphicEdgeNode
             | NodeType::TerahertzRelay => Era::NearFuture,
+
+            // Satellite System (Era 4-5, research-gated)
+            NodeType::MEO_GroundStation
+            | NodeType::SatelliteFactory
+            | NodeType::LaunchPad => Era::Internet,
+
+            NodeType::LEO_GroundStation
+            | NodeType::TerminalFactory
+            | NodeType::SatelliteWarehouse
+            | NodeType::LEO_Satellite
+            | NodeType::MEO_Satellite
+            | NodeType::HEO_Satellite => Era::Modern,
+
+            NodeType::GEO_Satellite => Era::Internet,
         }
     }
 
@@ -789,7 +914,42 @@ impl NodeType {
             NodeType::UnderwaterDataCenter => 2_000_000,
             NodeType::NeuromorphicEdgeNode => 100_000,
             NodeType::TerahertzRelay => 50_000,
+
+            // Satellite System
+            NodeType::LEO_Satellite => 20_000,
+            NodeType::MEO_Satellite => 10_000,
+            NodeType::GEO_Satellite => 5_000,
+            NodeType::HEO_Satellite => 8_000,
+            NodeType::LEO_GroundStation => 200_000,
+            NodeType::MEO_GroundStation => 100_000,
+            NodeType::SatelliteFactory => 0,
+            NodeType::TerminalFactory => 0,
+            NodeType::SatelliteWarehouse => 0,
+            NodeType::LaunchPad => 0,
         }
+    }
+
+    /// Whether this node type is a satellite in orbit.
+    pub fn is_satellite(&self) -> bool {
+        matches!(
+            self,
+            NodeType::LEO_Satellite
+                | NodeType::MEO_Satellite
+                | NodeType::GEO_Satellite
+                | NodeType::HEO_Satellite
+        )
+    }
+
+    /// Whether this node type is a satellite ground station.
+    pub fn is_satellite_ground_station(&self) -> bool {
+        matches!(
+            self,
+            NodeType::LEO_GroundStation
+                | NodeType::MEO_GroundStation
+                | NodeType::SatelliteGround
+                | NodeType::SatelliteGroundStation
+                | NodeType::LEO_SatelliteGateway
+        )
     }
 }
 
@@ -834,6 +994,18 @@ pub enum EdgeType {
     QuantumFiberLink,
     TerahertzBeam,
     LaserInterSatelliteLink,
+
+    // ── Satellite System (dynamic edges) ──
+    /// Dynamic downlink from satellite to ground station
+    SatelliteDownlink,
+    /// In-plane inter-satellite link (auto-formed between constellation neighbors)
+    IntraplaneISL,
+    /// Cross-plane inter-satellite link (requires research)
+    CrossplaneISL,
+    /// Semi-permanent GEO satellite to ground station link
+    GEO_GroundLink,
+    /// Semi-permanent MEO satellite to ground station link
+    MEO_GroundLink,
 }
 
 impl EdgeType {
@@ -871,6 +1043,12 @@ impl EdgeType {
         EdgeType::QuantumFiberLink,
         EdgeType::TerahertzBeam,
         EdgeType::LaserInterSatelliteLink,
+        // Satellite System
+        EdgeType::SatelliteDownlink,
+        EdgeType::IntraplaneISL,
+        EdgeType::CrossplaneISL,
+        EdgeType::GEO_GroundLink,
+        EdgeType::MEO_GroundLink,
     ];
 
     /// Returns the set of tier pairs this edge type can connect.
@@ -1010,6 +1188,19 @@ impl EdgeType {
                 (NetworkTier::Global, NetworkTier::Global),
                 (NetworkTier::Backbone, NetworkTier::Global),
             ],
+
+            // Satellite System
+            EdgeType::SatelliteDownlink => &[
+                (NetworkTier::Backbone, NetworkTier::Global),
+                (NetworkTier::Global, NetworkTier::Global),
+            ],
+            EdgeType::IntraplaneISL | EdgeType::CrossplaneISL => &[
+                (NetworkTier::Global, NetworkTier::Global),
+            ],
+            EdgeType::GEO_GroundLink | EdgeType::MEO_GroundLink => &[
+                (NetworkTier::Backbone, NetworkTier::Global),
+                (NetworkTier::Global, NetworkTier::Global),
+            ],
         }
     }
 
@@ -1068,6 +1259,13 @@ impl EdgeType {
             EdgeType::QuantumFiberLink => 30.0,
             EdgeType::TerahertzBeam => 2.0,
             EdgeType::LaserInterSatelliteLink => f64::INFINITY,
+
+            // Satellite System (dynamic, no distance limit)
+            EdgeType::SatelliteDownlink => f64::INFINITY,
+            EdgeType::IntraplaneISL => f64::INFINITY,
+            EdgeType::CrossplaneISL => f64::INFINITY,
+            EdgeType::GEO_GroundLink => f64::INFINITY,
+            EdgeType::MEO_GroundLink => f64::INFINITY,
         }
     }
 
@@ -1112,6 +1310,13 @@ impl EdgeType {
             EdgeType::QuantumFiberLink => "Quantum Fiber Link",
             EdgeType::TerahertzBeam => "Terahertz Beam",
             EdgeType::LaserInterSatelliteLink => "Laser Inter-Satellite Link",
+
+            // Satellite System
+            EdgeType::SatelliteDownlink => "Satellite Downlink",
+            EdgeType::IntraplaneISL => "In-Plane ISL",
+            EdgeType::CrossplaneISL => "Cross-Plane ISL",
+            EdgeType::GEO_GroundLink => "GEO Ground Link",
+            EdgeType::MEO_GroundLink => "MEO Ground Link",
         }
     }
 
@@ -1157,6 +1362,13 @@ impl EdgeType {
             EdgeType::QuantumFiberLink => 5.0,
             EdgeType::TerahertzBeam => 4.0,
             EdgeType::LaserInterSatelliteLink => 3.0,
+
+            // Satellite System
+            EdgeType::SatelliteDownlink => 2.0,
+            EdgeType::IntraplaneISL => 1.5,
+            EdgeType::CrossplaneISL => 1.5,
+            EdgeType::GEO_GroundLink => 2.5,
+            EdgeType::MEO_GroundLink => 2.0,
         }
     }
 
@@ -1186,6 +1398,13 @@ impl EdgeType {
             EdgeType::QuantumFiberLink
             | EdgeType::TerahertzBeam
             | EdgeType::LaserInterSatelliteLink => Era::NearFuture,
+
+            // Satellite System
+            EdgeType::GEO_GroundLink => Era::Internet,
+            EdgeType::SatelliteDownlink
+            | EdgeType::MEO_GroundLink => Era::Modern,
+            EdgeType::IntraplaneISL
+            | EdgeType::CrossplaneISL => Era::Modern,
         }
     }
 
@@ -1238,6 +1457,13 @@ impl EdgeType {
             EdgeType::QuantumFiberLink => 500_000,
             EdgeType::TerahertzBeam => 100_000,
             EdgeType::LaserInterSatelliteLink => 0, // flat cost
+
+            // Satellite System (dynamic, no per-km cost)
+            EdgeType::SatelliteDownlink => 0,
+            EdgeType::IntraplaneISL => 0,
+            EdgeType::CrossplaneISL => 0,
+            EdgeType::GEO_GroundLink => 0,
+            EdgeType::MEO_GroundLink => 0,
         }
     }
 
@@ -1282,6 +1508,13 @@ impl EdgeType {
             EdgeType::QuantumFiberLink => 500_000,
             EdgeType::TerahertzBeam => 100_000,
             EdgeType::LaserInterSatelliteLink => 2_000_000,
+
+            // Satellite System
+            EdgeType::SatelliteDownlink => 50_000,
+            EdgeType::IntraplaneISL => 100_000,
+            EdgeType::CrossplaneISL => 80_000,
+            EdgeType::GEO_GroundLink => 10_000,
+            EdgeType::MEO_GroundLink => 30_000,
         }
     }
 
@@ -1301,7 +1534,12 @@ impl EdgeType {
             | EdgeType::EarlySatelliteLink
             | EdgeType::SatelliteLEOLink
             | EdgeType::TerahertzBeam
-            | EdgeType::LaserInterSatelliteLink => 0,
+            | EdgeType::LaserInterSatelliteLink
+            | EdgeType::SatelliteDownlink
+            | EdgeType::IntraplaneISL
+            | EdgeType::CrossplaneISL
+            | EdgeType::GEO_GroundLink
+            | EdgeType::MEO_GroundLink => 0,
 
             // Fiber types with strand counts
             EdgeType::DropCable => 2,
@@ -1379,6 +1617,11 @@ pub enum FrequencyBand {
     Band3500MHz,
     Band28GHz,  // mmWave
     Band39GHz,  // mmWave
+    // Satellite bands
+    BandKu,     // 12-18 GHz (satellite TV, broadband)
+    BandKa,     // 26.5-40 GHz (high-throughput satellite)
+    BandV,      // 40-75 GHz (next-gen satellite)
+    BandQ,      // 33-50 GHz (satellite feeder links)
 }
 
 impl FrequencyBand {
@@ -1394,6 +1637,11 @@ impl FrequencyBand {
             FrequencyBand::Band3500MHz => 2.0,
             FrequencyBand::Band28GHz => 0.5,
             FrequencyBand::Band39GHz => 0.3,
+            // Satellite bands — coverage handled by orbital mechanics, not terrestrial
+            FrequencyBand::BandKu => 0.0,
+            FrequencyBand::BandKa => 0.0,
+            FrequencyBand::BandV => 0.0,
+            FrequencyBand::BandQ => 0.0,
         }
     }
 
@@ -1409,6 +1657,10 @@ impl FrequencyBand {
             FrequencyBand::Band3500MHz => 100.0,
             FrequencyBand::Band28GHz => 800.0,
             FrequencyBand::Band39GHz => 1000.0,
+            FrequencyBand::BandKu => 500.0,
+            FrequencyBand::BandKa => 1500.0,
+            FrequencyBand::BandV => 3000.0,
+            FrequencyBand::BandQ => 2000.0,
         }
     }
 
@@ -1424,6 +1676,10 @@ impl FrequencyBand {
             FrequencyBand::Band3500MHz => 100_000,
             FrequencyBand::Band28GHz => 50_000,
             FrequencyBand::Band39GHz => 30_000,
+            FrequencyBand::BandKu => 80_000,
+            FrequencyBand::BandKa => 60_000,
+            FrequencyBand::BandV => 40_000,
+            FrequencyBand::BandQ => 50_000,
         }
     }
 
@@ -1439,10 +1695,14 @@ impl FrequencyBand {
             FrequencyBand::Band3500MHz => "3.5 GHz",
             FrequencyBand::Band28GHz => "28 GHz (mmWave)",
             FrequencyBand::Band39GHz => "39 GHz (mmWave)",
+            FrequencyBand::BandKu => "Ku Band (Satellite)",
+            FrequencyBand::BandKa => "Ka Band (Satellite)",
+            FrequencyBand::BandV => "V Band (Satellite)",
+            FrequencyBand::BandQ => "Q Band (Satellite)",
         }
     }
 
-    /// Band category for UI color coding: "low", "mid", or "high".
+    /// Band category for UI color coding: "low", "mid", "high", or "satellite".
     pub fn category(&self) -> &'static str {
         match self {
             FrequencyBand::Band700MHz
@@ -1454,6 +1714,10 @@ impl FrequencyBand {
             FrequencyBand::Band3500MHz
             | FrequencyBand::Band28GHz
             | FrequencyBand::Band39GHz => "high",
+            FrequencyBand::BandKu
+            | FrequencyBand::BandKa
+            | FrequencyBand::BandV
+            | FrequencyBand::BandQ => "satellite",
         }
     }
 
@@ -1469,6 +1733,10 @@ impl FrequencyBand {
             FrequencyBand::Band3500MHz,
             FrequencyBand::Band28GHz,
             FrequencyBand::Band39GHz,
+            FrequencyBand::BandKu,
+            FrequencyBand::BandKa,
+            FrequencyBand::BandV,
+            FrequencyBand::BandQ,
         ]
     }
 
@@ -1484,6 +1752,10 @@ impl FrequencyBand {
             "Band3500MHz" => Some(FrequencyBand::Band3500MHz),
             "Band28GHz" => Some(FrequencyBand::Band28GHz),
             "Band39GHz" => Some(FrequencyBand::Band39GHz),
+            "BandKu" => Some(FrequencyBand::BandKu),
+            "BandKa" => Some(FrequencyBand::BandKa),
+            "BandV" => Some(FrequencyBand::BandV),
+            "BandQ" => Some(FrequencyBand::BandQ),
             _ => None,
         }
     }
@@ -1510,12 +1782,164 @@ pub enum CreditRating {
     D,
 }
 
+// ── Satellite System Enums ──
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum OrbitType {
+    LEO,
+    MEO,
+    GEO,
+    HEO,
+}
+
+impl OrbitType {
+    /// Typical altitude range for this orbit type (min, max) in km.
+    pub fn altitude_range_km(&self) -> (f64, f64) {
+        match self {
+            OrbitType::LEO => (160.0, 2000.0),
+            OrbitType::MEO => (2000.0, 35786.0),
+            OrbitType::GEO => (35786.0, 35786.0),
+            OrbitType::HEO => (200.0, 40000.0),
+        }
+    }
+
+    /// Typical latency one-way in milliseconds.
+    pub fn latency_ms(&self) -> f64 {
+        match self {
+            OrbitType::LEO => 4.0,    // ~4ms one-way at 550km
+            OrbitType::MEO => 60.0,   // ~60ms one-way at 8000km
+            OrbitType::GEO => 240.0,  // ~240ms one-way at 35786km
+            OrbitType::HEO => 100.0,  // variable
+        }
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            OrbitType::LEO => "Low Earth Orbit",
+            OrbitType::MEO => "Medium Earth Orbit",
+            OrbitType::GEO => "Geostationary Orbit",
+            OrbitType::HEO => "Highly Elliptical Orbit",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SatelliteStatus {
+    Manufacturing,
+    AwaitingLaunch,
+    Operational,
+    Decaying,
+    Deorbiting,
+    Dead,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum RocketType {
+    Small,
+    Medium,
+    Heavy,
+    SuperHeavy,
+}
+
+impl RocketType {
+    /// Maximum payload mass in kg.
+    pub fn payload_capacity_kg(&self) -> f64 {
+        match self {
+            RocketType::Small => 500.0,
+            RocketType::Medium => 5_000.0,
+            RocketType::Heavy => 20_000.0,
+            RocketType::SuperHeavy => 100_000.0,
+        }
+    }
+
+    /// Base launch cost.
+    pub fn launch_cost(&self) -> Money {
+        match self {
+            RocketType::Small => 10_000_000,
+            RocketType::Medium => 50_000_000,
+            RocketType::Heavy => 150_000_000,
+            RocketType::SuperHeavy => 400_000_000,
+        }
+    }
+
+    /// Base reliability (probability of success).
+    pub fn reliability(&self) -> f64 {
+        match self {
+            RocketType::Small => 0.90,
+            RocketType::Medium => 0.93,
+            RocketType::Heavy => 0.95,
+            RocketType::SuperHeavy => 0.97,
+        }
+    }
+
+    /// Cooldown ticks between launches from same pad.
+    pub fn cooldown_ticks(&self) -> u64 {
+        match self {
+            RocketType::Small => 10,
+            RocketType::Medium => 20,
+            RocketType::Heavy => 40,
+            RocketType::SuperHeavy => 60,
+        }
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            RocketType::Small => "Small Rocket",
+            RocketType::Medium => "Medium Rocket",
+            RocketType::Heavy => "Heavy Rocket",
+            RocketType::SuperHeavy => "Super Heavy Rocket",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum FactoryTier {
+    SmallBatch,
+    StandardProduction,
+    MassProduction,
+}
+
+impl FactoryTier {
+    /// Production rate: satellites per tick for satellite factories.
+    pub fn satellite_production_rate(&self) -> f64 {
+        match self {
+            FactoryTier::SmallBatch => 0.05,        // 1 sat per 20 ticks
+            FactoryTier::StandardProduction => 0.2,  // 1 sat per 5 ticks
+            FactoryTier::MassProduction => 1.0,      // 1 sat per tick
+        }
+    }
+
+    /// Production rate: terminals per tick for terminal factories.
+    pub fn terminal_production_rate(&self) -> u32 {
+        match self {
+            FactoryTier::SmallBatch => 10,
+            FactoryTier::StandardProduction => 50,
+            FactoryTier::MassProduction => 200,
+        }
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            FactoryTier::SmallBatch => "Small Batch",
+            FactoryTier::StandardProduction => "Standard Production",
+            FactoryTier::MassProduction => "Mass Production",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ServiceType {
+    Refuel,
+    Repair,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AIArchetype {
     AggressiveExpander,
     DefensiveConsolidator,
     TechInnovator,
     BudgetOperator,
+    SatellitePioneer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

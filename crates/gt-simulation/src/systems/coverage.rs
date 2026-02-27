@@ -246,6 +246,19 @@ pub fn run(world: &mut GameWorld) {
             | gt_common::types::NodeType::CableHut
             | gt_common::types::NodeType::UnderwaterDataCenter
             | gt_common::types::NodeType::FiberSplicePoint => 0.5,
+            // Satellite nodes — coverage handled by orbital system
+            gt_common::types::NodeType::LEO_Satellite
+            | gt_common::types::NodeType::MEO_Satellite
+            | gt_common::types::NodeType::GEO_Satellite
+            | gt_common::types::NodeType::HEO_Satellite => 10.0,
+            // Satellite ground stations
+            gt_common::types::NodeType::LEO_GroundStation
+            | gt_common::types::NodeType::MEO_GroundStation => 4.0,
+            // Satellite infrastructure (no coverage)
+            gt_common::types::NodeType::SatelliteFactory
+            | gt_common::types::NodeType::TerminalFactory
+            | gt_common::types::NodeType::SatelliteWarehouse
+            | gt_common::types::NodeType::LaunchPad => 0.0,
         };
         let radius_km = base_radius_km.max(cell_spacing * min_cells);
 

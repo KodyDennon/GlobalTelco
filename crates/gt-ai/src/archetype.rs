@@ -46,6 +46,14 @@ impl ArchetypeWeights {
                 maintenance_priority: 0.7,
                 contract_willingness: 0.8,
             },
+            AIArchetype::SatellitePioneer => Self {
+                expansion: 0.7,
+                debt_tolerance: 0.6,
+                tech_focus: 0.8,
+                risk_tolerance: 0.7,
+                maintenance_priority: 0.5,
+                contract_willingness: 0.3,
+            },
         }
     }
 

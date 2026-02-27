@@ -123,7 +123,8 @@ pub fn run(world: &mut GameWorld) {
 
                 let take_bailout = match archetype {
                     Some(gt_common::types::AIArchetype::AggressiveExpander)
-                    | Some(gt_common::types::AIArchetype::TechInnovator) => true,
+                    | Some(gt_common::types::AIArchetype::TechInnovator)
+                    | Some(gt_common::types::AIArchetype::SatellitePioneer) => true,
                     Some(gt_common::types::AIArchetype::BudgetOperator)
                     | Some(gt_common::types::AIArchetype::DefensiveConsolidator) => {
                         debt < cost * 200 // Only bailout if debt isn't too extreme

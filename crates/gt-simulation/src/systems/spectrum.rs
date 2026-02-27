@@ -138,6 +138,11 @@ fn interference_radius_for_band(band: &FrequencyBand) -> f64 {
         FrequencyBand::Band3500MHz => 4.0,
         FrequencyBand::Band28GHz => 1.0,
         FrequencyBand::Band39GHz => 0.5,
+        // Satellite bands: wide interference radius due to space-to-ground
+        FrequencyBand::BandKu => 100.0,
+        FrequencyBand::BandKa => 80.0,
+        FrequencyBand::BandV => 60.0,
+        FrequencyBand::BandQ => 40.0,
     }
 }
 

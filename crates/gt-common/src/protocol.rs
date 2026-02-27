@@ -364,6 +364,19 @@ pub enum DeltaOp {
     ConstructionCompleted {
         entity_id: EntityId,
     },
+    /// A satellite was launched into orbit
+    SatelliteLaunched {
+        entity_id: EntityId,
+        owner: EntityId,
+        orbit_type: String,
+        lon: f64,
+        lat: f64,
+        altitude_km: f64,
+    },
+    /// A satellite was removed (deorbited, destroyed, dead)
+    SatelliteRemoved {
+        entity_id: EntityId,
+    },
 }
 
 // ── Serialization Helpers ──────────────────────────────────────────────────

@@ -22,6 +22,7 @@ impl AiState {
             AIArchetype::DefensiveConsolidator => (0.3, 0.2),
             AIArchetype::TechInnovator => (0.5, 0.6),
             AIArchetype::BudgetOperator => (0.4, 0.3),
+            AIArchetype::SatellitePioneer => (0.7, 0.6),
         };
         Self {
             archetype,

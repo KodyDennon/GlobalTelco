@@ -144,6 +144,24 @@ impl InfraNode {
                 (100000.0, 0.5, 15_000_000, 80_000, NetworkLevel::National)
             }
             NodeType::TerahertzRelay => (50000.0, 2.0, 3_000_000, 20_000, NetworkLevel::Local),
+
+            // Satellite infrastructure
+            NodeType::LEO_Satellite => (20000.0, 5.0, 0, 0, NetworkLevel::GlobalBackbone),
+            NodeType::MEO_Satellite => (10000.0, 30.0, 0, 0, NetworkLevel::GlobalBackbone),
+            NodeType::GEO_Satellite => (5000.0, 250.0, 0, 0, NetworkLevel::GlobalBackbone),
+            NodeType::HEO_Satellite => (8000.0, 100.0, 0, 0, NetworkLevel::GlobalBackbone),
+            NodeType::LEO_GroundStation => {
+                (500000.0, 5.0, 50_000_000, 300_000, NetworkLevel::GlobalBackbone)
+            }
+            NodeType::MEO_GroundStation => {
+                (200000.0, 30.0, 30_000_000, 200_000, NetworkLevel::GlobalBackbone)
+            }
+            NodeType::SatelliteFactory => {
+                (0.0, 0.0, 100_000_000, 500_000, NetworkLevel::Local)
+            }
+            NodeType::TerminalFactory => (0.0, 0.0, 20_000_000, 100_000, NetworkLevel::Local),
+            NodeType::SatelliteWarehouse => (0.0, 0.0, 5_000_000, 25_000, NetworkLevel::Local),
+            NodeType::LaunchPad => (0.0, 0.0, 200_000_000, 1_000_000, NetworkLevel::Local),
         };
 
         Self {
@@ -248,6 +266,18 @@ impl InfraNode {
             NodeType::UnderwaterDataCenter => 100,
             NodeType::NeuromorphicEdgeNode => 10,
             NodeType::TerahertzRelay => 2,
+
+            // Satellite infrastructure
+            NodeType::LEO_Satellite => 0,
+            NodeType::MEO_Satellite => 0,
+            NodeType::GEO_Satellite => 0,
+            NodeType::HEO_Satellite => 0,
+            NodeType::LEO_GroundStation => 50,
+            NodeType::MEO_GroundStation => 40,
+            NodeType::SatelliteFactory => 200,
+            NodeType::TerminalFactory => 80,
+            NodeType::SatelliteWarehouse => 20,
+            NodeType::LaunchPad => 100,
         }
     }
 }

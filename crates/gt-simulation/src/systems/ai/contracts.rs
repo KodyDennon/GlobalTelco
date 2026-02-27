@@ -40,6 +40,7 @@ pub fn propose(world: &mut GameWorld, corp_id: EntityId, ai: &AiState, tick: Tic
         AIArchetype::DefensiveConsolidator => 5,
         AIArchetype::TechInnovator => 4,
         AIArchetype::BudgetOperator => 4,
+        AIArchetype::SatellitePioneer => 2,
     };
     if active_contracts >= max_contracts {
         return;
@@ -51,6 +52,7 @@ pub fn propose(world: &mut GameWorld, corp_id: EntityId, ai: &AiState, tick: Tic
         AIArchetype::DefensiveConsolidator => 0.7,   // actively seeks peering
         AIArchetype::TechInnovator => 0.5,           // moderate
         AIArchetype::BudgetOperator => 0.8,          // loves cheap transit
+        AIArchetype::SatellitePioneer => 0.3,        // prefers satellite infra, few terrestrial contracts
     };
 
     let check = helpers::deterministic_variety(tick, corp_id, 4) as f64 / 100.0;
@@ -170,6 +172,15 @@ fn select_contract_terms(
                 (ContractType::Transit, 400.0, 150, 180)
             }
         }
+        AIArchetype::SatellitePioneer => {
+            // Focuses on satellite — peers selectively for ground station access
+            if similar_size {
+                (ContractType::Peering, 600.0, 0, 200)
+            } else {
+                // Sells premium satellite transit
+                (ContractType::Transit, 400.0, 700, 150)
+            }
+        }
     }
 }
 
@@ -245,6 +256,15 @@ pub fn evaluate_incoming(world: &mut GameWorld, corp_id: EntityId, ai: &AiState,
                     true
                 } else {
                     affordable
+                }
+            }
+            AIArchetype::SatellitePioneer => {
+                // Accepts peering for ground station access, selective on transit
+                if contract_type == ContractType::Peering {
+                    true
+                } else {
+                    // Only accepts transit if affordable — prefers satellite links
+                    affordable && price > 0
                 }
             }
         };

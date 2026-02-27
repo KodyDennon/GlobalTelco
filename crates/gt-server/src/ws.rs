@@ -87,7 +87,16 @@ fn command_target_corp(command: &Command) -> Option<EntityId> {
         | Command::BidForGrant { .. }
         | Command::CompleteGrant { .. }
         | Command::SetRegionPricing { .. }
-        | Command::SetMaintenancePriority { .. } => None,
+        | Command::SetMaintenancePriority { .. }
+        | Command::BuildConstellation { .. }
+        | Command::OrderSatellites { .. }
+        | Command::ScheduleLaunch { .. }
+        | Command::ContractLaunch { .. }
+        | Command::DeorbitSatellite { .. }
+        | Command::OrderTerminals { .. }
+        | Command::ShipTerminals { .. }
+        | Command::SetSatellitePricing { .. }
+        | Command::ServiceSatellite { .. } => None,
     }
 }
 
