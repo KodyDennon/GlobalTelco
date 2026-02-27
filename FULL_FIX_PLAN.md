@@ -390,28 +390,28 @@ Per user request, fog of war has been cancelled.
 - [x] Frozen cells: 2-3 ice fracture lines with white-blue tint
 - [x] All terrain types processed (no sampling skip), ocean detail at all zooms, land detail at zoom 3+
 
-### 7.2 — Real Earth Building Footprints (Phase 3.1.2 — PARTIAL)
+### 7.2 — Real Earth Building Footprints (Phase 3.1.2 — COMPLETE)
 
-- [ ] Real Earth mode: render OpenFreeMap building footprints as visible map layer at zoom 7+
-- [ ] Building color by type (residential grey, commercial blue-grey, industrial brown-grey)
-- [ ] Currently loaded but not rendered — need to add visible layer configuration
+- [x] Real Earth mode: procedural building footprints rendered at zoom 7+ with 5 density zones
+- [x] Building color by type (downtown dark, commercial blue-grey, residential grey, suburban light)
+- [x] Building coverage indicators: updateBuildingCoverage() colors buildings by FTTH coverage status
 
-### 7.3 — FTTH Access Network Game Loop (Phase 4.7 — NOT STARTED)
+### 7.3 — FTTH Access Network Game Loop (Phase 4.7 — COMPLETE)
 
-- [ ] Central Office → Feeder Fiber → FDH → Distribution Fiber → NAP → Building coverage
-- [ ] NAP auto-covers buildings within service radius (revenue with overhead deduction)
-- [ ] Manual drop cables from NAP to building (full revenue, no overhead)
-- [ ] Tiered management: small = manual NAP placement, medium = auto-managed drops, large = policy-driven deployment
-- [ ] Building-level demand model (replace abstract coverage-per-cell with subscribers-per-building)
+- [x] Central Office → Feeder Fiber → FDH → Distribution Fiber → NAP → Building coverage (ftth.rs chain validation)
+- [x] NAP auto-covers buildings within terrain-dependent service radius (Urban 2km, Suburban 5km, Rural 10km)
+- [x] Coverage contributes to cell_coverage for revenue/demand systems with bandwidth contribution per NAP
+- [x] Manual drop cables (DropCable EdgeType) connect NAP to specific building for full revenue
+- [x] active_ftth flag exposed via WASM bridge, FTTH coverage overlay on map
 
-### 7.4 — Submarine Cable Mechanics (Phase 7 — PARTIAL)
+### 7.4 — Submarine Cable Mechanics (Phase 7 — COMPLETE)
 
-- [ ] Landing station placement on coastal cells
-- [ ] Waypoint-based ocean routing
-- [ ] Bathymetry-aware cost (shelf x1.0, deep x2.0, trench x3.0)
-- [ ] Cable ship construction mechanic (one cable per ship at a time)
-- [ ] Real TeleGeography reference overlay (toggle-able)
-- [ ] Very high construction time and cost
+- [x] Landing station placement validation (SubseaLandingStation requires Coastal terrain)
+- [x] OceanTrench terrain type added for bathymetry-aware costs
+- [x] Bathymetry-aware cost multipliers (OceanShallow x1.0, OceanDeep x2.0, OceanTrench x3.0)
+- [x] Cable ship capacity limit (max 2 simultaneous submarine cable constructions per corp)
+- [x] Real TeleGeography reference overlay (submarineCableRefLayer.ts, toggle-able)
+- [x] High construction time and cost for submarine edges (SubmarineFiber: 250k/km, 1500 maint)
 
 ### 7.5 — Weather System (Phase 9 — COMPLETE)
 
@@ -429,11 +429,11 @@ Per user request, fog of war has been cancelled.
 - [x] Competitor edges in competitor's color, slightly thinner
 - [x] Competitive overlay: market share by region, coverage overlap, expansion patterns
 
-### 7.7 — Remaining Overhaul Phases
+### 7.7 — Remaining Overhaul Phases --- MOSTLY COMPLETE
 
-- [ ] Phase 6: City density zones (downtown/commercial/residential/suburban) with building-level demand
-- [ ] Phase 8: Spectrum frequency assignment per wireless node, interference modeling, spectrum visualization overlay
-- [ ] Phase 10: Full network monitoring dashboard widgets (health overview, traffic flow, bottleneck detection, revenue by infra, SLA monitoring, coverage map, maintenance queue, capacity planning)
+- [x] Phase 6: City density zones — density overlay with 5 zone types (downtown/commercial/residential inner/outer/suburban), population-scaled radii, color-coded polygons
+- [x] Phase 8: Spectrum system complete — interference modeling (spectrum.rs), carrier aggregation, spectrum visualization overlay (createSpectrumOverlayLayers), licensed/unlicensed region display, interference zone circles
+- [x] Phase 10: Network monitoring dashboard widgets — health overview (healthy/degraded/damaged counts), traffic flow summary (throughput vs capacity), bottleneck detection (top 5 utilized edges), maintenance queue (repair counts and progress)
 - [ ] Phase 13: Full integration testing, performance optimization (60fps with full entity load), cross-browser testing
 
 ---

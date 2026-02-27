@@ -548,7 +548,7 @@ export function createInfraLayers(opts: {
             if (tierRank < minTier) continue; // LOD cull
 
             const nodeColor = validateRGBA(getNodeDisplayColor(
-                { ...node, owner: corp.id, owner_name: corp.name } as AllInfraNode,
+                { ...node, owner: corp.id, owner_name: corp.name } as unknown as AllInfraNode,
                 baseColor,
                 isCongestion,
                 isTraffic,
