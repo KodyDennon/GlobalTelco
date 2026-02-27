@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { playerCorp, formatMoney, allCorporations, worldInfo } from '$lib/stores/gameState';
+	import { playerCorp, formatMoney, allCorporations, worldInfo, policyState } from '$lib/stores/gameState';
 	import { showConfirm, companyTier, companyTierLabel } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
 	import { gameCommand } from '$lib/game/commandRouter';
@@ -54,37 +54,35 @@
 	let totalDebt = $derived(debts.reduce((s, d) => s + d.principal, 0));
 	let totalPayments = $derived(debts.reduce((s, d) => s + d.payment_per_tick, 0));
 
-	// Budget & Policy state
-	let maintenanceBudget = $state(500_000);
-	let expansionPriority = $state('balanced');
-	let pricingStrategy = $state('market');
-
-	// Large-tier policy states
-	let hiringPolicy = $state('normal');
-	let researchFocus = $state('balanced');
+	// Budget & Policy state (persisted across panel open/close in policyState store)
+	let maintenanceBudget = $derived($policyState.maintenanceBudget);
+	let expansionPriority = $derived($policyState.expansionPriority);
+	let pricingStrategy = $derived($policyState.pricingStrategy);
+	let hiringPolicy = $derived($policyState.hiringPolicy);
+	let researchFocus = $derived($policyState.researchFocus);
 
 	function setMaintenanceBudget(val: number) {
-		maintenanceBudget = val;
+		policyState.update(s => ({ ...s, maintenanceBudget: val }));
 		gameCommand({ SetBudget: { corporation: $playerCorp?.id ?? 0, category: 'maintenance', amount: val } });
 	}
 
 	function setExpansionPriority(val: string) {
-		expansionPriority = val;
+		policyState.update(s => ({ ...s, expansionPriority: val }));
 		gameCommand({ SetPolicy: { corporation: $playerCorp?.id ?? 0, policy: 'expansion_priority', value: val } });
 	}
 
 	function setPricingStrategy(val: string) {
-		pricingStrategy = val;
+		policyState.update(s => ({ ...s, pricingStrategy: val }));
 		gameCommand({ SetPolicy: { corporation: $playerCorp?.id ?? 0, policy: 'pricing_strategy', value: val } });
 	}
 
 	function setHiringPolicy(val: string) {
-		hiringPolicy = val;
+		policyState.update(s => ({ ...s, hiringPolicy: val }));
 		gameCommand({ SetPolicy: { corporation: $playerCorp?.id ?? 0, policy: 'hiring_policy', value: val } });
 	}
 
 	function setResearchFocus(val: string) {
-		researchFocus = val;
+		policyState.update(s => ({ ...s, researchFocus: val }));
 		gameCommand({ SetPolicy: { corporation: $playerCorp?.id ?? 0, policy: 'research_focus', value: val } });
 	}
 
@@ -285,7 +283,7 @@
 			<h3>{$tr('panels.regional_budget')}</h3>
 			<div class="policy-row">
 				<span class="policy-label">Maintenance Budget</span>
-				<input type="range" min={0} max={5000000} step={50000} bind:value={maintenanceBudget}
+				<input type="range" min={0} max={5000000} step={50000} value={maintenanceBudget}
 					oninput={(e) => {
 						const val = Number((e.target as HTMLInputElement).value);
 						setMaintenanceBudget(val);
@@ -294,7 +292,7 @@
 			</div>
 			<div class="policy-row">
 				<span class="policy-label">Expansion Priority</span>
-				<select class="policy-select" bind:value={expansionPriority}
+				<select class="policy-select" value={expansionPriority}
 					onchange={(e) => {
 						setExpansionPriority((e.target as HTMLSelectElement).value);
 					}}>
@@ -305,7 +303,7 @@
 			</div>
 			<div class="policy-row">
 				<span class="policy-label">Pricing Strategy</span>
-				<select class="policy-select" bind:value={pricingStrategy}
+				<select class="policy-select" value={pricingStrategy}
 					onchange={(e) => {
 						setPricingStrategy((e.target as HTMLSelectElement).value);
 					}}>
@@ -324,7 +322,7 @@
 			<div class="policy-cards">
 				<div class="policy-card">
 					<span class="policy-card-title">Expansion</span>
-					<select class="policy-select-lg" bind:value={expansionPriority}
+					<select class="policy-select-lg" value={expansionPriority}
 						onchange={(e) => setExpansionPriority((e.target as HTMLSelectElement).value)}>
 						<option value="balanced">Balanced</option>
 						<option value="aggressive">Aggressive</option>
@@ -334,7 +332,7 @@
 				</div>
 				<div class="policy-card">
 					<span class="policy-card-title">Pricing</span>
-					<select class="policy-select-lg" bind:value={pricingStrategy}
+					<select class="policy-select-lg" value={pricingStrategy}
 						onchange={(e) => setPricingStrategy((e.target as HTMLSelectElement).value)}>
 						<option value="market">Market Rate</option>
 						<option value="undercut">Undercut (-10%)</option>
@@ -344,7 +342,7 @@
 				</div>
 				<div class="policy-card">
 					<span class="policy-card-title">Hiring</span>
-					<select class="policy-select-lg" bind:value={hiringPolicy}
+					<select class="policy-select-lg" value={hiringPolicy}
 						onchange={(e) => setHiringPolicy((e.target as HTMLSelectElement).value)}>
 						<option value="normal">Normal</option>
 						<option value="freeze">Hiring Freeze</option>
@@ -355,7 +353,7 @@
 				</div>
 				<div class="policy-card">
 					<span class="policy-card-title">Research</span>
-					<select class="policy-select-lg" bind:value={researchFocus}
+					<select class="policy-select-lg" value={researchFocus}
 						onchange={(e) => setResearchFocus((e.target as HTMLSelectElement).value)}>
 						<option value="balanced">Balanced</option>
 						<option value="cost_reduction">Cost Reduction</option>
@@ -441,7 +439,7 @@
 			<h3>{$tr('panels.maintenance_budget')}</h3>
 			<div class="policy-row">
 				<span class="policy-label">{$tr('panels.monthly_budget')}</span>
-				<input type="range" min={0} max={5000000} step={50000} bind:value={maintenanceBudget}
+				<input type="range" min={0} max={5000000} step={50000} value={maintenanceBudget}
 					oninput={(e) => {
 						const val = Number((e.target as HTMLInputElement).value);
 						setMaintenanceBudget(val);
@@ -537,7 +535,7 @@
 			<h3>{$tr('panels.budgets_policies')}</h3>
 			<div class="policy-row">
 				<span class="policy-label">Maintenance Budget</span>
-				<input type="range" min={0} max={5000000} step={50000} bind:value={maintenanceBudget}
+				<input type="range" min={0} max={5000000} step={50000} value={maintenanceBudget}
 					oninput={(e) => {
 						const val = Number((e.target as HTMLInputElement).value);
 						setMaintenanceBudget(val);
@@ -546,7 +544,7 @@
 			</div>
 			<div class="policy-row">
 				<span class="policy-label">Expansion Priority</span>
-				<select class="policy-select" bind:value={expansionPriority}
+				<select class="policy-select" value={expansionPriority}
 					onchange={(e) => {
 						setExpansionPriority((e.target as HTMLSelectElement).value);
 					}}>
@@ -557,7 +555,7 @@
 			</div>
 			<div class="policy-row">
 				<span class="policy-label">Pricing Strategy</span>
-				<select class="policy-select" bind:value={pricingStrategy}
+				<select class="policy-select" value={pricingStrategy}
 					onchange={(e) => {
 						setPricingStrategy((e.target as HTMLSelectElement).value);
 					}}>

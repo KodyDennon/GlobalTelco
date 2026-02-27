@@ -54,3 +54,14 @@ export function formatPopulation(pop: number): string {
 	if (pop >= 1_000) return `${(pop / 1_000).toFixed(1)}K`;
 	return `${pop}`;
 }
+
+// Persistent policy/budget state (survives panel close/reopen within session)
+export const policyState = writable({
+	maintenanceBudget: 500_000,
+	expansionPriority: 'balanced',
+	pricingStrategy: 'market',
+	hiringPolicy: 'normal',
+	researchFocus: 'balanced',
+	salaryBand: 'market',
+	headcountTarget: 50,
+});

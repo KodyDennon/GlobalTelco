@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { playerCorp, formatMoney, worldInfo } from '$lib/stores/gameState';
+	import { playerCorp, formatMoney, worldInfo, policyState } from '$lib/stores/gameState';
 	import { showConfirm, companyTier, companyTierLabel } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
 	import { gameCommand } from '$lib/game/commandRouter';
@@ -49,23 +49,23 @@
 		});
 	}
 
-	// Large-tier policy states
-	let hiringPolicy = $state('normal');
-	let salaryBand = $state('market');
-	let headcountTarget = $state(50);
+	// Large-tier policy states (persisted in policyState store)
+	let hiringPolicy = $derived($policyState.hiringPolicy);
+	let salaryBand = $derived($policyState.salaryBand);
+	let headcountTarget = $derived($policyState.headcountTarget);
 
 	function setHiringPolicy(val: string) {
-		hiringPolicy = val;
+		policyState.update(s => ({ ...s, hiringPolicy: val }));
 		gameCommand({ SetPolicy: { corporation: $playerCorp?.id ?? 0, policy: 'hiring_policy', value: val } });
 	}
 
 	function setSalaryBand(val: string) {
-		salaryBand = val;
+		policyState.update(s => ({ ...s, salaryBand: val }));
 		gameCommand({ SetPolicy: { corporation: $playerCorp?.id ?? 0, policy: 'salary_band', value: val } });
 	}
 
 	function setHeadcountTarget(val: number) {
-		headcountTarget = val;
+		policyState.update(s => ({ ...s, headcountTarget: val }));
 		gameCommand({ SetPolicy: { corporation: $playerCorp?.id ?? 0, policy: 'headcount_target', value: String(val) } });
 	}
 
@@ -270,7 +270,7 @@
 			<div class="policy-grid">
 				<div class="policy-card">
 					<span class="policy-card-label">Hiring Policy</span>
-					<select class="policy-select" bind:value={hiringPolicy}
+					<select class="policy-select" value={hiringPolicy}
 						onchange={(e) => setHiringPolicy((e.target as HTMLSelectElement).value)}>
 						<option value="normal">Normal Growth</option>
 						<option value="freeze">Hiring Freeze</option>
@@ -287,7 +287,7 @@
 				</div>
 				<div class="policy-card">
 					<span class="policy-card-label">Salary Band</span>
-					<select class="policy-select" bind:value={salaryBand}
+					<select class="policy-select" value={salaryBand}
 						onchange={(e) => setSalaryBand((e.target as HTMLSelectElement).value)}>
 						<option value="below_market">Below Market (-15%)</option>
 						<option value="market">Market Rate</option>
@@ -309,7 +309,7 @@
 			<h3>{$tr('panels.headcount_target')}</h3>
 			<div class="headcount-row">
 				<span class="policy-label">Target</span>
-				<input type="range" min={10} max={500} step={5} bind:value={headcountTarget}
+				<input type="range" min={10} max={500} step={5} value={headcountTarget}
 					oninput={(e) => {
 						const val = Number((e.target as HTMLInputElement).value);
 						setHeadcountTarget(val);
