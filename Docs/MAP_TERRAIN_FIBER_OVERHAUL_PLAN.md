@@ -11,20 +11,20 @@
 ## Table of Contents
 
 1. [Design Decisions (Locked In)](#1-design-decisions-locked-in)
-2. [Phase 0 — Foundation Fixes](#2-phase-0--foundation-fixes)
-3. [Phase 1 — Build UX Revolution](#3-phase-1--build-ux-revolution)
-4. [Phase 2 — Terrain Quality Overhaul](#4-phase-2--terrain-quality-overhaul)
-5. [Phase 3 — Road Networks & Urban Fabric](#5-phase-3--road-networks--urban-fabric)
-6. [Phase 4 — Full Infrastructure Hierarchy (All 6 Eras)](#6-phase-4--full-infrastructure-hierarchy-all-6-eras)
-7. [Phase 5 — Spline-Based Fiber Routing & Waypoint System](#7-phase-5--spline-based-fiber-routing--waypoint-system)
-8. [Phase 6 — City Density, Buildings & Demand](#8-phase-6--city-density-buildings--demand)
-9. [Phase 7 — Submarine Cable System](#9-phase-7--submarine-cable-system)
-10. [Phase 8 — Spectrum & Frequency Management](#10-phase-8--spectrum--frequency-management)
-11. [Phase 9 — Weather, Disasters & Cable Vulnerability](#11-phase-9--weather-disasters--cable-vulnerability)
-12. [Phase 10 — Network Monitoring Dashboard](#12-phase-10--network-monitoring-dashboard)
-13. [Phase 11 — Minimap & Navigation](#13-phase-11--minimap--navigation)
-14. [Phase 12 — Competitor Visualization](#14-phase-12--competitor-visualization)
-15. [Phase 13 — Polish, Performance & Integration Testing](#15-phase-13--polish-performance--integration-testing)
+2. [Phase 0 — Foundation Fixes `[DONE]`](#2-phase-0--foundation-fixes)
+3. [Phase 1 — Build UX Revolution `[DONE]`](#3-phase-1--build-ux-revolution)
+4. [Phase 2 — Terrain Quality Overhaul `[MOSTLY DONE]`](#4-phase-2--terrain-quality-overhaul)
+5. [Phase 3 — Road Networks & Urban Fabric `[MOSTLY DONE]`](#5-phase-3--road-networks--urban-fabric)
+6. [Phase 4 — Full Infrastructure Hierarchy (All 6 Eras) `[DONE]`](#6-phase-4--full-infrastructure-hierarchy-all-6-eras)
+7. [Phase 5 — Spline-Based Fiber Routing & Waypoint System `[DONE]`](#7-phase-5--spline-based-fiber-routing--waypoint-system)
+8. [Phase 6 — City Density, Buildings & Demand `[NOT STARTED]`](#8-phase-6--city-density-buildings--demand)
+9. [Phase 7 — Submarine Cable System `[PARTIAL]`](#9-phase-7--submarine-cable-system)
+10. [Phase 8 — Spectrum & Frequency Management `[PARTIAL]`](#10-phase-8--spectrum--frequency-management)
+11. [Phase 9 — Weather, Disasters & Cable Vulnerability `[PARTIAL]`](#11-phase-9--weather-disasters--cable-vulnerability)
+12. [Phase 10 — Network Monitoring Dashboard `[PARTIAL]`](#12-phase-10--network-monitoring-dashboard)
+13. [Phase 11 — Minimap & Navigation `[PARTIAL]`](#13-phase-11--minimap--navigation)
+14. [Phase 12 — Competitor Visualization `[DONE]`](#14-phase-12--competitor-visualization)
+15. [Phase 13 — Polish, Performance & Integration Testing `[NOT STARTED]`](#15-phase-13--polish-performance--integration-testing)
 16. [Cross-Cutting Concerns](#16-cross-cutting-concerns)
 17. [Dependency Graph](#17-dependency-graph)
 
@@ -56,7 +56,7 @@ These decisions are final and apply across all phases:
 
 ---
 
-## 2. Phase 0 — Foundation Fixes
+## 2. Phase 0 — Foundation Fixes `[DONE]`
 
 **Goal:** Fix remaining bugs that would interfere with new systems.
 
@@ -80,7 +80,7 @@ These decisions are final and apply across all phases:
 
 ---
 
-## 3. Phase 1 — Build UX Revolution
+## 3. Phase 1 — Build UX Revolution `[DONE]`
 
 **Goal:** Replace the current "click location → pick item" flow with a professional tool-palette build system.
 
@@ -145,7 +145,7 @@ These decisions are final and apply across all phases:
 
 ---
 
-## 4. Phase 2 — Terrain Quality Overhaul
+## 4. Phase 2 — Terrain Quality Overhaul `[MOSTLY DONE]`
 
 **Goal:** Make both Real Earth and Procgen maps look excellent at all zoom levels.
 
@@ -221,7 +221,7 @@ These decisions are final and apply across all phases:
 
 ---
 
-## 5. Phase 3 — Road Networks & Urban Fabric
+## 5. Phase 3 — Road Networks & Urban Fabric `[MOSTLY DONE]`
 
 **Goal:** Add visible road networks and building footprints that serve as fiber routing corridors and demand points.
 
@@ -308,7 +308,7 @@ These decisions are final and apply across all phases:
 
 ---
 
-## 6. Phase 4 — Full Infrastructure Hierarchy (All 6 Eras)
+## 6. Phase 4 — Full Infrastructure Hierarchy (All 6 Eras) `[DONE]`
 
 **Goal:** Implement all ~33 node types and ~15 edge types across all 6 eras, with the full FTTH access network hierarchy.
 
@@ -472,7 +472,7 @@ Each edge type needs:
 
 ---
 
-## 7. Phase 5 — Spline-Based Fiber Routing & Waypoint System
+## 7. Phase 5 — Spline-Based Fiber Routing & Waypoint System `[DONE]`
 
 **Goal:** Replace straight-line edges with smooth Catmull-Rom spline curves that follow terrain and roads, with full waypoint editing.
 
@@ -548,7 +548,7 @@ Each edge type needs:
 
 ---
 
-## 8. Phase 6 — City Density, Buildings & Demand
+## 8. Phase 6 — City Density, Buildings & Demand `[NOT STARTED]`
 
 **Goal:** Cities are living, dense environments with building-level demand, not just dots on a map.
 
@@ -605,7 +605,7 @@ Each edge type needs:
 
 ---
 
-## 9. Phase 7 — Submarine Cable System
+## 9. Phase 7 — Submarine Cable System `[PARTIAL]`
 
 **Goal:** Full submarine cable gameplay with landing stations, bathymetry-aware routing, and real-world reference data.
 
@@ -647,7 +647,7 @@ Each edge type needs:
 
 ---
 
-## 10. Phase 8 — Spectrum & Frequency Management
+## 10. Phase 8 — Spectrum & Frequency Management `[PARTIAL]`
 
 **Goal:** Wireless infrastructure requires licensed spectrum bands, creating a strategic resource management layer.
 
@@ -684,7 +684,7 @@ Each edge type needs:
 
 ---
 
-## 11. Phase 9 — Weather, Disasters & Cable Vulnerability
+## 11. Phase 9 — Weather, Disasters & Cable Vulnerability `[PARTIAL]`
 
 **Goal:** Infrastructure is vulnerable to weather and disasters based on deployment method and location. Aerial vs. underground choice matters.
 
@@ -737,7 +737,7 @@ Each edge type needs:
 
 ---
 
-## 12. Phase 10 — Network Monitoring Dashboard
+## 12. Phase 10 — Network Monitoring Dashboard `[PARTIAL]`
 
 **Goal:** A Bloomberg Terminal-style real-time view of your fiber network's health, traffic, and performance.
 
@@ -806,7 +806,7 @@ Each edge type needs:
 
 ---
 
-## 13. Phase 11 — Minimap & Navigation
+## 13. Phase 11 — Minimap & Navigation `[PARTIAL]`
 
 **Goal:** Corner minimap for spatial awareness plus search/jump-to navigation.
 
@@ -843,7 +843,7 @@ Each edge type needs:
 
 ---
 
-## 14. Phase 12 — Competitor Visualization
+## 14. Phase 12 — Competitor Visualization `[DONE]`
 
 **Goal:** All competitor infrastructure is always visible on the map with clear visual distinction.
 
@@ -871,7 +871,7 @@ Each edge type needs:
 
 ---
 
-## 15. Phase 13 — Polish, Performance & Integration Testing
+## 15. Phase 13 — Polish, Performance & Integration Testing `[NOT STARTED]`
 
 **Goal:** Everything works together smoothly, performs well, and feels polished.
 

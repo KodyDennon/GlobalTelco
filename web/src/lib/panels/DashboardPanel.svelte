@@ -149,7 +149,7 @@
 			</div>
 			{#if $companyTier !== 'small'}
 				<div class="stat">
-					<span class="label">Profit Margin</span>
+					<span class="label">{$tr('panels.profit_margin')}</span>
 					<span class="value mono" class:green={profitMargin >= 0} class:red={profitMargin < 0}>
 						{profitMargin.toFixed(1)}%
 					</span>
@@ -188,11 +188,11 @@
 			</div>
 			{#if $companyTier !== 'small'}
 				<div class="stat">
-					<span class="label">Rev/Employee</span>
+					<span class="label">{$tr('panels.revenue_per_employee')}</span>
 					<span class="value mono green">{formatMoney(revenuePerEmployee)}</span>
 				</div>
 				<div class="stat">
-					<span class="label">Cost/Node</span>
+					<span class="label">{$tr('panels.cost_per_node')}</span>
 					<span class="value mono red">{formatMoney(costPerNode)}</span>
 				</div>
 			{/if}
@@ -202,9 +202,9 @@
 	<!-- SMALL TIER: Individual node list with per-node revenue -->
 	{#if $companyTier === 'small'}
 		<div class="section">
-			<h3>Your Infrastructure</h3>
+			<h3>{$tr('panels.your_infrastructure')}</h3>
 			{#if infraNodes.length === 0}
-				<p class="empty-hint">No infrastructure yet. Build your first node to start generating revenue.</p>
+				<p class="empty-hint">{$tr('panels.no_infra_hint')}</p>
 			{:else}
 				<div class="node-list">
 					{#each infraNodes as node}
@@ -230,7 +230,7 @@
 		</div>
 
 		<div class="section">
-			<h3>Quick Actions</h3>
+			<h3>{$tr('panels.quick_actions')}</h3>
 			<div class="quick-links">
 				<span class="quick-link" use:tooltip={() => 'Open Workforce panel to hire or fire employees'}>Manage Employees ({$playerCorp?.employee_count ?? 0})</span>
 				<span class="quick-link" use:tooltip={() => 'Open Infrastructure panel for build options'}>Build Infrastructure</span>
@@ -241,7 +241,7 @@
 	<!-- MEDIUM TIER: Team management summary, regional budget, department stats -->
 	{#if $companyTier === 'medium'}
 		<div class="section">
-			<h3>Department Summary</h3>
+			<h3>{$tr('panels.department_summary')}</h3>
 			<div class="dept-grid">
 				<div class="dept-card">
 					<span class="dept-name">Operations</span>
@@ -267,7 +267,7 @@
 		</div>
 
 		<div class="section">
-			<h3>Asset Distribution</h3>
+			<h3>{$tr('panels.asset_distribution')}</h3>
 			<div class="dist-list">
 				{#each nodeTypeDistribution() as [type, count]}
 					<div class="dist-row">
@@ -282,7 +282,7 @@
 		</div>
 
 		<div class="section">
-			<h3>Regional Budget Allocation</h3>
+			<h3>{$tr('panels.regional_budget')}</h3>
 			<div class="policy-row">
 				<span class="policy-label">Maintenance Budget</span>
 				<input type="range" min={0} max={5000000} step={50000} bind:value={maintenanceBudget}
@@ -320,7 +320,7 @@
 	<!-- LARGE TIER: Policy overview, department performance, AI execution, quarterly -->
 	{#if $companyTier === 'large'}
 		<div class="section">
-			<h3>Corporate Policy Overview</h3>
+			<h3>{$tr('panels.corporate_policy')}</h3>
 			<div class="policy-cards">
 				<div class="policy-card">
 					<span class="policy-card-title">Expansion</span>
@@ -368,7 +368,7 @@
 		</div>
 
 		<div class="section">
-			<h3>Department Performance</h3>
+			<h3>{$tr('panels.dept_performance')}</h3>
 			<div class="dept-perf-grid">
 				<div class="dept-perf-card">
 					<div class="dept-perf-header">
@@ -438,9 +438,9 @@
 		</div>
 
 		<div class="section">
-			<h3>Maintenance Budget</h3>
+			<h3>{$tr('panels.maintenance_budget')}</h3>
 			<div class="policy-row">
-				<span class="policy-label">Monthly Budget</span>
+				<span class="policy-label">{$tr('panels.monthly_budget')}</span>
 				<input type="range" min={0} max={5000000} step={50000} bind:value={maintenanceBudget}
 					oninput={(e) => {
 						const val = Number((e.target as HTMLInputElement).value);
@@ -451,7 +451,7 @@
 		</div>
 
 		<div class="section">
-			<h3>AI Execution Summary</h3>
+			<h3>{$tr('panels.ai_execution')}</h3>
 			<div class="ai-summary">
 				<div class="ai-row">
 					<span class="ai-label">Auto-maintenance</span>
@@ -472,7 +472,7 @@
 		</div>
 
 		<div class="section">
-			<h3>Quarterly Report</h3>
+			<h3>{$tr('panels.quarterly_report')}</h3>
 			<div class="quarterly-grid">
 				<div class="quarterly-stat">
 					<span class="quarterly-label">Revenue Growth</span>
@@ -534,7 +534,7 @@
 	<!-- BUDGETS & POLICIES — small tier only (medium/large have their own sections) -->
 	{#if $companyTier === 'small'}
 		<div class="section">
-			<h3>Budgets & Policies</h3>
+			<h3>{$tr('panels.budgets_policies')}</h3>
 			<div class="policy-row">
 				<span class="policy-label">Maintenance Budget</span>
 				<input type="range" min={0} max={5000000} step={50000} bind:value={maintenanceBudget}

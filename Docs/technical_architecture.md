@@ -69,7 +69,7 @@ All game state is managed through an ECS architecture. Entities are IDs, compone
 - `Lawsuit` — active legal dispute between corporations
 - `GovernmentGrant` — government-funded infrastructure project
 
-**NodeType Enum (era-specific, flat enum — ~33 variants):**
+**NodeType Enum (era-specific, flat enum — 41 variants):**
 - **Telegraph:** `TelegraphOffice`, `TelegraphRelay`
 - **Telephone:** `TelephoneExchange`, `OperatorSwitch`, `LongDistanceRelay`
 - **Early Digital:** `DigitalSwitch`, `MicrowaveTower`, `CoaxHub`
@@ -101,7 +101,7 @@ All game state is managed through an ECS architecture. Entities are IDs, compone
 
 ### 2b. Systems (Processing Order Per Tick)
 
-Each economic tick, systems run in deterministic order:
+Each economic tick, 27 systems run in deterministic order:
 
 1. `construction_system` — advance construction timers, complete builds
 2. `maintenance_system` — check workforce vs maintenance needs, degrade unmaintained infra
@@ -110,23 +110,26 @@ Each economic tick, systems run in deterministic order:
 5. `demand_system` — calculate regional demand based on population and economy
 6. `routing_system` — recalculate network routes if topology changed
 7. `utilization_system` — calculate infrastructure utilization from routed demand
-8. `revenue_system` — calculate per-corp revenue from served demand
-9. `cost_system` — calculate maintenance, salary, interest costs
-10. `finance_system` — update corporate finances (income, balance sheet, credit rating)
-11. `contract_system` — process contract terms, renewals, breaches
-12. `ai_system` — AI corporations make decisions (build, hire, contract, research)
-13. `disaster_system` — roll for disasters, apply damage
-14. `regulation_system` — process regulatory changes, political events
-15. `research_system` — advance tech research progress
-16. `market_system` — dynamic AI spawning, mergers, bankruptcies
-17. `auction_system` — process spectrum and infrastructure auction bids, resolve winners
-18. `covert_ops_system` — execute espionage actions, intel gathering, sabotage resolution
-19. `lobbying_system` — process lobbying investments, political influence, regulation nudges
-20. `achievement_system` — check achievement conditions, unlock milestones, track stats
-21. `patent_system` — license revenue collection, patent expiration, enforcement
-22. `alliance_system` — trust scoring, revenue sharing, dissolution checks
-23. `legal_system` — lawsuit resolution, damage calculation, settlement processing
-24. `grants_system` — government grant generation, progress tracking, completion payouts
+8. `spectrum_system` — manage spectrum allocation, frequency assignments, interference
+9. `ftth_system` — fiber-to-the-home rollout, premises passed, take-up rates
+10. `revenue_system` — calculate per-corp revenue from served demand
+11. `cost_system` — calculate maintenance, salary, interest costs
+12. `finance_system` — update corporate finances (income, balance sheet, credit rating)
+13. `contract_system` — process contract terms, renewals, breaches
+14. `ai_system` — AI corporations make decisions (build, hire, contract, research)
+15. `disaster_system` — roll for disasters, apply damage
+16. `regulation_system` — process regulatory changes, political events
+17. `research_system` — advance tech research progress
+18. `patent_system` — license revenue collection, patent expiration, enforcement
+19. `market_system` — dynamic AI spawning, mergers, bankruptcies
+20. `auction_system` — process spectrum and infrastructure auction bids, resolve winners
+21. `covert_ops_system` — execute espionage actions, intel gathering, sabotage resolution
+22. `lobbying_system` — process lobbying investments, political influence, regulation nudges
+23. `alliance_system` — trust scoring, revenue sharing, dissolution checks
+24. `legal_system` — lawsuit resolution, damage calculation, settlement processing
+25. `grants_system` — government grant generation, progress tracking, completion payouts
+26. `achievement_system` — check achievement conditions, unlock milestones, track stats
+27. `stock_market_system` — stock price simulation, IPO, share trading, market events
 
 ### 2c. Crate Structure
 
@@ -142,11 +145,15 @@ crates/
 ├── gt-simulation/      # Core ECS engine
 │   ├── src/
 │   │   ├── world.rs        # ECS world container
-│   │   ├── systems/        # All ECS systems
-│   │   │   ├── patent.rs       # License revenue collection, patent expiration, enforcement
-│   │   │   ├── alliance.rs     # Trust scoring, revenue sharing, dissolution
-│   │   │   ├── legal.rs        # Lawsuit resolution, damage calculation
-│   │   │   └── grants.rs       # Government grant generation and completion
+│   │   ├── systems/        # All 27 ECS systems
+│   │   │   ├── spectrum.rs      # Spectrum allocation, frequency assignments, interference
+│   │   │   ├── ftth.rs          # Fiber-to-the-home rollout, premises passed, take-up rates
+│   │   │   ├── patent.rs        # License revenue collection, patent expiration, enforcement
+│   │   │   ├── alliance.rs      # Trust scoring, revenue sharing, dissolution
+│   │   │   ├── legal.rs         # Lawsuit resolution, damage calculation
+│   │   │   ├── grants.rs        # Government grant generation and completion
+│   │   │   ├── stock_market.rs  # Stock price simulation, IPO, share trading
+│   │   │   └── ...              # + 20 more systems (construction, maintenance, etc.)
 │   │   ├── components/     # All ECS components
 │   │   ├── events.rs       # Event queue
 │   │   └── tick.rs         # Tick processing orchestrator
@@ -240,7 +247,7 @@ web/src/
 │   │   ├── SpeedControls.svelte    # Pause/play/speed buttons
 │   │   ├── AdvisorPanel.svelte     # AI advisor suggestions
 │   │   └── NotificationFeed.svelte # Event notifications
-│   ├── panels/                             # 6 tabbed panel groups
+│   ├── panels/                             # 6 tabbed panel groups, 23+ panel components
 │   │   ├── finance/
 │   │   │   ├── DashboardPanel.svelte       # Corporate financial dashboard
 │   │   │   ├── PricingPanel.svelte         # Regional pricing strategy

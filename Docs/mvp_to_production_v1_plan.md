@@ -15,7 +15,7 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] Set up CI (GitHub Actions: build, test, clippy, fmt)
 
 ### gt-common — Shared Types
-- [x] Core type definitions: EntityId, Tick, WorldConfig, TerrainType, NodeType (~33 types across eras), EdgeType (~15 types across eras), CreditRating, AIArchetype, AIStrategy
+- [x] Core type definitions: EntityId, Tick, WorldConfig, TerrainType, NodeType (41 types across eras), EdgeType (26 types across eras), CreditRating, AIArchetype, AIStrategy
 - [x] GameEvent enum (all event types)
 - [x] Command enum (all player action types)
 - [x] Serialization traits (serde Serialize/Deserialize on all types)
@@ -28,9 +28,9 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] `GameWorld::tick()` — runs all systems in deterministic order
 - [x] `GameWorld::process_command()` — validates and applies player commands
 - [x] Event queue: append-only, drained each tick
-- [x] 20 core systems fully implemented in deterministic tick order:
-  1. construction → 2. maintenance → 3. population → 4. coverage → 5. demand → 6. routing → 7. utilization → 8. revenue → 9. cost → 10. finance → 11. contract → 12. ai → 13. disaster → 14. regulation → 15. research → 16. market → 17. auction → 18. covert_ops → 19. lobbying → 20. achievement
-- [ ] Planned additional systems: alliance, legal, grants, fog_of_war, pricing, maintenance_scheduling
+- [x] 27 core systems fully implemented in deterministic tick order:
+  1. construction → 2. maintenance → 3. population → 4. coverage → 5. demand → 6. routing → 7. utilization → 8. revenue → 9. cost → 10. finance → 11. contract → 12. ai → 13. disaster → 14. regulation → 15. research → 16. market → 17. auction → 18. covert_ops → 19. lobbying → 20. achievement → 21. alliance → 22. legal → 23. grants → 24. pricing → 25. maintenance_scheduling → 26. stock_market → 27. patent
+- [x] All planned additional systems implemented (alliance, legal, grants, pricing, maintenance_scheduling, stock_market). Fog of war cancelled by design decision (all competitor data visible).
 
 ### gt-world — World Generation
 - [x] 3D sphere-based fractal noise for terrain elevation
@@ -46,7 +46,7 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 
 ### Verification
 - [x] `cargo build` succeeds for all crates (0 errors, 0 warnings)
-- [x] `cargo test` — 34 tests pass: world gen, determinism, ECS, network graph, protocol, real earth
+- [x] `cargo test` — 98 tests pass: world gen, determinism, ECS, network graph, protocol, real earth
 - [x] Determinism test: same seed → same world state after N ticks
 - [x] `cargo clippy -- -D warnings` passes clean
 - [x] `cargo fmt --check` passes clean
@@ -68,8 +68,8 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] Contract system (peering, transit, SLA — terms, capacity, penalties, renewal)
 
 ### gt-infrastructure — Network Graph
-- [x] Infrastructure node entities (~33 types across eras, flat expansion — e.g., telegraph office, telephone exchange, cell tower, fiber hub, data center, IXP, subsea station, satellite station, 5G small cell, edge compute node, etc.)
-- [x] Infrastructure edge entities (~15 types across eras, flat expansion — e.g., telegraph wire, copper loop, fiber local/regional/national, microwave, subsea, satellite, 5G mmWave, mesh wireless, etc.)
+- [x] Infrastructure node entities (41 types across eras, flat expansion — e.g., telegraph office, telephone exchange, cell tower, fiber hub, data center, IXP, subsea station, satellite station, 5G small cell, edge compute node, etc.)
+- [x] Infrastructure edge entities (26 types across eras, flat expansion — e.g., telegraph wire, copper loop, fiber local/regional/national, microwave, subsea, satellite, 5G mmWave, mesh wireless, etc.)
 - [x] 5-level hierarchical network graph (Local → Regional → National → Continental → Global Backbone)
 - [x] Dijkstra routing with cached shortest-path trees
 - [x] Dirty-node invalidation (only recalculate affected clusters)
@@ -91,8 +91,8 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] AI proxy for offline multiplayer (policy-only execution)
 
 ### System Implementation (gt-simulation)
-- [x] Fully implement all 20 systems (not stubs):
-  - construction, maintenance, population, coverage, demand, routing, utilization, revenue, cost, finance, contract, ai, disaster, regulation, research, market, auction, covert_ops, lobbying, achievement
+- [x] Fully implement all 27 systems (not stubs):
+  - construction, maintenance, population, coverage, demand, routing, utilization, revenue, cost, finance, contract, ai, disaster, regulation, research, market, auction, covert_ops, lobbying, achievement, alliance, legal, grants, pricing, maintenance_scheduling, stock_market, patent
 
 ### Verification
 - [x] Create a world with 1 player corp + 4 AI corps → tick 500 times → AI corps build infrastructure, earn revenue, some grow, some struggle
@@ -442,46 +442,45 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] Revenue/cost split proportionally by ownership share in revenue/cost systems
 
 ### Alliance System
-- [ ] Form alliances between corps (player-initiated or AI-proposed)
-- [ ] Trust scoring based on contract history, shared infrastructure, trade volume
-- [ ] Revenue sharing within alliances (configurable percentage)
-- [ ] Alliance dissolution checks: trust drops below threshold → alliance breaks
-- [ ] Alliance-exclusive benefits: shared routing, bulk discount on co-builds
+- [x] Form alliances between corps (player-initiated or AI-proposed)
+- [x] Trust scoring based on contract history, shared infrastructure, trade volume
+- [x] Revenue sharing within alliances (configurable percentage)
+- [x] Alliance dissolution checks: trust drops below threshold → alliance breaks
+- [x] Alliance-exclusive benefits: shared routing, bulk discount on co-builds
 
 ### Legal System
-- [ ] Lawsuit filing: patent infringement, contract breach, anti-competitive behavior
-- [ ] Lawsuit resolution over N ticks (damage calculation, settlement offers)
-- [ ] Legal costs scale with lawsuit complexity and jurisdiction
-- [ ] Court outcomes: damages awarded, injunctions, forced licensing
-- [ ] AI corps file lawsuits based on archetype (Aggressive Expander litigates frequently)
+- [x] Lawsuit filing: patent infringement, contract breach, anti-competitive behavior
+- [x] Lawsuit resolution over N ticks (damage calculation, settlement offers)
+- [x] Legal costs scale with lawsuit complexity and jurisdiction
+- [x] Court outcomes: damages awarded, injunctions, forced licensing
+- [x] AI corps file lawsuits based on archetype (Aggressive Expander litigates frequently)
 
 ### Government Grants System
-- [ ] Government grants generated per region (underserved area incentives)
-- [ ] Grant requirements: build coverage in target area within deadline
-- [ ] Grant rewards: cash payout, tax breaks, exclusive land access
-- [ ] Progress tracking toward grant completion
-- [ ] AI corps compete for grants based on strategy mode
+- [x] Government grants generated per region (underserved area incentives)
+- [x] Grant requirements: build coverage in target area within deadline
+- [x] Grant rewards: cash payout, tax breaks, exclusive land access
+- [x] Progress tracking toward grant completion
+- [x] AI corps compete for grants based on strategy mode
 
-### Fog of War System
-- [ ] Competitor infrastructure hidden by default (only see own assets + public info)
-- [ ] Intel levels: None → Basic (node count) → Detailed (capacity, revenue) → Full (financials, strategy)
-- [ ] Intel gathered through espionage missions, market reports, alliance sharing
-- [ ] Intel decays over time (stale data)
-- [ ] Map overlay for fog of war visualization (dimmed regions with unknown competitor data)
+### Fog of War System (Cancelled)
+- ~~Cancelled by design decision: all competitor data is visible. Geography, infrastructure, and financials are not gated by fog of war.~~
 
 ### Pricing System
-- [ ] Per-region pricing tiers (economy, standard, premium)
-- [ ] Price-per-unit setting affects demand capture and revenue per customer
-- [ ] Undercut pricing strategy: lower prices to steal market share
-- [ ] Premium pricing: higher margins but slower growth
-- [ ] AI corps adjust pricing dynamically based on archetype and competition
+- [x] Per-region pricing tiers (economy, standard, premium)
+- [x] Price-per-unit setting affects demand capture and revenue per customer
+- [x] Undercut pricing strategy: lower prices to steal market share
+- [x] Premium pricing: higher margins but slower growth
+- [x] AI corps adjust pricing dynamically based on archetype and competition
 
 ### Maintenance Scheduling System
-- [ ] Per-asset maintenance priority tiers (Critical, High, Normal, Low, Deferred)
-- [ ] Auto-repair toggle per asset
-- [ ] Scheduled maintenance windows (reduced capacity during maintenance vs emergency downtime)
-- [ ] Preventive maintenance reduces disaster damage
-- [ ] Maintenance budget allocation with diminishing returns
+- [x] Per-asset maintenance priority tiers (Critical, High, Normal, Low, Deferred)
+- [x] Auto-repair toggle per asset
+- [x] Scheduled maintenance windows (reduced capacity during maintenance vs emergency downtime)
+- [x] Preventive maintenance reduces disaster damage
+- [x] Maintenance budget allocation with diminishing returns
+
+### Stock Market System
+- [x] Stock market system fully implemented
 
 ### Achievements & Win Conditions
 - [x] 20 achievements tracked: FirstNode, FirstProfit, TenNodes, HundredNodes, MillionRevenue, BillionRevenue, AAARating, DebtFree, GlobalBackbone, OceanCable, FirstContract, AllRegions, FirstMerger, MonopolyRegion, SurviveBankruptcy, ResearchComplete, etc.
@@ -502,7 +501,7 @@ Comprehensive phased implementation plan from scratch to shippable production v1
 - [x] `cargo build --release` succeeds with all Phase 10 additions
 - [x] `cargo test` — target ~120-150 tests (happy path + edge cases per system, integration cross-crate)
 - [x] All 4 existing systems integrated into tick order (auction, covert_ops, lobbying, achievement)
-- [ ] 6 new planned systems to integrate: alliance, legal, grants, fog_of_war, pricing, maintenance_scheduling
+- [x] 6 new systems integrated: alliance, legal, grants, pricing, maintenance_scheduling, stock_market (fog_of_war cancelled by design decision)
 - [x] ~25 new events, ~15 new commands, 6 new component files, 4 new systems
 - [x] 4 new frontend panels (AuctionPanel, MergerPanel, IntelPanel, AchievementPanel)
 - [x] HUD updated with panel buttons: Auc, M&A, Int, Ach

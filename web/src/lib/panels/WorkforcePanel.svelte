@@ -141,15 +141,15 @@
 			</div>
 			{#if $companyTier !== 'small'}
 				<div class="stat">
-					<span class="label">Staff/Node Ratio</span>
+					<span class="label">{$tr('panels.staff_node_ratio')}</span>
 					<span class="value mono" class:green={staffingStatus === 'optimal' || staffingStatus === 'overstaffed'} class:amber={staffingStatus === 'understaffed'} class:red={staffingStatus === 'critical'}>
 						{staffPerNode.toFixed(1)}x
 					</span>
 				</div>
 				<div class="stat">
-					<span class="label">Staffing</span>
+					<span class="label">{$tr('panels.staffing_label')}</span>
 					<span class="value" class:green={staffingStatus === 'optimal'} class:amber={staffingStatus === 'understaffed' || staffingStatus === 'overstaffed'} class:red={staffingStatus === 'critical'}>
-						{staffingStatus === 'optimal' ? 'Optimal' : staffingStatus === 'overstaffed' ? 'Overstaffed' : staffingStatus === 'understaffed' ? 'Understaffed' : 'Critical'}
+						{staffingStatus === 'optimal' ? $tr('panels.staffing_optimal') : staffingStatus === 'overstaffed' ? $tr('panels.staffing_overstaffed') : staffingStatus === 'understaffed' ? $tr('panels.staffing_understaffed') : $tr('panels.staffing_critical')}
 					</span>
 				</div>
 			{/if}
@@ -158,7 +158,7 @@
 
 	{#if ($playerCorp?.employee_count ?? 0) === 0}
 		<div class="section">
-			<p class="empty-hint">No employees yet — hire your first team to boost operations!</p>
+			<p class="empty-hint">{$tr('panels.no_employees_hint')}</p>
 		</div>
 	{/if}
 
@@ -175,14 +175,14 @@
 
 		{#if ($playerCorp?.employee_count ?? 0) > 0}
 			<div class="section">
-				<h3>Per-Employee Stats</h3>
+				<h3>{$tr('panels.per_employee_stats')}</h3>
 				<div class="stat-grid">
 					<div class="stat">
-						<span class="label">Est. Salary</span>
+						<span class="label">{$tr('panels.est_salary')}</span>
 						<span class="value mono red">{formatMoney(costPerEmployee)}/tick</span>
 					</div>
 					<div class="stat">
-						<span class="label">Revenue/Head</span>
+						<span class="label">{$tr('panels.revenue_per_head')}</span>
 						<span class="value mono green">{formatMoney(revenuePerEmployee)}/tick</span>
 					</div>
 				</div>
@@ -193,7 +193,7 @@
 	<!-- MEDIUM TIER: Team management, bulk hiring, morale by team -->
 	{#if $companyTier === 'medium'}
 		<div class="section">
-			<h3>Team Management</h3>
+			<h3>{$tr('panels.team_management')}</h3>
 			<div class="team-grid">
 				{#each teamBreakdown() as team}
 					<div class="team-card">
@@ -210,7 +210,7 @@
 		</div>
 
 		<div class="section">
-			<h3>Bulk Staffing</h3>
+			<h3>{$tr('panels.bulk_staffing')}</h3>
 			<div class="bulk-row">
 				<label class="bulk-label">
 					Hire/Fire Count:
@@ -229,7 +229,7 @@
 		</div>
 
 		<div class="section">
-			<h3>Productivity by Team</h3>
+			<h3>{$tr('panels.productivity_by_team')}</h3>
 			<div class="productivity-grid">
 				<div class="prod-item">
 					<span class="prod-label">Operations Efficiency</span>
@@ -250,7 +250,7 @@
 	<!-- LARGE TIER: Department overview, policy settings, headcount targets -->
 	{#if $companyTier === 'large'}
 		<div class="section">
-			<h3>Department Overview</h3>
+			<h3>{$tr('panels.department_overview')}</h3>
 			<div class="dept-overview">
 				{#each teamBreakdown() as team}
 					<div class="dept-row">
@@ -266,7 +266,7 @@
 		</div>
 
 		<div class="section">
-			<h3>Workforce Policies</h3>
+			<h3>{$tr('panels.workforce_policies')}</h3>
 			<div class="policy-grid">
 				<div class="policy-card">
 					<span class="policy-card-label">Hiring Policy</span>
@@ -306,7 +306,7 @@
 		</div>
 
 		<div class="section">
-			<h3>Headcount Target</h3>
+			<h3>{$tr('panels.headcount_target')}</h3>
 			<div class="headcount-row">
 				<span class="policy-label">Target</span>
 				<input type="range" min={10} max={500} step={5} bind:value={headcountTarget}
@@ -325,7 +325,7 @@
 		</div>
 
 		<div class="section">
-			<h3>Workforce Economics</h3>
+			<h3>{$tr('panels.workforce_economics')}</h3>
 			<div class="stat-grid">
 				<div class="stat">
 					<span class="label">Total Salary Cost</span>

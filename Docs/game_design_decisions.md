@@ -4,6 +4,41 @@ Concrete design decisions for the GlobalTelco infrastructure empire builder. Thi
 
 ---
 
+## Current Implementation Status
+
+### Implemented
+- World/map system (terrain, procedural generation, Real Earth mode)
+- All 6 eras with 41 NodeTypes and 26 EdgeTypes
+- Build menu (radial + hotbar), free placement on map
+- Contracts, mergers, bankruptcy
+- Patents (filing, licensing), independent research (standard + premium tiers)
+- AI archetypes (4 types, 4 strategies), dynamic spawning, mergers, bankruptcy
+- Disasters, insurance, repair
+- Co-ownership proposals and voting
+- Spectrum allocation system
+- Espionage/sabotage (covert ops), lobbying
+- Stock market (IPO, share pricing, dividends)
+- Sandbox mode (infinite money, all tech unlocked, 32x speed)
+- Management scaling (small/medium/large company tiers)
+- Regional pricing (Budget/Standard/Premium/Custom per region)
+- Maintenance priority system (Critical/Standard/Low/Deferred)
+- Government grants
+- Alliance system (formation, shared routing, trust scores)
+- Legal system (lawsuits: sabotage, ownership, patent, regulatory)
+- Multiplayer (WebSocket, delta sync, ghost entities, speed voting, admin)
+
+### Not Yet Implemented
+- FTTH access network game loop (partial — nodes exist but no building-level demand)
+- Submarine cable mechanics (partial — nodes exist but no ship/waypoint system)
+- Weather system (partial — disasters exist but no weather forecast/patterns)
+- City density zones (not started)
+- Spectrum interference modeling (not started)
+
+### Cancelled
+- Fog of War — cancelled by design decision; all competitor infrastructure is visible by default
+
+---
+
 ## 1. Core Identity
 
 - **Genre:** 2D infrastructure empire builder — mix of city builder + tycoon/business sim + grand strategy.
@@ -45,14 +80,14 @@ Concrete design decisions for the GlobalTelco infrastructure empire builder. Thi
 - **Research is NOT era-gated.** The tech tree is organized by era for visual clarity, but players can freely research any technology as long as they have the prerequisites and funds. There are no hard locks tied to eras.
 - **World era:** A cosmetic collective milestone — the highest era where ALL active corporations have at least 1 completed tech. No gameplay effects are tied to world era. Individual tech research is what gates building.
 - **Player start:** Player begins with 1 starter node appropriate to the starting era (e.g., TelegraphOffice in Telegraph Era, CellTower4G in Modern Era).
-- **Infrastructure node types (~33, flat enum, organized by era):**
+- **Infrastructure node types (41, flat enum, organized by era):**
   - **Telegraph:** TelegraphOffice, TelegraphRelay
   - **Telephone:** TelephoneExchange, OperatorSwitch, LongDistanceRelay
   - **Early Digital:** DigitalSwitch, MicrowaveTower, CoaxHub
   - **Internet:** DSLTerminal, FiberPOP, WebHostingCenter, DialUpGateway
   - **Modern:** CellTower4G, CellTower5G, DataCenter, FTTHNode, CDNEdge, ExchangePoint, BackboneRouter
   - **Near Future:** Cell6G, SatelliteGround, QuantumRelay, EdgeAINode, SubmarineLanding
-- **Infrastructure edge types** follow a similar per-era expansion (copper wire, trunk line, coax, fiber, microwave link, subsea cable, satellite uplink, quantum channel, etc.).
+- **Infrastructure edge types (26, flat enum, organized by era)** follow a similar per-era expansion (copper wire, trunk line, coax, fiber, microwave link, subsea cable, satellite uplink, quantum channel, etc.).
 - **Build menu:** Categorized by network tier (Access, Aggregation, Core, Backbone, Global). Only researched or licensed types are shown as buildable; locked types are grayed out with a tooltip explaining how to unlock.
 - **Multi-industry extensibility:** Architecture designed to add energy, water, transport industries in future updates. Infrastructure types are data-driven, not hardcoded.
 
