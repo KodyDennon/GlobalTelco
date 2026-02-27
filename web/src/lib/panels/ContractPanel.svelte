@@ -10,17 +10,40 @@
 	let showProposeForm = $state(false);
 	let proposeTarget = $state(0);
 
-	// Structured contract term fields (replacing hardcoded string)
+	// Structured contract term fields
+	let contractType = $state<'Transit' | 'Peering' | 'SLA'>('Transit');
 	let proposeBandwidth = $state(1000);
 	let proposePrice = $state(5000);
 	let proposeDuration = $state(100);
 
+	// Direct input mode tracking (toggled per field)
+	let bandwidthInputMode = $state(false);
+	let priceInputMode = $state(false);
+	let durationInputMode = $state(false);
+
+	// Validation ranges
+	const BANDWIDTH_MIN = 100;
+	const BANDWIDTH_MAX = 100000;
+	const PRICE_MIN = 100;
+	const PRICE_MAX = 10000000;
+	const DURATION_MIN = 10;
+	const DURATION_MAX = 1000;
+
 	// Validation
-	let bandwidthValid = $derived(proposeBandwidth >= 100 && proposeBandwidth <= 100000);
-	let priceValid = $derived(proposePrice >= 100 && proposePrice <= 10000000);
-	let durationValid = $derived(proposeDuration >= 10 && proposeDuration <= 1000);
+	let bandwidthValid = $derived(proposeBandwidth >= BANDWIDTH_MIN && proposeBandwidth <= BANDWIDTH_MAX);
+	let priceValid = $derived(proposePrice >= PRICE_MIN && proposePrice <= PRICE_MAX);
+	let durationValid = $derived(proposeDuration >= DURATION_MIN && proposeDuration <= DURATION_MAX);
 	let formValid = $derived(proposeTarget > 0 && bandwidthValid && priceValid && durationValid);
+
+	// Computed contract metrics
 	let pricePerUnit = $derived(proposeBandwidth > 0 ? proposePrice / proposeBandwidth : 0);
+	let totalValue = $derived(proposePrice * proposeDuration);
+	let estimatedPenalty = $derived(Math.max(Math.floor(totalValue / 10), 1000));
+	let slaTier = $derived(
+		proposeBandwidth > 5000 ? { label: '99.5%', tier: 'high' } :
+		proposeBandwidth > 1000 ? { label: '99.0%', tier: 'mid' } :
+		{ label: '98.0%', tier: 'low' }
+	);
 
 	$effect(() => {
 		const corp = $playerCorp;
@@ -42,16 +65,36 @@
 	function proposeContract() {
 		const corp = $playerCorp;
 		if (!corp || !formValid) return;
-		const terms = `bandwidth:${proposeBandwidth},price:${proposePrice},duration:${proposeDuration}`;
+		const terms = `type:${contractType},bandwidth:${proposeBandwidth},price:${proposePrice},duration:${proposeDuration}`;
 		gameCommand({
 			ProposeContract: { from: corp.id, to: proposeTarget, terms }
 		});
 		showProposeForm = false;
+		resetForm();
+		if (corp) contracts = bridge.getContracts(corp.id);
+	}
+
+	function resetForm() {
 		proposeTarget = 0;
+		contractType = 'Transit';
 		proposeBandwidth = 1000;
 		proposePrice = 5000;
 		proposeDuration = 100;
-		if (corp) contracts = bridge.getContracts(corp.id);
+		bandwidthInputMode = false;
+		priceInputMode = false;
+		durationInputMode = false;
+	}
+
+	function clampBandwidth() {
+		proposeBandwidth = Math.max(BANDWIDTH_MIN, Math.min(BANDWIDTH_MAX, Math.round(proposeBandwidth)));
+	}
+
+	function clampPrice() {
+		proposePrice = Math.max(PRICE_MIN, Math.min(PRICE_MAX, Math.round(proposePrice)));
+	}
+
+	function clampDuration() {
+		proposeDuration = Math.max(DURATION_MIN, Math.min(DURATION_MAX, Math.round(proposeDuration)));
 	}
 
 	let activeContracts = $derived(contracts.filter((c) => c.status === 'Active'));
@@ -89,51 +132,120 @@
 		</div>
 		{#if showProposeForm}
 			<div class="propose-form">
-				<select bind:value={proposeTarget} aria-label="Target corporation for contract">
-					<option value={0}>Select corporation...</option>
-					{#each aiCorps as corp}
-						<option value={corp.id}>{corp.name}</option>
-					{/each}
-				</select>
+				<div class="form-row">
+					<label class="form-field">
+						<span class="field-label">Target Corporation</span>
+						<select bind:value={proposeTarget} aria-label="Target corporation for contract">
+							<option value={0}>Select corporation...</option>
+							{#each aiCorps as corp}
+								<option value={corp.id}>{corp.name}</option>
+							{/each}
+						</select>
+					</label>
+
+					<label class="form-field">
+						<span class="field-label">Contract Type</span>
+						<select bind:value={contractType} aria-label="Contract type">
+							<option value="Transit">Transit</option>
+							<option value="Peering">Peering</option>
+							<option value="SLA">SLA</option>
+						</select>
+					</label>
+				</div>
 
 				<label class="form-field">
 					<span class="field-label">
-						Bandwidth
-						<span class="field-value mono">{proposeBandwidth.toLocaleString()}</span>
+						Bandwidth (Mbps)
+						{#if bandwidthInputMode}
+							<input
+								type="number"
+								class="inline-input"
+								bind:value={proposeBandwidth}
+								onblur={clampBandwidth}
+								min={BANDWIDTH_MIN}
+								max={BANDWIDTH_MAX}
+								step={100}
+								aria-label="Bandwidth exact value"
+							/>
+						{:else}
+							<button class="field-value mono clickable" onclick={() => (bandwidthInputMode = true)} aria-label="Click to enter exact bandwidth value">{proposeBandwidth.toLocaleString()}</button>
+						{/if}
 					</span>
-					<input type="range" min={100} max={100000} step={100} bind:value={proposeBandwidth} />
+					<input type="range" min={BANDWIDTH_MIN} max={BANDWIDTH_MAX} step={100} bind:value={proposeBandwidth} aria-label="Bandwidth slider" />
+					<div class="field-range">
+						<span>{BANDWIDTH_MIN.toLocaleString()}</span>
+						<span>{BANDWIDTH_MAX.toLocaleString()}</span>
+					</div>
 					{#if !bandwidthValid}
-						<span class="field-error">100 - 100,000</span>
+						<span class="field-error">{BANDWIDTH_MIN.toLocaleString()} - {BANDWIDTH_MAX.toLocaleString()}</span>
 					{/if}
 				</label>
 
 				<label class="form-field">
 					<span class="field-label">
 						Price per tick
-						<span class="field-value mono">{formatMoney(proposePrice)}</span>
+						{#if priceInputMode}
+							<input
+								type="number"
+								class="inline-input"
+								bind:value={proposePrice}
+								onblur={clampPrice}
+								min={PRICE_MIN}
+								max={PRICE_MAX}
+								step={100}
+								aria-label="Price exact value"
+							/>
+						{:else}
+							<button class="field-value mono clickable" onclick={() => (priceInputMode = true)} aria-label="Click to enter exact price value">{formatMoney(proposePrice)}</button>
+						{/if}
 					</span>
-					<input type="range" min={100} max={10000000} step={100} bind:value={proposePrice} />
+					<input type="range" min={PRICE_MIN} max={PRICE_MAX} step={100} bind:value={proposePrice} aria-label="Price per tick slider" />
+					<div class="field-range">
+						<span>{formatMoney(PRICE_MIN)}</span>
+						<span>{formatMoney(PRICE_MAX)}</span>
+					</div>
 					{#if !priceValid}
-						<span class="field-error">$100 - $10M</span>
+						<span class="field-error">{formatMoney(PRICE_MIN)} - {formatMoney(PRICE_MAX)}</span>
 					{/if}
 				</label>
 
 				<label class="form-field">
 					<span class="field-label">
 						Duration (ticks)
-						<span class="field-value mono">{proposeDuration}</span>
+						{#if durationInputMode}
+							<input
+								type="number"
+								class="inline-input"
+								bind:value={proposeDuration}
+								onblur={clampDuration}
+								min={DURATION_MIN}
+								max={DURATION_MAX}
+								step={10}
+								aria-label="Duration exact value"
+							/>
+						{:else}
+							<button class="field-value mono clickable" onclick={() => (durationInputMode = true)} aria-label="Click to enter exact duration value">{proposeDuration}</button>
+						{/if}
 					</span>
-					<input type="range" min={10} max={1000} step={10} bind:value={proposeDuration} />
+					<input type="range" min={DURATION_MIN} max={DURATION_MAX} step={10} bind:value={proposeDuration} aria-label="Duration slider" />
+					<div class="field-range">
+						<span>{DURATION_MIN}</span>
+						<span>{DURATION_MAX}</span>
+					</div>
 					{#if !durationValid}
-						<span class="field-error">10 - 1,000 ticks</span>
+						<span class="field-error">{DURATION_MIN} - {DURATION_MAX.toLocaleString()} ticks</span>
 					{/if}
 				</label>
 
 				<div class="contract-preview">
-					<span class="preview-label">Preview</span>
+					<span class="preview-label">Contract Preview</span>
+					<div class="preview-row">
+						<span class="muted">Type:</span>
+						<span class="mono">{contractType}</span>
+					</div>
 					<div class="preview-row">
 						<span class="muted">Bandwidth:</span>
-						<span class="mono">{proposeBandwidth.toLocaleString()}</span>
+						<span class="mono">{proposeBandwidth.toLocaleString()} Mbps</span>
 					</div>
 					<div class="preview-row">
 						<span class="muted">Price/tick:</span>
@@ -143,13 +255,22 @@
 						<span class="muted">Duration:</span>
 						<span class="mono">{proposeDuration} ticks</span>
 					</div>
+					<div class="preview-divider"></div>
 					<div class="preview-row">
 						<span class="muted">Total value:</span>
-						<span class="mono green">{formatMoney(proposePrice * proposeDuration)}</span>
+						<span class="mono green">{formatMoney(totalValue)}</span>
 					</div>
 					<div class="preview-row">
 						<span class="muted">Price/unit:</span>
-						<span class="mono">{formatMoney(pricePerUnit)}/bw</span>
+						<span class="mono">{formatMoney(pricePerUnit)}/Mbps</span>
+					</div>
+					<div class="preview-row">
+						<span class="muted">Breach penalty:</span>
+						<span class="mono amber">{formatMoney(estimatedPenalty)}</span>
+					</div>
+					<div class="preview-row">
+						<span class="muted">SLA target:</span>
+						<span class="mono sla-{slaTier.tier}">{slaTier.label} uptime</span>
 					</div>
 				</div>
 
@@ -167,7 +288,7 @@
 						<div class="contract-type">{contract.contract_type}</div>
 						<div class="contract-parties">
 							<span>{contract.from_name}</span>
-							<span class="arrow">→</span>
+							<span class="arrow">&rarr;</span>
 							<span>{contract.to_name}</span>
 						</div>
 						<div class="contract-terms">
@@ -177,7 +298,7 @@
 					</div>
 					<div class="contract-actions">
 						<button class="accept-btn" onclick={() => acceptContract(contract.id)} use:tooltip={() => `Accept contract from ${contract.from_name}\n${formatMoney(contract.price_per_tick)}/tick for ${contract.capacity.toFixed(0)} bandwidth`}>{$tr('panels.accept')}</button>
-						<button class="reject-btn" onclick={() => rejectContract(contract.id)} use:tooltip={'Reject this proposal — no penalty'}>{$tr('panels.reject')}</button>
+						<button class="reject-btn" onclick={() => rejectContract(contract.id)} use:tooltip={'Reject this proposal \u2014 no penalty'}>{$tr('panels.reject')}</button>
 					</div>
 				</div>
 			{/each}
@@ -192,13 +313,19 @@
 					<div class="contract-type">{contract.contract_type}</div>
 					<div class="contract-parties">
 						<span>{contract.from_name}</span>
-						<span class="arrow">→</span>
+						<span class="arrow">&rarr;</span>
 						<span>{contract.to_name}</span>
 					</div>
 					<div class="contract-terms">
 						<span class="mono">{formatMoney(contract.price_per_tick)}/tick</span>
 						<span class="muted">{$tr('panels.ends_tick', { tick: contract.end_tick })}</span>
 					</div>
+					{#if contract.sla_status}
+						<div class="contract-sla">
+							<span class="sla-badge sla-{contract.sla_status}">{contract.sla_current_performance.toFixed(1)}%</span>
+							<span class="muted">target {contract.sla_target.toFixed(1)}%</span>
+						</div>
+					{/if}
 				</div>
 				<div class="contract-badge">
 					{#if contract.from === ($playerCorp?.id ?? 0)}
@@ -258,6 +385,10 @@
 		color: var(--red);
 	}
 
+	.amber {
+		color: var(--amber, #f59e0b);
+	}
+
 	.contract-card {
 		display: flex;
 		justify-content: space-between;
@@ -300,6 +431,37 @@
 		font-size: 11px;
 		display: flex;
 		gap: 12px;
+	}
+
+	.contract-sla {
+		font-size: 11px;
+		display: flex;
+		gap: 8px;
+		align-items: center;
+		margin-top: 2px;
+	}
+
+	.sla-badge {
+		font-family: var(--font-mono);
+		font-size: 10px;
+		padding: 1px 6px;
+		border-radius: var(--radius-sm);
+		font-weight: 600;
+	}
+
+	.sla-badge.sla-ok {
+		background: var(--green-bg);
+		color: var(--green);
+	}
+
+	.sla-badge.sla-at_risk {
+		background: rgba(245, 158, 11, 0.1);
+		color: var(--amber, #f59e0b);
+	}
+
+	.sla-badge.sla-breach {
+		background: var(--red-bg);
+		color: var(--red);
 	}
 
 	.contract-actions {
@@ -376,15 +538,21 @@
 	.propose-form {
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
+		gap: 10px;
 		background: var(--bg-surface);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
-		padding: 10px;
+		padding: 12px;
+	}
+
+	.form-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 10px;
 	}
 
 	.propose-form select,
-	.propose-form input {
+	.propose-form input[type="range"] {
 		background: rgba(17, 24, 39, 0.8);
 		border: 1px solid var(--border);
 		color: var(--text-secondary);
@@ -392,21 +560,49 @@
 		border-radius: var(--radius-sm);
 		font-size: 12px;
 		font-family: var(--font-mono);
+		width: 100%;
+		box-sizing: border-box;
+	}
+
+	.propose-form input[type="range"] {
+		padding: 0;
+		height: 6px;
+		-webkit-appearance: none;
+		appearance: none;
+		border: none;
+		border-radius: 3px;
+		cursor: pointer;
+	}
+
+	.propose-form input[type="range"]::-webkit-slider-thumb {
+		-webkit-appearance: none;
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		background: var(--blue, #3b82f6);
+		border: 2px solid rgba(17, 24, 39, 0.8);
+		cursor: pointer;
 	}
 
 	.confirm-btn {
 		background: var(--green-bg);
 		border: 1px solid var(--green-border);
 		color: var(--green);
-		padding: 6px 12px;
+		padding: 8px 12px;
 		border-radius: var(--radius-sm);
 		cursor: pointer;
 		font-size: 12px;
+		font-weight: 600;
+		margin-top: 4px;
 	}
 
 	.confirm-btn:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
+	}
+
+	.confirm-btn:not(:disabled):hover {
+		background: rgba(34, 197, 94, 0.15);
 	}
 
 	.form-field {
@@ -428,6 +624,47 @@
 		font-size: 12px;
 	}
 
+	.clickable {
+		background: none;
+		border: 1px solid transparent;
+		padding: 1px 4px;
+		cursor: pointer;
+		border-radius: var(--radius-sm);
+		transition: border-color 0.15s;
+	}
+
+	.clickable:hover {
+		border-color: var(--border);
+		background: rgba(17, 24, 39, 0.5);
+	}
+
+	.inline-input {
+		width: 90px;
+		padding: 2px 4px;
+		font-size: 12px;
+		font-family: var(--font-mono);
+		background: rgba(17, 24, 39, 0.8);
+		border: 1px solid var(--blue, #3b82f6);
+		color: var(--text-primary);
+		border-radius: var(--radius-sm);
+		text-align: right;
+	}
+
+	.inline-input:focus {
+		outline: none;
+		border-color: var(--blue, #3b82f6);
+		box-shadow: 0 0 0 1px var(--blue, #3b82f6);
+	}
+
+	.field-range {
+		display: flex;
+		justify-content: space-between;
+		font-size: 9px;
+		color: var(--text-dim);
+		font-family: var(--font-mono);
+		margin-top: -2px;
+	}
+
 	.field-error {
 		font-size: 10px;
 		color: var(--red);
@@ -437,7 +674,7 @@
 		background: rgba(17, 24, 39, 0.6);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-sm);
-		padding: 8px 10px;
+		padding: 10px 12px;
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
@@ -456,5 +693,22 @@
 		display: flex;
 		justify-content: space-between;
 		font-size: 11px;
+	}
+
+	.preview-divider {
+		border-top: 1px solid rgba(55, 65, 81, 0.3);
+		margin: 4px 0;
+	}
+
+	.sla-high {
+		color: var(--green);
+	}
+
+	.sla-mid {
+		color: var(--blue, #3b82f6);
+	}
+
+	.sla-low {
+		color: var(--text-muted);
 	}
 </style>

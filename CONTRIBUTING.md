@@ -33,7 +33,7 @@ Thanks for your interest in contributing! This project welcomes contributions of
 
 ## Architecture Notes
 
-- The simulation runs as an ECS (Entity Component System) with 20 deterministic systems
+- The simulation runs as an ECS (Entity Component System) with 28 deterministic systems
 - The same Rust code compiles to WASM (browser single-player) and native binary (multiplayer server)
 - Frontend communicates with the sim through a typed bridge (`web/src/lib/wasm/bridge.ts`)
 - All state mutations flow through the centralized event queue

@@ -3139,16 +3139,59 @@ impl GameWorld {
         }
     }
 
-    fn cmd_propose_contract(&mut self, from: EntityId, to: EntityId, _terms: &str) {
+    fn cmd_propose_contract(&mut self, from: EntityId, to: EntityId, terms: &str) {
+        // Parse structured terms: "type:Transit,bandwidth:1000,price:5000,duration:100"
+        let mut bandwidth: f64 = 1000.0;
+        let mut price: Money = 500;
+        let mut duration: Tick = 180;
+        let mut contract_type = ContractType::Transit;
+
+        for part in terms.split(',') {
+            let kv: Vec<&str> = part.splitn(2, ':').collect();
+            if kv.len() == 2 {
+                let key = kv[0].trim();
+                let val = kv[1].trim();
+                match key {
+                    "bandwidth" => {
+                        if let Ok(v) = val.parse::<f64>() {
+                            bandwidth = v.clamp(100.0, 100_000.0);
+                        }
+                    }
+                    "price" => {
+                        if let Ok(v) = val.parse::<i64>() {
+                            price = v.clamp(100, 10_000_000);
+                        }
+                    }
+                    "duration" => {
+                        if let Ok(v) = val.parse::<u64>() {
+                            duration = v.clamp(10, 1000);
+                        }
+                    }
+                    "type" => {
+                        contract_type = match val {
+                            "Peering" => ContractType::Peering,
+                            "SLA" => ContractType::SLA,
+                            _ => ContractType::Transit,
+                        };
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Penalty scales with contract value: 10% of total contract value
+        let total_value = price * duration as i64;
+        let penalty = (total_value / 10).max(1000);
+
         let contract = Contract::new_proposal(
-            ContractType::Transit,
+            contract_type,
             from,
             to,
-            1000.0, // capacity
-            500,    // price per tick
+            bandwidth,
+            price,
             self.tick,
-            180,    // 6 months
-            10_000, // penalty
+            duration,
+            penalty,
         );
         let contract_id = self.allocate_entity();
         self.contracts.insert(contract_id, contract);

@@ -125,8 +125,10 @@ All game state is managed through an Entity Component System. Entities are IDs, 
 
 **Core entity types:** InfrastructureNode, InfrastructureEdge, Corporation, Subsidiary, Employee/Team, Region, City, Contract, LandParcel, TechResearch, DebtInstrument, Patent, LicenseAgreement, Alliance, Lawsuit, GovernmentGrant
 
-**Systems run in deterministic order each tick (27 systems):**
-1. construction → 2. maintenance → 3. population → 4. coverage → 5. demand → 6. routing → 7. utilization → 8. spectrum → 9. ftth → 10. revenue → 11. cost → 12. finance → 13. contract → 14. ai → 15. disaster → 16. regulation → 17. research → 18. patent → 19. market → 20. auction → 21. covert_ops → 22. lobbying → 23. alliance → 24. legal → 25. grants → 26. achievement → 27. stock_market
+**Systems run in deterministic order each tick (28 systems):**
+1. construction → 2. maintenance → 3. population → 4. coverage → 5. demand → 6. routing → 7. utilization → 8. spectrum → 9. ftth → 10. revenue → 11. cost → 12. finance → 13. contract → 14. ai → 15. weather → 16. disaster → 17. regulation → 18. research → 19. patent → 20. market → 21. auction → 22. covert_ops → 23. lobbying → 24. alliance → 25. legal → 26. grants → 27. achievement → 28. stock_market
+
+*After all 28 systems, `resolve_spectrum_auctions()` runs to finalize spectrum auction results and expire licenses.*
 
 ## Key Architecture Concepts
 
@@ -151,10 +153,10 @@ Single-player: Svelte Component → bridge.ts → gt-wasm (wasm-bindgen) → ECS
 Multiplayer:   Svelte Component → commandRouter.ts → WebSocketClient → Server → validates → broadcasts
 Desktop:       Same as single-player (WASM in Tauri webview), Tauri IPC for native filesystem
 
-Commands (player → sim): build_node, build_edge, hire_employee, set_policy, take_loan, propose_contract, set_research, set_speed, toggle_pause, save_game, load_game, file_patent, request_license, propose_alliance, file_lawsuit, bid_for_grant, set_region_pricing, set_maintenance_priority, start_independent_research
+Commands (player → sim, 61 total): build_node, build_edge, update_edge_waypoints, upgrade_node, decommission_node, repair_node, repair_edge, emergency_repair, hire_employee, fire_employee, assign_team, take_loan, repay_loan, set_budget, propose_contract, accept_contract, reject_contract, start_research, cancel_research, set_policy, create_subsidiary, purchase_insurance, cancel_insurance, declare_bankruptcy, request_bailout, accept_bailout, place_bid, propose_acquisition, respond_to_acquisition, launch_espionage, launch_sabotage, upgrade_security, start_lobbying, cancel_lobbying, propose_alliance, accept_alliance, dissolve_alliance, file_lawsuit, settle_lawsuit, defend_lawsuit, file_patent, request_license, set_license_price, revoke_license, start_independent_research, bid_for_grant, complete_grant, propose_co_ownership, respond_co_ownership, propose_buyout, vote_upgrade, bid_spectrum, assign_spectrum, unassign_spectrum, purchase_cable_ship, set_region_pricing, set_maintenance_priority, set_speed, toggle_pause, save_game, load_game
 
 Queries (sim → UI):
-  JSON queries: get_visible_entities, get_corporation_data, get_region_data, get_infrastructure_list, get_workforce, get_contracts, get_research_state, get_notifications, get_advisor_suggestion, get_patents, get_licenses, get_alliances, get_lawsuits, get_grants, get_intel_levels
+  JSON queries: get_visible_entities, get_corporation_data, get_region_data, get_infrastructure_list, get_workforce, get_contracts, get_research_state, get_notifications, get_advisor_suggestion, get_patents, get_licenses, get_alliances, get_lawsuits, get_grants, get_intel_levels, get_stock_market, get_weather, get_spectrum_licenses, get_pricing, get_maintenance_priorities
   Typed array queries (hot-path): get_infra_nodes_typed, get_infra_edges_typed, get_corporations_typed
 
 Multiplayer protocol: CommandAck (with seq, entity_id, tick), CommandBroadcast (DeltaOps), SpeedVoteUpdate, applyBatch (incremental WASM state update)
@@ -270,3 +272,38 @@ Players ──► Cloudflare Workers (auth, matchmaking, APIs, CDN)
 - WebSocket latency: < 100ms round-trip
 - Save file: < 50MB for mature world
 - Memory: < 500MB in browser
+
+## Current Implementation Status
+
+**Codebase counts (verified from source):**
+- **28 ECS systems** (construction, maintenance, population, coverage, demand, routing, utilization, spectrum, ftth, revenue, cost, finance, contract, ai, weather, disaster, regulation, research, patent, market, auction, covert_ops, lobbying, alliance, legal, grants, achievement, stock_market)
+- **38 component modules** (achievements, acquisition, ai_state, alliance, auction, building, capacity, city, construction, contract, corporation, covert_ops, debt_instrument, demand, financial, grant, health, infra_edge, infra_node, land_parcel, lawsuit, lobbying, maintenance_priority, ownership, patent, policy, population, position, pricing, region, road_graph, spectrum, stock_market, tech_research, victory, weather, workforce)
+- **41 NodeType variants** across 6 eras (Telegraph through Near Future)
+- **25 EdgeType variants** across 6 eras
+- **61 commands** (infrastructure, workforce, finance, contracts, research, policy, subsidiary, insurance, bankruptcy/auctions, M&A, espionage/sabotage, lobbying, alliance, legal, patents/licensing, grants, co-ownership, spectrum, pricing, maintenance, game control)
+- **66+ event types** with per-corporation relevance filtering for multiplayer
+- **23 frontend panels** (Dashboard, Infra, Workforce, Contract, Research, Region, Auction, Merger, Achievement, Advisor, Intel, Spectrum, Insurance, Repair, Grant, Pricing, Maintenance, StockMarket, Alliance, Legal, Patent, CoOwnership, NetworkDashboard)
+- **Audio system:** AudioManager + SpatialAudio (ambient music, UI sounds, environmental audio, disaster cues)
+
+**Implemented systems (beyond original 20):**
+- **Alliance system:** Trust scoring, revenue sharing, auto-dissolution below trust threshold, free routing between allies
+- **Legal system:** Lawsuit filing/resolution, settlement, multiple lawsuit types (sabotage claim, ownership dispute, patent infringement, regulatory complaint)
+- **Patent system:** Filing, licensing (Permanent/Royalty/PerUnit/Lease), royalty collection, independent research (150%/200% cost), patent enforcement
+- **Grants system:** Government grants per region, bidding, progress tracking, payouts
+- **Weather system:** Regional weather patterns (storms, ice storms, flooding, extreme heat, earthquakes, hurricanes), terrain-weighted generation, 15-40 tick duration, disaster severity amplification
+- **Stock market system:** Auto-IPO at 50+ nodes, share price calculation, dividends, shareholder satisfaction, board votes
+- **Spectrum system:** Carrier aggregation, interference penalties, spectrum auctions, license management, per-node band assignment
+- **FTTH system:** Central Office to NAP chain validation, active NAP marking, distribution fiber topology
+- **Sandbox mode:** Infinite money, skip bankruptcy, configurable via WorldConfig
+- **Regional pricing:** Per-region pricing tiers (Budget/Standard/Premium), price per unit
+- **Maintenance priority:** Per-node priority tiers (Critical/Standard/Low/Deferred), auto-repair toggle
+
+**Key remaining gaps:**
+- No era enforcement (all tech freely buildable regardless of era)
+- Fog of war partial (espionage/sabotage missions exist but no full intel level tiers with decay)
+- Management scaling UI not implemented (small/medium/large company tier detection)
+- Dynamic AI spawning mid-game not implemented (AI corps only created at game start)
+- Building footprints not rendered in Real Earth mode
+- Submarine cable mechanics partial (landing stations exist but no cable ship construction mechanic)
+- No colorblind mode or full accessibility features
+- No localization beyond English (i18n framework exists)
