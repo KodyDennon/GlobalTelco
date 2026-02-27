@@ -388,15 +388,12 @@ fn is_terrain_blocked(
     to: EntityId,
     edge_type: EdgeType,
 ) -> bool {
-    if edge_type.is_underground_capable() && !matches!(
-        edge_type,
-        EdgeType::Submarine | EdgeType::SubseaTelegraphCable | EdgeType::SubseaFiberCable
-    ) {
+    if edge_type.is_underground_capable() && !edge_type.is_submarine() {
         // Land-based cables can't cross deep ocean
         let from_terrain = node_terrain(world, from);
         let to_terrain = node_terrain(world, to);
-        matches!(from_terrain, Some(TerrainType::OceanDeep))
-            || matches!(to_terrain, Some(TerrainType::OceanDeep))
+        matches!(from_terrain, Some(TerrainType::OceanDeep | TerrainType::OceanTrench))
+            || matches!(to_terrain, Some(TerrainType::OceanDeep | TerrainType::OceanTrench))
     } else {
         false
     }

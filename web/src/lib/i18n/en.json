@@ -1,4 +1,9 @@
 {
+	"splash": {
+		"title": "GlobalTelco",
+		"tagline": "Build your telecom empire",
+		"version": "v{version}"
+	},
 	"menu": {
 		"title": "GlobalTelco",
 		"subtitle": "Build your telecom empire",

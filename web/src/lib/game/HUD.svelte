@@ -100,6 +100,8 @@
 		elevation_contour: 'Show elevation contours — lighter = higher, richer = lower. Contour lines at elevation bands. Procgen only.',
 		submarine_reference: 'Show real-world submarine cable routes — reference overlay for planning cable placement. Real Earth mode only.',
 		coverage_overlap: 'Show coverage overlap — cells with 2+ corporations competing. Red = hotspot, darker = more competitors.',
+		spectrum: 'Show spectrum licenses — regions colored by dominant holder, wireless coverage circles by frequency band, interference zones in red.',
+		density: 'Show city density zones — Downtown (red), Commercial (blue), Residential (green), Suburban (yellow). Based on population tier.',
 	};
 
 	const OVERLAYS: Array<{ key: OverlayType; label: string; cls?: string }> = [
@@ -116,6 +118,8 @@
 		{ key: 'ocean_depth', label: 'Ocean', cls: 'ocean' },
 		{ key: 'elevation_contour', label: 'Elev', cls: 'elevation' },
 		{ key: 'submarine_reference', label: 'Cables', cls: 'cables' },
+		{ key: 'spectrum', label: 'Spectrum', cls: 'spectrum' },
+		{ key: 'density', label: 'Density', cls: 'density' },
 	];
 </script>
 
@@ -237,6 +241,8 @@
 					class:ocean={overlay.cls === 'ocean'}
 					class:cables={overlay.cls === 'cables'}
 					class:overlap={overlay.cls === 'overlap'}
+					class:spectrum={overlay.cls === 'spectrum'}
+					class:density={overlay.cls === 'density'}
 					onclick={() => toggleOverlay(overlay.key)}
 					use:tooltip={OVERLAY_TIPS[overlay.key] ?? overlay.label}
 					aria-pressed={currentOverlay === overlay.key}
@@ -572,6 +578,24 @@
 	.overlay-btn.overlap.active {
 		background: rgba(244, 114, 182, 0.2);
 		color: #f9a8d4;
+	}
+
+	.overlay-btn.spectrum {
+		color: #c084fc;
+	}
+
+	.overlay-btn.spectrum.active {
+		background: rgba(192, 132, 252, 0.2);
+		color: #d8b4fe;
+	}
+
+	.overlay-btn.density {
+		color: #fb923c;
+	}
+
+	.overlay-btn.density.active {
+		background: rgba(251, 146, 60, 0.2);
+		color: #fdba74;
 	}
 
 	.sandbox-indicator {

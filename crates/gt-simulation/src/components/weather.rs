@@ -61,7 +61,7 @@ impl WeatherType {
 				TerrainType::Mountainous => 0.8,
 				TerrainType::Desert => 0.3,
 				TerrainType::Tundra | TerrainType::Frozen => 0.4,
-				TerrainType::OceanShallow | TerrainType::OceanDeep => 1.8,
+				TerrainType::OceanShallow | TerrainType::OceanDeep | TerrainType::OceanTrench => 1.8,
 			},
 			WeatherType::IceStorm => match terrain {
 				TerrainType::Tundra | TerrainType::Frozen => 2.0,
@@ -70,7 +70,7 @@ impl WeatherType {
 				TerrainType::Urban => 0.6,
 				TerrainType::Desert => 0.0,
 				TerrainType::Coastal => 0.5,
-				TerrainType::OceanShallow | TerrainType::OceanDeep => 0.3,
+				TerrainType::OceanShallow | TerrainType::OceanDeep | TerrainType::OceanTrench => 0.3,
 			},
 			WeatherType::Flooding => match terrain {
 				TerrainType::Coastal => 2.0,
@@ -80,7 +80,7 @@ impl WeatherType {
 				TerrainType::Desert => 0.2,
 				TerrainType::Tundra => 0.3,
 				TerrainType::Frozen => 0.1,
-				TerrainType::OceanShallow | TerrainType::OceanDeep => 0.1,
+				TerrainType::OceanShallow | TerrainType::OceanDeep | TerrainType::OceanTrench => 0.1,
 			},
 			WeatherType::ExtremeHeat => match terrain {
 				TerrainType::Desert => 2.0,
@@ -89,7 +89,7 @@ impl WeatherType {
 				TerrainType::Coastal => 0.7,
 				TerrainType::Mountainous => 0.3,
 				TerrainType::Tundra | TerrainType::Frozen => 0.0,
-				TerrainType::OceanShallow | TerrainType::OceanDeep => 0.1,
+				TerrainType::OceanShallow | TerrainType::OceanDeep | TerrainType::OceanTrench => 0.1,
 			},
 			WeatherType::Earthquake => match terrain {
 				TerrainType::Mountainous => 1.8,
@@ -98,11 +98,12 @@ impl WeatherType {
 				TerrainType::Rural => 0.8,
 				TerrainType::Desert => 0.6,
 				TerrainType::OceanShallow | TerrainType::OceanDeep => 1.2,
+				TerrainType::OceanTrench => 1.8, // trenches are seismically active
 				TerrainType::Tundra | TerrainType::Frozen => 0.5,
 			},
 			WeatherType::Hurricane => match terrain {
 				TerrainType::Coastal => 2.5,
-				TerrainType::OceanShallow | TerrainType::OceanDeep => 2.0,
+				TerrainType::OceanShallow | TerrainType::OceanDeep | TerrainType::OceanTrench => 2.0,
 				TerrainType::Rural | TerrainType::Suburban => 0.5,
 				TerrainType::Urban => 0.4,
 				TerrainType::Mountainous => 0.1,

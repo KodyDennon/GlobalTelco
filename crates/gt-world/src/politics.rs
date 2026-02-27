@@ -307,7 +307,7 @@ fn expansion_cost(terrain: TerrainType) -> f64 {
         TerrainType::Tundra => 3.0,
         TerrainType::Frozen => 4.0,
         TerrainType::Urban => 1.0,
-        TerrainType::OceanShallow | TerrainType::OceanDeep => f64::INFINITY,
+        TerrainType::OceanShallow | TerrainType::OceanDeep | TerrainType::OceanTrench => f64::INFINITY,
     }
 }
 

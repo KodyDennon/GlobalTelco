@@ -112,7 +112,7 @@ const STATUS_COLORS: Record<ConnectionStatus, [number, number, number, number]> 
 };
 
 /** Building zone ring definitions. */
-interface ZoneConfig {
+export interface ZoneConfig {
     /** Zone classification */
     zone: BuildingZone;
     /** Fraction of total buildings in this zone. */
@@ -125,7 +125,7 @@ interface ZoneConfig {
     maxAspect: number;
 }
 
-const ZONE_CONFIGS: ZoneConfig[] = [
+export const ZONE_CONFIGS: ZoneConfig[] = [
     { zone: 'downtown',           fraction: 0.10, minSizeDeg: 0.00036, maxSizeDeg: 0.00063, minAspect: 0.6, maxAspect: 1.4 },
     { zone: 'commercial',         fraction: 0.15, minSizeDeg: 0.00027, maxSizeDeg: 0.00045, minAspect: 0.6, maxAspect: 1.5 },
     { zone: 'residential_inner',  fraction: 0.25, minSizeDeg: 0.000135,maxSizeDeg: 0.00027, minAspect: 0.5, maxAspect: 1.6 },
@@ -216,7 +216,7 @@ function getCityLayout(cityIndex: number): CityLayout {
  * Compute a population interpolation factor [0, 1].
  * 0 at pop <= 50k, 1 at pop >= 10M.
  */
-function popFactor(population: number): number {
+export function popFactor(population: number): number {
     const MIN_POP = 50_000;
     const MAX_POP = 10_000_000;
     if (population <= MIN_POP) return 0;
@@ -231,7 +231,7 @@ function lerp(a: number, b: number, t: number): number {
 /**
  * Get inner and outer radii for a zone at a given population.
  */
-function zoneRadii(zone: BuildingZone, population: number): { innerR: number; outerR: number } {
+export function zoneRadii(zone: BuildingZone, population: number): { innerR: number; outerR: number } {
     const t = popFactor(population);
     const bounds = ZONE_RADII[zone];
     return {

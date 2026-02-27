@@ -32,6 +32,7 @@ impl LandParcel {
             TerrainType::Tundra | TerrainType::Frozen => 0.15,
             TerrainType::OceanShallow => 0.4,
             TerrainType::OceanDeep => 0.5,
+            TerrainType::OceanTrench => 0.7, // seismically active
             _ => 0.05,
         };
         let zoning = initial_zoning(terrain);

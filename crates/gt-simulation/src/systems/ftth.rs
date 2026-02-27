@@ -5,16 +5,41 @@
 //!   CO <--FeederFiber--> FDH <--DistributionFiber--> NAP
 //!
 //! Active NAPs auto-cover nearby buildings (cells with city population) within
-//! their coverage radius. This coverage feeds into the revenue system where
-//! per-building subscriber revenue is calculated.
+//! their terrain-dependent service radius. Coverage contributions are added to
+//! `cell_coverage` so other systems (revenue, demand) can use them.
+//!
+//! Service radius by terrain:
+//!   - Urban / Dense urban: 2 km (short runs, dense subscriber base)
+//!   - Suburban: 5 km (typical FTTH neighborhood serving area)
+//!   - Rural: 10 km (long drop cables, sparse subscribers)
+//!   - Other: 3 km default
 
 use std::collections::{HashMap, HashSet};
 
-use gt_common::types::{EdgeType, EntityId, NodeType};
+use gt_common::types::{EdgeType, EntityId, NodeType, TerrainType};
 
 use crate::world::GameWorld;
 
-/// Run the FTTH system: validate NAP chains and mark active NAPs.
+/// FTTH service radius in km based on terrain type at the NAP location.
+/// Denser terrain means shorter radius but higher subscriber density.
+pub fn ftth_service_radius_km(terrain: Option<TerrainType>) -> f64 {
+    match terrain {
+        Some(TerrainType::Urban) => 2.0,
+        Some(TerrainType::Suburban) => 5.0,
+        Some(TerrainType::Rural) => 10.0,
+        Some(TerrainType::Desert) => 8.0,
+        Some(TerrainType::Coastal) => 4.0,
+        Some(TerrainType::Mountainous) => 3.0,
+        Some(TerrainType::Tundra) => 6.0,
+        Some(TerrainType::Frozen) => 4.0,
+        // Ocean/no terrain — NAPs shouldn't be placed here, but handle gracefully
+        Some(TerrainType::OceanShallow | TerrainType::OceanDeep | TerrainType::OceanTrench) => 1.0,
+        None => 3.0,
+    }
+}
+
+/// Run the FTTH system: validate NAP chains, mark active NAPs, and contribute
+/// FTTH coverage to `cell_coverage`.
 ///
 /// Called each tick after coverage and before revenue in the system order.
 pub fn run(world: &mut GameWorld) {
@@ -119,6 +144,119 @@ pub fn run(world: &mut GameWorld) {
             node.active_ftth = false;
         }
     }
+
+    // Step 5: Active NAPs contribute FTTH coverage to nearby cells within their
+    // terrain-dependent service radius. This integrates with the existing
+    // CellCoverage system so revenue and demand systems pick it up.
+
+    // Build terrain lookup: cell_index → TerrainType
+    let cell_terrain: HashMap<usize, TerrainType> = world
+        .land_parcels
+        .values()
+        .map(|p| (p.cell_index, p.terrain))
+        .collect();
+
+    // Collect active NAP data: (nap_id, cell_index, owner, health, terrain)
+    // We re-read from world after Step 4 since we just updated active_ftth.
+    let mut active_nap_data: Vec<(EntityId, usize, EntityId, f64, Option<TerrainType>)> = Vec::new();
+    for &nap_id in &nap_node_ids {
+        let node = match world.infra_nodes.get(&nap_id) {
+            Some(n) if n.active_ftth => n,
+            _ => continue,
+        };
+        let health = world
+            .healths
+            .get(&nap_id)
+            .map(|h| h.condition)
+            .unwrap_or(1.0);
+        let terrain = cell_terrain.get(&node.cell_index).copied();
+        active_nap_data.push((nap_id, node.cell_index, node.owner, health, terrain));
+    }
+
+    // Sort for deterministic coverage accumulation
+    active_nap_data.sort_unstable_by_key(|t| t.0);
+
+    let cell_spacing = world.cell_spacing_km;
+
+    for &(_nap_id, nap_cell, owner, health, terrain) in &active_nap_data {
+        if health <= 0.0 {
+            continue;
+        }
+
+        // Terrain-dependent service radius, scaled to be meaningful at grid resolution
+        let base_radius_km = ftth_service_radius_km(terrain);
+        let radius_km = base_radius_km.max(cell_spacing * 0.8);
+
+        // FTTH bandwidth contribution: wired fiber delivers high bandwidth
+        // NAP throughput scaled by health
+        let nap_throughput = world
+            .infra_nodes
+            .get(&_nap_id)
+            .map(|n| n.max_throughput)
+            .unwrap_or(100.0);
+        let ftth_bandwidth = nap_throughput * health;
+
+        let nap_pos = match world.grid_cell_positions.get(nap_cell) {
+            Some(p) => *p,
+            None => continue,
+        };
+        let (nap_lat, nap_lon) = nap_pos;
+        let lat_range = radius_km / 111.0;
+        let cos_lat = (nap_lat.to_radians()).cos().max(0.1);
+        let lon_range = radius_km / (111.0 * cos_lat);
+
+        for (cell_idx, &(cell_lat, cell_lon)) in world.grid_cell_positions.iter().enumerate() {
+            // Bounding box check
+            if (cell_lat - nap_lat).abs() > lat_range || (cell_lon - nap_lon).abs() > lon_range {
+                continue;
+            }
+
+            // Only cover cells belonging to a city (buildings exist there)
+            if !world.cell_to_city.contains_key(&cell_idx) {
+                continue;
+            }
+
+            // Haversine distance check
+            let dist_km = haversine_km(nap_lat, nap_lon, cell_lat, cell_lon);
+            if dist_km > radius_km {
+                continue;
+            }
+
+            // Signal attenuation: linear falloff for wired FTTH (less severe than wireless)
+            let distance_ratio = dist_km / radius_km;
+            let attenuation = (1.0 - distance_ratio).max(0.0);
+            let signal = ftth_bandwidth * attenuation;
+            let bandwidth = ftth_bandwidth * attenuation;
+
+            if signal < 0.01 {
+                continue;
+            }
+
+            // Add FTTH coverage to the cell
+            let entry = world
+                .cell_coverage
+                .entry(cell_idx)
+                .or_default();
+            entry.signal_strength += signal;
+            entry.bandwidth += bandwidth;
+            entry.node_count += 1;
+            entry.add_corp_bandwidth(owner, bandwidth);
+            if signal > entry.best_signal {
+                entry.best_signal = signal;
+                entry.dominant_owner = Some(owner);
+            }
+        }
+    }
+}
+
+/// Haversine distance between two lat/lon points in km.
+fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+    let dlat = (lat1 - lat2).to_radians();
+    let dlon = (lon1 - lon2).to_radians();
+    let a = (dlat / 2.0).sin().powi(2)
+        + lat1.to_radians().cos() * lat2.to_radians().cos() * (dlon / 2.0).sin().powi(2);
+    let c = 2.0 * a.sqrt().asin();
+    6371.0 * c
 }
 
 #[cfg(test)]
@@ -358,6 +496,116 @@ mod tests {
         assert!(
             !world.infra_nodes.get(&nap_id).unwrap().active_ftth,
             "NAP should lose active_ftth when chain breaks"
+        );
+    }
+
+    #[test]
+    fn test_ftth_service_radius_by_terrain() {
+        // Urban: compact radius
+        assert_eq!(ftth_service_radius_km(Some(TerrainType::Urban)), 2.0);
+        // Suburban: medium radius
+        assert_eq!(ftth_service_radius_km(Some(TerrainType::Suburban)), 5.0);
+        // Rural: wide radius
+        assert_eq!(ftth_service_radius_km(Some(TerrainType::Rural)), 10.0);
+        // No terrain: default
+        assert_eq!(ftth_service_radius_km(None), 3.0);
+    }
+
+    #[test]
+    fn test_active_nap_contributes_coverage() {
+        let mut world = make_test_world();
+        let corp = 1000;
+
+        // Set up grid with a cell at the NAP location and a nearby city cell
+        world.grid_cell_positions = vec![
+            (40.0, -74.0),  // cell 0: CO location
+            (40.001, -74.0), // cell 1: FDH location
+            (40.002, -74.0), // cell 2: NAP location
+            (40.003, -74.0), // cell 3: nearby city cell
+        ];
+        world.grid_cell_count = 4;
+        world.cell_spacing_km = 0.1; // Very close grid for test
+
+        // Mark cell 3 as belonging to a city so FTTH coverage extends there
+        let city_id = 500;
+        world.cell_to_city.insert(2, city_id);
+        world.cell_to_city.insert(3, city_id);
+
+        let co_id = 10;
+        let fdh_id = 20;
+        let nap_id = 30;
+
+        world
+            .infra_nodes
+            .insert(co_id, InfraNode::new(NodeType::CentralOffice, 0, corp));
+        world.infra_nodes.insert(
+            fdh_id,
+            InfraNode::new(NodeType::FiberDistributionHub, 1, corp),
+        );
+        world.infra_nodes.insert(
+            nap_id,
+            InfraNode::new(NodeType::NetworkAccessPoint, 2, corp),
+        );
+
+        world.infra_edges.insert(
+            100,
+            InfraEdge::new(EdgeType::FeederFiber, co_id, fdh_id, 1.0, corp),
+        );
+        world.infra_edges.insert(
+            101,
+            InfraEdge::new(EdgeType::DistributionFiber, fdh_id, nap_id, 0.5, corp),
+        );
+
+        run(&mut world);
+
+        // NAP should be active
+        assert!(world.infra_nodes.get(&nap_id).unwrap().active_ftth);
+
+        // Cell 2 (NAP cell, in city) should have FTTH coverage
+        assert!(
+            world.cell_coverage.contains_key(&2),
+            "NAP cell (in city) should have FTTH coverage"
+        );
+        let cov2 = world.cell_coverage.get(&2).unwrap();
+        assert!(cov2.bandwidth > 0.0, "NAP cell coverage should have bandwidth");
+        assert_eq!(cov2.dominant_owner, Some(corp));
+
+        // Cell 3 (nearby city cell) should also have coverage
+        assert!(
+            world.cell_coverage.contains_key(&3),
+            "Nearby city cell should have FTTH coverage from active NAP"
+        );
+        let cov3 = world.cell_coverage.get(&3).unwrap();
+        assert!(cov3.bandwidth > 0.0, "Nearby city cell should have bandwidth");
+    }
+
+    #[test]
+    fn test_inactive_nap_does_not_contribute_coverage() {
+        let mut world = make_test_world();
+        let corp = 1000;
+
+        world.grid_cell_positions = vec![
+            (40.0, -74.0),
+            (40.001, -74.0),
+        ];
+        world.grid_cell_count = 2;
+        world.cell_spacing_km = 0.1;
+        world.cell_to_city.insert(0, 500);
+
+        // NAP without chain — not active
+        let nap_id = 30;
+        world.infra_nodes.insert(
+            nap_id,
+            InfraNode::new(NodeType::NetworkAccessPoint, 0, corp),
+        );
+
+        run(&mut world);
+
+        assert!(!world.infra_nodes.get(&nap_id).unwrap().active_ftth);
+        // No coverage should be contributed
+        assert!(
+            world.cell_coverage.is_empty(),
+            "Inactive NAP should not contribute any coverage"
         );
     }
 }

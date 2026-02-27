@@ -819,12 +819,7 @@ impl GameWorld {
                                     .cell_to_parcel
                                     .get(&n_idx)
                                     .and_then(|p_id| self.land_parcels.get(p_id))
-                                    .map(|p| {
-                                        !matches!(
-                                            p.terrain,
-                                            TerrainType::OceanDeep | TerrainType::OceanShallow
-                                        )
-                                    })
+                                    .map(|p| p.terrain.is_land())
                                     .unwrap_or(false);
 
                                 is_not_city && is_land
@@ -887,12 +882,7 @@ impl GameWorld {
                                     .cell_to_parcel
                                     .get(&n_idx)
                                     .and_then(|p_id| self.land_parcels.get(p_id))
-                                    .map(|p| {
-                                        !matches!(
-                                            p.terrain,
-                                            TerrainType::OceanDeep | TerrainType::OceanShallow
-                                        )
-                                    })
+                                    .map(|p| p.terrain.is_land())
                                     .unwrap_or(false);
 
                                 is_not_city && is_land
@@ -2026,8 +2016,9 @@ impl GameWorld {
             Some(5) => TerrainType::Coastal,
             Some(6) => TerrainType::OceanShallow,
             Some(7) => TerrainType::OceanDeep,
-            Some(8) => TerrainType::Tundra,
-            Some(9) => TerrainType::Frozen,
+            Some(8) => TerrainType::OceanTrench,
+            Some(9) => TerrainType::Tundra,
+            Some(10) => TerrainType::Frozen,
             _ => TerrainType::Rural,
         }
     }
@@ -2144,7 +2135,7 @@ impl GameWorld {
             }
             // Underwater data center requires deep ocean
             NodeType::UnderwaterDataCenter => {
-                if !matches!(terrain, TerrainType::OceanDeep | TerrainType::OceanShallow) {
+                if !matches!(terrain, TerrainType::OceanDeep | TerrainType::OceanShallow | TerrainType::OceanTrench) {
                     self.event_queue.push(
                         self.tick,
                         gt_common::events::GameEvent::GlobalNotification {
@@ -2161,7 +2152,7 @@ impl GameWorld {
             | NodeType::SatelliteGroundStation
             | NodeType::LEO_SatelliteGateway
             | NodeType::MeshDroneRelay => {
-                if matches!(terrain, TerrainType::OceanDeep) {
+                if matches!(terrain, TerrainType::OceanDeep | TerrainType::OceanTrench) {
                     self.event_queue.push(
                         self.tick,
                         gt_common::events::GameEvent::GlobalNotification {
@@ -2177,7 +2168,7 @@ impl GameWorld {
             }
             // All other nodes require solid ground (no ocean)
             _ => {
-                if matches!(terrain, TerrainType::OceanDeep | TerrainType::OceanShallow) {
+                if matches!(terrain, TerrainType::OceanDeep | TerrainType::OceanShallow | TerrainType::OceanTrench) {
                     self.event_queue.push(
                         self.tick,
                         gt_common::events::GameEvent::GlobalNotification {
@@ -2519,6 +2510,7 @@ impl GameWorld {
                         Some(
                             TerrainType::OceanShallow
                                 | TerrainType::OceanDeep
+                                | TerrainType::OceanTrench
                                 | TerrainType::Coastal
                         )
                     )
@@ -2554,7 +2546,7 @@ impl GameWorld {
             | EdgeType::DropCable
             | EdgeType::QuantumFiberLink => {
                 let is_deep_ocean =
-                    |t: Option<TerrainType>| matches!(t, Some(TerrainType::OceanDeep));
+                    |t: Option<TerrainType>| matches!(t, Some(TerrainType::OceanDeep | TerrainType::OceanTrench));
                 if is_deep_ocean(from_terrain) || is_deep_ocean(to_terrain) {
                     self.event_queue.push(
                         self.tick,
@@ -2613,6 +2605,50 @@ impl GameWorld {
                     },
                 );
                 return CommandResult::fail("No available cable ships");
+            }
+        }
+
+        // DropCable constraint: must connect FROM an active FTTH NAP to a target.
+        // The source (or target) must be a NetworkAccessPoint with active_ftth == true.
+        if edge_type == EdgeType::DropCable {
+            let from_node_data = self.infra_nodes.get(&from_node);
+            let to_node_data = self.infra_nodes.get(&to_node);
+
+            // At least one endpoint must be a NAP
+            let from_is_nap = from_node_data
+                .map(|n| n.node_type == NodeType::NetworkAccessPoint)
+                .unwrap_or(false);
+            let to_is_nap = to_node_data
+                .map(|n| n.node_type == NodeType::NetworkAccessPoint)
+                .unwrap_or(false);
+
+            if !from_is_nap && !to_is_nap {
+                self.event_queue.push(
+                    self.tick,
+                    gt_common::events::GameEvent::GlobalNotification {
+                        message: "Drop Cable must connect from a Network Access Point.".to_string(),
+                        level: "error".to_string(),
+                    },
+                );
+                return CommandResult::fail("Drop Cable requires a NAP endpoint");
+            }
+
+            // The NAP endpoint must have an active FTTH chain
+            let nap_is_active = if from_is_nap {
+                from_node_data.map(|n| n.active_ftth).unwrap_or(false)
+            } else {
+                to_node_data.map(|n| n.active_ftth).unwrap_or(false)
+            };
+
+            if !nap_is_active {
+                self.event_queue.push(
+                    self.tick,
+                    gt_common::events::GameEvent::GlobalNotification {
+                        message: "Drop Cable requires an active FTTH chain (CO -> FDH -> NAP). Connect the NAP to a Fiber Distribution Hub first.".to_string(),
+                        level: "error".to_string(),
+                    },
+                );
+                return CommandResult::fail("NAP must have active FTTH chain for Drop Cable");
             }
         }
 

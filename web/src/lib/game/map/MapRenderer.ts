@@ -39,6 +39,7 @@ import { handleMapMouseMove, setTooltipDisasters, type TooltipHit } from './tool
 import { createWeatherLayers, computeDisasterForecasts, convertWeatherForecasts, type ActiveDisaster, type ForecastDisaster } from '../WeatherLayer';
 import { createCablePreviewLayers, type CableDrawingState } from './layers/cablePreviewLayer';
 import { createWaypointEditorLayers, type WaypointEditorState } from './layers/waypointEditorLayer';
+import { createOverlayLayers as createSpectrumAndOtherOverlays, createDensityOverlayLayers } from './layers/overlayLayers';
 import { selectedBuildItem, buildCategory, buildMode, ghostPreviewInfo, TERRAIN_COST_MULTIPLIERS } from '$lib/stores/uiState';
 import type { BuildOption } from '$lib/wasm/types';
 
@@ -1002,6 +1003,22 @@ export class MapRenderer {
                     }));
                 }
             }
+        }
+
+        if (this.activeOverlay === 'spectrum') {
+            if (bridge.isInitialized()) {
+                layers.push(...createSpectrumAndOtherOverlays({
+                    activeOverlay: 'spectrum',
+                    terrainOverlayCanvas: null,
+                    cities: this.cachedCities,
+                    regions: this.cachedRegions,
+                    cellRadiusM: this.cellRadiusM,
+                }));
+            }
+        }
+
+        if (this.activeOverlay === 'density') {
+            layers.push(...createDensityOverlayLayers(this.cachedCities));
         }
 
         return layers;

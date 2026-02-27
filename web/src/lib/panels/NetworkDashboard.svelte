@@ -57,6 +57,137 @@
 		return count;
 	});
 
+	// ── Network Health Overview (Phase 7.7) ──────────────────────────────────
+
+	interface HealthBreakdown {
+		healthy: number;
+		degraded: number;
+		damaged: number;
+		total: number;
+		overallPct: number;
+	}
+
+	let nodeHealthBreakdown = $derived.by((): HealthBreakdown => {
+		const operationalNodes = infra.nodes.filter(n => !n.under_construction);
+		let healthy = 0;
+		let degraded = 0;
+		let damaged = 0;
+		let healthSum = 0;
+		for (const n of operationalNodes) {
+			healthSum += n.health;
+			if (n.health > 0.8) healthy++;
+			else if (n.health >= 0.5) degraded++;
+			else damaged++;
+		}
+		const total = operationalNodes.length;
+		return {
+			healthy,
+			degraded,
+			damaged,
+			total,
+			overallPct: total > 0 ? (healthSum / total) * 100 : 100,
+		};
+	});
+
+	let healthTrend = $derived.by((): 'up' | 'down' | 'stable' => {
+		const history = $networkHistory;
+		if (history.length < 5) return 'stable';
+		const recent = history.slice(-5);
+		const older = history.slice(-10, -5);
+		if (older.length === 0) return 'stable';
+		const avgRecent = recent.reduce((s, h) => s + h.served, 0) / recent.length;
+		const avgOlder = older.reduce((s, h) => s + h.served, 0) / older.length;
+		const diff = avgRecent - avgOlder;
+		if (diff > avgOlder * 0.02) return 'up';
+		if (diff < -avgOlder * 0.02) return 'down';
+		return 'stable';
+	});
+
+	// ── Traffic Flow Summary (Phase 7.7) ─────────────────────────────────────
+
+	let totalCapacity = $derived.by(() => {
+		let cap = 0;
+		for (const e of infra.edges) cap += e.bandwidth;
+		return cap;
+	});
+
+	let totalThroughput = $derived.by(() => {
+		let throughput = 0;
+		for (const e of infra.edges) throughput += e.bandwidth * e.utilization;
+		return throughput;
+	});
+
+	let capacityUtilPct = $derived(
+		totalCapacity > 0 ? (totalThroughput / totalCapacity) * 100 : 0
+	);
+
+	// ── Bottleneck Detection (Phase 7.7) ─────────────────────────────────────
+
+	interface BottleneckEdge {
+		id: number;
+		edgeType: string;
+		fromLabel: string;
+		toLabel: string;
+		utilization: number;
+		bandwidth: number;
+		src_x: number;
+		src_y: number;
+		dst_x: number;
+		dst_y: number;
+	}
+
+	let bottleneckEdges = $derived.by((): BottleneckEdge[] => {
+		return infra.edges
+			.filter(e => e.utilization > 0.5)
+			.sort((a, b) => b.utilization - a.utilization)
+			.slice(0, 5)
+			.map(e => ({
+				id: e.id,
+				edgeType: e.edge_type,
+				fromLabel: shortNodeType(e.source),
+				toLabel: shortNodeType(e.target),
+				utilization: e.utilization,
+				bandwidth: e.bandwidth,
+				src_x: e.src_x,
+				src_y: e.src_y,
+				dst_x: e.dst_x,
+				dst_y: e.dst_y,
+			}));
+	});
+
+	// ── Maintenance Summary (Phase 7.7) ──────────────────────────────────────
+
+	let maintSummary = $derived.by(() => {
+		let needsRepair = 0;
+		let repairing = 0;
+		let totalQueueTicks = 0;
+		for (const n of infra.nodes) {
+			if (n.under_construction) continue;
+			if (n.health < 1.0) {
+				needsRepair++;
+				if (n.repairing) {
+					repairing++;
+					totalQueueTicks += n.repair_ticks_left;
+				}
+			}
+		}
+		for (const e of infra.edges) {
+			if (e.health < 1.0) {
+				needsRepair++;
+				if (e.repairing) {
+					repairing++;
+					totalQueueTicks += e.repair_ticks_left;
+				}
+			}
+		}
+		return {
+			needsRepair,
+			repairing,
+			queued: needsRepair - repairing,
+			totalQueueTicks,
+		};
+	});
+
 	// ── Revenue by Infrastructure (#19a — WIRED) ─────────────────────────────
 	// Per-node and per-edge revenue is now tracked by the Rust revenue system
 	// and exposed via bridge.getInfrastructureList() as revenue_generated fields.

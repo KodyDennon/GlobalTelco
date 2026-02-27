@@ -215,6 +215,8 @@ export interface AllInfraNode {
 	health: number;
 	utilization: number;
 	under_construction: boolean;
+	/** Whether this NAP has a validated FTTH chain (CO -> FDH -> NAP). Only meaningful for NetworkAccessPoint nodes. */
+	active_ftth: boolean;
 }
 
 export interface AllInfraEdge {

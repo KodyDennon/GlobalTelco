@@ -59,6 +59,10 @@ impl TerrainGenerator {
                     if elevation > self.sea_level - 0.15 {
                         return TerrainType::OceanShallow;
                     }
+                    // Extreme depths: ocean trenches (subduction zones, abyssal chasms)
+                    if elevation < self.sea_level - 0.65 {
+                        return TerrainType::OceanTrench;
+                    }
                     return TerrainType::OceanDeep;
                 }
 

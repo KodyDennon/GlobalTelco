@@ -92,7 +92,9 @@ pub fn generate_real_earth(grid: &GeodesicGrid, seed: u64) -> GeneratedWorld {
         .enumerate()
         .map(|(i, cell)| {
             if !is_land[i] {
-                if elevations[i] < -0.5 {
+                if elevations[i] < -0.85 {
+                    TerrainType::OceanTrench
+                } else if elevations[i] < -0.5 {
                     TerrainType::OceanDeep
                 } else {
                     TerrainType::OceanShallow

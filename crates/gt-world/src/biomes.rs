@@ -31,6 +31,8 @@ pub fn assign_biomes(
         if elev < 0.0 {
             if elev > -200.0 {
                 terrains.push(TerrainType::OceanShallow);
+            } else if elev < -6000.0 {
+                terrains.push(TerrainType::OceanTrench);
             } else {
                 terrains.push(TerrainType::OceanDeep);
             }

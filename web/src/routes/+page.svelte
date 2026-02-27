@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import MainMenu from '$lib/menu/MainMenu.svelte';
 	import NewGame from '$lib/menu/NewGame.svelte';
 	import LoadGame from '$lib/menu/LoadGame.svelte';
 	import Settings from '$lib/menu/Settings.svelte';
 	import Credits from '$lib/menu/Credits.svelte';
 	import WorldBrowser from '$lib/menu/WorldBrowser.svelte';
+	import SplashScreen from '$lib/menu/SplashScreen.svelte';
 	import { goto } from '$app/navigation';
 	import { initGame, initMultiplayer, start, loadFromSave, setSpeed } from '$lib/game/GameLoop';
 	import { initWasm } from '$lib/wasm/bridge';
@@ -28,12 +28,6 @@
 		'Tip: AI corporations will compete — watch their expansion patterns',
 		'Tip: Overlays help you make strategic decisions about where to build',
 	];
-
-	onMount(() => {
-		setTimeout(() => {
-			if (screen === 'splash') screen = 'main';
-		}, 1500);
-	});
 
 	async function handleStart(config: object) {
 		loadingTip = LOADING_TIPS[Math.floor(Math.random() * LOADING_TIPS.length)];
@@ -90,10 +84,7 @@
 		<p class="loading-tip">{loadingTip}</p>
 	</div>
 {:else if screen === 'splash'}
-	<div class="splash">
-		<h1 class="splash-title">GlobalTelco</h1>
-		<p class="splash-sub">Build your telecom empire</p>
-	</div>
+	<SplashScreen onComplete={() => (screen = 'main')} />
 {:else if screen === 'main'}
 	<MainMenu onNewGame={() => (screen = 'newGame')} onLoadGame={() => (screen = 'loadGame')} onSettings={() => (screen = 'settings')} onMultiplayer={() => (screen = 'multiplayer')} onCredits={() => (screen = 'credits')} />
 {:else if screen === 'newGame'}
@@ -109,45 +100,6 @@
 {/if}
 
 <style>
-	.splash {
-		width: 100vw;
-		height: 100vh;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		background: #0a0e17;
-		animation: fadeIn 0.5s ease-out;
-	}
-
-	.splash-title {
-		font-size: 56px;
-		font-weight: 800;
-		letter-spacing: -1px;
-		background: linear-gradient(90deg, #10b981, #3b82f6);
-		-webkit-background-clip: text;
-		-webkit-text-fill-color: transparent;
-		background-clip: text;
-		animation: pulseGlow 1.5s ease-in-out infinite alternate;
-	}
-
-	.splash-sub {
-		color: #4b5563;
-		font-size: 16px;
-		margin-top: 8px;
-		font-family: system-ui, sans-serif;
-	}
-
-	@keyframes fadeIn {
-		from { opacity: 0; }
-		to { opacity: 1; }
-	}
-
-	@keyframes pulseGlow {
-		from { filter: brightness(0.8); }
-		to { filter: brightness(1.2); }
-	}
-
 	.loading-screen {
 		width: 100vw;
 		height: 100vh;
@@ -174,6 +126,11 @@
 		border-top-color: #10b981;
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
+	}
+
+	@keyframes fadeIn {
+		from { opacity: 0; }
+		to { opacity: 1; }
 	}
 
 	@keyframes spin {

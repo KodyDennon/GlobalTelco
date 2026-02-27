@@ -866,6 +866,7 @@ impl WasmBridge {
                     "health": health.map(|h| h.condition).unwrap_or(1.0),
                     "utilization": cap.map(|c| c.utilization()).unwrap_or(0.0),
                     "under_construction": under_construction,
+                    "active_ftth": node.active_ftth,
                 }))
             })
             .collect();

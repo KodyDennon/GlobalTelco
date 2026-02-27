@@ -3,6 +3,7 @@ import type { Layer } from '@deck.gl/core';
 import type { City, Region, CellCoverage, SpectrumLicense, AllInfraNode } from '$lib/wasm/types';
 import { CORP_COLORS } from '../constants';
 import * as bridge from '$lib/wasm/bridge';
+import { ZONE_CONFIGS, zoneRadii, type BuildingZone } from './buildingsLayer';
 
 // ── Spectrum band color + coverage mappings ────────────────────────────────
 
@@ -266,70 +267,66 @@ export function createOverlayLayers(opts: {
 
 /**
  * Builds spectrum visualization layers:
- * (a) Region polygons colored by dominant license holder
- * (b) Wireless node coverage circles colored by frequency band
- * (c) Interference indicators where same-band circles overlap
+ * (a) Licensed region polygons colored by dominant frequency band
+ * (b) Unlicensed region polygons as faint dashed outlines (opportunity indicator)
+ * (c) Wireless node coverage circles colored by frequency band
+ * (d) Interference zones colored by severity (green/yellow/red)
  */
 function createSpectrumOverlayLayers(regions: Region[], cities: City[]): Layer[] {
     const layers: Layer[] = [];
     const licenses = bridge.getSpectrumLicenses();
     const allInfra = bridge.getAllInfrastructure();
-    const corps = bridge.getAllCorporations();
 
-    // Build corp index for color lookup
-    const corpIndex = new Map<number, number>();
-    for (let i = 0; i < corps.length; i++) {
-        corpIndex.set(corps[i].id, i);
-    }
+    // ── (a) Licensed region polygons colored by dominant frequency band ──────
 
-    // ── (a) Region polygons colored by dominant spectrum license holder ──────
-
-    // Count licenses per corp per region
-    const regionCorpLicenseCounts = new Map<number, Map<number, number>>();
+    const regionBandCounts = new Map<number, Map<string, number>>();
+    const licensedRegionIds = new Set<number>();
     for (const lic of licenses) {
-        if (!regionCorpLicenseCounts.has(lic.region_id)) {
-            regionCorpLicenseCounts.set(lic.region_id, new Map());
+        licensedRegionIds.add(lic.region_id);
+        if (!regionBandCounts.has(lic.region_id)) {
+            regionBandCounts.set(lic.region_id, new Map());
         }
-        const counts = regionCorpLicenseCounts.get(lic.region_id)!;
-        counts.set(lic.owner, (counts.get(lic.owner) ?? 0) + 1);
+        const counts = regionBandCounts.get(lic.region_id)!;
+        counts.set(lic.band, (counts.get(lic.band) ?? 0) + 1);
     }
 
     interface SpectrumRegionPoly {
         polygon: [number, number][];
         color: [number, number, number, number];
     }
-    const regionPolys: SpectrumRegionPoly[] = [];
+    const licensedPolys: SpectrumRegionPoly[] = [];
+    const unlicensedPolys: SpectrumRegionPoly[] = [];
 
     for (const region of regions) {
         if (!region.boundary_polygon || region.boundary_polygon.length < 3) continue;
-        const counts = regionCorpLicenseCounts.get(region.id);
-        if (!counts || counts.size === 0) continue;
+        const bandCounts = regionBandCounts.get(region.id);
 
-        // Find corp with the most licenses in this region
-        let maxCount = 0;
-        let dominantCorpId = 0;
-        for (const [cId, count] of counts) {
-            if (count > maxCount) {
-                maxCount = count;
-                dominantCorpId = cId;
+        if (bandCounts && bandCounts.size > 0) {
+            let maxCount = 0;
+            let dominantBand = '';
+            for (const [band, count] of bandCounts) {
+                if (count > maxCount) {
+                    maxCount = count;
+                    dominantBand = band;
+                }
             }
+            const bandColor = BAND_COLORS[dominantBand] ?? UNASSIGNED_BAND_COLOR;
+            licensedPolys.push({
+                polygon: region.boundary_polygon,
+                color: [bandColor[0], bandColor[1], bandColor[2], 51],
+            });
+        } else {
+            unlicensedPolys.push({
+                polygon: region.boundary_polygon,
+                color: [80, 80, 80, 25],
+            });
         }
-
-        const idx = corpIndex.get(dominantCorpId);
-        const baseColor = idx !== undefined
-            ? CORP_COLORS[idx % CORP_COLORS.length]
-            : [160, 160, 160] as [number, number, number];
-
-        regionPolys.push({
-            polygon: region.boundary_polygon,
-            color: [baseColor[0], baseColor[1], baseColor[2], 51], // ~0.2 opacity (51/255)
-        });
     }
 
-    if (regionPolys.length > 0) {
+    if (licensedPolys.length > 0) {
         layers.push(new PolygonLayer({
             id: 'overlay-spectrum-regions',
-            data: regionPolys,
+            data: licensedPolys,
             getPolygon: (d: SpectrumRegionPoly) => d.polygon,
             getFillColor: (d: SpectrumRegionPoly) => d.color,
             getLineColor: (d: SpectrumRegionPoly) => [d.color[0], d.color[1], d.color[2], 100],
@@ -342,9 +339,26 @@ function createSpectrumOverlayLayers(regions: Region[], cities: City[]): Layer[]
         } as any));
     }
 
-    // ── (b) Wireless node coverage circles colored by frequency band ────────
+    // ── (b) Unlicensed regions — faint dashed outlines ──────────────────────
 
-    // Build a region-lookup for nodes via city cell positions
+    if (unlicensedPolys.length > 0) {
+        layers.push(new PolygonLayer({
+            id: 'overlay-spectrum-unlicensed',
+            data: unlicensedPolys,
+            getPolygon: (d: SpectrumRegionPoly) => d.polygon,
+            getFillColor: (d: SpectrumRegionPoly) => d.color,
+            getLineColor: [100, 100, 100, 60],
+            getLineWidth: 2,
+            lineWidthUnits: 'pixels',
+            filled: true,
+            stroked: true,
+            pickable: false,
+            parameters: { depthTest: false },
+        } as any));
+    }
+
+    // ── (c) Wireless node coverage circles colored by frequency band ────────
+
     const cellToRegion = new Map<number, number>();
     for (const city of cities) {
         for (const cp of city.cell_positions) {
@@ -352,14 +366,9 @@ function createSpectrumOverlayLayers(regions: Region[], cities: City[]): Layer[]
         }
     }
 
-    // Build a map: regionId -> { band -> ownerId } from licenses for matching
-    // nodes to their assigned band. A wireless node in a region uses the band
-    // from the license held by its owner in that region. If the owner holds
-    // multiple bands, pick the first matching license.
-    const regionOwnerBands = new Map<string, string>(); // "regionId-ownerId" -> band
+    const regionOwnerBands = new Map<string, string>();
     for (const lic of licenses) {
         const key = `${lic.region_id}-${lic.owner}`;
-        // Only store the first band per region+owner (simplification)
         if (!regionOwnerBands.has(key)) {
             regionOwnerBands.set(key, lic.band);
         }
@@ -373,7 +382,6 @@ function createSpectrumOverlayLayers(regions: Region[], cities: City[]): Layer[]
     }
     const coverageCircles: CoverageCircle[] = [];
 
-    // Filter to wireless nodes
     const wirelessNodes = allInfra.nodes.filter(n => WIRELESS_OVERLAY_TYPES.has(n.node_type));
 
     for (const node of wirelessNodes) {
@@ -393,7 +401,6 @@ function createSpectrumOverlayLayers(regions: Region[], cities: City[]): Layer[]
     }
 
     if (coverageCircles.length > 0) {
-        // Filled coverage circles
         layers.push(new ScatterplotLayer({
             id: 'overlay-spectrum-coverage',
             data: coverageCircles,
@@ -409,7 +416,6 @@ function createSpectrumOverlayLayers(regions: Region[], cities: City[]): Layer[]
             },
         }));
 
-        // Coverage border rings
         layers.push(new ScatterplotLayer({
             id: 'overlay-spectrum-coverage-ring',
             data: coverageCircles,
@@ -426,10 +432,8 @@ function createSpectrumOverlayLayers(regions: Region[], cities: City[]): Layer[]
             parameters: { depthTest: false },
         }));
 
-        // ── (c) Interference indicators — same-band overlap ────────────────
+        // ── (d) Interference zones — severity-based coloring ────────────────
 
-        // For each pair of same-band circles that overlap, place a warning dot
-        // at the midpoint with red tint. Only check within same band groups.
         const bandGroups = new Map<string, CoverageCircle[]>();
         for (const c of coverageCircles) {
             if (c.band === 'unassigned') continue;
@@ -440,6 +444,7 @@ function createSpectrumOverlayLayers(regions: Region[], cities: City[]): Layer[]
         interface InterferencePoint {
             position: [number, number];
             radius: number;
+            severity: number;
         }
         const interferencePoints: InterferencePoint[] = [];
 
@@ -448,24 +453,24 @@ function createSpectrumOverlayLayers(regions: Region[], cities: City[]): Layer[]
                 for (let j = i + 1; j < group.length; j++) {
                     const a = group[i];
                     const b = group[j];
-                    // Approximate distance in meters using equirectangular projection
                     const dLon = (b.position[0] - a.position[0]) * Math.PI / 180;
                     const dLat = (b.position[1] - a.position[1]) * Math.PI / 180;
                     const midLat = (a.position[1] + b.position[1]) / 2 * Math.PI / 180;
-                    const R = 6371000; // Earth radius in meters
+                    const R = 6371000;
                     const dx = dLon * Math.cos(midLat) * R;
                     const dy = dLat * R;
                     const dist = Math.sqrt(dx * dx + dy * dy);
 
-                    // Circles overlap if distance < sum of radii
-                    if (dist < a.radius + b.radius) {
+                    const sumRadii = a.radius + b.radius;
+                    if (dist < sumRadii) {
                         const midLon = (a.position[0] + b.position[0]) / 2;
                         const midLatDeg = (a.position[1] + b.position[1]) / 2;
-                        // Overlap radius = proportional to how much they overlap
-                        const overlap = (a.radius + b.radius - dist) / 2;
+                        const overlap = sumRadii - dist;
+                        const severity = Math.min(1.0, overlap / sumRadii);
                         interferencePoints.push({
                             position: [midLon, midLatDeg],
                             radius: Math.max(overlap * 0.6, 1000),
+                            severity,
                         });
                     }
                 }
@@ -473,12 +478,15 @@ function createSpectrumOverlayLayers(regions: Region[], cities: City[]): Layer[]
         }
 
         if (interferencePoints.length > 0) {
-            // Red-tinted interference zones
             layers.push(new ScatterplotLayer({
                 id: 'overlay-spectrum-interference',
                 data: interferencePoints,
                 getPosition: (d: InterferencePoint) => d.position,
-                getFillColor: [255, 60, 60, 60],
+                getFillColor: (d: InterferencePoint) => {
+                    if (d.severity > 0.5) return [255, 60, 60, 80] as [number, number, number, number];
+                    if (d.severity > 0.2) return [245, 180, 30, 60] as [number, number, number, number];
+                    return [60, 200, 100, 40] as [number, number, number, number];
+                },
                 getRadius: (d: InterferencePoint) => d.radius,
                 radiusMinPixels: 6,
                 pickable: false,
@@ -489,13 +497,16 @@ function createSpectrumOverlayLayers(regions: Region[], cities: City[]): Layer[]
                 },
             }));
 
-            // Hatched-like ring around interference zones
             layers.push(new ScatterplotLayer({
                 id: 'overlay-spectrum-interference-ring',
                 data: interferencePoints,
                 getPosition: (d: InterferencePoint) => d.position,
                 getFillColor: [0, 0, 0, 0],
-                getLineColor: [255, 80, 80, 120],
+                getLineColor: (d: InterferencePoint) => {
+                    if (d.severity > 0.5) return [255, 80, 80, 160] as [number, number, number, number];
+                    if (d.severity > 0.2) return [245, 200, 50, 120] as [number, number, number, number];
+                    return [80, 200, 120, 80] as [number, number, number, number];
+                },
                 getLineWidth: 2,
                 lineWidthUnits: 'pixels' as const,
                 stroked: true,
@@ -750,6 +761,125 @@ function createCoverageOverlapLayers(
             parameters: { depthTest: false },
         }));
     }
+
+    return layers;
+}
+
+// ── Density zone overlay ────────────────────────────────────────────────────
+
+/** Colors for each density zone (semi-transparent fills). */
+const DENSITY_ZONE_COLORS: Record<BuildingZone, [number, number, number, number]> = {
+    downtown:          [220, 50, 50, 55],   // Red — dense urban core
+    commercial:        [60, 120, 220, 50],   // Blue — commercial district
+    residential_inner: [50, 180, 80, 45],    // Green — inner residential
+    residential_outer: [50, 180, 80, 30],    // Lighter green — outer residential
+    suburban:          [220, 190, 50, 25],    // Yellow — suburban fringe
+};
+
+/** Outline colors for density zone borders. */
+const DENSITY_ZONE_OUTLINES: Record<BuildingZone, [number, number, number, number]> = {
+    downtown:          [240, 70, 70, 160],
+    commercial:        [80, 140, 240, 140],
+    residential_inner: [70, 200, 100, 120],
+    residential_outer: [70, 200, 100, 80],
+    suburban:          [240, 210, 70, 70],
+};
+
+/**
+ * Generate a polygon ring (circle approximation) at a given radius around
+ * a city center. Returns a closed polygon array of [lon, lat] pairs.
+ */
+function generateZoneRing(
+    centerLon: number,
+    centerLat: number,
+    radius: number,
+    segments: number = 48,
+): [number, number][] {
+    const latCorr = 1 / Math.max(0.1, Math.cos((centerLat * Math.PI) / 180));
+    const points: [number, number][] = [];
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * Math.PI * 2;
+        points.push([
+            centerLon + radius * Math.cos(angle) * latCorr,
+            centerLat + radius * Math.sin(angle),
+        ]);
+    }
+    return points;
+}
+
+/**
+ * Creates density zone overlay layers showing concentric zone rings around cities.
+ * Each zone (downtown, commercial, residential inner/outer, suburban) is
+ * rendered as a semi-transparent filled polygon ring with a colored outline.
+ *
+ * Uses the same population-based zone radius calculations as buildingsLayer.ts.
+ */
+export function createDensityOverlayLayers(cities: City[]): Layer[] {
+    const layers: Layer[] = [];
+
+    if (cities.length === 0) return layers;
+
+    interface DensityZonePoly {
+        polygon: [number, number][];
+        zone: BuildingZone;
+        fillColor: [number, number, number, number];
+        lineColor: [number, number, number, number];
+        cityName: string;
+    }
+
+    const zonePolygons: DensityZonePoly[] = [];
+
+    // Limit to cities with pop >= 10k (skip tiny hamlets for visual clarity)
+    const visibleCities = cities.filter(c => c.population >= 10000 && Math.abs(c.y) <= 85);
+
+    // Process from largest to smallest, cap at 60 cities for performance
+    const sorted = [...visibleCities].sort((a, b) => b.population - a.population).slice(0, 60);
+
+    for (const city of sorted) {
+        // Generate zone rings from outermost to innermost (render order)
+        // Iterate in reverse so outer zones are rendered first (behind inner zones)
+        for (let zi = ZONE_CONFIGS.length - 1; zi >= 0; zi--) {
+            const config = ZONE_CONFIGS[zi];
+            const { outerR } = zoneRadii(config.zone, city.population);
+
+            // Skip negligible zones
+            if (outerR < 0.001) continue;
+
+            const ring = generateZoneRing(city.x, city.y, outerR);
+
+            zonePolygons.push({
+                polygon: ring,
+                zone: config.zone,
+                fillColor: DENSITY_ZONE_COLORS[config.zone],
+                lineColor: DENSITY_ZONE_OUTLINES[config.zone],
+                cityName: city.name,
+            });
+        }
+    }
+
+    if (zonePolygons.length === 0) return layers;
+
+    // Filled zone polygons
+    layers.push(new PolygonLayer({
+        id: 'overlay-density-zones-fill',
+        data: zonePolygons,
+        getPolygon: (d: DensityZonePoly) => d.polygon,
+        getFillColor: (d: DensityZonePoly) => d.fillColor,
+        getLineColor: (d: DensityZonePoly) => d.lineColor,
+        getLineWidth: 1.5,
+        lineWidthUnits: 'pixels',
+        filled: true,
+        stroked: true,
+        pickable: false,
+        parameters: {
+            depthTest: false,
+            blend: true,
+            blendFunc: [
+                WebGLRenderingContext.SRC_ALPHA,
+                WebGLRenderingContext.ONE_MINUS_SRC_ALPHA,
+            ],
+        },
+    } as any));
 
     return layers;
 }

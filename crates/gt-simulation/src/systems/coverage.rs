@@ -410,9 +410,10 @@ fn terrain_coverage_modifier(terrain: gt_common::types::TerrainType) -> f64 {
         TerrainType::Mountainous => 0.4,  // mountains block signal
         TerrainType::Desert => 0.95,      // flat, minor dust
         TerrainType::Coastal => 0.9,      // good propagation
-        TerrainType::OceanShallow => 0.3, // poor over water
-        TerrainType::OceanDeep => 0.2,    // very poor
-        TerrainType::Tundra => 0.85,      // flat, cold
-        TerrainType::Frozen => 0.6,       // ice interference
+        TerrainType::OceanShallow => 0.3,  // poor over water
+        TerrainType::OceanDeep => 0.2,     // very poor
+        TerrainType::OceanTrench => 0.1,   // extreme depth, negligible
+        TerrainType::Tundra => 0.85,       // flat, cold
+        TerrainType::Frozen => 0.6,        // ice interference
     }
 }

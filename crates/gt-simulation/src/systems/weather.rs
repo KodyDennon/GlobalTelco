@@ -167,8 +167,9 @@ fn dominant_terrain_for_region(
 		Some(5) => TerrainType::Coastal,
 		Some(6) => TerrainType::OceanShallow,
 		Some(7) => TerrainType::OceanDeep,
-		Some(8) => TerrainType::Tundra,
-		Some(9) => TerrainType::Frozen,
+		Some(8) => TerrainType::OceanTrench,
+		Some(9) => TerrainType::Tundra,
+		Some(10) => TerrainType::Frozen,
 		_ => TerrainType::Rural,
 	}
 }
