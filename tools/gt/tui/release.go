@@ -23,6 +23,25 @@ const (
 	ReleaseDone
 )
 
+func (s ReleaseStep) label() string {
+	switch s {
+	case ReleaseSelectComponent:
+		return "Select Component"
+	case ReleaseSelectBump:
+		return "Select Bump"
+	case ReleasePreview:
+		return "Review"
+	case ReleaseExecuting:
+		return "Executing"
+	case ReleasePushConfirm:
+		return "Push"
+	case ReleaseDone:
+		return "Done"
+	default:
+		return ""
+	}
+}
+
 // ReleaseFinishedMsg indicates the release completed.
 type ReleaseFinishedMsg struct {
 	Result *core.ReleaseResult
@@ -36,18 +55,18 @@ type PushDoneMsg struct {
 
 // ReleaseModel handles the multi-step release flow.
 type ReleaseModel struct {
-	root       string
-	statuses   []core.ComponentStatus
-	step       ReleaseStep
-	cursor     int
-	compIdx    int
-	bumpType   core.BumpType
-	preview    string
-	result     *core.ReleaseResult
-	err        error
-	spinner    spinner.Model
-	stepLog    []string
-	Done       bool
+	root     string
+	statuses []core.ComponentStatus
+	step     ReleaseStep
+	cursor   int
+	compIdx  int
+	bumpType core.BumpType
+	preview  string
+	result   *core.ReleaseResult
+	err      error
+	spinner  spinner.Model
+	stepLog  []string
+	Done     bool
 }
 
 // NewRelease creates a new release model.
@@ -121,7 +140,6 @@ func (r ReleaseModel) handleKey(msg tea.KeyMsg) (ReleaseModel, tea.Cmd) {
 		case "enter":
 			r.compIdx = r.cursor
 			r.step = ReleaseSelectBump
-			// Pre-select suggested bump
 			if r.statuses[r.compIdx].IsDirty {
 				r.bumpType = r.statuses[r.compIdx].SuggestedBump
 				r.cursor = int(r.bumpType)
@@ -144,6 +162,9 @@ func (r ReleaseModel) handleKey(msg tea.KeyMsg) (ReleaseModel, tea.Cmd) {
 			r.bumpType = core.BumpType(r.cursor)
 			r.step = ReleasePreview
 			r.preview = r.buildPreview()
+		case "esc":
+			r.step = ReleaseSelectComponent
+			r.cursor = r.compIdx
 		}
 
 	case ReleasePreview:
@@ -152,7 +173,7 @@ func (r ReleaseModel) handleKey(msg tea.KeyMsg) (ReleaseModel, tea.Cmd) {
 			r.step = ReleaseExecuting
 			r.stepLog = nil
 			return r, r.executeRelease()
-		case "n":
+		case "n", "esc":
 			r.step = ReleaseSelectBump
 		}
 
@@ -184,102 +205,189 @@ func (r ReleaseModel) handleKey(msg tea.KeyMsg) (ReleaseModel, tea.Cmd) {
 }
 
 func (r ReleaseModel) View(width, height int) string {
-	var sb strings.Builder
+	panelWidth := width - 6
+	if panelWidth > 104 {
+		panelWidth = 104
+	}
+
+	var sections []string
+
+	// Step indicator
+	sections = append(sections, Indent(r.renderStepIndicator(), 2))
+	sections = append(sections, "")
 
 	switch r.step {
 	case ReleaseSelectComponent:
-		sb.WriteString(StyleSubtitle.Render("  Select component to release:"))
-		sb.WriteString("\n\n")
-		for i, s := range r.statuses {
-			prefix := "  "
-			if i == r.cursor {
-				prefix = StyleAccent.Render("> ")
-			}
-			name := ComponentStyle(s.Component.ID, s.Component.Name)
-			ver := StyleDim.Render("v" + s.Version)
-			status := ""
-			if s.IsDirty {
-				status = StyleWarning.Render(" (dirty)")
-			} else {
-				status = StyleDim.Render(" (clean)")
-			}
-			sb.WriteString(fmt.Sprintf("%s%s  %s%s\n", prefix, name, ver, status))
-		}
-
+		sections = append(sections, r.viewSelectComponent(panelWidth))
 	case ReleaseSelectBump:
-		comp := r.statuses[r.compIdx]
-		sb.WriteString(fmt.Sprintf("  %s v%s\n\n", ComponentStyle(comp.Component.ID, comp.Component.Name), comp.Version))
-		sb.WriteString(StyleSubtitle.Render("  Select version bump:"))
-		sb.WriteString("\n\n")
-
-		bumpTypes := []struct {
-			bt   core.BumpType
-			desc string
-		}{
-			{core.BumpPatch, "Bug fixes, small changes"},
-			{core.BumpMinor, "New features, backwards compatible"},
-			{core.BumpMajor, "Breaking changes"},
-		}
-
-		sv, _ := core.ParseSemVer(comp.Version)
-		for i, bt := range bumpTypes {
-			prefix := "  "
-			if i == r.cursor {
-				prefix = StyleAccent.Render("> ")
-			}
-			newVer := sv.Bump(bt.bt).String()
-			name := StyleBright.Render(fmt.Sprintf("%-6s", bt.bt.String()))
-			arrow := StyleDim.Render(" -> ")
-			ver := StyleProfit.Render(newVer)
-			desc := StyleDim.Render("  " + bt.desc)
-
-			suggested := ""
-			if comp.IsDirty && bt.bt == comp.SuggestedBump {
-				suggested = StyleWarning.Render(" (suggested)")
-			}
-
-			sb.WriteString(fmt.Sprintf("%s%s%s%s%s%s\n", prefix, name, arrow, ver, suggested, desc))
-		}
-
+		sections = append(sections, r.viewSelectBump(panelWidth))
 	case ReleasePreview:
-		sb.WriteString(StyleSubtitle.Render("  Review changes:"))
-		sb.WriteString("\n\n")
-		sb.WriteString(r.preview)
-		sb.WriteString("\n")
-		sb.WriteString(StyleAccent.Render("  Press enter to confirm, n to go back"))
-
+		sections = append(sections, r.viewPreview(panelWidth))
 	case ReleaseExecuting:
-		sb.WriteString("  " + r.spinner.View() + " Releasing...\n\n")
-		for _, line := range r.stepLog {
-			sb.WriteString("  " + line + "\n")
-		}
-
+		sections = append(sections, r.viewExecuting(panelWidth))
 	case ReleasePushConfirm:
-		if r.result != nil {
-			sb.WriteString(StyleSuccess.Render("  Release complete!"))
-			sb.WriteString("\n\n")
-			sb.WriteString(fmt.Sprintf("  %s: %s -> %s\n", r.result.Tag, r.result.OldVersion, r.result.NewVersion))
-			sb.WriteString("\n")
-		}
-		sb.WriteString(StyleAccent.Render("  Push to remote? (y/n)"))
-
+		sections = append(sections, r.viewPushConfirm(panelWidth))
 	case ReleaseDone:
-		if r.err != nil {
-			sb.WriteString(StyleError.Render(fmt.Sprintf("  Error: %v", r.err)))
-		} else if r.result != nil {
-			sb.WriteString(StyleSuccess.Render("  Release complete!"))
-			sb.WriteString("\n\n")
-			sb.WriteString(fmt.Sprintf("  Tag: %s\n", r.result.Tag))
-			sb.WriteString(fmt.Sprintf("  Version: %s -> %s\n", r.result.OldVersion, r.result.NewVersion))
-			if len(r.result.FilesChanged) > 0 {
-				sb.WriteString(fmt.Sprintf("  Files: %s\n", strings.Join(r.result.FilesChanged, ", ")))
-			}
-		}
-		sb.WriteString("\n")
-		sb.WriteString(StyleDim.Render("  Press enter to return to dashboard"))
+		sections = append(sections, r.viewDone(panelWidth))
 	}
 
-	return sb.String()
+	return strings.Join(sections, "\n")
+}
+
+func (r ReleaseModel) renderStepIndicator() string {
+	steps := []ReleaseStep{ReleaseSelectComponent, ReleaseSelectBump, ReleasePreview, ReleaseExecuting, ReleaseDone}
+	var parts []string
+	for _, s := range steps {
+		label := s.label()
+		if s == r.step || (r.step == ReleasePushConfirm && s == ReleaseDone) {
+			parts = append(parts, StyleAccent.Render("["+label+"]"))
+		} else if s < r.step {
+			parts = append(parts, StyleProfit.Render(label))
+		} else {
+			parts = append(parts, StyleDim.Render(label))
+		}
+	}
+	return strings.Join(parts, StyleDim.Render(" > "))
+}
+
+func (r ReleaseModel) viewSelectComponent(panelWidth int) string {
+	var lines []string
+
+	for i, s := range r.statuses {
+		prefix := "  "
+		if i == r.cursor {
+			prefix = StyleAccent.Render("> ")
+		}
+		name := ComponentStyle(s.Component.ID, fmt.Sprintf("%-8s", s.Component.Name))
+		ver := StyleBright.Render("v" + s.Version)
+		tag := ""
+		if s.LatestTag != "" {
+			tag = "  " + StyleDim.Render(s.LatestTag)
+		} else {
+			tag = "  " + StyleDim.Render("(no releases)")
+		}
+
+		status := ""
+		if s.IsDirty {
+			status = "  " + StyleWarning.Render(fmt.Sprintf("%d changes", len(s.ChangedFiles)))
+			switch s.SuggestedBump {
+			case core.BumpMajor:
+				status += "  " + StyleLoss.Render("MAJOR")
+			case core.BumpMinor:
+				status += "  " + StyleWarning.Render("minor")
+			default:
+				status += "  " + StyleDim.Render("patch")
+			}
+		} else {
+			status = "  " + StyleProfit.Render("clean")
+		}
+
+		lines = append(lines, fmt.Sprintf("%s%s  %s%s%s", prefix, name, ver, tag, status))
+	}
+
+	content := strings.Join(lines, "\n")
+	return Indent(RenderCard("Select Component", ColorAccent, content, panelWidth, false), 2)
+}
+
+func (r ReleaseModel) viewSelectBump(panelWidth int) string {
+	comp := r.statuses[r.compIdx]
+
+	var lines []string
+	lines = append(lines, RenderLabelValue("Component", ComponentStyle(comp.Component.ID, comp.Component.Name)))
+	lines = append(lines, RenderLabelValue("Current", StyleBright.Render("v"+comp.Version)))
+	lines = append(lines, "")
+
+	bumpTypes := []struct {
+		bt   core.BumpType
+		desc string
+	}{
+		{core.BumpPatch, "Bug fixes, small changes"},
+		{core.BumpMinor, "New features, backwards compatible"},
+		{core.BumpMajor, "Breaking changes"},
+	}
+
+	sv, _ := core.ParseSemVer(comp.Version)
+	for i, bt := range bumpTypes {
+		prefix := "  "
+		if i == r.cursor {
+			prefix = StyleAccent.Render("> ")
+		}
+		newVer := sv.Bump(bt.bt).String()
+		name := StyleBright.Render(fmt.Sprintf("%-6s", bt.bt.String()))
+		arrow := StyleDim.Render(" -> ")
+		ver := StyleProfit.Render(newVer)
+		desc := StyleDim.Render("  " + bt.desc)
+
+		suggested := ""
+		if comp.IsDirty && bt.bt == comp.SuggestedBump {
+			suggested = StyleWarning.Render(" (suggested)")
+		}
+
+		lines = append(lines, fmt.Sprintf("%s%s%s%s%s%s", prefix, name, arrow, ver, suggested, desc))
+	}
+
+	content := strings.Join(lines, "\n")
+	return Indent(RenderCard("Select Version Bump", ColorAccent, content, panelWidth, false), 2)
+}
+
+func (r ReleaseModel) viewPreview(panelWidth int) string {
+	content := r.preview + "\n" + StyleAccent.Render("Press enter to confirm, n to go back")
+	return Indent(RenderCard("Review Changes", ColorWarning, content, panelWidth, false), 2)
+}
+
+func (r ReleaseModel) viewExecuting(panelWidth int) string {
+	var lines []string
+	lines = append(lines, r.spinner.View()+" "+StyleDim.Render("Releasing..."))
+	lines = append(lines, "")
+	for _, line := range r.stepLog {
+		lines = append(lines, line)
+	}
+	content := strings.Join(lines, "\n")
+	return Indent(RenderCard("Executing Release", ColorWarning, content, panelWidth, false), 2)
+}
+
+func (r ReleaseModel) viewPushConfirm(panelWidth int) string {
+	var lines []string
+	if r.result != nil {
+		lines = append(lines, StyleSuccess.Render("Release created successfully!"))
+		lines = append(lines, "")
+		lines = append(lines, RenderLabelValue("Tag", StyleBright.Render(r.result.Tag)))
+		lines = append(lines, RenderLabelValue("Version", StyleDim.Render(r.result.OldVersion)+" "+StyleDim.Render("->")+" "+StyleProfit.Render(r.result.NewVersion)))
+		if len(r.result.FilesChanged) > 0 {
+			lines = append(lines, RenderLabelValue("Files", StyleDim.Render(strings.Join(r.result.FilesChanged, ", "))))
+		}
+		lines = append(lines, "")
+	}
+	lines = append(lines, StyleAccent.Render("Push to remote? (y/n)"))
+
+	content := strings.Join(lines, "\n")
+	return Indent(RenderCard("Push Confirmation", ColorAccent, content, panelWidth, false), 2)
+}
+
+func (r ReleaseModel) viewDone(panelWidth int) string {
+	var lines []string
+
+	if r.err != nil {
+		lines = append(lines, StyleError.Render("Error: "+r.err.Error()))
+	} else if r.result != nil {
+		lines = append(lines, StyleSuccess.Render("Release complete!"))
+		lines = append(lines, "")
+		lines = append(lines, RenderLabelValue("Tag", StyleBright.Render(r.result.Tag)))
+		lines = append(lines, RenderLabelValue("Version", StyleDim.Render(r.result.OldVersion)+" "+StyleDim.Render("->")+" "+StyleProfit.Render(r.result.NewVersion)))
+		if len(r.result.FilesChanged) > 0 {
+			lines = append(lines, RenderLabelValue("Files", StyleDim.Render(strings.Join(r.result.FilesChanged, ", "))))
+		}
+		if r.result.Pushed {
+			lines = append(lines, RenderLabelValue("Pushed", StyleProfit.Render("yes")))
+		}
+	}
+
+	titleColor := ColorProfit
+	if r.err != nil {
+		titleColor = ColorLoss
+	}
+	content := strings.Join(lines, "\n")
+	return Indent(RenderCard("Release Result", titleColor, content, panelWidth, false), 2)
 }
 
 func (r ReleaseModel) buildPreview() string {
@@ -288,38 +396,36 @@ func (r ReleaseModel) buildPreview() string {
 	newVer := sv.Bump(r.bumpType).String()
 	tag := comp.Component.TagPrefix + newVer
 
-	var sb strings.Builder
+	var lines []string
 
-	sb.WriteString(fmt.Sprintf("  Component:   %s\n", ComponentStyle(comp.Component.ID, comp.Component.Name)))
-	sb.WriteString(fmt.Sprintf("  Bump:        %s\n", r.bumpType.String()))
-	sb.WriteString(fmt.Sprintf("  Version:     %s -> %s\n", comp.Version, StyleProfit.Render(newVer)))
-	sb.WriteString(fmt.Sprintf("  Tag:         %s\n", tag))
-	sb.WriteString("\n")
+	lines = append(lines, RenderLabelValue("Component", ComponentStyle(comp.Component.ID, comp.Component.Name)))
+	lines = append(lines, RenderLabelValue("Bump", StyleBright.Render(r.bumpType.String())))
+	lines = append(lines, RenderLabelValue("Version", StyleDim.Render(comp.Version)+" "+StyleDim.Render("->")+" "+StyleProfit.Render(newVer)))
+	lines = append(lines, RenderLabelValue("Tag", StyleBright.Render(tag)))
+	lines = append(lines, "")
 
-	sb.WriteString(StyleDim.Render("  Files to update:"))
-	sb.WriteString("\n")
+	lines = append(lines, StyleDim.Render("Files to update:"))
 	for _, vf := range comp.Component.Files {
-		sb.WriteString(fmt.Sprintf("    %s\n", vf.RelPath))
+		lines = append(lines, "  "+StyleDim.Render(vf.RelPath))
 	}
 
 	if len(comp.Commits) > 0 {
-		sb.WriteString("\n")
-		sb.WriteString(StyleDim.Render("  Commits since last release:"))
-		sb.WriteString("\n")
+		lines = append(lines, "")
+		lines = append(lines, StyleDim.Render("Commits since last release:"))
 		limit := len(comp.Commits)
 		if limit > 10 {
 			limit = 10
 		}
 		for _, c := range comp.Commits[:limit] {
 			cat := lipgloss.NewStyle().Foreground(ColorDim).Render(c.Category.Emoji())
-			sb.WriteString(fmt.Sprintf("    %s %s\n", cat, c.Subject))
+			lines = append(lines, "  "+cat+" "+c.Subject)
 		}
 		if len(comp.Commits) > 10 {
-			sb.WriteString(StyleDim.Render(fmt.Sprintf("    ... and %d more\n", len(comp.Commits)-10)))
+			lines = append(lines, StyleDim.Render(fmt.Sprintf("  ... and %d more", len(comp.Commits)-10)))
 		}
 	}
 
-	return sb.String()
+	return strings.Join(lines, "\n")
 }
 
 func (r ReleaseModel) executeRelease() tea.Cmd {

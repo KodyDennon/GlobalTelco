@@ -95,10 +95,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.view == ViewDashboard {
 				return a, tea.Quit
 			}
-			a.view = ViewDashboard
-			return a, a.refreshStatus()
+			if !a.isBusy() {
+				a.view = ViewDashboard
+				return a, a.refreshStatus()
+			}
 		case "esc":
-			if a.view != ViewDashboard {
+			if a.view != ViewDashboard && !a.isBusy() {
 				a.view = ViewDashboard
 				return a, a.refreshStatus()
 			}
@@ -225,6 +227,7 @@ func (a App) footerKeys() []KeyBind {
 	switch a.view {
 	case ViewDashboard:
 		return []KeyBind{
+			{Key: "enter", Desc: "open"},
 			{Key: "r", Desc: "release"},
 			{Key: "b", Desc: "build"},
 			{Key: "d", Desc: "deploy"},
@@ -235,20 +238,52 @@ func (a App) footerKeys() []KeyBind {
 			{Key: "q", Desc: "quit"},
 		}
 	case ViewRelease:
-		return []KeyBind{
-			{Key: "j/k", Desc: "navigate"},
-			{Key: "enter", Desc: "select"},
-			{Key: "esc", Desc: "back"},
+		switch a.release.step {
+		case ReleaseExecuting:
+			return []KeyBind{{Key: "...", Desc: "releasing"}}
+		case ReleasePushConfirm:
+			return []KeyBind{
+				{Key: "y", Desc: "push"},
+				{Key: "n", Desc: "skip push"},
+			}
+		case ReleaseDone:
+			return []KeyBind{{Key: "enter", Desc: "done"}}
+		case ReleasePreview:
+			return []KeyBind{
+				{Key: "enter", Desc: "confirm"},
+				{Key: "n", Desc: "go back"},
+				{Key: "esc", Desc: "cancel"},
+			}
+		default:
+			return []KeyBind{
+				{Key: "j/k", Desc: "navigate"},
+				{Key: "enter", Desc: "select"},
+				{Key: "esc", Desc: "back"},
+			}
 		}
 	case ViewBuild:
+		if a.build.building {
+			return []KeyBind{{Key: "...", Desc: "building"}}
+		}
+		if a.build.done {
+			return []KeyBind{{Key: "esc", Desc: "back"}}
+		}
 		return []KeyBind{
+			{Key: "j/k", Desc: "navigate"},
 			{Key: "space", Desc: "toggle"},
 			{Key: "enter", Desc: "build"},
 			{Key: "esc", Desc: "back"},
 		}
 	case ViewDeploy:
+		if a.deploy.deploying {
+			return []KeyBind{{Key: "...", Desc: "deploying"}}
+		}
+		if a.deploy.done {
+			return []KeyBind{{Key: "esc", Desc: "back"}}
+		}
 		return []KeyBind{
-			{Key: "space", Desc: "toggle"},
+			{Key: "j/k", Desc: "navigate"},
+			{Key: "space", Desc: "skip build"},
 			{Key: "enter", Desc: "deploy"},
 			{Key: "esc", Desc: "back"},
 		}
@@ -258,7 +293,20 @@ func (a App) footerKeys() []KeyBind {
 			{Key: "tab", Desc: "filter"},
 			{Key: "esc", Desc: "back"},
 		}
+	case ViewValidate:
+		return []KeyBind{
+			{Key: "esc", Desc: "back"},
+		}
 	case ViewServer:
+		if a.server.confirmRestart {
+			return []KeyBind{
+				{Key: "y", Desc: "confirm"},
+				{Key: "n", Desc: "cancel"},
+			}
+		}
+		if a.server.restarting {
+			return []KeyBind{{Key: "...", Desc: "restarting"}}
+		}
 		return []KeyBind{
 			{Key: "tab", Desc: "switch tab"},
 			{Key: "l", Desc: "fetch logs"},
@@ -267,9 +315,7 @@ func (a App) footerKeys() []KeyBind {
 			{Key: "esc", Desc: "back"},
 		}
 	default:
-		return []KeyBind{
-			{Key: "esc", Desc: "back"},
-		}
+		return []KeyBind{{Key: "esc", Desc: "back"}}
 	}
 }
 
@@ -279,6 +325,10 @@ func (a App) refreshStatus() tea.Cmd {
 		statuses, err := core.DetectDirtyComponents(root)
 		return StatusMsg{Statuses: statuses, Err: err}
 	}
+}
+
+func (a App) isBusy() bool {
+	return a.build.building || a.deploy.deploying || a.release.step == ReleaseExecuting || a.server.restarting
 }
 
 func (a App) updateDashboard(msg tea.Msg) (App, tea.Cmd) {
@@ -309,6 +359,18 @@ func (a App) updateDashboard(msg tea.Msg) (App, tea.Cmd) {
 			a.view = ViewValidate
 			a.validate = a.validate.Start(a.root)
 			return a, a.validate.Init()
+		case "enter":
+			idx := a.dashboard.cursor
+			if idx < len(a.statuses) {
+				a.view = ViewRelease
+				a.release = a.release.Start(a.root, a.statuses)
+				a.release.cursor = idx
+				return a, a.release.Init()
+			} else {
+				a.view = ViewServer
+				a.server = a.server.Start()
+				return a, a.server.Init()
+			}
 		case "R":
 			return a, tea.Batch(a.refreshStatus(), a.dashboard.FetchServer())
 		}

@@ -19,9 +19,9 @@ type HistoryModel struct {
 }
 
 type historyEntry struct {
-	Tag       string
-	CompID    string
-	CompName  string
+	Tag      string
+	CompID   string
+	CompName string
 }
 
 // NewHistory creates a new history model.
@@ -74,7 +74,12 @@ func (h HistoryModel) Update(msg tea.Msg) (HistoryModel, tea.Cmd) {
 }
 
 func (h HistoryModel) View(width, height int) string {
-	var sb strings.Builder
+	panelWidth := width - 6
+	if panelWidth > 104 {
+		panelWidth = 104
+	}
+
+	var sections []string
 
 	// Filter tabs
 	filters := []string{"All", "Engine", "Server", "Web", "Desktop"}
@@ -86,15 +91,25 @@ func (h HistoryModel) View(width, height int) string {
 			tabs = append(tabs, StyleUnselected.Render(" "+f+" "))
 		}
 	}
-	sb.WriteString("  " + strings.Join(tabs, " "))
-	sb.WriteString("\n\n")
+	sections = append(sections, Indent(strings.Join(tabs, " "), 2))
+	sections = append(sections, "")
 
-	// Entries
+	// Entries in a card
 	entries := h.filteredEntries()
+	var lines []string
+
 	if len(entries) == 0 {
-		sb.WriteString(StyleDim.Render("  No release tags found"))
+		if len(h.entries) == 0 {
+			lines = append(lines, StyleDim.Render("No release tags found in repository."))
+			lines = append(lines, "")
+			lines = append(lines, StyleDim.Render("Create your first release with ")+StyleKey.Render("r")+StyleDim.Render(" from the dashboard."))
+			lines = append(lines, StyleDim.Render("Tags follow the pattern: ")+StyleBright.Render("<component>-v<version>"))
+			lines = append(lines, StyleDim.Render("  e.g. ")+StyleAccent.Render("engine-v0.5.1")+StyleDim.Render(", ")+StyleAccent.Render("web-v1.0.0"))
+		} else {
+			lines = append(lines, StyleDim.Render("No tags for this filter."))
+		}
 	} else {
-		maxShow := height - 10
+		maxShow := height - 12
 		if maxShow < 5 {
 			maxShow = 5
 		}
@@ -115,15 +130,19 @@ func (h HistoryModel) View(width, height int) string {
 			}
 			name := ComponentStyle(e.CompID, fmt.Sprintf("%-8s", e.CompName))
 			tag := StyleBright.Render(e.Tag)
-			sb.WriteString(fmt.Sprintf("%s%s  %s\n", prefix, name, tag))
+			lines = append(lines, fmt.Sprintf("%s%s  %s", prefix, name, tag))
 		}
 
 		if len(entries) > maxShow {
-			sb.WriteString(StyleDim.Render(fmt.Sprintf("\n  Showing %d-%d of %d", start+1, end, len(entries))))
+			lines = append(lines, "")
+			lines = append(lines, StyleDim.Render(fmt.Sprintf("Showing %d-%d of %d tags", start+1, end, len(entries))))
 		}
 	}
 
-	return sb.String()
+	content := strings.Join(lines, "\n")
+	sections = append(sections, Indent(RenderCard("Release History", ColorAccent, content, panelWidth, false), 2))
+
+	return strings.Join(sections, "\n")
 }
 
 func (h HistoryModel) filteredEntries() []historyEntry {

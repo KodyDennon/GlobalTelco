@@ -83,64 +83,87 @@ func (v ValidateModel) Update(msg tea.Msg) (ValidateModel, tea.Cmd) {
 }
 
 func (v ValidateModel) View(width, height int) string {
-	var sb strings.Builder
-
-	if !v.done {
-		sb.WriteString("  " + v.spinner.View() + " Checking version consistency...\n")
-	} else {
-		allOk := true
-		for _, r := range v.results {
-			name := ComponentStyle(r.Component.ID, r.Component.Name)
-
-			if r.Err != nil {
-				sb.WriteString(fmt.Sprintf("  %s %s  %s\n",
-					StyleError.Render("FAIL"),
-					name,
-					StyleLoss.Render(r.Err.Error()),
-				))
-				allOk = false
-				continue
-			}
-
-			if len(r.Mismatches) > 0 {
-				sb.WriteString(fmt.Sprintf("  %s %s  v%s\n",
-					StyleError.Render("FAIL"),
-					name,
-					r.Version,
-				))
-				for _, m := range r.Mismatches {
-					sb.WriteString(fmt.Sprintf("         %s\n", StyleLoss.Render(m)))
-				}
-				allOk = false
-			} else {
-				sb.WriteString(fmt.Sprintf("  %s %s  v%s\n",
-					StyleSuccess.Render(" OK "),
-					name,
-					r.Version,
-				))
-			}
-		}
-
-		sb.WriteString("\n")
-		if allOk {
-			sb.WriteString(StyleSuccess.Render("  All components consistent."))
-		} else {
-			sb.WriteString(StyleError.Render("  Version mismatches detected!"))
-		}
-
-		// Git status
-		sb.WriteString("\n\n")
-		root := v.root
-		branch := core.CurrentBranch(root)
-		clean := core.IsClean(root)
-		sb.WriteString(fmt.Sprintf("  Branch: %s", StyleBright.Render(branch)))
-		if clean {
-			sb.WriteString(StyleProfit.Render("  (clean)"))
-		} else {
-			sb.WriteString(StyleWarning.Render("  (dirty)"))
-		}
-		sb.WriteString("\n")
+	panelWidth := width - 6
+	if panelWidth > 104 {
+		panelWidth = 104
 	}
 
-	return sb.String()
+	if !v.done {
+		content := v.spinner.View() + " " + StyleDim.Render("Checking version consistency...")
+		return Indent(RenderCard("Validate Versions", ColorAccent, content, panelWidth, false), 2)
+	}
+
+	var sections []string
+
+	// Results card
+	var lines []string
+	allOk := true
+	for _, r := range v.results {
+		name := ComponentStyle(r.Component.ID, fmt.Sprintf("%-8s", r.Component.Name))
+
+		if r.Err != nil {
+			lines = append(lines, fmt.Sprintf("%s %s  %s",
+				StyleError.Render("FAIL"),
+				name,
+				StyleLoss.Render(r.Err.Error()),
+			))
+			allOk = false
+			continue
+		}
+
+		if len(r.Mismatches) > 0 {
+			lines = append(lines, fmt.Sprintf("%s %s  v%s",
+				StyleError.Render("FAIL"),
+				name,
+				r.Version,
+			))
+			for _, m := range r.Mismatches {
+				lines = append(lines, "       "+StyleLoss.Render(m))
+			}
+			allOk = false
+		} else {
+			lines = append(lines, fmt.Sprintf("%s %s  v%s",
+				StyleSuccess.Render(" OK "),
+				name,
+				r.Version,
+			))
+
+			// Show which files were checked
+			fileCount := len(r.Component.Files)
+			lines = append(lines, "       "+StyleDim.Render(fmt.Sprintf("%d version files consistent", fileCount)))
+		}
+	}
+
+	lines = append(lines, "")
+	if allOk {
+		lines = append(lines, StyleSuccess.Render("All components consistent."))
+	} else {
+		lines = append(lines, StyleError.Render("Version mismatches detected!"))
+	}
+
+	titleColor := ColorProfit
+	if !allOk {
+		titleColor = ColorLoss
+	}
+
+	content := strings.Join(lines, "\n")
+	sections = append(sections, Indent(RenderCard("Version Consistency", titleColor, content, panelWidth, false), 2))
+
+	// Git status card
+	root := v.root
+	branch := core.CurrentBranch(root)
+	clean := core.IsClean(root)
+
+	var gitLines []string
+	gitLines = append(gitLines, RenderLabelValue("Branch", StyleBright.Render(branch)))
+	if clean {
+		gitLines = append(gitLines, RenderLabelValue("Working tree", StyleProfit.Render("clean")))
+	} else {
+		gitLines = append(gitLines, RenderLabelValue("Working tree", StyleWarning.Render("dirty")))
+	}
+
+	gitContent := strings.Join(gitLines, "\n")
+	sections = append(sections, Indent(RenderCard("Git Status", ColorAccent, gitContent, panelWidth, false), 2))
+
+	return strings.Join(sections, "\n")
 }

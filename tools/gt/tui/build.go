@@ -66,10 +66,7 @@ func (b BuildModel) Update(msg tea.Msg) (BuildModel, tea.Cmd) {
 		return b, nil
 
 	case tea.KeyMsg:
-		if b.building {
-			return b, nil
-		}
-		if b.done {
+		if b.building || b.done {
 			return b, nil
 		}
 
@@ -83,15 +80,22 @@ func (b BuildModel) Update(msg tea.Msg) (BuildModel, tea.Cmd) {
 				b.cursor++
 			}
 		case " ":
-			// Toggle selection — delete key when off to keep map clean
 			if b.selected[b.cursor] {
 				delete(b.selected, b.cursor)
 			} else {
 				b.selected[b.cursor] = true
 			}
+		case "a":
+			// Toggle all
+			if len(b.selected) == len(b.statuses) {
+				b.selected = make(map[int]bool)
+			} else {
+				for i := range b.statuses {
+					b.selected[i] = true
+				}
+			}
 		case "enter":
 			if len(b.selected) == 0 {
-				// Build currently highlighted
 				b.selected[b.cursor] = true
 			}
 			b.building = true
@@ -104,51 +108,116 @@ func (b BuildModel) Update(msg tea.Msg) (BuildModel, tea.Cmd) {
 }
 
 func (b BuildModel) View(width, height int) string {
-	var sb strings.Builder
+	panelWidth := width - 6
+	if panelWidth > 104 {
+		panelWidth = 104
+	}
 
 	if b.building {
-		sb.WriteString("  " + b.spinner.View() + " Building...\n\n")
-		b.renderOutput(&sb, height-6)
-	} else if b.done {
-		if b.err != nil {
-			sb.WriteString(StyleError.Render(fmt.Sprintf("  Build failed: %v", b.err)))
-		} else {
-			sb.WriteString(StyleSuccess.Render("  Build complete!"))
-		}
-		sb.WriteString("\n\n")
-		b.renderOutput(&sb, height-8)
-		sb.WriteString("\n")
-		sb.WriteString(StyleDim.Render("  Press esc to return"))
-	} else {
-		sb.WriteString(StyleSubtitle.Render("  Select components to build:"))
-		sb.WriteString("\n\n")
-
-		for i, s := range b.statuses {
-			prefix := "  "
-			if i == b.cursor {
-				prefix = StyleAccent.Render("> ")
-			}
-
-			check := "[ ]"
-			if b.selected[i] {
-				check = StyleProfit.Render("[x]")
-			}
-
-			name := ComponentStyle(s.Component.ID, s.Component.Name)
-			sb.WriteString(fmt.Sprintf("%s%s %s\n", prefix, check, name))
-		}
-
+		return b.viewBuilding(panelWidth, height)
 	}
-
-	return sb.String()
+	if b.done {
+		return b.viewDone(panelWidth, height)
+	}
+	return b.viewSelection(panelWidth, height)
 }
 
-func (b BuildModel) renderOutput(sb *strings.Builder, maxLines int) {
-	start := 0
-	if len(b.output) > maxLines && maxLines > 0 {
-		start = len(b.output) - maxLines
+func (b BuildModel) viewSelection(panelWidth, height int) string {
+	var lines []string
+
+	for i, s := range b.statuses {
+		prefix := "  "
+		if i == b.cursor {
+			prefix = StyleAccent.Render("> ")
+		}
+
+		check := "[ ]"
+		if b.selected[i] {
+			check = StyleProfit.Render("[x]")
+		}
+
+		name := ComponentStyle(s.Component.ID, fmt.Sprintf("%-8s", s.Component.Name))
+		ver := StyleBright.Render("v" + s.Version)
+		dirty := ""
+		if s.IsDirty {
+			dirty = "  " + StyleWarning.Render(fmt.Sprintf("(%d changed)", len(s.ChangedFiles)))
+		}
+		lines = append(lines, fmt.Sprintf("%s%s %s  %s%s", prefix, check, name, ver, dirty))
+
+		// Show build steps for this component
+		steps := core.GetBuildSteps(b.root, s.Component.ID)
+		if len(steps) > 0 {
+			names := make([]string, len(steps))
+			for j, step := range steps {
+				names[j] = step.Name
+			}
+			lines = append(lines, "       "+StyleDim.Render(strings.Join(names, " -> ")))
+		}
 	}
-	for _, line := range b.output[start:] {
+
+	// Selection summary
+	count := len(b.selected)
+	if count > 0 {
+		lines = append(lines, "")
+		var names []string
+		for i, s := range b.statuses {
+			if b.selected[i] {
+				names = append(names, s.Component.Name)
+			}
+		}
+		lines = append(lines, StyleDim.Render(fmt.Sprintf("Selected: %s", strings.Join(names, ", "))))
+	}
+
+	content := strings.Join(lines, "\n")
+	return Indent(RenderCard("Build Components", ColorAccent, content, panelWidth, false), 2)
+}
+
+func (b BuildModel) viewBuilding(panelWidth, height int) string {
+	var lines []string
+	lines = append(lines, b.spinner.View()+" "+StyleDim.Render("Building..."))
+	lines = append(lines, "")
+
+	maxLines := height - 12
+	if maxLines < 5 {
+		maxLines = 5
+	}
+	lines = append(lines, styledOutput(b.output, maxLines)...)
+
+	content := strings.Join(lines, "\n")
+	return Indent(RenderCard("Building", ColorWarning, content, panelWidth, false), 2)
+}
+
+func (b BuildModel) viewDone(panelWidth, height int) string {
+	var lines []string
+	if b.err != nil {
+		lines = append(lines, StyleError.Render("Build failed: "+b.err.Error()))
+	} else {
+		lines = append(lines, StyleSuccess.Render("Build complete!"))
+	}
+	lines = append(lines, "")
+
+	maxLines := height - 12
+	if maxLines < 5 {
+		maxLines = 5
+	}
+	lines = append(lines, styledOutput(b.output, maxLines)...)
+
+	titleColor := ColorProfit
+	if b.err != nil {
+		titleColor = ColorLoss
+	}
+	content := strings.Join(lines, "\n")
+	return Indent(RenderCard("Build Result", titleColor, content, panelWidth, false), 2)
+}
+
+// styledOutput returns styled and truncated output lines for display in cards.
+func styledOutput(output []string, maxLines int) []string {
+	start := 0
+	if len(output) > maxLines && maxLines > 0 {
+		start = len(output) - maxLines
+	}
+	var lines []string
+	for _, line := range output[start:] {
 		style := StyleDim
 		if strings.HasPrefix(line, ">>>") {
 			style = StyleAccent
@@ -157,8 +226,9 @@ func (b BuildModel) renderOutput(sb *strings.Builder, maxLines int) {
 		} else if strings.Contains(line, "complete") {
 			style = StyleProfit
 		}
-		sb.WriteString("  " + style.Render(line) + "\n")
+		lines = append(lines, style.Render(line))
 	}
+	return lines
 }
 
 func (b BuildModel) runBuilds() tea.Cmd {
