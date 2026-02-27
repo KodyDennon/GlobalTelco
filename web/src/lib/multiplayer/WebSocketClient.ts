@@ -167,11 +167,23 @@ function handleServerMessage(msg: ServerMessage) {
 		});
 	} else if ('PlayerStatus' in msg) {
 		const status = msg.PlayerStatus as Record<string, unknown>;
+		const username = status.username as string;
+		const playerStatus = status.status as 'Connected' | 'Disconnected' | 'AiProxy';
 		updatePlayerStatus(
 			status.player_id as string,
-			status.username as string,
-			status.status as 'Connected' | 'Disconnected' | 'AiProxy'
+			username,
+			playerStatus
 		);
+		// Add system message to chat for lobby awareness
+		const statusMsg =
+			playerStatus === 'Connected' ? `${username} joined the world` :
+			playerStatus === 'Disconnected' ? `${username} left the world` :
+			`${username}'s corporation is now AI-managed`;
+		addChatMessage({
+			sender: '[System]',
+			message: statusMsg,
+			timestamp: Date.now()
+		});
 	} else if ('ProxySummary' in msg) {
 		const summary = msg.ProxySummary as Record<string, unknown>;
 		proxySummary.set({

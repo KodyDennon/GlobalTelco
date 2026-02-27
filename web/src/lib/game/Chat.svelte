@@ -63,9 +63,13 @@
 	{#if !collapsed}
 		<div class="chat-messages" bind:this={chatContainer} role="log" aria-live="polite">
 			{#each $chatMessages as msg}
-				<div class="chat-msg">
-					<span class="sender">{msg.sender}:</span>
-					<span class="text">{msg.message}</span>
+				<div class="chat-msg" class:system={msg.sender === '[System]'}>
+					{#if msg.sender === '[System]'}
+						<span class="text system-text">{msg.message}</span>
+					{:else}
+						<span class="sender">{msg.sender}:</span>
+						<span class="text">{msg.message}</span>
+					{/if}
 				</div>
 			{/each}
 			{#each pendingMessages as pending}
@@ -146,6 +150,17 @@
 
 	.chat-msg.pending {
 		opacity: 0.5;
+		font-style: italic;
+	}
+
+	.chat-msg.system {
+		text-align: center;
+		padding: 2px 0;
+	}
+
+	.system-text {
+		color: #9ca3af;
+		font-size: 11px;
 		font-style: italic;
 	}
 
