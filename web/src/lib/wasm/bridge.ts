@@ -113,7 +113,8 @@ export function currentTick(): number {
 	}
 }
 
-export function processCommand(command: object): void {
+/** Returns true if a failure event (InsufficientFunds, etc.) was in the result. */
+export function processCommand(command: object): boolean {
 	try {
 		const result = bridge?.process_command(JSON.stringify(command));
 		if (result && result.length > 0) {
@@ -121,13 +122,22 @@ export function processCommand(command: object): void {
 				const notifs = JSON.parse(result);
 				if (Array.isArray(notifs) && notifs.length > 0) {
 					onCommandNotifications(notifs);
+					// Check for failure events
+					const hasFailure = notifs.some((n: any) => {
+						const evt = n.event;
+						if (!evt || typeof evt !== 'object') return false;
+						return 'InsufficientFunds' in evt || 'CommandFailed' in evt || 'InvalidPlacement' in evt;
+					});
+					return hasFailure;
 				}
 			} catch {
 				// Not valid JSON, ignore
 			}
 		}
+		return false;
 	} catch (e) {
 		onBridgeError(e, 'processCommand');
+		return true;
 	}
 }
 

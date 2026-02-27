@@ -12,6 +12,7 @@
 import { get } from 'svelte/store';
 import { worldId, addGhostNode, addGhostEdge } from '$lib/stores/multiplayerState';
 import { sendCommand } from '$lib/multiplayer/WebSocketClient';
+import { exitPlacementMode } from '$lib/stores/uiState';
 import * as bridge from '$lib/wasm/bridge';
 
 /**
@@ -47,11 +48,16 @@ export function gameCommand(command: Record<string, unknown>): number | null {
 		return seq;
 	} else {
 		// Single-player: execute locally
-		bridge.processCommand(command);
+		const failed = bridge.processCommand(command);
 
 		// Immediately signal map to re-render so new nodes/edges appear
 		// without waiting for the 2-second fallback interval
 		window.dispatchEvent(new CustomEvent('map-dirty'));
+
+		// Auto-exit build mode if a build command failed (e.g. insufficient funds)
+		if (failed && ('BuildNode' in command || 'BuildEdge' in command)) {
+			exitPlacementMode();
+		}
 
 		return null;
 	}
