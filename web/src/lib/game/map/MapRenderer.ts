@@ -167,6 +167,13 @@ export class MapRenderer {
             this.currentZoom = this.map!.getZoom();
         });
 
+        // Expose camera state for BookmarkManager
+        this.map.on('moveend', () => {
+            if (!this.map) return;
+            const center = this.map.getCenter();
+            (window as any).__gtCamera = { lon: center.lng, lat: center.lat, zoom: this.map.getZoom() };
+        });
+
         // Globe projection toggle based on zoom level
         const setProjectionForZoom = (zoom: number) => {
             if (!this.map || !this.map.isStyleLoaded()) return;
@@ -1365,7 +1372,7 @@ export class MapRenderer {
     private validateNodePlacement(nodeType: string, terrain: string | null): boolean {
         if (!terrain) return true; // Unknown terrain = allow
 
-        const OCEAN_TERRAINS = new Set(['OceanShallow', 'OceanDeep', 'Ocean']);
+        const OCEAN_TERRAINS = new Set(['OceanShallow', 'OceanDeep', 'OceanTrench', 'Ocean']);
         const COASTAL_TERRAINS = new Set(['Coastal']);
         const LAND_TERRAINS = new Set(['Urban', 'Suburban', 'Rural', 'Mountainous', 'Desert', 'Tundra', 'Frozen']);
         const isOcean = OCEAN_TERRAINS.has(terrain);
@@ -1609,6 +1616,11 @@ export class MapRenderer {
         if (!this.map) return null;
         const lngLat = this.map.unproject([x, y]);
         return [lngLat.lng, lngLat.lat];
+    }
+
+    /** Get the underlying MapLibre map instance (for direct access when needed). */
+    getMap(): maplibregl.Map | null {
+        return this.map;
     }
 
     /** Fly the camera to a specific lon/lat with an optional zoom level. */

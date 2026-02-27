@@ -67,6 +67,7 @@ export const SATELLITE_COLORS: Record<string, [number, number, number]> = {
     Frozen:       [145, 155, 170],
     OceanShallow: [18, 42, 82],
     OceanDeep:    [8, 18, 42],
+    OceanTrench:  [3, 8, 22],
     Ocean:        [8, 18, 42],
 };
 
@@ -80,6 +81,7 @@ export const TERRAIN_OVERLAY_COLORS: Record<string, [number, number, number]> = 
     Coastal:      [80, 140, 155],
     OceanShallow: [25, 60, 110],
     OceanDeep:    [10, 22, 55],
+    OceanTrench:  [4, 10, 28],
     Ocean:        [10, 22, 55],
     Tundra:       [120, 140, 155],
     Frozen:       [155, 165, 180],

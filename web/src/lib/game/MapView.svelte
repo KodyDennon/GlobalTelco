@@ -155,7 +155,7 @@
 
 				// Track viewport bounds for minimap
 				const updateViewportBounds = () => {
-					const map = (renderer as any)?.map;
+					const map = renderer?.getMap();
 					if (!map) return;
 					const bounds = map.getBounds();
 					viewport.set({
@@ -166,7 +166,7 @@
 					});
 					zoomLevel.set(map.getZoom());
 				};
-				const mapRef = (renderer as any)?.map;
+				const mapRef = renderer?.getMap();
 				if (mapRef) {
 					mapRef.on('moveend', updateViewportBounds);
 					mapRef.on('zoomend', updateViewportBounds);
@@ -177,7 +177,7 @@
 				// Map navigation from keyboard
 				const handleMapPan = (e: Event) => {
 					const { direction } = (e as CustomEvent).detail;
-					const map = (renderer as any)?.map;
+					const map = renderer?.getMap();
 					if (!map) return;
 					const offset = 100; // pixels
 					const offsets: Record<string, [number, number]> = {
@@ -192,20 +192,20 @@
 
 				const handleMapZoom = (e: Event) => {
 					const { direction } = (e as CustomEvent).detail;
-					const map = (renderer as any)?.map;
+					const map = renderer?.getMap();
 					if (!map) return;
 					if (direction === 'in') map.zoomIn({ duration: 200 });
 					else map.zoomOut({ duration: 200 });
 				};
 
 				const handleMapResetView = () => {
-					const map = (renderer as any)?.map;
+					const map = renderer?.getMap();
 					if (!map) return;
 					map.flyTo({ center: [0, 20], zoom: 2, pitch: 0, duration: 1000 });
 				};
 
 				const handleMapTogglePitch = () => {
-					const map = (renderer as any)?.map;
+					const map = renderer?.getMap();
 					if (!map) return;
 					const currentPitch = map.getPitch();
 					map.easeTo({ pitch: currentPitch > 10 ? 0 : 45, duration: 500 });
@@ -214,7 +214,7 @@
 				// Minimap click navigation
 				const handleMinimapNavigate = (e: Event) => {
 					const { lon, lat } = (e as CustomEvent).detail;
-					const map = (renderer as any)?.map;
+					const map = renderer?.getMap();
 					if (!map) return;
 					map.flyTo({ center: [lon, lat], duration: 400 });
 				};

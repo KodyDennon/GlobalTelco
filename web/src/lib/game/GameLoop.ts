@@ -280,7 +280,7 @@ function yieldToUI(): Promise<void> {
 	return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
-export async function initGame(config?: object) {
+export async function initGame(config?: Partial<import('$lib/wasm/types').WorldConfig>) {
 	loadingStage.set(0);
 	mapReady.set(false);
 	await bridge.initWasm();
@@ -307,7 +307,7 @@ export async function initGame(config?: object) {
 		}
 	});
 
-	bridge.newGame(config as any);
+	bridge.newGame(config);
 	loadingStage.set(2);
 
 	// Yield so the loading screen renders "Initializing Audio..."

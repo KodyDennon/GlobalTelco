@@ -493,8 +493,8 @@ export function createInfraLayers(opts: {
             }
 
             // Build the display path: spline if waypoints exist, straight line otherwise
-            const rawWaypoints: [number, number][] = (edge as any).waypoints ?? [];
-            const deployment: DeploymentMethod = (edge as any).deployment ?? 'Underground';
+            const rawWaypoints: [number, number][] = edge.waypoints ?? [];
+            const deployment: DeploymentMethod = edge.deployment ?? 'Underground';
 
             let path: [number, number][];
             if (rawWaypoints.length >= 2) {

@@ -47,6 +47,7 @@
 			const isOcean =
 				cell.terrain === 'OceanShallow' ||
 				cell.terrain === 'OceanDeep' ||
+				cell.terrain === 'OceanTrench' ||
 				cell.terrain === 'Ocean';
 			const radius = isOcean ? 1.5 : 2.5;
 

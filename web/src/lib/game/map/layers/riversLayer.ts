@@ -33,11 +33,11 @@ interface CoastGlowSegment {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const OCEAN_TYPES = new Set(['OceanShallow', 'OceanDeep', 'Ocean']);
+const OCEAN_TYPES = new Set(['OceanShallow', 'OceanDeep', 'OceanTrench', 'Ocean']);
 const WATER_ADJACENT = new Set(['Coastal', 'OceanShallow']);
 
 /** Terrain types that rivers cannot flow through. */
-const IMPASSABLE_FOR_RIVERS = new Set(['OceanShallow', 'OceanDeep', 'Ocean', 'Frozen', 'Tundra']);
+const IMPASSABLE_FOR_RIVERS = new Set(['OceanShallow', 'OceanDeep', 'OceanTrench', 'Ocean', 'Frozen', 'Tundra']);
 
 /** Terrain types that are good river sources (high ground). */
 const RIVER_SOURCE_TERRAIN = new Set(['Mountainous']);
@@ -48,6 +48,7 @@ const LOW_TERRAIN = new Set(['Rural', 'Suburban', 'Coastal']);
 // ── Pseudo-elevation for river tracing ─────────────────────────────────────
 
 const TERRAIN_HEIGHT: Record<string, number> = {
+    OceanTrench: -0.1,
     OceanDeep: 0,
     Ocean: 0,
     OceanShallow: 0.1,

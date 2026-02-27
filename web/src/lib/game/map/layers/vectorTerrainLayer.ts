@@ -23,10 +23,11 @@ interface CoastlineSegment {
 
 // ── Ocean / terrain classification ─────────────────────────────────────────
 
-const OCEAN_TYPES = new Set(['OceanShallow', 'OceanDeep', 'Ocean']);
+const OCEAN_TYPES = new Set(['OceanShallow', 'OceanDeep', 'OceanTrench', 'Ocean']);
 
 /** Pseudo-elevation by terrain type (0 = deep ocean, 1 = high mountain). */
 const TERRAIN_ELEVATION: Record<string, number> = {
+    OceanTrench:  -0.1,
     OceanDeep:    0.0,
     Ocean:        0.1,
     OceanShallow: 0.2,

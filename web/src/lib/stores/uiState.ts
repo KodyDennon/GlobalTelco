@@ -92,7 +92,6 @@ export const activePanel = derived(
 
 export const selectedEntityId = writable<number | null>(null);
 export const selectedEntityType = writable<string | null>(null);
-export const hoveredEntityId = writable<number | null>(null);
 export const buildMode = writable<string | null>(null); // null | 'node' | 'edge'
 export const buildEdgeSource = writable<number | null>(null); // source node ID for edge building
 export const buildMenuLocation = writable<{ lon: number; lat: number } | null>(null);
@@ -296,6 +295,7 @@ export const TERRAIN_COST_MULTIPLIERS: Record<string, number> = {
 	Coastal: 1.5,
 	OceanShallow: 5.0,
 	OceanDeep: 10.0,
+	OceanTrench: 15.0,
 	Tundra: 2.5,
 	Frozen: 4.0,
 };

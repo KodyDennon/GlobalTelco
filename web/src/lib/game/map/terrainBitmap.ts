@@ -131,7 +131,7 @@ function pixelsToCanvas(pixels: Uint8ClampedArray, w: number, h: number): HTMLCa
 // ── Synchronous fallback ────────────────────────────────────────────────────
 // Used when Web Workers are unavailable. Identical algorithm to the worker.
 
-const OCEAN_TYPES = new Set(['OceanShallow', 'OceanDeep', 'Ocean']);
+const OCEAN_TYPES = new Set(['OceanShallow', 'OceanDeep', 'OceanTrench', 'Ocean']);
 const LAT_MIN = -85;
 const LAT_MAX = 85;
 

@@ -42,14 +42,14 @@
 			: 0
 	);
 
-	let avgHealth = $derived(() => {
+	let avgHealth = $derived.by(() => {
 		if (infra.edges.length === 0) return 1;
 		let sum = 0;
 		for (const e of infra.edges) sum += e.health;
 		return sum / infra.edges.length;
 	});
 
-	let alertCount = $derived(() => {
+	let alertCount = $derived.by(() => {
 		let count = 0;
 		for (const e of infra.edges) {
 			if (e.utilization > 0.9 || e.health < 0.5) count++;
@@ -1192,22 +1192,25 @@
 		</div>
 
 		<div class="stat-card">
-			<div class="stat-label">Network Health</div>
-			<div class="stat-value mono" style="color: {healthColor(avgHealth())}">
-				{(avgHealth() * 100).toFixed(0)}%
+			<div class="stat-label">Network Health {healthTrend === 'up' ? '▲' : healthTrend === 'down' ? '▼' : '─'}</div>
+			<div class="stat-value mono" style="color: {healthColor(nodeHealthBreakdown.overallPct / 100)}">
+				{nodeHealthBreakdown.overallPct.toFixed(0)}%
 			</div>
-			<div class="stat-sub" style="color: {healthColor(avgHealth())}">
-				avg edge health
+			<div class="stat-sub">
+				<span style="color: var(--green)">{nodeHealthBreakdown.healthy}</span> /
+				<span style="color: var(--yellow, #f59e0b)">{nodeHealthBreakdown.degraded}</span> /
+				<span style="color: var(--red)">{nodeHealthBreakdown.damaged}</span>
+				of {nodeHealthBreakdown.total} nodes
 			</div>
 		</div>
 
 		<div class="stat-card">
 			<div class="stat-label">Active Alerts</div>
-			<div class="stat-value mono" style="color: {alertCount() > 0 ? 'var(--red)' : 'var(--green)'}">
-				{alertCount()}
+			<div class="stat-value mono" style="color: {alertCount > 0 ? 'var(--red)' : 'var(--green)'}">
+				{alertCount}
 			</div>
 			<div class="stat-sub muted">
-				{alertCount() === 0 ? 'all clear' : 'edges stressed'}
+				{alertCount === 0 ? 'all clear' : 'edges stressed'}
 			</div>
 		</div>
 	</div>

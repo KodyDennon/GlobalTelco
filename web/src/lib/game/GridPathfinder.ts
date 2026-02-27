@@ -10,7 +10,7 @@ import type { GridCell } from '$lib/wasm/types';
 const LAND_TERRAINS = new Set([
 	'Urban', 'Suburban', 'Rural', 'Mountainous', 'Desert', 'Coastal', 'Tundra', 'Frozen'
 ]);
-const OCEAN_TERRAINS = new Set(['OceanShallow', 'OceanDeep', 'Ocean']);
+const OCEAN_TERRAINS = new Set(['OceanShallow', 'OceanDeep', 'OceanTrench', 'Ocean']);
 const COASTAL_TERRAINS = new Set(['Coastal']);
 
 /** Cost multipliers for land-based edges (Fiber, Copper) traversing different terrain */
@@ -26,6 +26,7 @@ function landTraversalCost(terrain: string): number {
 		case 'Mountainous': return 3.0;   // Very hard terrain
 		case 'OceanShallow': return 15.0; // Strongly discouraged — need submarine for this
 		case 'OceanDeep': return 50.0;    // Essentially impassable for land cables
+		case 'OceanTrench': return 100.0; // Extreme depth — impossible for land cables
 		case 'Ocean': return 50.0;
 		default: return 2.0;
 	}
@@ -35,6 +36,7 @@ function landTraversalCost(terrain: string): number {
 function submarineTraversalCost(terrain: string): number {
 	switch (terrain) {
 		case 'OceanDeep': return 1.0;     // Ideal for submarine cables
+		case 'OceanTrench': return 1.5;   // Passable but costly — extreme depth
 		case 'OceanShallow': return 1.2;
 		case 'Ocean': return 1.0;
 		case 'Coastal': return 1.5;       // Transition zone — landing point

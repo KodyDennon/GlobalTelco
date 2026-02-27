@@ -23,19 +23,21 @@ interface DepthContourSegment {
 
 // ── Ocean classification and depth colors ────────────────────────────────
 
-const OCEAN_TYPES = new Set(['OceanShallow', 'OceanDeep', 'Ocean']);
+const OCEAN_TYPES = new Set(['OceanShallow', 'OceanDeep', 'OceanTrench', 'Ocean']);
 
 /** Depth-based fill colors for ocean cells. */
 const OCEAN_DEPTH_COLORS: Record<string, [number, number, number, number]> = {
     OceanShallow: [18, 42, 82, 230],   // #122a52 — lighter blue
     Ocean:        [8, 26, 42, 240],     // #081a2a — medium depth
     OceanDeep:    [4, 13, 21, 250],     // #040d15 — very deep
+    OceanTrench:  [2, 6, 12, 255],     // #02060c — extreme depth (trench)
 };
 
 /** Depth level classification: 0 = shallow, 1 = medium, 2 = deep. */
 function getDepthLevel(terrain: string): number {
     if (terrain === 'OceanShallow') return 0;
     if (terrain === 'Ocean') return 1;
+    if (terrain === 'OceanTrench') return 3;
     return 2; // OceanDeep
 }
 

@@ -103,7 +103,7 @@
 	);
 
 	// Team breakdown (simulated departments based on headcount)
-	let teamBreakdown = $derived(() => {
+	let teamBreakdown = $derived.by(() => {
 		const total = $playerCorp?.employee_count ?? 0;
 		if (total === 0) return [];
 		// Approximate team distribution
@@ -195,7 +195,7 @@
 		<div class="section">
 			<h3>{$tr('panels.team_management')}</h3>
 			<div class="team-grid">
-				{#each teamBreakdown() as team}
+				{#each teamBreakdown as team}
 					<div class="team-card">
 						<div class="team-header">
 							<span class="team-name">{team.name}</span>
@@ -252,7 +252,7 @@
 		<div class="section">
 			<h3>{$tr('panels.department_overview')}</h3>
 			<div class="dept-overview">
-				{#each teamBreakdown() as team}
+				{#each teamBreakdown as team}
 					<div class="dept-row">
 						<span class="dept-name">{team.name}</span>
 						<div class="dept-bar-bg">

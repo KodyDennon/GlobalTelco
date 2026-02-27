@@ -63,9 +63,8 @@
 			});
 			console.log('[MP] Snapshot received, tick:', snapshot.tick, 'size:', snapshot.state_json.length);
 			await initMultiplayer(snapshot.state_json);
-			console.log('[MP] Game initialized from snapshot, starting loop (paused)...');
+			console.log('[MP] Game initialized, starting loop...');
 			start();
-			console.log('[MP] Navigating to /game');
 			goto('/game');
 		} catch (e) {
 			console.error('[MP] Failed to join multiplayer game:', e);

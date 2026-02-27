@@ -24,7 +24,7 @@ interface WorkerResponse {
     height: number;
 }
 
-const OCEAN_TYPES = new Set(['OceanShallow', 'OceanDeep', 'Ocean']);
+const OCEAN_TYPES = new Set(['OceanShallow', 'OceanDeep', 'OceanTrench', 'Ocean']);
 const LAT_MIN = -85;
 const LAT_MAX = 85;
 

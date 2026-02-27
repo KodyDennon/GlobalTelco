@@ -111,7 +111,7 @@
 	);
 
 	// Node type distribution for medium/large views
-	let nodeTypeDistribution = $derived(() => {
+	let nodeTypeDistribution = $derived.by(() => {
 		const counts: Record<string, number> = {};
 		for (const node of infraNodes) {
 			counts[node.node_type] = (counts[node.node_type] ?? 0) + 1;
@@ -267,7 +267,7 @@
 		<div class="section">
 			<h3>{$tr('panels.asset_distribution')}</h3>
 			<div class="dist-list">
-				{#each nodeTypeDistribution() as [type, count]}
+				{#each nodeTypeDistribution as [type, count]}
 					<div class="dist-row">
 						<span class="dist-label">{type.replace(/([A-Z])/g, ' $1').trim()}</span>
 						<div class="dist-bar-bg">

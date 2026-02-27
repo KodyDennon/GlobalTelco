@@ -29,6 +29,7 @@ interface ElevationContourLine {
 // Values in 0..1 range where 0 = deep ocean and 1 = high mountain peak.
 
 const TERRAIN_ELEVATION: Record<string, number> = {
+    OceanTrench:  -0.1,
     OceanDeep:    0.0,
     Ocean:        0.05,
     OceanShallow: 0.15,
@@ -42,7 +43,7 @@ const TERRAIN_ELEVATION: Record<string, number> = {
     Mountainous:  0.85,
 };
 
-const OCEAN_TYPES = new Set(['OceanShallow', 'OceanDeep', 'Ocean']);
+const OCEAN_TYPES = new Set(['OceanShallow', 'OceanDeep', 'OceanTrench', 'Ocean']);
 
 // Contour band boundaries (every 20% of the 0..1 elevation range)
 const CONTOUR_THRESHOLDS = [0.2, 0.4, 0.6, 0.8];

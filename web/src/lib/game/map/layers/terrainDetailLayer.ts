@@ -35,7 +35,7 @@ interface DetailPolygon {
 
 // ── Terrain classification sets ──────────────────────────────────────────
 
-const OCEAN_TYPES = new Set(['OceanShallow', 'OceanDeep', 'Ocean']);
+const OCEAN_TYPES = new Set(['OceanShallow', 'OceanDeep', 'OceanTrench', 'Ocean']);
 
 // ── Utilities ──────────────────────────────────────────────────────────────
 
@@ -419,7 +419,7 @@ function generateOceanDepthDetail(poly: CellPolygon, polygons: DetailPolygon[]):
 	const noise = cellHash(poly.index);
 
 	const isShallow = poly.terrain === 'OceanShallow';
-	const isDeep = poly.terrain === 'OceanDeep';
+	const isDeep = poly.terrain === 'OceanDeep' || poly.terrain === 'OceanTrench';
 
 	// Inner gradient polygon at 50-65% from center
 	const scale = 0.52 + noise * 0.13;

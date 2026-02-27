@@ -61,7 +61,7 @@ type StreetPopTier = 'hamlet' | 'town' | 'city' | 'metropolis';
 
 // ── Terrain cost functions for road routing ────────────────────────────────
 
-const OCEAN_TERRAINS = new Set(['OceanShallow', 'OceanDeep', 'Ocean']);
+const OCEAN_TERRAINS = new Set(['OceanShallow', 'OceanDeep', 'OceanTrench', 'Ocean']);
 
 /**
  * Road traversal cost for A* pathfinding.

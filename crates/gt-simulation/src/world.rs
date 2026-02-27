@@ -670,7 +670,8 @@ impl GameWorld {
                     None => continue,
                 };
 
-                let mut best_pair: Option<((f64, f64), (f64, f64), f64)> = None;
+                type CoordPair = ((f64, f64), (f64, f64), f64);
+                let mut best_pair: Option<CoordPair> = None;
                 for c1 in r1_cities {
                     for c2 in r2_cities {
                         let dist = haversine_km_deg(c1.1, c1.2, c2.1, c2.2);

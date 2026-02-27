@@ -239,8 +239,7 @@ fn recompute_traffic_matrix_if_needed(world: &mut GameWorld) {
         let (src_id, src_demand) = city_demands[i];
         external_traffic.push((src_id, src_demand * 0.4));
 
-        for j in (i + 1)..city_demands.len() {
-            let (dst_id, dst_demand) = city_demands[j];
+        for &(dst_id, dst_demand) in &city_demands[(i + 1)..] {
             let traffic = src_demand * dst_demand / total_demand;
             if traffic > 0.1 {
                 od_pairs.push(TrafficDemand {
@@ -268,31 +267,38 @@ fn recompute_traffic_matrix_if_needed(world: &mut GameWorld) {
 
 // ─── Traffic Flow Accumulation ────────────────────────────────────────────────
 
+/// Shared lookup data for traffic routing functions.
+struct RoutingContext {
+    city_access: HashMap<EntityId, (EntityId, EntityId)>,
+    backbone_nodes: Vec<u64>,
+    node_cap: HashMap<u64, f64>,
+    edge_cap: HashMap<u64, f64>,
+}
+
 fn accumulate_traffic_flows(world: &mut GameWorld) {
     // Reset loads
     reset_all_loads(world);
 
     // Build lookup structures
-    let city_access = find_city_access_nodes(world);
-    let node_cap = collect_node_capacities(world);
-    let edge_cap = collect_edge_capacities(world);
-    let backbone_nodes = find_backbone_nodes(world);
+    let ctx = RoutingContext {
+        city_access: find_city_access_nodes(world),
+        node_cap: collect_node_capacities(world),
+        edge_cap: collect_edge_capacities(world),
+        backbone_nodes: find_backbone_nodes(world),
+    };
 
     let mut accum = TrafficAccumulator::new();
 
     // Route inter-city OD traffic
     let od_pairs = world.traffic_matrix.od_pairs.clone();
     for od in &od_pairs {
-        route_od_pair(world, od, &city_access, &node_cap, &edge_cap, &mut accum);
+        route_od_pair(world, od, &ctx, &mut accum);
     }
 
     // Route external (internet-bound) traffic
     let external = world.traffic_matrix.external_traffic.clone();
     for &(city_id, ext_demand) in &external {
-        route_external_traffic(
-            world, city_id, ext_demand, &city_access, &backbone_nodes,
-            &node_cap, &edge_cap, &mut accum,
-        );
+        route_external_traffic(world, city_id, ext_demand, &ctx, &mut accum);
     }
 
     // Apply accumulated loads to world state
@@ -439,19 +445,17 @@ fn find_backbone_nodes(world: &GameWorld) -> Vec<u64> {
 fn route_od_pair(
     world: &GameWorld,
     od: &TrafficDemand,
-    city_access: &HashMap<EntityId, (EntityId, EntityId)>,
-    node_cap: &HashMap<u64, f64>,
-    edge_cap: &HashMap<u64, f64>,
+    ctx: &RoutingContext,
     accum: &mut TrafficAccumulator,
 ) {
-    let (src_node, src_owner) = match city_access.get(&od.source_city) {
+    let (src_node, src_owner) = match ctx.city_access.get(&od.source_city) {
         Some(&v) => v,
         None => {
             accum.record_dropped(od.demand, None);
             return;
         }
     };
-    let (dst_node, _) = match city_access.get(&od.dest_city) {
+    let (dst_node, _) = match ctx.city_access.get(&od.dest_city) {
         Some(&v) => v,
         None => {
             accum.record_dropped(od.demand, Some(src_owner));
@@ -474,7 +478,7 @@ fn route_od_pair(
     match path {
         Some(ref p) if p.len() >= 2 => {
             let served = push_traffic_on_path(
-                p, od.demand, node_cap, edge_cap,
+                p, od.demand, &ctx.node_cap, &ctx.edge_cap,
                 &mut accum.node_load, &mut accum.edge_load, &world.network,
             );
             accum.record_served(served, src_owner);
@@ -492,13 +496,10 @@ fn route_external_traffic(
     world: &GameWorld,
     city_id: EntityId,
     demand: f64,
-    city_access: &HashMap<EntityId, (EntityId, EntityId)>,
-    backbone_nodes: &[u64],
-    node_cap: &HashMap<u64, f64>,
-    edge_cap: &HashMap<u64, f64>,
+    ctx: &RoutingContext,
     accum: &mut TrafficAccumulator,
 ) {
-    let (access_node, owner) = match city_access.get(&city_id) {
+    let (access_node, owner) = match ctx.city_access.get(&city_id) {
         Some(&v) => v,
         None => {
             accum.record_dropped(demand, None);
@@ -508,7 +509,7 @@ fn route_external_traffic(
 
     // Find shortest path to any backbone node
     let mut best_path: Option<Vec<u64>> = None;
-    for &bb in backbone_nodes {
+    for &bb in &ctx.backbone_nodes {
         if let Some(path) = world.network.get_cached_path(access_node, bb) {
             if best_path.is_none() || path.len() < best_path.as_ref().unwrap().len() {
                 best_path = Some(path.clone());
@@ -519,7 +520,7 @@ fn route_external_traffic(
     match best_path {
         Some(ref p) if p.len() >= 2 => {
             let served = push_traffic_on_path(
-                p, demand, node_cap, edge_cap,
+                p, demand, &ctx.node_cap, &ctx.edge_cap,
                 &mut accum.node_load, &mut accum.edge_load, &world.network,
             );
             accum.record_served(served, owner);
