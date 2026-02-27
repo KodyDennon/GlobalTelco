@@ -252,6 +252,13 @@ export function createOverlayLayers(opts: {
         }
     }
 
+    // ── Coverage overlap (competitive) overlay ───────────────────────────────
+    if (activeOverlay === 'coverage_overlap') {
+        if (bridge.isInitialized()) {
+            layers.push(...createCoverageOverlapLayers(cities, regions, cellRadiusM));
+        }
+    }
+
     return layers;
 }
 
@@ -499,6 +506,249 @@ function createSpectrumOverlayLayers(regions: Region[], cities: City[]): Layer[]
                 parameters: { depthTest: false },
             }));
         }
+    }
+
+    return layers;
+}
+
+// ── Coverage overlap (competitive) overlay ──────────────────────────────────
+
+/**
+ * Builds the competitive coverage overlap visualization:
+ * (a) Cell-level heatmap: cells where 2+ corporations have infrastructure,
+ *     colored by competition intensity (blue = 2 corps, yellow = 3, red = 4+)
+ * (b) Region-level competition borders: regions with multiple competitors get
+ *     a stroked polygon outline showing the number of active competitors
+ * (c) Expansion frontier: cells where only one corporation has recently built
+ *     in a contested region, shown as faint markers indicating expansion reach
+ */
+function createCoverageOverlapLayers(
+    cities: City[],
+    regions: Region[],
+    cellRadiusM: number,
+): Layer[] {
+    const layers: Layer[] = [];
+    const allInfra = bridge.getAllInfrastructure();
+    const corps = bridge.getAllCorporations();
+    const playerCorpId = bridge.getPlayerCorpId();
+
+    // Build corp index for color lookup
+    const corpIndex = new Map<number, number>();
+    for (let i = 0; i < corps.length; i++) {
+        corpIndex.set(corps[i].id, i);
+    }
+
+    // Build cell_index -> region_id lookup and cell_index -> position lookup
+    const cellToRegion = new Map<number, number>();
+    const cellPositions = new Map<number, [number, number]>();
+    for (const city of cities) {
+        for (const cp of city.cell_positions) {
+            cellToRegion.set(cp.index, city.region_id);
+            cellPositions.set(cp.index, [cp.lon, cp.lat]);
+        }
+    }
+
+    // Count distinct corporations per cell
+    const cellCorpSets = new Map<number, Set<number>>();
+    for (const node of allInfra.nodes) {
+        if (!cellCorpSets.has(node.cell_index)) {
+            cellCorpSets.set(node.cell_index, new Set());
+        }
+        cellCorpSets.get(node.cell_index)!.add(node.owner);
+    }
+
+    // ── (a) Cell-level competition heatmap ──────────────────────────────────
+
+    interface OverlapCell {
+        position: [number, number];
+        competitorCount: number;
+        hasPlayer: boolean;
+    }
+    const overlapCells: OverlapCell[] = [];
+
+    for (const [cellIndex, corpSet] of cellCorpSets) {
+        if (corpSet.size < 2) continue; // only cells with 2+ corps
+        const pos = cellPositions.get(cellIndex);
+        if (!pos) continue;
+        overlapCells.push({
+            position: pos,
+            competitorCount: corpSet.size,
+            hasPlayer: corpSet.has(playerCorpId),
+        });
+    }
+
+    if (overlapCells.length > 0) {
+        const overlayRadius = cellRadiusM * 1.05;
+
+        layers.push(new ScatterplotLayer({
+            id: 'overlay-coverage-overlap',
+            data: overlapCells,
+            getPosition: (d: OverlapCell) => d.position,
+            getFillColor: (d: OverlapCell) => {
+                const count = d.competitorCount;
+                // 2 corps: blue-cyan, 3: amber-yellow, 4+: red-hot
+                if (count >= 4) return [239, 68, 68, 160] as [number, number, number, number];
+                if (count === 3) return [245, 158, 11, 140] as [number, number, number, number];
+                return [59, 130, 246, 120] as [number, number, number, number];
+            },
+            getRadius: overlayRadius,
+            radiusMinPixels: 6,
+            pickable: false,
+            parameters: {
+                depthTest: false,
+                blend: true,
+                blendFunc: [
+                    WebGLRenderingContext.SRC_ALPHA,
+                    WebGLRenderingContext.ONE_MINUS_SRC_ALPHA,
+                ],
+            },
+        }));
+
+        // Brighter ring around cells where the player is competing
+        const playerContested = overlapCells.filter(c => c.hasPlayer);
+        if (playerContested.length > 0) {
+            layers.push(new ScatterplotLayer({
+                id: 'overlay-coverage-overlap-player',
+                data: playerContested,
+                getPosition: (d: OverlapCell) => d.position,
+                getFillColor: [0, 0, 0, 0],
+                getLineColor: (d: OverlapCell) => {
+                    const count = d.competitorCount;
+                    if (count >= 4) return [255, 100, 100, 200] as [number, number, number, number];
+                    if (count === 3) return [255, 200, 50, 180] as [number, number, number, number];
+                    return [100, 180, 255, 160] as [number, number, number, number];
+                },
+                getLineWidth: 2,
+                lineWidthUnits: 'pixels' as const,
+                stroked: true,
+                filled: false,
+                getRadius: overlayRadius,
+                radiusMinPixels: 6,
+                pickable: false,
+                parameters: { depthTest: false },
+            }));
+        }
+    }
+
+    // ── (b) Region competition borders ──────────────────────────────────────
+
+    // Count distinct corps per region
+    const regionCorps = new Map<number, Set<number>>();
+    for (const node of allInfra.nodes) {
+        const regionId = cellToRegion.get(node.cell_index);
+        if (regionId === undefined) continue;
+        if (!regionCorps.has(regionId)) {
+            regionCorps.set(regionId, new Set());
+        }
+        regionCorps.get(regionId)!.add(node.owner);
+    }
+
+    interface CompetitionRegion {
+        polygon: [number, number][];
+        corpCount: number;
+        color: [number, number, number, number];
+    }
+    const competitionRegions: CompetitionRegion[] = [];
+
+    for (const region of regions) {
+        if (!region.boundary_polygon || region.boundary_polygon.length < 3) continue;
+        const corpSet = regionCorps.get(region.id);
+        if (!corpSet || corpSet.size < 2) continue;
+
+        const count = corpSet.size;
+        let color: [number, number, number, number];
+        if (count >= 4) color = [239, 68, 68, 100];
+        else if (count === 3) color = [245, 158, 11, 80];
+        else color = [59, 130, 246, 60];
+
+        competitionRegions.push({
+            polygon: region.boundary_polygon,
+            corpCount: count,
+            color,
+        });
+    }
+
+    if (competitionRegions.length > 0) {
+        layers.push(new PolygonLayer({
+            id: 'overlay-competition-regions',
+            data: competitionRegions,
+            getPolygon: (d: CompetitionRegion) => d.polygon,
+            getFillColor: (d: CompetitionRegion) => d.color,
+            getLineColor: (d: CompetitionRegion) => [d.color[0], d.color[1], d.color[2], 180] as [number, number, number, number],
+            getLineWidth: 2,
+            lineWidthUnits: 'pixels',
+            filled: true,
+            stroked: true,
+            pickable: false,
+            parameters: { depthTest: false },
+        } as any));
+    }
+
+    // ── (c) Expansion frontier — single-owner cells in contested regions ────
+
+    interface ExpansionCell {
+        position: [number, number];
+        ownerColor: [number, number, number];
+        isPlayer: boolean;
+    }
+    const expansionCells: ExpansionCell[] = [];
+
+    for (const [cellIndex, corpSet] of cellCorpSets) {
+        if (corpSet.size !== 1) continue; // only single-owner cells are expansion frontier
+        const pos = cellPositions.get(cellIndex);
+        if (!pos) continue;
+
+        // Only mark cells in regions with multiple competing corps — these are
+        // the outposts / frontier cells where a single corp has established
+        // exclusive presence in a contested market.
+        const regionId = cellToRegion.get(cellIndex);
+        if (regionId === undefined) continue;
+        const regionCorpSet = regionCorps.get(regionId);
+        if (!regionCorpSet || regionCorpSet.size < 2) continue;
+
+        const ownerId = corpSet.values().next().value;
+        if (ownerId === undefined) continue;
+        const idx = corpIndex.get(ownerId);
+        const baseColor = idx !== undefined
+            ? CORP_COLORS[idx % CORP_COLORS.length]
+            : [160, 160, 160] as [number, number, number];
+
+        expansionCells.push({
+            position: pos,
+            ownerColor: baseColor,
+            isPlayer: ownerId === playerCorpId,
+        });
+    }
+
+    if (expansionCells.length > 0) {
+        const overlayRadius = cellRadiusM * 0.8;
+
+        // Faint filled circles showing each corp's frontier presence
+        layers.push(new ScatterplotLayer({
+            id: 'overlay-expansion-frontier',
+            data: expansionCells,
+            getPosition: (d: ExpansionCell) => d.position,
+            getFillColor: (d: ExpansionCell) => [
+                d.ownerColor[0],
+                d.ownerColor[1],
+                d.ownerColor[2],
+                d.isPlayer ? 80 : 45,
+            ] as [number, number, number, number],
+            getLineColor: (d: ExpansionCell) => [
+                d.ownerColor[0],
+                d.ownerColor[1],
+                d.ownerColor[2],
+                d.isPlayer ? 140 : 80,
+            ] as [number, number, number, number],
+            getLineWidth: 1,
+            lineWidthUnits: 'pixels' as const,
+            stroked: true,
+            filled: true,
+            getRadius: overlayRadius,
+            radiusMinPixels: 4,
+            pickable: false,
+            parameters: { depthTest: false },
+        }));
     }
 
     return layers;

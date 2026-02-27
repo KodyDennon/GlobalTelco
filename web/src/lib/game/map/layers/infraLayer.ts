@@ -464,11 +464,11 @@ export function createInfraLayers(opts: {
                 opacity = Math.min(255, opacity + 40);
             }
 
-            // Competitor visual hierarchy: reduce opacity and width for non-player corps
+            // Competitor visual hierarchy: competitors are dimmer and thinner than player's infra
             const isPlayerEdge = playerCorpId !== undefined && corp.id === playerCorpId;
             if (!isPlayerEdge && !isCongestion && !isTraffic) {
-                opacity = Math.floor(opacity * 0.7);
-                width = width * 0.8;
+                opacity = Math.floor(opacity * 0.55);
+                width = width * 0.7;
             }
 
             // Health-based color tinting (green > 0.8, amber 0.5-0.8, red < 0.5)
@@ -555,10 +555,10 @@ export function createInfraLayers(opts: {
                 trafficNodeFlowMap,
             ));
 
-            // Competitor visual hierarchy: reduce opacity for non-player corps
+            // Competitor visual hierarchy: competitors are dimmer than player's nodes
             const isPlayerNode = playerCorpId !== undefined && corp.id === playerCorpId;
             if (!isPlayerNode && !isCongestion && !isTraffic) {
-                nodeColor[3] = Math.min(nodeColor[3], 200);
+                nodeColor[3] = Math.min(nodeColor[3], 170);
             }
 
             allNodes.push({
@@ -749,7 +749,7 @@ export function createInfraLayers(opts: {
             getFillColor: (d: ProcessedNode) => d.color,
             getElevation: (d: ProcessedNode) => {
                 const h = COLUMN_HEIGHT[d.network_level] || 200;
-                return d.isPlayer ? h : h * 0.85;
+                return d.isPlayer ? h : h * 0.7;
             },
             pickable: true,
             autoHighlight: true,
@@ -771,10 +771,10 @@ export function createInfraLayers(opts: {
                 getIcon: (d: ProcessedNode) => d.icon,
                 iconAtlas: iconAtlas as any,
                 iconMapping: iconMapping,
-                getSize: (d: ProcessedNode) => d.tierSize * (d.isPlayer ? 0.8 : 0.68),
-                sizeMinPixels: 10,
+                getSize: (d: ProcessedNode) => d.tierSize * (d.isPlayer ? 0.8 : 0.6),
+                sizeMinPixels: 8,
                 sizeMaxPixels: 48,
-                getColor: (d: ProcessedNode) => d.isPlayer ? [255, 255, 255, 230] : [255, 255, 255, 180],
+                getColor: (d: ProcessedNode) => d.isPlayer ? [255, 255, 255, 230] : [255, 255, 255, 150],
                 // Elevate icon above column top
                 getPixelOffset: [0, -20],
                 pickable: false,
@@ -791,8 +791,8 @@ export function createInfraLayers(opts: {
                 getIcon: (d: ProcessedNode) => d.icon,
                 iconAtlas: iconAtlas as any,
                 iconMapping: iconMapping,
-                getSize: (d: ProcessedNode) => d.isPlayer ? d.tierSize : d.tierSize * 0.85,
-                sizeMinPixels: 12,
+                getSize: (d: ProcessedNode) => d.isPlayer ? d.tierSize : d.tierSize * 0.75,
+                sizeMinPixels: 10,
                 sizeMaxPixels: 72,
                 getColor: (d: ProcessedNode) => d.color,
                 pickable: true,
@@ -812,7 +812,7 @@ export function createInfraLayers(opts: {
                 data: allNodes,
                 getPosition: (d: ProcessedNode) => d.position,
                 getFillColor: (d: ProcessedNode) => validateRGBA(d.color),
-                getRadius: (d: ProcessedNode) => d.isPlayer ? d.tierSize * 500 : d.tierSize * 425,
+                getRadius: (d: ProcessedNode) => d.isPlayer ? d.tierSize * 500 : d.tierSize * 375,
                 radiusMinPixels: 6,
                 radiusMaxPixels: 24,
                 pickable: true,
@@ -825,6 +825,48 @@ export function createInfraLayers(opts: {
                 },
             }));
         }
+    }
+
+    // ── 5b. Player ownership glow — faint halo behind player's nodes ────────
+    const playerNodes = allNodes.filter(n => n.isPlayer);
+    if (playerNodes.length > 0 && !isCongestion && !isTraffic) {
+        const playerColor = playerCorpId !== undefined
+            ? getCorpColor(playerCorpId, corpIndex)
+            : [16, 185, 129] as [number, number, number];
+        layers.push(new ScatterplotLayer({
+            id: 'infra-player-glow',
+            data: playerNodes,
+            getPosition: (d: ProcessedNode) => d.position,
+            getFillColor: [...playerColor, 35],
+            getRadius: (d: ProcessedNode) => d.tierSize * 1000,
+            radiusMinPixels: 14,
+            radiusMaxPixels: 50,
+            pickable: false,
+            parameters: {
+                depthTest: false,
+                blend: true,
+                blendFunc: [WebGLRenderingContext.SRC_ALPHA, WebGLRenderingContext.ONE],
+            },
+        }));
+    }
+
+    // ── 5c. Competitor corp color badges — small colored dot under competitor nodes ──
+    const competitorNodes = allNodes.filter(n => !n.isPlayer);
+    if (competitorNodes.length > 0 && !isCongestion && !isTraffic && currentZoom > 3) {
+        layers.push(new ScatterplotLayer({
+            id: 'infra-competitor-badge',
+            data: competitorNodes,
+            getPosition: (d: ProcessedNode) => d.position,
+            getFillColor: (d: ProcessedNode) => {
+                const c = getCorpColor(d.owner, corpIndex);
+                return [c[0], c[1], c[2], 60];
+            },
+            getRadius: (d: ProcessedNode) => d.tierSize * 600,
+            radiusMinPixels: 8,
+            radiusMaxPixels: 30,
+            pickable: false,
+            parameters: { depthTest: false },
+        }));
     }
 
     // ── 6. Hover effects ─────────────────────────────────────────────────────
