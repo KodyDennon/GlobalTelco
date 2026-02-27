@@ -824,6 +824,9 @@ export class MapRenderer {
             getAlignmentBaseline: 'bottom',
             getPixelOffset: [0, -10],
             fontFamily: 'Inter, sans-serif',
+            outlineWidth: 2,
+            outlineColor: [0, 0, 0, 200],
+            fontSettings: { sdf: true, buffer: 8 },
             extensions: [new CollisionFilterExtension()],
             collisionEnabled: true,
             getCollisionPriority: (d: City) => d.population,
@@ -844,6 +847,9 @@ export class MapRenderer {
             getAlignmentBaseline: 'center',
             fontFamily: 'Inter, sans-serif',
             fontWeight: 'bold',
+            outlineWidth: 3,
+            outlineColor: [0, 0, 0, 160],
+            fontSettings: { sdf: true, buffer: 8 },
             parameters: { depthTest: false }
         });
     }

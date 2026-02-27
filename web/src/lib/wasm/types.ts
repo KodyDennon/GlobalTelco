@@ -269,6 +269,14 @@ export interface ResearchInfo {
 	throughput_bonus: number;
 	cost_reduction: number;
 	reliability_bonus: number;
+	/** "None" | "Standard" | "Premium" */
+	independent_tier: string;
+	/** Per-unit license price (for PerUnit patent license type) */
+	per_unit_price: number;
+	/** Lease duration in ticks (for Lease patent license type) */
+	lease_duration: number;
+	/** Patent license type string from Rust debug format */
+	patent_license_type: string;
 }
 
 export interface BuildOption {

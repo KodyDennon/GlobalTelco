@@ -208,6 +208,24 @@ function activateHotbarSlot(index: number): void {
 	enterPlacementMode(slot.itemType, slot.category);
 }
 
+// ── Context-sensitive number keys (1-6: panel groups when not building, hotbar otherwise) ──
+
+const PANEL_GROUP_ORDER: PanelGroupType[] = ['finance', 'operations', 'diplomacy', 'research', 'market', 'info'];
+
+function numberKeyAction(index: number): void {
+	// If in build mode or a build item is selected, use hotbar
+	if (get(buildMode) !== null) {
+		activateHotbarSlot(index);
+		return;
+	}
+	// If index 0-5, toggle panel group; if 6-8, only hotbar
+	if (index < PANEL_GROUP_ORDER.length) {
+		togglePanelGroup(PANEL_GROUP_ORDER[index]);
+	} else {
+		activateHotbarSlot(index);
+	}
+}
+
 // ── Map dispatch helpers ──────────────────────────────────────────────────
 
 function panMap(direction: 'up' | 'down' | 'left' | 'right'): void {
@@ -252,13 +270,14 @@ export function createDefaultBindings(manager: KeyboardManager): void {
 	manager.bind('shift+3', () => setSpeed(4));
 	manager.bind('shift+4', () => setSpeed(8));
 
-	// Hotbar slots (1-9)
-	manager.bind('1', () => activateHotbarSlot(0));
-	manager.bind('2', () => activateHotbarSlot(1));
-	manager.bind('3', () => activateHotbarSlot(2));
-	manager.bind('4', () => activateHotbarSlot(3));
-	manager.bind('5', () => activateHotbarSlot(4));
-	manager.bind('6', () => activateHotbarSlot(5));
+	// Number keys 1-6: context-sensitive (panel groups when idle, hotbar when building)
+	// Number keys 7-9: always hotbar (no panel group for those indices)
+	manager.bind('1', () => numberKeyAction(0));
+	manager.bind('2', () => numberKeyAction(1));
+	manager.bind('3', () => numberKeyAction(2));
+	manager.bind('4', () => numberKeyAction(3));
+	manager.bind('5', () => numberKeyAction(4));
+	manager.bind('6', () => numberKeyAction(5));
 	manager.bind('7', () => activateHotbarSlot(6));
 	manager.bind('8', () => activateHotbarSlot(7));
 	manager.bind('9', () => activateHotbarSlot(8));

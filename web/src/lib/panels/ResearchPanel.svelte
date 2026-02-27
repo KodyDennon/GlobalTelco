@@ -153,9 +153,23 @@
 							Requires: {tech.prerequisites.join(', ')}
 						</div>
 					{/if}
+					{#if tech.independent_tier && tech.independent_tier !== 'None'}
+						<div class="independent-info">
+							{#if tech.independent_tier === 'Premium'}
+								<span class="badge premium-badge">Premium Independent</span>
+								<span class="muted">+10% stats, can patent</span>
+							{:else}
+								<span class="badge standard-badge">Standard Independent</span>
+								<span class="muted">normal stats, no patent</span>
+							{/if}
+						</div>
+					{/if}
 					{#if tech.completed && tech.patent_status !== 'None'}
 						<div class="patent-info">
 							Patent: {tech.patent_status}
+							{#if tech.patent_owner !== null && tech.patent_owner !== playerCorpId}
+								<span class="muted">by {tech.patent_owner_name ?? 'Unknown'}</span>
+							{/if}
 							{#if tech.license_price > 0}
 								| License: {formatMoney(tech.license_price)}/tick
 							{/if}
@@ -343,6 +357,28 @@
 		color: var(--text-dim);
 		margin-top: 3px;
 		font-style: italic;
+	}
+
+	.muted { color: var(--text-muted); font-size: 10px; }
+
+	.independent-info {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 3px;
+		font-size: 10px;
+	}
+
+	.premium-badge {
+		background: rgba(245, 158, 11, 0.15);
+		color: var(--amber);
+		border: 1px solid rgba(245, 158, 11, 0.3);
+	}
+
+	.standard-badge {
+		background: rgba(59, 130, 246, 0.1);
+		color: var(--blue);
+		border: 1px solid rgba(59, 130, 246, 0.2);
 	}
 
 	.patent-info {
