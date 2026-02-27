@@ -123,7 +123,7 @@
 			<div class="propose-form">
 				<label class="form-label">
 					<span class="muted">Infrastructure</span>
-					<select bind:value={selectedNode}>
+					<select bind:value={selectedNode} aria-label="Select infrastructure node">
 						<option value={0}>Select node...</option>
 						{#each operationalNodes as node}
 							<option value={node.id}>{node.node_type} (HP: {(node.health * 100).toFixed(0)}%)</option>
@@ -132,7 +132,7 @@
 				</label>
 				<label class="form-label">
 					<span class="muted">Target Corporation</span>
-					<select bind:value={targetCorp}>
+					<select bind:value={targetCorp} aria-label="Select target corporation">
 						<option value={0}>Select corporation...</option>
 						{#each aiCorps as corp}
 							<option value={corp.id}>{corp.name}</option>
@@ -336,8 +336,7 @@
 		font-size: 12px;
 	}
 
-	.propose-form select,
-	.propose-form input[type='text'] {
+	.propose-form select {
 		background: rgba(17, 24, 39, 0.8);
 		border: 1px solid var(--border);
 		color: var(--text-secondary);

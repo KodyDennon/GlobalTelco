@@ -183,18 +183,19 @@
 <div class="new-game">
 	<div class="layout">
 		<!-- LEFT COLUMN: Configuration -->
-		<div class="config-panel">
+		<div class="config-panel" role="form" aria-label="New game configuration">
 			<h2>{$tr('menu.new_game')}</h2>
 
 			<!-- Preset buttons -->
 			<div class="section-label">{$tr('menu.world_preset')}</div>
-			<div class="preset-grid">
+			<div class="preset-grid" role="group" aria-label="World presets">
 				{#each Object.entries(PRESETS) as [key, def]}
 					<button
 						class="preset-btn"
 						class:active={preset === key}
 						onclick={() => applyPreset(key as WorldPreset)}
 						title={$tr(def.descKey)}
+						aria-pressed={preset === key}
 					>
 						<span class="preset-icon">
 							{#if key === 'real_earth'}
@@ -303,7 +304,7 @@
 						bind:value={seed}
 						class="seed-input"
 					/>
-					<button class="btn compact" onclick={randomizeSeed}>
+					<button class="btn compact" onclick={randomizeSeed} aria-label="Randomize world seed">
 						{$tr('menu.randomize_seed')}
 					</button>
 				</div>
@@ -313,13 +314,15 @@
 			<button
 				class="advanced-toggle"
 				onclick={() => (advancedOpen = !advancedOpen)}
+				aria-expanded={advancedOpen}
+				aria-controls="advanced-settings-section"
 			>
 				<span class="toggle-arrow" class:open={advancedOpen}>&#9654;</span>
 				{$tr('menu.advanced_settings')}
 			</button>
 
 			{#if advancedOpen}
-				<div class="advanced-section">
+				<div class="advanced-section" id="advanced-settings-section">
 					<div class="form-group">
 						<label for="continents">
 							{$tr('menu.continent_count')}: {continentCount}
@@ -404,14 +407,14 @@
 		</div>
 
 		<!-- RIGHT COLUMN: World Preview -->
-		<div class="preview-panel">
+		<div class="preview-panel" aria-label="World preview">
 			<div class="preview-header">
 				<h3>{$tr('menu.world_preview')}</h3>
 				<div class="preview-buttons">
-					<button class="btn compact" onclick={handlePreview}>
+					<button class="btn compact" onclick={handlePreview} aria-label="Preview the world with current settings">
 						{$tr('menu.preview')}
 					</button>
-					<button class="btn compact" onclick={handleGenerateNew}>
+					<button class="btn compact" onclick={handleGenerateNew} aria-label="Generate a new world with a random seed">
 						{$tr('menu.generate_new')}
 					</button>
 				</div>
@@ -461,7 +464,7 @@
 			{/if}
 
 			<!-- Config summary card -->
-			<div class="config-summary">
+			<div class="config-summary" role="region" aria-label="Configuration summary">
 				<div class="summary-row">
 					<span class="summary-label">{$tr('menu.world_preset')}</span>
 					<span class="summary-value">{$tr(PRESETS[preset].labelKey)}</span>

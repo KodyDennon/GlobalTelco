@@ -162,6 +162,15 @@ pub struct GameWorld {
     // Traffic flow data (computed by utilization system)
     pub traffic_matrix: gt_common::types::TrafficMatrix,
 
+    /// Per-node utilization history (last 100 ticks). Updated by utilization system.
+    /// Key: entity_id (node or edge), Value: ring buffer of utilization values (0.0-1.0).
+    #[serde(default)]
+    pub utilization_history: HashMap<EntityId, std::collections::VecDeque<f64>>,
+
+    // Weather system (Phase 7.5): active weather conditions per region
+    #[serde(default)]
+    pub weather_conditions: Vec<crate::components::weather::WeatherCondition>,
+
     // Network graph state
     pub network: gt_infrastructure::NetworkGraph,
 
@@ -235,6 +244,8 @@ impl GameWorld {
             cell_spacing_km: 100.0,
             cell_coverage: HashMap::new(),
             traffic_matrix: gt_common::types::TrafficMatrix::default(),
+            utilization_history: HashMap::new(),
+            weather_conditions: Vec::new(),
             network: gt_infrastructure::NetworkGraph::new(),
             rng_seed,
             tick_rng_counter: 0,
@@ -391,7 +402,7 @@ impl GameWorld {
             } else {
                 1
             };
-            let cell_budget = cell_budget.max(1).min(15);
+            let cell_budget = cell_budget.clamp(1, 15);
 
             let center_pos = self.grid_cell_positions.get(city.cell_index);
             let region_cells = region_cell_sets.get(&real_region_id);
@@ -1574,7 +1585,7 @@ impl GameWorld {
                 price_per_unit,
             } => {
                 if let Some(corp_id) = self.player_corp_id {
-                    let price_tier = crate::components::PriceTier::from_str(&tier);
+                    let price_tier = crate::components::PriceTier::parse_str(&tier);
                     self.region_pricing.insert(
                         (corp_id, region),
                         crate::components::RegionPricing {
@@ -1602,7 +1613,7 @@ impl GameWorld {
                 priority,
                 auto_repair,
             } => {
-                let tier = crate::components::MaintenanceTier::from_str(&priority);
+                let tier = crate::components::MaintenanceTier::parse_str(&priority);
                 self.maintenance_priorities.insert(
                     entity,
                     crate::components::MaintenancePriority { tier, auto_repair },
@@ -1841,6 +1852,184 @@ impl GameWorld {
         });
 
         forecasts
+    }
+
+    /// Get weather forecasts by combining active weather conditions with
+    /// disaster forecast look-ahead. Forecasts predict weather events 5-10
+    /// disaster windows (250-500 ticks) ahead, using the same deterministic
+    /// RNG peek technique as `get_disaster_forecasts`.
+    ///
+    /// Returns a list of `WeatherForecast` structs that the frontend can
+    /// display as early warnings, allowing the player to reinforce or
+    /// reroute infrastructure before weather events hit.
+    pub fn get_weather_forecasts(&self) -> Vec<crate::components::weather::WeatherForecast> {
+        use crate::components::weather::{WeatherForecast, WeatherType};
+
+        let mut forecasts = Vec::new();
+        let current_tick = self.tick;
+
+        // Map disaster type names to WeatherType variants
+        let map_disaster_to_weather = |name: &str| -> WeatherType {
+            match name {
+                "Earthquake" => WeatherType::Earthquake,
+                "Hurricane" => WeatherType::Hurricane,
+                "Flooding" => WeatherType::Flooding,
+                "Landslide" => WeatherType::Storms, // landslides accompany storms
+                _ => WeatherType::Clear, // non-weather events (cyber, political, etc.)
+            }
+        };
+
+        // 1. Include active weather conditions as "now" forecasts (eta_ticks = 0, probability = 1.0)
+        for wc in &self.weather_conditions {
+            if wc.is_expired(current_tick) {
+                continue;
+            }
+            let region_name = self
+                .regions
+                .get(&wc.region_id)
+                .map(|r| r.name.clone())
+                .unwrap_or_default();
+            forecasts.push(WeatherForecast {
+                region_id: wc.region_id,
+                region_name,
+                predicted_type: wc.condition,
+                probability: 1.0,
+                eta_ticks: 0,
+                predicted_severity: wc.severity,
+            });
+        }
+
+        // 2. Convert disaster forecasts into weather forecasts (look-ahead)
+        let disaster_forecasts = self.get_disaster_forecasts();
+        for df in &disaster_forecasts {
+            let weather_type = map_disaster_to_weather(&df.disaster_type);
+            if matches!(weather_type, WeatherType::Clear) {
+                continue; // skip non-weather disasters (cyber, political, etc.)
+            }
+            let eta = if df.predicted_tick > current_tick {
+                (df.predicted_tick - current_tick) as u32
+            } else {
+                0
+            };
+            forecasts.push(WeatherForecast {
+                region_id: df.region_id,
+                region_name: df.region_name.clone(),
+                predicted_type: weather_type,
+                probability: df.probability,
+                eta_ticks: eta,
+                predicted_severity: df.probability * 0.5 + 0.1, // estimate
+            });
+        }
+
+        // 3. Generate terrain-based weather forecasts from region characteristics.
+        // Regions with specific terrain profiles get additional weather forecasts
+        // that aren't tied to the disaster RNG (e.g., persistent heat in deserts).
+        let rng_seed = self.rng_seed;
+        let peek_random = |counter: &mut u64| -> f64 {
+            *counter = counter
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(rng_seed);
+            (*counter >> 33) as f64 / (1u64 << 31) as f64
+        };
+
+        let weather_types = [
+            WeatherType::Storms,
+            WeatherType::IceStorm,
+            WeatherType::Flooding,
+            WeatherType::ExtremeHeat,
+            WeatherType::Hurricane,
+        ];
+
+        let mut region_data: Vec<_> = self
+            .regions
+            .iter()
+            .map(|(&id, r)| (id, r.name.clone(), r.disaster_risk, r.cells.clone()))
+            .collect();
+        region_data.sort_unstable_by_key(|t| t.0);
+
+        for (region_id, region_name, disaster_risk, cells) in &region_data {
+            // Determine dominant terrain for this region
+            let dominant_terrain = self.dominant_terrain_for_cells(cells);
+
+            // For each weather type, compute a terrain-weighted probability
+            let mut rng_counter =
+                current_tick.wrapping_mul(rng_seed.wrapping_add(3)).wrapping_add(*region_id);
+            for _ in 0..5 {
+                peek_random(&mut rng_counter);
+            }
+
+            for &wtype in &weather_types {
+                let affinity = wtype.terrain_affinity(&dominant_terrain);
+                if affinity < 0.3 {
+                    continue; // too unlikely for this terrain
+                }
+
+                let roll = peek_random(&mut rng_counter);
+                let threshold = 0.03 * disaster_risk * affinity;
+                if roll >= threshold {
+                    continue;
+                }
+
+                // Predict ETA: 5-10 disaster windows (250-500 ticks)
+                let eta_roll = peek_random(&mut rng_counter);
+                let eta_ticks = 250 + (eta_roll * 250.0) as u32;
+
+                let prob = ((threshold - roll) / threshold).clamp(0.0, 1.0);
+
+                // Don't duplicate if we already have a forecast for this region + type
+                let already_forecast = forecasts.iter().any(|f| {
+                    f.region_id == *region_id && f.predicted_type == wtype
+                });
+                if already_forecast {
+                    continue;
+                }
+
+                forecasts.push(WeatherForecast {
+                    region_id: *region_id,
+                    region_name: region_name.clone(),
+                    predicted_type: wtype,
+                    probability: prob,
+                    eta_ticks,
+                    predicted_severity: prob * 0.4 + 0.1,
+                });
+            }
+        }
+
+        // Sort by eta ascending, then probability descending
+        forecasts.sort_by(|a, b| {
+            a.eta_ticks.cmp(&b.eta_ticks).then_with(|| {
+                b.probability
+                    .partial_cmp(&a.probability)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+        });
+
+        forecasts
+    }
+
+    /// Determine the most common terrain type across a set of cell indices.
+    fn dominant_terrain_for_cells(&self, cells: &[usize]) -> gt_common::types::TerrainType {
+        use gt_common::types::TerrainType;
+        let mut counts: HashMap<u8, u32> = HashMap::new();
+        for &cell_idx in cells {
+            let terrain = self.get_cell_terrain(cell_idx).unwrap_or(TerrainType::Rural);
+            *counts.entry(terrain as u8).or_insert(0) += 1;
+        }
+        // Find the terrain with the highest count
+        let best = counts.into_iter().max_by_key(|&(_, c)| c).map(|(t, _)| t);
+        match best {
+            Some(0) => TerrainType::Urban,
+            Some(1) => TerrainType::Suburban,
+            Some(2) => TerrainType::Rural,
+            Some(3) => TerrainType::Mountainous,
+            Some(4) => TerrainType::Desert,
+            Some(5) => TerrainType::Coastal,
+            Some(6) => TerrainType::OceanShallow,
+            Some(7) => TerrainType::OceanDeep,
+            Some(8) => TerrainType::Tundra,
+            Some(9) => TerrainType::Frozen,
+            _ => TerrainType::Rural,
+        }
     }
 
     /// Query the road network for A* pathfinding between two (lon, lat) points.
@@ -3327,7 +3516,7 @@ impl GameWorld {
 
         self.covert_ops
             .entry(corp_id)
-            .or_insert_with(CovertOps::new)
+            .or_default()
             .active_missions
             .push(mission);
     }
@@ -3348,7 +3537,7 @@ impl GameWorld {
                     } else {
                         // Use tick as a simple deterministic "random" index
                         let idx = self.tick as usize % nodes.len();
-                        nodes.iter().nth(idx).copied()
+                        nodes.get(idx).copied()
                     }
                 })
                 .unwrap_or(0)
@@ -3403,7 +3592,7 @@ impl GameWorld {
 
         self.covert_ops
             .entry(corp_id)
-            .or_insert_with(CovertOps::new)
+            .or_default()
             .active_missions
             .push(mission);
     }
@@ -3427,7 +3616,7 @@ impl GameWorld {
         let ops = self
             .covert_ops
             .entry(corp_id)
-            .or_insert_with(CovertOps::new);
+            .or_default();
         ops.security_level = level;
 
         self.event_queue.push(
@@ -4319,7 +4508,7 @@ impl GameWorld {
             l.owner == corp_id
                 && l.band == band
                 && l.is_active(self.tick)
-                && node_region.map_or(false, |r| l.region_id == r)
+                && (node_region == Some(l.region_id))
         });
 
         if !has_license {

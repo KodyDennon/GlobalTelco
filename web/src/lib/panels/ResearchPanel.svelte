@@ -70,7 +70,7 @@
 
 </script>
 
-<div class="panel">
+<div class="panel" aria-label="Research panel">
 	<!-- R&D Budget -->
 	<div class="section">
 		<h3>R&D Budget</h3>
@@ -82,6 +82,7 @@
 				step="50000"
 				bind:value={rdBudget}
 				oninput={setBudget}
+				aria-label="R&D budget per tick"
 			/>
 			<span class="mono green">{formatMoney(rdBudget)}/tick</span>
 		</div>
@@ -94,7 +95,7 @@
 			<div class="active-research">
 				<div class="ar-name">{activeResearch.name}</div>
 				<div class="ar-cat">{activeResearch.category_name}</div>
-				<div class="progress-bar">
+				<div class="progress-bar" role="progressbar" aria-valuenow={Math.round(activeResearch.progress_pct * 100)} aria-valuemin={0} aria-valuemax={100} aria-label="Research progress for {activeResearch.name}">
 					<div class="progress-fill" style="width: {activeResearch.progress_pct * 100}%"></div>
 				</div>
 				<div class="ar-stats">
@@ -107,12 +108,14 @@
 	{/if}
 
 	<!-- Category Tabs -->
-	<div class="tabs">
+	<div class="tabs" role="tablist" aria-label="Research categories">
 		{#each CATEGORIES as cat}
 			<button
 				class="tab"
 				class:active={activeCategory === cat.key}
 				onclick={() => (activeCategory = cat.key)}
+				role="tab"
+				aria-selected={activeCategory === cat.key}
 			>
 				{cat.label}
 			</button>

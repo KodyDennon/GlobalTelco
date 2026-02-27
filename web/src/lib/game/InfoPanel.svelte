@@ -91,7 +91,7 @@
 </script>
 
 {#if entityData}
-	<div class="info-panel">
+	<div class="info-panel" role="complementary" aria-label="Selected entity details">
 		<div class="panel-header">
 			<span class="panel-title">
 				{entityData.entityType === 'city' ? entityData.name : entityData.entityType === 'edge' ? entityData.edge_type : entityData.node_type}

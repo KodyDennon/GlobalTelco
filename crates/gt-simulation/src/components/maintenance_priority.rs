@@ -2,10 +2,12 @@ use serde::{Deserialize, Serialize};
 
 /// Maintenance priority tier for infrastructure nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum MaintenanceTier {
     /// Immediate repair, highest cost priority.
     Critical,
     /// Standard repair queue.
+    #[default]
     Standard,
     /// Repaired when resources are available.
     Low,
@@ -13,11 +15,6 @@ pub enum MaintenanceTier {
     Deferred,
 }
 
-impl Default for MaintenanceTier {
-    fn default() -> Self {
-        MaintenanceTier::Standard
-    }
-}
 
 impl MaintenanceTier {
     /// Cost multiplier for maintenance at this tier.
@@ -40,7 +37,7 @@ impl MaintenanceTier {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse_str(s: &str) -> Self {
         match s {
             "Critical" => MaintenanceTier::Critical,
             "Low" => MaintenanceTier::Low,

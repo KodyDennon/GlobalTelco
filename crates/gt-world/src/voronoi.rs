@@ -298,7 +298,7 @@ fn sphere_circumcenter(a: (f64, f64, f64), b: (f64, f64, f64), c: (f64, f64, f64
 }
 
 /// Order polygon vertices around a center point by angle on the tangent plane.
-fn order_polygon_around_center(vertices: &mut Vec<(f64, f64, f64)>, center: (f64, f64, f64)) {
+fn order_polygon_around_center(vertices: &mut [(f64, f64, f64)], center: (f64, f64, f64)) {
     if vertices.len() < 3 {
         return;
     }

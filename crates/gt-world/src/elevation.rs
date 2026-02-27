@@ -102,15 +102,15 @@ pub fn generate_elevation(
         .cloned()
         .fold(f64::INFINITY, f64::min);
 
-    for i in 0..n {
-        if elevations[i] >= sea_level {
+    for elev in elevations.iter_mut() {
+        if *elev >= sea_level {
             // Land: normalize to 0-9000m
             let range = (max_elev - sea_level).max(0.001);
-            elevations[i] = ((elevations[i] - sea_level) / range) * 9000.0;
+            *elev = ((*elev - sea_level) / range) * 9000.0;
         } else {
             // Ocean: normalize to -10000-0m
             let range = (sea_level - min_elev).max(0.001);
-            elevations[i] = -((sea_level - elevations[i]) / range) * 10000.0;
+            *elev = -((sea_level - *elev) / range) * 10000.0;
         }
     }
 
@@ -190,9 +190,9 @@ fn assign_tectonic_plates(
     }
 
     // Handle any unassigned cells (shouldn't happen with connected graph)
-    for i in 0..n {
-        if assignments[i] == usize::MAX {
-            assignments[i] = 0;
+    for a in assignments.iter_mut() {
+        if *a == usize::MAX {
+            *a = 0;
         }
     }
 

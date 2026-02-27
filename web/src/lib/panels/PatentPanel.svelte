@@ -176,7 +176,7 @@
 							</label>
 							<label class="form-field">
 								<span class="field-label">Type</span>
-								<select bind:value={licenseType}>
+								<select bind:value={licenseType} aria-label="License type">
 									{#each LICENSE_TYPES as lt}
 										<option value={lt.value}>{lt.label}</option>
 									{/each}

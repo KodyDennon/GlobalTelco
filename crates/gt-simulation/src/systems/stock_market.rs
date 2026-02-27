@@ -1,4 +1,3 @@
-use crate::components::StockMarket;
 use crate::world::GameWorld;
 use gt_common::types::EntityId;
 
@@ -38,7 +37,7 @@ pub fn run(world: &mut GameWorld) {
                 let sm = world
                     .stock_market
                     .entry(corp_id)
-                    .or_insert_with(StockMarket::new);
+                    .or_default();
                 sm.public = true;
                 sm.ipo_tick = Some(tick);
                 // Set initial share price based on cash

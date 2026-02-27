@@ -25,6 +25,7 @@ pub mod routing;
 pub mod spectrum;
 pub mod stock_market;
 pub mod utilization;
+pub mod weather;
 
 use crate::world::GameWorld;
 
@@ -43,6 +44,7 @@ pub fn run_all_systems(world: &mut GameWorld) {
     finance::run(world);
     contract::run(world);
     ai::run(world);
+    weather::run(world);          // Weather conditions (Phase 7.5) — runs before disaster to influence damage
     disaster::run(world);
     regulation::run(world);
     research::run(world);

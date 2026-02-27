@@ -18,6 +18,57 @@ pub fn run(world: &mut GameWorld) {
     apply_exchange_point_latency(world);
     recompute_traffic_matrix_if_needed(world);
     accumulate_traffic_flows(world);
+    record_utilization_history(world);
+}
+
+/// Maximum number of historical utilization snapshots to keep per entity.
+const UTILIZATION_HISTORY_MAX: usize = 100;
+
+/// Record current utilization values for all nodes and edges into history ring buffers.
+fn record_utilization_history(world: &mut GameWorld) {
+    // Record node utilization
+    let node_utils: Vec<(u64, f64)> = world
+        .infra_nodes
+        .iter()
+        .filter(|(id, _)| !world.constructions.contains_key(id))
+        .map(|(&id, _)| {
+            let util = world
+                .capacities
+                .get(&id)
+                .map(|c| c.utilization())
+                .unwrap_or(0.0);
+            (id, util)
+        })
+        .collect();
+
+    for (id, util) in node_utils {
+        let history = world
+            .utilization_history
+            .entry(id)
+            .or_default();
+        if history.len() >= UTILIZATION_HISTORY_MAX {
+            history.pop_front();
+        }
+        history.push_back(util);
+    }
+
+    // Record edge utilization
+    let edge_utils: Vec<(u64, f64)> = world
+        .infra_edges
+        .iter()
+        .map(|(&id, edge)| (id, edge.utilization()))
+        .collect();
+
+    for (id, util) in edge_utils {
+        let history = world
+            .utilization_history
+            .entry(id)
+            .or_default();
+        if history.len() >= UTILIZATION_HISTORY_MAX {
+            history.pop_front();
+        }
+        history.push_back(util);
+    }
 }
 
 // ─── Capacity & Latency Reset ─────────────────────────────────────────────────

@@ -20,7 +20,7 @@
 	let speeds = $derived(isSandbox ? [...baseSpeedList, ludicrousSpeed] : baseSpeedList);
 </script>
 
-<div class="speed-controls" role="radiogroup" aria-label={$tr('speed.normal')}>
+<div class="speed-controls" role="radiogroup" aria-label="Game speed">
 	{#each speeds as s}
 		<button
 			class:active={currentSpeed === s.key}

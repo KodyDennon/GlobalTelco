@@ -3,17 +3,14 @@ use serde::{Deserialize, Serialize};
 
 /// Regional pricing tier for a corporation's services.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum PriceTier {
     Budget,
+    #[default]
     Standard,
     Premium,
 }
 
-impl Default for PriceTier {
-    fn default() -> Self {
-        PriceTier::Standard
-    }
-}
 
 impl PriceTier {
     /// Revenue multiplier relative to base service price.
@@ -44,7 +41,7 @@ impl PriceTier {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse_str(s: &str) -> Self {
         match s {
             "Budget" => PriceTier::Budget,
             "Premium" => PriceTier::Premium,

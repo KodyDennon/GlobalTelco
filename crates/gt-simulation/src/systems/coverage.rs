@@ -116,14 +116,13 @@ pub fn run(world: &mut GameWorld) {
                     backhauled_nodes.insert(edge.target);
                     changed = true;
                 }
-            } else if dst_ok && !src_ok {
-                if world.infra_nodes.contains_key(&edge.source)
+            } else if dst_ok && !src_ok
+                && world.infra_nodes.contains_key(&edge.source)
                     && !world.constructions.contains_key(&edge.source)
                 {
                     backhauled_nodes.insert(edge.source);
                     changed = true;
                 }
-            }
         }
     }
 
@@ -301,7 +300,7 @@ pub fn run(world: &mut GameWorld) {
             let entry = world
                 .cell_coverage
                 .entry(cell_idx)
-                .or_insert_with(CellCoverage::default);
+                .or_default();
             entry.signal_strength += final_signal;
             entry.bandwidth += final_bandwidth;
             entry.node_count += 1;
@@ -343,7 +342,7 @@ pub fn run(world: &mut GameWorld) {
             let entry = world
                 .cell_coverage
                 .entry(ci)
-                .or_insert_with(CellCoverage::default);
+                .or_default();
             entry.bandwidth += backbone_bw;
             entry.signal_strength += backbone_bw * 0.5;
             entry.add_corp_bandwidth(owner, backbone_bw);
@@ -377,7 +376,7 @@ pub fn run(world: &mut GameWorld) {
                         let entry = world
                             .cell_coverage
                             .entry(ci)
-                            .or_insert_with(CellCoverage::default);
+                            .or_default();
                         entry.bandwidth += corridor_bw;
                         entry.signal_strength += corridor_bw * 0.3;
                         entry.add_corp_bandwidth(owner, corridor_bw);

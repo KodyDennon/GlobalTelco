@@ -86,7 +86,7 @@
 		</div>
 		{#if showProposeForm}
 			<div class="propose-form">
-				<select bind:value={proposeTarget}>
+				<select bind:value={proposeTarget} aria-label="Target corporation for alliance">
 					<option value={0}>Select corporation...</option>
 					{#each aiCorps as corp}
 						<option value={corp.id}>{corp.name}</option>

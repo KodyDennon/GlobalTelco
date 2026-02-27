@@ -35,7 +35,7 @@ pub fn run(world: &mut GameWorld) {
     let tick = world.current_tick();
 
     // Run AI every 5 ticks (and always on tick 1 so AI acts immediately)
-    if tick > 1 && tick % 5 != 0 {
+    if tick > 1 && !tick.is_multiple_of(5) {
         return;
     }
 
@@ -62,7 +62,7 @@ pub fn run(world: &mut GameWorld) {
     }
 
     // Check for AI-to-AI mergers (DefensiveConsolidator acquires small neighbors)
-    if tick > 0 && tick % 200 == 0 {
+    if tick > 0 && tick.is_multiple_of(200) {
         check_ai_mergers(world);
     }
 }
@@ -254,7 +254,7 @@ fn execute_compete(
 
     // Find city cells where a competitor dominates but satisfaction is low
     let mut targets: Vec<(usize, f64)> = Vec::new();
-    for (_, city) in &world.cities {
+    for city in world.cities.values() {
         if city.infrastructure_satisfaction > 0.7 {
             continue;
         }
@@ -284,7 +284,7 @@ fn execute_compete(
 
     if let Some(&(cell_index, _)) = targets.first() {
         let node_type = NodeType::CellTower;
-        if fin.cash < node_type.construction_cost() as i64 * 3 {
+        if fin.cash < node_type.construction_cost() * 3 {
             return;
         }
 

@@ -78,6 +78,81 @@ pub fn run(world: &mut GameWorld) {
         }
     }
 
+    // ── Update SLA performance for active contracts ────────────────────────
+    // SLA performance is based on the provider's actual network health and
+    // available capacity relative to the contracted capacity.
+    let active_contract_ids: Vec<u64> = world
+        .contracts
+        .iter()
+        .filter(|(_, c)| c.status == ContractStatus::Active)
+        .map(|(&id, _)| id)
+        .collect();
+
+    for &cid in &active_contract_ids {
+        let (provider_id, contracted_capacity, sla_target) = match world.contracts.get(&cid) {
+            Some(c) => (c.from, c.capacity, c.sla_target),
+            None => continue,
+        };
+
+        // Calculate provider's average node health
+        let (health_sum, health_count) = world
+            .corp_infra_nodes
+            .get(&provider_id)
+            .map(|nodes| {
+                let mut sum = 0.0_f64;
+                let mut count = 0_u32;
+                for &nid in nodes {
+                    if let Some(h) = world.healths.get(&nid) {
+                        sum += h.condition;
+                        count += 1;
+                    }
+                }
+                (sum, count)
+            })
+            .unwrap_or((0.0, 0));
+
+        let avg_health = if health_count > 0 {
+            health_sum / health_count as f64
+        } else {
+            0.0
+        };
+
+        // Calculate available capacity vs contracted capacity
+        let available_capacity: f64 = world
+            .corp_infra_nodes
+            .get(&provider_id)
+            .map(|nodes| {
+                nodes
+                    .iter()
+                    .filter_map(|&nid| world.capacities.get(&nid))
+                    .map(|cap| (cap.max_throughput - cap.current_load).max(0.0))
+                    .sum()
+            })
+            .unwrap_or(0.0);
+
+        let capacity_ratio = if contracted_capacity > 0.0 {
+            (available_capacity / contracted_capacity).min(1.0)
+        } else {
+            1.0
+        };
+
+        // SLA performance = health * capacity_fulfillment * 100
+        // This represents the percentage uptime/quality being delivered
+        let performance = avg_health * capacity_ratio * 100.0;
+
+        if let Some(contract) = world.contracts.get_mut(&cid) {
+            contract.sla_current_performance = performance;
+
+            // Accrue penalty if below SLA target
+            if performance < sla_target {
+                // Penalty accrual: proportional to how far below target
+                let shortfall = sla_target - performance;
+                let penalty_per_tick = (contract.penalty as f64 * shortfall / 100.0) as i64;
+                contract.sla_penalty_accrued += penalty_per_tick;
+            }
+        }
+    }
+
     // Clean up old expired/breached contracts (after 100 ticks)
     let to_remove: Vec<u64> = world
         .contracts

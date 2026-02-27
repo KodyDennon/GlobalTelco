@@ -54,10 +54,10 @@
 	}
 </script>
 
-<div class="bm-panel">
+<div class="bm-panel" role="region" aria-label="Map bookmarks">
 	<div class="bm-header">
 		<h3>BOOKMARKS</h3>
-		<button class="add-btn" onclick={() => (showAdd = !showAdd)}>
+		<button class="add-btn" onclick={() => (showAdd = !showAdd)} aria-expanded={showAdd} aria-label={showAdd ? 'Cancel adding bookmark' : 'Add a new bookmark'}>
 			{showAdd ? 'Cancel' : '+ Add'}
 		</button>
 	</div>
@@ -70,22 +70,23 @@
 				placeholder="Bookmark name..."
 				onkeydown={handleKeydown}
 				class="bm-input"
+				aria-label="Bookmark name"
 			/>
-			<button class="save-btn" onclick={addBookmark} disabled={!newName.trim()}>Save</button>
+			<button class="save-btn" onclick={addBookmark} disabled={!newName.trim()} aria-label="Save bookmark">Save</button>
 		</div>
 	{/if}
 
 	{#if bookmarks.length === 0}
 		<div class="bm-empty">No bookmarks yet. Save a camera position to quickly jump back later.</div>
 	{:else}
-		<div class="bm-list">
+		<div class="bm-list" role="list" aria-label="Saved bookmarks">
 			{#each bookmarks as bm, i}
-				<div class="bm-item">
-					<button class="bm-name" onclick={() => flyTo(bm)} title="Fly to {bm.name}">
+				<div class="bm-item" role="listitem">
+					<button class="bm-name" onclick={() => flyTo(bm)} title="Fly to {bm.name}" aria-label="Navigate to bookmark: {bm.name}">
 						{bm.name}
 					</button>
 					<span class="bm-coords">{bm.lat.toFixed(1)}, {bm.lon.toFixed(1)} z{bm.zoom.toFixed(0)}</span>
-					<button class="bm-del" onclick={() => remove(i)} title="Delete bookmark">&times;</button>
+					<button class="bm-del" onclick={() => remove(i)} title="Delete bookmark" aria-label="Delete bookmark: {bm.name}">&times;</button>
 				</div>
 			{/each}
 		</div>

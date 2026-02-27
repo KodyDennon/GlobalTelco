@@ -15,6 +15,7 @@ import { recordNetworkSnapshot } from '$lib/stores/networkHistory';
 import { saveToSlot, loadFromSlot, getNextAutoSaveSlot, QUICK_SAVE_SLOT } from '$lib/saves/SaveManager';
 import { get } from 'svelte/store';
 import { audioManager } from '$lib/audio/AudioManager';
+import type { EraName } from '$lib/audio/AudioManager';
 import {
 	buildMode,
 	activePanelGroup,
@@ -61,6 +62,19 @@ export const autoPauseReason = writable<string | null>(null);
 
 // Welcome overlay shown on first game load
 export const showWelcome = writable<boolean>(false);
+
+/** Map a starting_era config string to an EraName for audio. */
+function configEraToAudioEra(era?: string): EraName {
+	switch (era?.toLowerCase()) {
+		case 'telegraph': return 'telegraph';
+		case 'telephone': return 'telephone';
+		case 'earlydigital': case 'early_digital': return 'early_digital';
+		case 'internet': return 'internet';
+		case 'modern': return 'modern';
+		case 'nearfuture': case 'near_future': return 'near_future';
+		default: return 'internet';
+	}
+}
 
 function getTickInterval(): number {
 	switch (currentSpeed) {
@@ -300,6 +314,11 @@ export async function initGame(config?: object) {
 	await yieldToUI();
 
 	await audioManager.init();
+
+	// Start era-appropriate ambient music
+	const startingEra = (config as Record<string, unknown> | undefined)?.starting_era as string | undefined;
+	audioManager.playMusic(configEraToAudioEra(startingEra));
+
 	loadingStage.set(3);
 
 	// Yield so the loading screen renders "Preparing Map..."
@@ -334,6 +353,10 @@ export async function initMultiplayer(saveData: string) {
 	loadingStage.set(2);
 	await yieldToUI();
 	await audioManager.init();
+
+	// Start era music (default to internet era for multiplayer)
+	audioManager.playMusic('internet');
+
 	loadingStage.set(3);
 	await yieldToUI();
 	// Server drives ticks in multiplayer — no local tick advancement

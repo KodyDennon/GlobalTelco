@@ -9,6 +9,7 @@
 //! `deployment_vulnerability_multiplier` for the full matrix.
 
 use crate::components::infra_edge::DeploymentMethod;
+use crate::components::weather::WeatherType;
 use crate::world::GameWorld;
 use gt_common::types::EdgeType;
 
@@ -47,8 +48,14 @@ pub fn run(world: &mut GameWorld) {
             continue;
         }
 
-        let severity = world.deterministic_random() * 0.5 + 0.1;
+        let base_severity = world.deterministic_random() * 0.5 + 0.1;
         let disaster_name = pick_disaster_type(world);
+
+        // Amplify severity when active weather conditions match the disaster type.
+        // E.g., a hurricane disaster during active storm weather does more damage.
+        let weather_multiplier =
+            weather_severity_amplifier(&world.weather_conditions, region_id, disaster_name, tick);
+        let severity = (base_severity * weather_multiplier).min(1.0);
 
         let (affected_node_count, affected_edge_count) =
             apply_disaster_damage(world, &cells, severity, tick, disaster_name);
@@ -82,6 +89,46 @@ fn pick_disaster_type(world: &mut GameWorld) -> &'static str {
         }
     }
     "Earthquake"
+}
+
+// ─── Weather-Disaster Interaction ─────────────────────────────────────────────
+
+/// Returns a severity multiplier (1.0-2.0) based on whether active weather conditions
+/// in the region amplify the disaster type. E.g., a Hurricane disaster during active
+/// storm weather deals more damage, while an Earthquake during clear weather is unaffected.
+fn weather_severity_amplifier(
+    weather_conditions: &[crate::components::weather::WeatherCondition],
+    region_id: u64,
+    disaster_type: &str,
+    tick: u64,
+) -> f64 {
+    let mut max_multiplier = 1.0_f64;
+
+    for wc in weather_conditions {
+        if wc.region_id != region_id || wc.is_expired(tick) {
+            continue;
+        }
+
+        let boost = match (&wc.condition, disaster_type) {
+            // Storm weather amplifies hurricane/storm disasters
+            (WeatherType::Storms, "Hurricane") => 0.5 * wc.severity,
+            (WeatherType::Hurricane, "Hurricane") => 0.8 * wc.severity,
+            // Flooding weather amplifies flood disasters
+            (WeatherType::Flooding, "Flooding") => 0.6 * wc.severity,
+            // Ice storms amplify landslide risk
+            (WeatherType::IceStorm, "Landslide") => 0.4 * wc.severity,
+            // Extreme heat amplifies equipment failure
+            (WeatherType::ExtremeHeat, "EquipmentFailure") => 0.3 * wc.severity,
+            // Earthquake weather (seismic) amplifies earthquake disasters
+            (WeatherType::Earthquake, "Earthquake") => 0.7 * wc.severity,
+            // No matching weather-disaster interaction
+            _ => 0.0,
+        };
+
+        max_multiplier = max_multiplier.max(1.0 + boost);
+    }
+
+    max_multiplier.min(2.0)
 }
 
 // ─── Deployment Vulnerability ─────────────────────────────────────────────────
@@ -134,7 +181,7 @@ fn deployment_vulnerability_multiplier(
     if is_submarine_edge(edge_type) {
         return match category {
             "earthquake" => 1.5,
-            "storm" => 0.3,
+            "storm" => 0.1,
             "ice_storm" => 0.1,
             "flood" => 0.1,
             "landslide" => 0.1,
@@ -154,10 +201,10 @@ fn deployment_vulnerability_multiplier(
             _ => 1.0,
         },
         DeploymentMethod::Underground => match category {
-            "storm" => 0.2,
+            "storm" => 0.3,
             "ice_storm" => 0.1,
-            "earthquake" => 1.5,
-            "flood" => 1.5,
+            "earthquake" => 2.0,
+            "flood" => 2.0,
             "landslide" => 1.2,
             "heat_wave" => 0.1,
             _ => 1.0,
@@ -363,3 +410,4 @@ fn mark_network_dirty(world: &mut GameWorld, cells: &[usize]) {
         world.network.invalidate_node(nid);
     }
 }
+

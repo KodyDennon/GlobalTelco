@@ -209,6 +209,10 @@ impl WasmBridge {
                 let health = self.world.healths.get(&id);
                 let cap = self.world.capacities.get(&id);
                 let under_construction = self.world.constructions.contains_key(&id);
+                let util_history: Vec<f64> = self.world.utilization_history
+                    .get(&id)
+                    .map(|h| h.iter().copied().collect())
+                    .unwrap_or_default();
                 Some(serde_json::json!({
                     "id": id,
                     "node_type": format!("{:?}", node.node_type),
@@ -225,6 +229,11 @@ impl WasmBridge {
                     "health": health.map(|h| h.condition).unwrap_or(1.0),
                     "utilization": cap.map(|c| c.utilization()).unwrap_or(0.0),
                     "under_construction": under_construction,
+                    "repairing": node.repairing,
+                    "repair_ticks_left": node.repair_ticks_left,
+                    "repair_health_per_tick": node.repair_health_per_tick,
+                    "revenue_generated": node.revenue_generated,
+                    "utilization_history": util_history,
                 }))
             })
             .collect();
@@ -239,6 +248,10 @@ impl WasmBridge {
                 let dst_pos = self.world.positions.get(&e.target);
                 let src_cell = self.world.infra_nodes.get(&e.source).map(|n| n.cell_index).unwrap_or(0);
                 let dst_cell = self.world.infra_nodes.get(&e.target).map(|n| n.cell_index).unwrap_or(0);
+                let util_history: Vec<f64> = self.world.utilization_history
+                    .get(&id)
+                    .map(|h| h.iter().copied().collect())
+                    .unwrap_or_default();
                 serde_json::json!({
                     "id": id,
                     "edge_type": format!("{:?}", e.edge_type),
@@ -258,6 +271,12 @@ impl WasmBridge {
                     "dst_cell": dst_cell,
                     "waypoints": e.waypoints.iter().map(|&(lon, lat)| [lon, lat]).collect::<Vec<_>>(),
                     "deployment": format!("{:?}", e.deployment),
+                    "maintenance_cost": e.maintenance_cost,
+                    "repairing": e.repairing,
+                    "repair_ticks_left": e.repair_ticks_left,
+                    "repair_health_per_tick": e.repair_health_per_tick,
+                    "revenue_generated": e.revenue_generated,
+                    "utilization_history": util_history,
                 })
             })
             .collect();
@@ -408,6 +427,13 @@ impl WasmBridge {
                     .get(&c.to)
                     .map(|corp| corp.name.as_str())
                     .unwrap_or("Unknown");
+                let sla_status = if c.sla_current_performance >= c.sla_target {
+                    "ok"
+                } else if c.sla_current_performance >= c.sla_target - 5.0 {
+                    "at_risk"
+                } else {
+                    "breach"
+                };
                 serde_json::json!({
                     "id": id,
                     "contract_type": format!("{:?}", c.contract_type),
@@ -421,6 +447,10 @@ impl WasmBridge {
                     "end_tick": c.end_tick,
                     "status": format!("{:?}", c.status),
                     "penalty": c.penalty,
+                    "sla_target": c.sla_target,
+                    "sla_current_performance": c.sla_current_performance,
+                    "sla_status": sla_status,
+                    "sla_penalty_accrued": c.sla_penalty_accrued,
                 })
             })
             .collect();
@@ -1406,6 +1436,27 @@ impl WasmBridge {
         serde_json::to_string(&json).unwrap_or_default()
     }
 
+    /// Get weather forecasts: active weather conditions + predicted weather events.
+    /// Returns JSON array of { region_id, region_name, predicted_type, probability,
+    /// eta_ticks, predicted_severity }.
+    pub fn get_weather_forecasts(&self) -> String {
+        let forecasts = self.world.get_weather_forecasts();
+        let json: Vec<serde_json::Value> = forecasts
+            .iter()
+            .map(|f| {
+                serde_json::json!({
+                    "region_id": f.region_id,
+                    "region_name": f.region_name,
+                    "predicted_type": f.predicted_type.display_name(),
+                    "probability": f.probability,
+                    "eta_ticks": f.eta_ticks,
+                    "predicted_severity": f.predicted_severity,
+                })
+            })
+            .collect();
+        serde_json::to_string(&json).unwrap_or_default()
+    }
+
     // ── Road Network Queries (Fiber Auto-Routing) ────────────────────────
 
     /// A* pathfinding along the road network between two (lon, lat) points.
@@ -1567,6 +1618,10 @@ impl gt_bridge::BridgeQuery for WasmBridge {
 
     fn get_traffic_flows(&self) -> String {
         WasmBridge::get_traffic_flows(self)
+    }
+
+    fn get_weather_forecasts(&self) -> String {
+        WasmBridge::get_weather_forecasts(self)
     }
 
     fn save_game(&self) -> Result<String, String> {

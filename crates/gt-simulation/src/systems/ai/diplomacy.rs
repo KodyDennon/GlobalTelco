@@ -164,7 +164,7 @@ pub fn conduct_espionage(
     }
 
     // Only every ~50 ticks
-    let check = ((tick.wrapping_mul(corp_id) >> 5) % 50) as u64;
+    let check = (tick.wrapping_mul(corp_id) >> 5) % 50;
     if check != 0 {
         return;
     }
@@ -206,7 +206,7 @@ pub fn conduct_espionage(
             world
                 .covert_ops
                 .entry(corp_id)
-                .or_insert_with(crate::components::CovertOps::new)
+                .or_default()
                 .active_missions
                 .push(mission);
         }

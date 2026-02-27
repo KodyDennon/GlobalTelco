@@ -57,17 +57,10 @@
 		return count;
 	});
 
-	// ── Revenue by Infrastructure (Gap #19a) ─────────────────────────────────
-	// TODO(backend #19a): Replace estimated revenue with real per-infrastructure revenue data.
-	// Needed: bridge.getRevenueByInfrastructure(corpId) returning per-node and per-edge
-	// revenue_per_tick from the revenue system (gt-economy). Currently the revenue system
-	// calculates total corp revenue but does not attribute it per-asset. The Rust revenue
-	// system (revenue.rs) should track per-node revenue contribution and expose it via bridge.
-	//
-	// Current estimation approach:
-	//   Node revenue = utilization * max_throughput * 0.01 (arbitrary factor)
-	//   Edge revenue = utilization * bandwidth * 0.005 (arbitrary factor)
-	//   Edge maintenance = length_km * 0.5 (edges lack maintenance_cost field)
+	// ── Revenue by Infrastructure (#19a — WIRED) ─────────────────────────────
+	// Per-node and per-edge revenue is now tracked by the Rust revenue system
+	// and exposed via bridge.getInfrastructureList() as revenue_generated fields.
+	// Edge maintenance_cost is also now exposed through the bridge.
 
 	interface RevenueRow {
 		type: string;
@@ -81,16 +74,14 @@
 
 	let revenueRows = $derived.by((): RevenueRow[] => {
 		const rows: RevenueRow[] = [];
-		// TODO(backend #19a): Use real per-node revenue from bridge query instead of estimate
 		const nodeByType: Record<string, { count: number; totalRev: number; totalMaint: number }> = {};
 		for (const n of infra.nodes) {
 			if (n.under_construction) continue;
 			const key = n.node_type;
 			if (!nodeByType[key]) nodeByType[key] = { count: 0, totalRev: 0, totalMaint: 0 };
 			nodeByType[key].count++;
-			// ESTIMATED: traffic served proportional to utilization * throughput
-			const estRevenue = n.utilization * n.max_throughput * 0.01;
-			nodeByType[key].totalRev += estRevenue;
+			// Real per-node revenue from the Rust revenue system (#19a wired)
+			nodeByType[key].totalRev += n.revenue_generated;
 			nodeByType[key].totalMaint += n.maintenance_cost;
 		}
 		for (const [type, data] of Object.entries(nodeByType)) {
@@ -104,18 +95,15 @@
 				profitable: data.totalRev > data.totalMaint,
 			});
 		}
-		// TODO(backend #19a): Use real per-edge revenue from bridge query instead of estimate
 		const edgeByType: Record<string, { count: number; totalRev: number; totalMaint: number }> = {};
 		for (const e of infra.edges) {
 			const key = e.edge_type;
 			if (!edgeByType[key]) edgeByType[key] = { count: 0, totalRev: 0, totalMaint: 0 };
 			edgeByType[key].count++;
-			// ESTIMATED: revenue from utilization * bandwidth
-			const estRevenue = e.utilization * e.bandwidth * 0.005;
-			edgeByType[key].totalRev += estRevenue;
-			// ESTIMATED: edges lack maintenance_cost field, approximate from length
-			const estMaint = e.length_km * 0.5;
-			edgeByType[key].totalMaint += estMaint;
+			// Real per-edge revenue from the Rust revenue system (#19a wired)
+			edgeByType[key].totalRev += e.revenue_generated;
+			// Real maintenance_cost now exposed through bridge (#19a wired)
+			edgeByType[key].totalMaint += e.maintenance_cost;
 		}
 		for (const [type, data] of Object.entries(edgeByType)) {
 			rows.push({
@@ -133,16 +121,9 @@
 		return rows;
 	});
 
-	// ── SLA Monitoring (Gap #19b) ────────────────────────────────────────────
-	// TODO(backend #19b): Replace estimated SLA data with real per-contract SLA fields.
-	// Needed: Add sla_target (uptime %), sla_current_performance, sla_status, and
-	// sla_penalty_accrued fields to the ContractInfo type returned by bridge.getContracts().
-	// The contract system (gt-economy) should track SLA compliance per-tick using actual
-	// uptime measurements from the routing/utilization systems.
-	//
-	// Current estimation approach:
-	//   SLA target = derived from contract capacity tier (98-99.5%)
-	//   Performance = network avg health - (drop rate * 0.5) -- global, not per-contract
+	// ── SLA Monitoring (#19b — WIRED) ────────────────────────────────────────
+	// SLA target, performance, status, and penalty fields are now tracked by the
+	// Rust contract system and exposed via bridge.getContracts().
 
 	interface SLARow {
 		id: number;
@@ -158,24 +139,14 @@
 		return contracts
 			.filter(c => c.status === 'Active')
 			.map(c => {
-				// ESTIMATED: SLA target derived from contract capacity tier
-				const slaTarget = c.capacity > 5000 ? 99.5 : c.capacity > 1000 ? 99.0 : 98.0;
-				// ESTIMATED: performance from global network health + drop rate (not per-contract)
-				const healthPct = avgHealth() * 100;
-				const dropPenalty = dropPct * 0.5;
-				const currentPerformance = Math.max(0, Math.min(100, healthPct - dropPenalty));
-				const diff = currentPerformance - slaTarget;
-				let status: 'ok' | 'at_risk' | 'breach';
-				if (diff >= 0) status = 'ok';
-				else if (diff >= -5) status = 'at_risk';
-				else status = 'breach';
+				// Real SLA data from the Rust contract system (#19b wired)
 				return {
 					id: c.id,
 					partner: c.from === ($playerCorp?.id ?? 0) ? c.to_name : c.from_name,
-					slaTarget,
-					currentPerformance,
-					status,
-					penalty: status === 'breach' ? c.penalty : 0,
+					slaTarget: c.sla_target,
+					currentPerformance: c.sla_current_performance,
+					status: c.sla_status,
+					penalty: c.sla_penalty_accrued,
 					pricePerTick: c.price_per_tick,
 				};
 			});
@@ -193,17 +164,10 @@
 		return 'BREACH';
 	}
 
-	// ── Maintenance Queue (Gap #19c) ─────────────────────────────────────────
-	// TODO(backend #19c): Replace estimated repair state and cost with real data.
-	// Needed: Expose `is_repairing`, `repair_ticks_left`, `repair_health_per_tick`
-	// fields on InfraNode and InfraEdge through bridge.getInfrastructureList().
-	// The maintenance system tracks repair state in gt-infrastructure but doesn't
-	// expose it through the bridge query yet.
-	//
-	// Current estimation approach:
-	//   isRepairing = always false (no repair state exposed)
-	//   Node estCost = maintenance_cost * (1 - health) * 10
-	//   Edge estCost = length_km * (1 - health) * 5 (edges lack repair_cost field)
+	// ── Maintenance Queue (#19c — WIRED) ─────────────────────────────────────
+	// Repair state (repairing, repair_ticks_left, repair_health_per_tick) is now
+	// exposed through the bridge's infrastructure query. Edge maintenance_cost
+	// is also available for accurate repair cost estimates.
 
 	interface MaintenanceItem {
 		id: number;
@@ -213,6 +177,7 @@
 		x: number;
 		y: number;
 		isRepairing: boolean;
+		repairTicksLeft: number;
 		estCost: number;
 	}
 
@@ -227,9 +192,10 @@
 					health: n.health,
 					x: n.x,
 					y: n.y,
-					// TODO(backend #19c): Use real is_repairing from bridge when available
-					isRepairing: false,
-					// ESTIMATED: real repair cost should come from bridge
+					// Real repair state from bridge (#19c wired)
+					isRepairing: n.repairing,
+					repairTicksLeft: n.repair_ticks_left,
+					// Repair cost estimate based on maintenance_cost and damage severity
 					estCost: n.maintenance_cost * (1 - n.health) * 10,
 				});
 			}
@@ -243,10 +209,11 @@
 					health: e.health,
 					x: (e.src_x + e.dst_x) / 2,
 					y: (e.src_y + e.dst_y) / 2,
-					// TODO(backend #19c): Use real is_repairing from bridge when available
-					isRepairing: false,
-					// ESTIMATED: edges lack repair_cost field
-					estCost: e.length_km * (1 - e.health) * 5,
+					// Real repair state from bridge (#19c wired)
+					isRepairing: e.repairing,
+					repairTicksLeft: e.repair_ticks_left,
+					// Real maintenance_cost now available from bridge (#19c wired)
+					estCost: e.maintenance_cost * (1 - e.health) * 10,
 				});
 			}
 		}
@@ -277,15 +244,12 @@
 		}));
 	}
 
-	// ── Capacity Planning (Gap #19d + #28) ───────────────────────────────────
-	// TODO(backend #19d): Replace frontend-side linear regression with real historical
-	// utilization time series from the backend. Needed: bridge.getUtilizationHistory(corpId)
-	// returning per-tick utilization snapshots (last 100 ticks per node/edge) from
-	// gt-infrastructure. Currently we rely on networkHistory store snapshots collected
-	// client-side, which are lost on page refresh and may miss ticks at high speed.
-	//
-	// TODO(backend #28): Add server-side capacity projection API that runs regression
-	// on authoritative data and returns projected throughput + ticks-to-exceed estimates.
+	// ── Capacity Planning (#19d + #28 — WIRED) ──────────────────────────────
+	// Per-node and per-edge utilization_history (last 100 ticks) is now tracked
+	// server-side and exposed via bridge.getInfrastructureList(). The frontend
+	// still performs linear regression on the data for capacity projections (#28),
+	// but now uses authoritative server-side history that persists across page
+	// refreshes and doesn't miss ticks at high speed.
 
 	let growthSlider = $state(1.0); // What-if growth multiplier (1.0x to 3.0x)
 	let whatIfGrowthPct = $state(10); // What-if traffic growth rate (0% to 50%, step 5%)
@@ -298,12 +262,32 @@
 			.slice(0, 10);
 	});
 
-	// Estimate ticks until full capacity for an edge
+	// Estimate ticks until full capacity for an edge.
+	// Uses per-edge utilization_history (from backend, #19d) for regression when available,
+	// falls back to uniform growth rate assumption.
 	function ticksUntilFull(edge: InfraEdge, growthRate: number): number {
 		if (edge.utilization >= 1.0) return 0;
+
+		// If utilization_history has enough data, compute per-edge growth rate via linear regression
+		const hist = edge.utilization_history;
+		if (hist && hist.length >= 10) {
+			const n = hist.length;
+			let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+			for (let i = 0; i < n; i++) {
+				sumX += i;
+				sumY += hist[i];
+				sumXY += i * hist[i];
+				sumXX += i * i;
+			}
+			const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+			if (slope > 0.0001) {
+				const remaining = 1.0 - edge.utilization;
+				return Math.ceil(remaining / slope);
+			}
+		}
+
 		if (growthRate <= 0) return Infinity;
 		const remaining = 1.0 - edge.utilization;
-		// Each tick, utilization grows by growthRate fraction
 		return Math.ceil(remaining / growthRate);
 	}
 
@@ -1209,7 +1193,7 @@
 						</span>
 					</span>
 					<span class="maint-col-status" style="color: {item.isRepairing ? '#3b82f6' : '#f59e0b'}; font-size: 10px;">
-						{item.isRepairing ? 'Repairing' : 'Needs Repair'}
+						{item.isRepairing ? `Repairing (${item.repairTicksLeft}t)` : 'Needs Repair'}
 					</span>
 					<span class="maint-col-cost mono" style="font-size: 10px;">
 						{fmtMoney(item.estCost)}
@@ -1292,6 +1276,7 @@
 				max="3.0"
 				step="0.1"
 				bind:value={growthSlider}
+				aria-label="Demand growth multiplier"
 			/>
 			{#if whatIfEdges.length > 0}
 				<div class="whatif-results">

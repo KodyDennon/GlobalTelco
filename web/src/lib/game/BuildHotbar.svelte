@@ -176,6 +176,7 @@
 			ondragend={handleDragEnd}
 			use:tooltip={getTooltipText(slot, i)}
 			aria-pressed={isActive}
+			aria-label={slot.itemType ? `Slot ${i + 1}: ${ITEM_NAMES[slot.itemType] ?? slot.itemType} (${slot.category === 'node' ? 'Node' : 'Link'})` : `Slot ${i + 1}: empty`}
 		>
 			<span class="slot-key">{i + 1}</span>
 			{#if slot.itemType}

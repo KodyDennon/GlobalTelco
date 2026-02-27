@@ -107,10 +107,6 @@ impl SpectrumAuction {
 
     /// Ticks remaining until auction ends.
     pub fn ticks_remaining(&self, tick: Tick) -> Tick {
-        if tick >= self.end_tick {
-            0
-        } else {
-            self.end_tick - tick
-        }
+        self.end_tick.saturating_sub(tick)
     }
 }

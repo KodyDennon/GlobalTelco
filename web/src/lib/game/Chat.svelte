@@ -55,9 +55,9 @@
 </script>
 
 <div class="chat-overlay" class:collapsed>
-	<button class="chat-header" type="button" onclick={() => (collapsed = !collapsed)} use:tooltip={() => collapsed ? 'Expand chat' : 'Collapse chat'}>
+	<button class="chat-header" type="button" onclick={() => (collapsed = !collapsed)} aria-expanded={!collapsed} aria-label={collapsed ? 'Expand chat panel' : 'Collapse chat panel'} use:tooltip={() => collapsed ? 'Expand chat' : 'Collapse chat'}>
 		<span>{$tr('game.chat')}</span>
-		<span class="toggle">{collapsed ? '+' : '-'}</span>
+		<span class="toggle" aria-hidden="true">{collapsed ? '+' : '-'}</span>
 	</button>
 
 	{#if !collapsed}
@@ -89,8 +89,9 @@
 				bind:value={inputText}
 				placeholder={$tr('game.type_message')}
 				onkeydown={handleKeyDown}
+				aria-label="Chat message input"
 			/>
-			<button onclick={sendMessage}>{$tr('game.send')}</button>
+			<button onclick={sendMessage} aria-label="Send chat message">{$tr('game.send')}</button>
 		</div>
 	{/if}
 </div>

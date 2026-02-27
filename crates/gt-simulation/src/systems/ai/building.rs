@@ -93,7 +93,7 @@ fn build_backbone_hub(
         AIArchetype::BudgetOperator => 3,
         _ => 2,
     };
-    if fin.cash < node_type.construction_cost() as i64 * cost_threshold {
+    if fin.cash < node_type.construction_cost() * cost_threshold {
         return;
     }
 
@@ -126,7 +126,7 @@ fn pick_hub_city_cell(
 
     // Score cities by population, avoiding cells we already occupy
     let mut city_scores: Vec<(usize, f64)> = Vec::new();
-    for (_, city) in &world.cities {
+    for city in world.cities.values() {
         for &ci in &city.cells {
             if corp_cells.contains(&ci) {
                 continue;
@@ -164,7 +164,7 @@ fn pick_hub_city_cell(
                                 })
                                 .unwrap_or(f64::MAX);
                             // Weight: population / distance (closer is better)
-                            entry.1 = entry.1 / (dist + 1.0);
+                            entry.1 /= dist + 1.0;
                         }
                     }
                 }
@@ -203,7 +203,7 @@ fn build_aggregation(
 
     // Find cities that don't have an aggregation node nearby
     let mut candidates: Vec<(usize, f64)> = Vec::new();
-    for (_, city) in &world.cities {
+    for city in world.cities.values() {
         // Skip cities where we already have aggregation or higher
         let has_agg = city.cells.iter().any(|ci| {
             corp_cells.contains(ci)
@@ -248,7 +248,7 @@ fn build_aggregation(
     };
 
     if let Some(&(cell_index, _)) = candidates.first() {
-        if fin.cash < node_type.construction_cost() as i64 * 2 {
+        if fin.cash < node_type.construction_cost() * 2 {
             return;
         }
 
@@ -281,7 +281,7 @@ fn build_access_layer(
 
     // Score candidate cells: population * (1 - coverage) / distance_to_aggregation
     let mut candidates: Vec<(usize, f64)> = Vec::new();
-    for (_, city) in &world.cities {
+    for city in world.cities.values() {
         for &ci in &city.cells {
             if corp_cells.contains(&ci) {
                 continue;
@@ -441,7 +441,7 @@ fn estimate_unserved_demand(world: &GameWorld, corp_id: EntityId) -> f64 {
     let corp_cells = helpers::corp_cell_set(world, corp_id);
     let mut unserved = 0.0;
 
-    for (_, city) in &world.cities {
+    for city in world.cities.values() {
         for &ci in &city.cells {
             let our_coverage = world
                 .cell_coverage
@@ -661,7 +661,7 @@ fn ftth_large_auto_deploy(
 
     // Score candidate cells by population density and lack of FTTH coverage
     let mut candidates: Vec<(usize, f64)> = Vec::new();
-    for (_, city) in &world.cities {
+    for city in world.cities.values() {
         for &ci in &city.cells {
             // Skip cells we already have FTTH nodes in
             if nap_cells.contains(&ci) {

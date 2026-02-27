@@ -22,7 +22,7 @@
 	import { initialized, playerCorp, regions, notifications, worldInfo } from "$lib/stores/gameState";
 	import { eventType, eventData } from "$lib/wasm/types";
 	import type { ActiveDisaster, ForecastDisaster } from "./WeatherLayer";
-	import { DISASTER_DISPLAY_DURATION, computeDisasterForecasts } from "./WeatherLayer";
+	import { DISASTER_DISPLAY_DURATION, computeDisasterForecasts, convertWeatherForecasts } from "./WeatherLayer";
 	import * as bridge from "$lib/wasm/bridge";
 	import DisasterAlert from "./DisasterAlert.svelte";
 	import {
@@ -57,12 +57,13 @@
 	let audioManager: AudioManager | null = null;
 	let spatialAudio: SpatialAudioController | null = null;
 
-	// ── Active disaster tracking ─────────────────────────────────────────────
-	// Disasters are extracted from notifications and kept alive for DISASTER_DISPLAY_DURATION ticks.
+	// ── Active disaster + weather tracking ───────────────────────────────────
+	// Disasters and weather events are extracted from notifications and kept
+	// alive for DISASTER_DISPLAY_DURATION ticks.
 	let activeDisasters: ActiveDisaster[] = $state([]);
 	let processedDisasterIds = new Set<string>();
 
-	// Derive active disasters from notifications: scan for DisasterStruck events
+	// Derive active disasters from notifications: scan for DisasterStruck + WeatherStarted events
 	$effect(() => {
 		const notifs = $notifications;
 		const currentTick = $worldInfo.tick;
@@ -70,34 +71,56 @@
 		let updated = false;
 		let currentDisasters = untrack(() => activeDisasters);
 
-		// Add new disasters from recent notifications
+		// Add new disasters and weather events from recent notifications
 		for (const notif of notifs) {
 			const type = eventType(notif.event);
-			if (type !== 'DisasterStruck') continue;
-
 			const data = eventData(notif.event);
-			const id = `disaster-${notif.tick}-${data.region}`;
-			if (processedDisasterIds.has(id)) continue;
-			processedDisasterIds.add(id);
 
-			// Find region center for positioning
-			const region = regionList.find(r => r.id === (data.region as number));
-			const lon = region?.center_lon ?? 0;
-			const lat = region?.center_lat ?? 0;
-			const regionName = region?.name ?? `Region ${data.region}`;
+			if (type === 'DisasterStruck') {
+				const id = `disaster-${notif.tick}-${data.region}`;
+				if (processedDisasterIds.has(id)) continue;
+				processedDisasterIds.add(id);
 
-			currentDisasters = [...currentDisasters, {
-				id,
-				disasterType: (data.disaster_type as string) ?? 'Unknown',
-				lon,
-				lat,
-				severity: (data.severity as number) ?? 0.3,
-				startTick: notif.tick,
-				regionName,
-				regionId: (data.region as number) ?? 0,
-				affectedCount: (data.affected_nodes as number) ?? 0,
-			}];
-			updated = true;
+				const region = regionList.find(r => r.id === (data.region as number));
+				const lon = region?.center_lon ?? 0;
+				const lat = region?.center_lat ?? 0;
+				const regionName = region?.name ?? `Region ${data.region}`;
+
+				currentDisasters = [...currentDisasters, {
+					id,
+					disasterType: (data.disaster_type as string) ?? 'Unknown',
+					lon,
+					lat,
+					severity: (data.severity as number) ?? 0.3,
+					startTick: notif.tick,
+					regionName,
+					regionId: (data.region as number) ?? 0,
+					affectedCount: (data.affected_nodes as number) ?? 0,
+				}];
+				updated = true;
+			} else if (type === 'WeatherStarted') {
+				const id = `weather-${notif.tick}-${data.region}`;
+				if (processedDisasterIds.has(id)) continue;
+				processedDisasterIds.add(id);
+
+				const region = regionList.find(r => r.id === (data.region as number));
+				const lon = region?.center_lon ?? 0;
+				const lat = region?.center_lat ?? 0;
+				const regionName = region?.name ?? `Region ${data.region}`;
+
+				currentDisasters = [...currentDisasters, {
+					id,
+					disasterType: (data.weather_type as string) ?? 'Weather',
+					lon,
+					lat,
+					severity: (data.severity as number) ?? 0.2,
+					startTick: notif.tick,
+					regionName,
+					regionId: (data.region as number) ?? 0,
+					affectedCount: 0, // weather doesn't have instant damage count
+				}];
+				updated = true;
+			}
 		}
 
 		// Prune expired disasters
@@ -117,8 +140,9 @@
 		}
 	});
 
-	// ── Disaster forecast tracking ────────────────────────────────────────────
-	// Recompute forecasts every 10 ticks (bucketed for stability, since seed includes tick).
+	// ── Weather + disaster forecast tracking ─────────────────────────────────
+	// Recompute forecasts every 10 ticks. Uses server-side weather forecasts
+	// (deterministic RNG look-ahead) merged with client-side disaster risk heuristic.
 	let disasterForecasts: ForecastDisaster[] = $state([]);
 	let lastForecastBucket = -1;
 
@@ -128,7 +152,29 @@
 		const bucket = Math.floor(currentTick / 10);
 		if (bucket === lastForecastBucket) return;
 		lastForecastBucket = bucket;
-		disasterForecasts = computeDisasterForecasts(regionList, bucket);
+
+		// Server-side weather forecasts (authoritative, based on deterministic RNG)
+		let serverForecasts: ForecastDisaster[] = [];
+		if (bridge.isInitialized()) {
+			try {
+				const weatherData = bridge.getWeatherForecasts();
+				serverForecasts = convertWeatherForecasts(weatherData, regionList, currentTick);
+			} catch {
+				// Fall through to client-side fallback
+			}
+		}
+
+		// Client-side disaster risk heuristic (fallback / supplement)
+		const clientForecasts = computeDisasterForecasts(regionList, bucket);
+
+		// Merge: server forecasts take priority, add client forecasts for regions
+		// not already covered by server-side predictions
+		const coveredRegions = new Set(serverForecasts.map(f => f.regionId));
+		const supplemental = clientForecasts.filter(f => !coveredRegions.has(f.regionId));
+
+		disasterForecasts = [...serverForecasts, ...supplemental]
+			.sort((a, b) => b.probability - a.probability)
+			.slice(0, 8); // limit to top 8 forecasts
 	});
 
 	onMount(() => {
@@ -178,16 +224,25 @@
 			if (detail?.event) {
 				effectManager?.triggerEffect(detail.event);
 				// Play SFX for specific events
-				if (detail.event.type === 'EarthquakeStruck' || detail.event.type === 'Earthquake') {
+				const type = detail.event.type ?? '';
+				if (type === 'EarthquakeStruck' || type === 'Earthquake') {
 					audioManager?.playSfx('earthquake');
-				} else if (detail.event.type === 'StormStruck' || detail.event.type === 'Storm') {
+				} else if (type === 'StormStruck' || type === 'Storm') {
 					audioManager?.playSfx('storm');
-				} else if (detail.event.type === 'ConstructionComplete') {
+				} else if (type === 'FloodStruck' || type === 'Flood') {
+					audioManager?.playSfx('flood');
+				} else if (type === 'CyberAttack' || type === 'CyberAttackStruck') {
+					audioManager?.playSfx('cyber_glitch');
+				} else if (type === 'ConstructionComplete') {
 					audioManager?.playSfx('build');
-				} else if (detail.event.type === 'ResearchComplete') {
+				} else if (type === 'ResearchComplete') {
 					audioManager?.playSfx('research_complete');
-				} else if (detail.event.type === 'ContractSigned') {
+				} else if (type === 'ContractSigned') {
 					audioManager?.playSfx('contract_signed');
+				} else if (type === 'AchievementUnlocked') {
+					audioManager?.playSfx('achievement');
+				} else if (type === 'VictoryAchieved') {
+					audioManager?.playSfx('victory');
 				}
 			}
 		};
@@ -316,7 +371,8 @@
 </script>
 
 {#if $initialized}
-	<div class="game-view" bind:this={gameViewEl}>
+	<a class="skip-to-content" href="#game-main-content">Skip to game content</a>
+	<div class="game-view" bind:this={gameViewEl} id="game-main-content" role="main" aria-label="Game view">
 		<MapView />
 		{#if !$mapReady}
 			<div class="map-loading-overlay">
@@ -340,6 +396,8 @@
 		<button
 			class="bookmark-toggle-btn"
 			title="Bookmarks (Shift+B)"
+			aria-label="Toggle bookmarks panel"
+			aria-expanded={bookmarksPanelVisible}
 			onclick={() => bookmarksPanelVisible = !bookmarksPanelVisible}
 			class:active={bookmarksPanelVisible}
 		>
@@ -355,7 +413,7 @@
 		<SearchOverlay />
 		<ConfirmDialog />
 		{#if $showWelcome}
-			<div class="welcome-overlay">
+			<div class="welcome-overlay" role="dialog" aria-label="Welcome">
 				<div class="welcome-card">
 					<h2 class="welcome-title">Welcome to {$playerCorp?.name ?? 'your corporation'}!</h2>
 					{#if $regions.length > 0}
@@ -388,7 +446,7 @@
 				{tabs}
 				activeTab={$activeGroupTab}
 				onclose={closePanelGroup}
-				ontabchange={(tab) => openPanelGroup(group, tab)}
+				ontabchange={(tab: string) => openPanelGroup(group, tab)}
 			>
 				{#if currentTabDef?.comingSoon}
 					<ComingSoon
@@ -402,7 +460,7 @@
 			</FloatingPanel>
 		{/if}
 		{#if $hotkeyOverlayVisible}
-			<div class="hotkey-overlay" role="dialog">
+			<div class="hotkey-overlay" role="dialog" aria-label="Keyboard shortcuts">
 				<div class="hotkey-card">
 					<h3 class="hotkey-title">Keyboard Shortcuts</h3>
 					<div class="hotkey-grid">
@@ -445,7 +503,7 @@
 							<div class="hk"><kbd>P</kbd> Toggle 3D Pitch</div>
 						</div>
 					</div>
-					<button class="hotkey-close" onclick={() => hotkeyOverlayVisible.set(false)}>Close</button>
+					<button class="hotkey-close" onclick={() => hotkeyOverlayVisible.set(false)} aria-label="Close keyboard shortcuts dialog">Close</button>
 				</div>
 			</div>
 		{/if}

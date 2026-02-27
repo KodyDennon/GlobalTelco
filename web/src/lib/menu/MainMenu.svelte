@@ -11,16 +11,16 @@
 		<h1 class="title">{$tr('menu.title')}</h1>
 		<p class="subtitle">{$tr('menu.subtitle')}</p>
 
-		<div class="menu-buttons">
-			<button class="menu-btn primary" onclick={onNewGame}>{$tr('menu.new_game')}</button>
-			<button class="menu-btn" onclick={onLoadGame}>{$tr('menu.load_game')}</button>
-			<button class="menu-btn" onclick={onMultiplayer}>{$tr('menu.multiplayer')}</button>
-			<button class="menu-btn" onclick={onSettings}>{$tr('menu.settings')}</button>
-			<button class="menu-btn" onclick={onCredits}>{$tr('menu.credits')}</button>
+		<div class="menu-buttons" role="group" aria-label="Main menu options">
+			<button class="menu-btn primary" onclick={onNewGame} aria-label="Start a new game">{$tr('menu.new_game')}</button>
+			<button class="menu-btn" onclick={onLoadGame} aria-label="Load a saved game">{$tr('menu.load_game')}</button>
+			<button class="menu-btn" onclick={onMultiplayer} aria-label="Join or host multiplayer">{$tr('menu.multiplayer')}</button>
+			<button class="menu-btn" onclick={onSettings} aria-label="Open settings">{$tr('menu.settings')}</button>
+			<button class="menu-btn" onclick={onCredits} aria-label="View credits">{$tr('menu.credits')}</button>
 		</div>
 	</div>
 
-	<div class="menu-footer">
+	<div class="menu-footer" role="contentinfo">
 		<span>{$tr('menu.version', { version })}</span>
 	</div>
 </div>

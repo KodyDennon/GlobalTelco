@@ -63,7 +63,7 @@
 	let aiCorps = $derived($allCorporations.filter((c) => !c.is_player));
 </script>
 
-<div class="panel">
+<div class="panel" aria-label="Contracts panel">
 	<div class="section">
 		<h3>{$tr('panels.summary')}</h3>
 		<div class="stat-row">
@@ -83,13 +83,13 @@
 	<div class="section">
 		<div class="section-hdr">
 			<h3>Propose Contract</h3>
-			<button class="action-btn" onclick={() => (showProposeForm = !showProposeForm)} use:tooltip={'Propose a bandwidth contract with another corporation\nContracts provide recurring revenue'}>
+			<button class="action-btn" onclick={() => (showProposeForm = !showProposeForm)} aria-expanded={showProposeForm} aria-label={showProposeForm ? 'Cancel contract proposal' : 'Propose a new contract'} use:tooltip={'Propose a bandwidth contract with another corporation\nContracts provide recurring revenue'}>
 				{showProposeForm ? 'Cancel' : '+ Propose'}
 			</button>
 		</div>
 		{#if showProposeForm}
 			<div class="propose-form">
-				<select bind:value={proposeTarget}>
+				<select bind:value={proposeTarget} aria-label="Target corporation for contract">
 					<option value={0}>Select corporation...</option>
 					{#each aiCorps as corp}
 						<option value={corp.id}>{corp.name}</option>

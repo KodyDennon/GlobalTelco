@@ -16,12 +16,12 @@ pub fn run(world: &mut GameWorld) {
     expand_cities(world);
 
     // 5. Spawn new settlements near infrastructure in unclaimed areas (every 50 ticks)
-    if world.current_tick() % 50 == 0 && world.current_tick() > 0 {
+    if world.current_tick().is_multiple_of(50) && world.current_tick() > 0 {
         spawn_settlements(world);
     }
 
     // 6. Dynamic building spawn/destruction based on population changes (every 10 ticks)
-    if world.current_tick() % 10 == 0 {
+    if world.current_tick().is_multiple_of(10) {
         update_buildings_dynamic(world);
     }
 
@@ -404,8 +404,7 @@ fn compute_target_cells(population: u64) -> usize {
     } else {
         1
     }
-    .max(1)
-    .min(20)
+    .clamp(1, 20)
 }
 
 /// Dynamic building spawn/destruction based on city population changes.
@@ -435,12 +434,7 @@ fn update_buildings_dynamic(world: &mut GameWorld) {
         let target = compute_building_target(population);
 
         // Initialize census if missing (backward compat for old saves / newly spawned cities)
-        if !world.city_building_census.contains_key(&city_id) {
-            world.city_building_census.insert(
-                city_id,
-                crate::components::CityBuildingCensus::new(population),
-            );
-        }
+        world.city_building_census.entry(city_id).or_insert_with(|| crate::components::CityBuildingCensus::new(population));
 
         // Count current active and abandoned buildings for this city
         let mut active_ids: Vec<u64> = Vec::new();

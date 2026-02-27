@@ -19,6 +19,14 @@ use gt_common::types::{EdgeType, EntityId, NodeType};
 pub fn run(world: &mut GameWorld) {
     let tick = world.current_tick();
 
+    // Reset per-node and per-edge revenue tracking before recalculating
+    for node in world.infra_nodes.values_mut() {
+        node.revenue_generated = 0;
+    }
+    for edge in world.infra_edges.values_mut() {
+        edge.revenue_generated = 0;
+    }
+
     let mut corp_ids: Vec<u64> = world.corporations.keys().copied().collect();
     corp_ids.sort_unstable();
 
@@ -50,7 +58,7 @@ pub fn run(world: &mut GameWorld) {
 
 // ─── Node Revenue (traffic-based) ─────────────────────────────────────────────
 
-fn calculate_node_traffic_revenue(world: &GameWorld, corp_id: EntityId) -> i64 {
+fn calculate_node_traffic_revenue(world: &mut GameWorld, corp_id: EntityId) -> i64 {
     let corp_nodes = world
         .corp_infra_nodes
         .get(&corp_id)
@@ -84,7 +92,13 @@ fn calculate_node_traffic_revenue(world: &GameWorld, corp_id: EntityId) -> i64 {
         let health = world.healths.get(&node_id).map(|h| h.condition).unwrap_or(1.0);
         let quality = quality_multiplier(world, node_id, health);
 
-        revenue += (traffic * rate * quality) as i64;
+        let node_revenue = (traffic * rate * quality) as i64;
+        revenue += node_revenue;
+
+        // Store per-node revenue
+        if let Some(n) = world.infra_nodes.get_mut(&node_id) {
+            n.revenue_generated += node_revenue;
+        }
     }
 
     revenue
@@ -92,7 +106,7 @@ fn calculate_node_traffic_revenue(world: &GameWorld, corp_id: EntityId) -> i64 {
 
 // ─── Edge Revenue (transit fees) ──────────────────────────────────────────────
 
-fn calculate_edge_traffic_revenue(world: &GameWorld, corp_id: EntityId) -> i64 {
+fn calculate_edge_traffic_revenue(world: &mut GameWorld, corp_id: EntityId) -> i64 {
     let mut edge_revs: Vec<(u64, i64)> = world
         .infra_edges
         .iter()
@@ -115,6 +129,14 @@ fn calculate_edge_traffic_revenue(world: &GameWorld, corp_id: EntityId) -> i64 {
         })
         .collect();
     edge_revs.sort_unstable_by_key(|t| t.0);
+
+    // Store per-edge revenue
+    for &(eid, rev) in &edge_revs {
+        if let Some(edge) = world.infra_edges.get_mut(&eid) {
+            edge.revenue_generated += rev;
+        }
+    }
+
     edge_revs.iter().map(|t| t.1).sum()
 }
 

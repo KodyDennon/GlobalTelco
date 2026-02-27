@@ -270,7 +270,7 @@
 			<div class="policy-grid">
 				<div class="policy-card">
 					<span class="policy-card-label">Hiring Policy</span>
-					<select class="policy-select" value={hiringPolicy}
+					<select class="policy-select" value={hiringPolicy} aria-label="Hiring policy"
 						onchange={(e) => setHiringPolicy((e.target as HTMLSelectElement).value)}>
 						<option value="normal">Normal Growth</option>
 						<option value="freeze">Hiring Freeze</option>
@@ -287,7 +287,7 @@
 				</div>
 				<div class="policy-card">
 					<span class="policy-card-label">Salary Band</span>
-					<select class="policy-select" value={salaryBand}
+					<select class="policy-select" value={salaryBand} aria-label="Salary band"
 						onchange={(e) => setSalaryBand((e.target as HTMLSelectElement).value)}>
 						<option value="below_market">Below Market (-15%)</option>
 						<option value="market">Market Rate</option>
@@ -310,6 +310,7 @@
 			<div class="headcount-row">
 				<span class="policy-label">Target</span>
 				<input type="range" min={10} max={500} step={5} value={headcountTarget}
+					aria-label="Headcount target"
 					oninput={(e) => {
 						const val = Number((e.target as HTMLInputElement).value);
 						setHeadcountTarget(val);

@@ -96,6 +96,14 @@ pub enum GameEvent {
         entity: EntityId,
     },
 
+    // Weather (Phase 7.5)
+    WeatherStarted {
+        region: EntityId,
+        weather_type: String,
+        severity: f64,
+        duration_ticks: u32,
+    },
+
     // Subsidiary
     SubsidiaryCreated {
         parent: EntityId,
@@ -421,8 +429,9 @@ impl GameEvent {
             GameEvent::ResearchStarted { corporation, .. }
             | GameEvent::ResearchCompleted { corporation, .. } => vec![*corporation],
 
-            // Disasters — global
-            GameEvent::DisasterStruck { .. } => vec![],
+            // Disasters & Weather — global
+            GameEvent::DisasterStruck { .. }
+            | GameEvent::WeatherStarted { .. } => vec![],
             GameEvent::InfrastructureDamaged { .. }
             | GameEvent::RepairStarted { .. }
             | GameEvent::RepairCompleted { .. } => vec![],

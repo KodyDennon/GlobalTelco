@@ -14,6 +14,7 @@ import { worldId, addGhostNode, addGhostEdge } from '$lib/stores/multiplayerStat
 import { sendCommand } from '$lib/multiplayer/WebSocketClient';
 import { exitPlacementMode } from '$lib/stores/uiState';
 import * as bridge from '$lib/wasm/bridge';
+import { audioManager } from '$lib/audio/AudioManager';
 
 /**
  * Returns the sequence number if multiplayer (for correlating acks),
@@ -24,6 +25,11 @@ export function gameCommand(command: Record<string, unknown>): number | null {
 	if (wId) {
 		// Multiplayer: send to server, don't execute locally
 		const seq = sendCommand(wId, command);
+
+		// Play build placement sound for optimistic feedback
+		if ('BuildNode' in command || 'BuildEdge' in command) {
+			audioManager.playSfx('build');
+		}
 
 		// Create ghost entity for visual commands (instant feedback)
 		if ('BuildNode' in command) {
@@ -54,8 +60,14 @@ export function gameCommand(command: Record<string, unknown>): number | null {
 		// without waiting for the 2-second fallback interval
 		window.dispatchEvent(new CustomEvent('map-dirty'));
 
+		// Play build placement sound on success
+		if (!failed && ('BuildNode' in command || 'BuildEdge' in command)) {
+			audioManager.playSfx('build');
+		}
+
 		// Auto-exit build mode if a build command failed (e.g. insufficient funds)
 		if (failed && ('BuildNode' in command || 'BuildEdge' in command)) {
+			audioManager.playSfx('error');
 			exitPlacementMode();
 		}
 

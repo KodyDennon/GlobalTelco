@@ -156,7 +156,7 @@
 	<!-- Row 2: Actions bar -->
 	<div class="hud-row row-2">
 		<!-- Build mode status indicator -->
-		<div class="build-status">
+		<div class="build-status" role="status" aria-label="Build mode status">
 			{#if currentBuild === 'node' && $selectedBuildItem}
 				<span class="build-mode-badge node">NODE</span>
 				<span class="build-item-name">{BUILD_ITEM_NAMES[$selectedBuildItem] ?? $selectedBuildItem}</span>
@@ -195,7 +195,7 @@
 				{:else}
 					<span class="edge-hint">Click a source node</span>
 				{/if}
-				<button class="tier-help-btn" onclick={() => showTierGuide = !showTierGuide} use:tooltip={'Show tier compatibility guide — which edge types connect which node tiers'}>?</button>
+				<button class="tier-help-btn" onclick={() => showTierGuide = !showTierGuide} aria-label="Show tier compatibility guide" aria-expanded={showTierGuide} use:tooltip={'Show tier compatibility guide — which edge types connect which node tiers'}>?</button>
 				<button class="cancel-btn" onclick={exitPlacementMode} use:tooltip={'Cancel build mode (Esc)'}>Cancel</button>
 			{:else if currentBuild === 'node'}
 				<span class="build-mode-badge node">NODE</span>
@@ -208,7 +208,7 @@
 
 		<div class="divider"></div>
 
-		<div class="panel-buttons">
+		<div class="panel-buttons" role="toolbar" aria-label="Management panels">
 			{#each PANEL_GROUPS as group}
 				<button
 					class="panel-btn"
@@ -224,7 +224,7 @@
 
 		<div class="divider"></div>
 
-		<div class="overlay-buttons">
+		<div class="overlay-buttons" role="toolbar" aria-label="Map overlays">
 			{#each OVERLAYS as overlay}
 				<button
 					class="overlay-btn"

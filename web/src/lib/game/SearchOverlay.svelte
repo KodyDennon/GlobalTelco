@@ -189,18 +189,21 @@
 					class="search-input"
 					spellcheck="false"
 					autocomplete="off"
+					aria-label="Search cities, regions, and infrastructure"
 				/>
 				<kbd class="search-hint">ESC</kbd>
 			</div>
 
 			{#if results.length > 0}
-				<div class="search-results">
+				<div class="search-results" role="listbox" aria-label="Search results">
 					{#each results as result, i}
 						<button
 							class="search-result"
 							class:selected={i === selectedIndex}
 							onclick={() => navigateTo(result)}
 							onmouseenter={() => selectedIndex = i}
+							role="option"
+							aria-selected={i === selectedIndex}
 						>
 							<span class="result-type-badge" class:city={result.type === 'city'} class:region={result.type === 'region'} class:infra={result.type === 'infra'}>
 								{result.type === 'city' ? 'CITY' : result.type === 'region' ? 'REGION' : 'INFRA'}

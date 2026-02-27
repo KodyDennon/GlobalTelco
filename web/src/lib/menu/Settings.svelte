@@ -18,7 +18,7 @@
 </script>
 
 <div class="settings">
-	<div class="settings-container">
+	<div class="settings-container" role="form" aria-label="Game settings">
 		<h2>{$tr('settings.title')}</h2>
 
 		<h3>{$tr('settings.audio')}</h3>

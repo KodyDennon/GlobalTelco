@@ -244,6 +244,25 @@ impl BridgeQuery for TauriBridge {
         r#"{"edge_flows":[],"node_flows":[],"total_served":0,"total_dropped":0,"total_demand":0,"player_served":0,"player_dropped":0,"top_congested":[]}"#.to_string()
     }
 
+    fn get_weather_forecasts(&self) -> String {
+        let w = self.world.lock().unwrap();
+        let forecasts = w.get_weather_forecasts();
+        let json: Vec<serde_json::Value> = forecasts
+            .iter()
+            .map(|f| {
+                serde_json::json!({
+                    "region_id": f.region_id,
+                    "region_name": f.region_name,
+                    "predicted_type": f.predicted_type.display_name(),
+                    "probability": f.probability,
+                    "eta_ticks": f.eta_ticks,
+                    "predicted_severity": f.predicted_severity,
+                })
+            })
+            .collect();
+        serde_json::to_string(&json).unwrap_or_default()
+    }
+
     fn save_game(&self) -> Result<String, String> {
         self.world.lock().unwrap().save_game().map_err(|e| format!("Save failed: {e}"))
     }

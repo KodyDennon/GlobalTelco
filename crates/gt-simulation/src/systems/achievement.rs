@@ -16,12 +16,7 @@ pub fn run(world: &mut GameWorld) {
 
     for &corp_id in &corp_ids {
         // Ensure tracker exists
-        if !world.achievements.contains_key(&corp_id) {
-            world.achievements.insert(
-                corp_id,
-                crate::components::AchievementTracker::new(),
-            );
-        }
+        world.achievements.entry(corp_id).or_default();
 
         let node_count = world
             .corp_infra_nodes

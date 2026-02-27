@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { tooltip } from '$lib/ui/tooltip';
+	import { audioManager } from '$lib/audio/AudioManager';
 
 	interface Props {
 		title: string;
@@ -69,7 +70,15 @@
 			localStorage.setItem(storageKey, JSON.stringify({ x: posX, y: posY }));
 		}
 	}
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape') {
+			onclose();
+		}
+	}
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 {#if initialized}
 	<div
@@ -78,6 +87,7 @@
 		style="left: {posX}px; top: {posY}px;"
 		role="dialog"
 		aria-label={title}
+		aria-modal="false"
 	>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
@@ -91,14 +101,15 @@
 		</div>
 
 		{#if tabs.length > 1}
-			<div class="tab-bar" role="tablist">
+			<div class="tab-bar" role="tablist" aria-label="{title} tabs">
 				{#each tabs as tab}
 					<button
 						class="tab-btn"
 						class:active={activeTab === tab.key}
-						onclick={() => ontabchange(tab.key)}
+						onclick={() => { audioManager.playSfx('ui_tab'); ontabchange(tab.key); }}
 						role="tab"
 						aria-selected={activeTab === tab.key}
+						tabindex={activeTab === tab.key ? 0 : -1}
 					>
 						{tab.label}
 					</button>
@@ -106,7 +117,7 @@
 			</div>
 		{/if}
 
-		<div class="panel-content">
+		<div class="panel-content" role="tabpanel" aria-label="{activeTab} panel content">
 			{@render children()}
 		</div>
 	</div>

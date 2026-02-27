@@ -124,7 +124,7 @@
 		</div>
 		{#if showFileForm}
 			<div class="file-form">
-				<select bind:value={targetCorp}>
+				<select bind:value={targetCorp} aria-label="Select defendant corporation">
 					<option value={0}>Select defendant...</option>
 					{#each aiCorps as corp}
 						<option value={corp.id}>{corp.name}</option>
@@ -133,7 +133,7 @@
 
 				<label class="form-field">
 					<span class="field-label">Lawsuit Type</span>
-					<select bind:value={lawsuitType}>
+					<select bind:value={lawsuitType} aria-label="Lawsuit type">
 						{#each LAWSUIT_TYPES as lt}
 							<option value={lt.value}>{lt.label}</option>
 						{/each}

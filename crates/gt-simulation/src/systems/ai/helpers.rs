@@ -133,12 +133,7 @@ pub fn pick_edge_type_for_tiers(world: &GameWorld, from: EntityId, to: EntityId)
         EdgeType::Submarine,
     ];
 
-    for edge_type in candidates {
-        if edge_type.can_connect(from_type, to_type) {
-            return Some(edge_type);
-        }
-    }
-    None
+    candidates.into_iter().find(|&edge_type| edge_type.can_connect(from_type, to_type))
 }
 
 /// Legacy tier-unaware fiber selection (fallback).

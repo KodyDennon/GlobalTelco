@@ -36,7 +36,7 @@ import { buildTerrainBitmapAsync, disposeTerrainWorker } from './terrainBitmap';
 import { CORP_COLORS, SATELLITE_COLORS, TERRAIN_OVERLAY_COLORS, NODE_TIER_SIZE } from './constants';
 import { satelliteMapStyle, procgenMapStyle } from './tileConfig';
 import { handleMapMouseMove, setTooltipDisasters, type TooltipHit } from './tooltip';
-import { createWeatherLayers, computeDisasterForecasts, type ActiveDisaster, type ForecastDisaster } from '../WeatherLayer';
+import { createWeatherLayers, computeDisasterForecasts, convertWeatherForecasts, type ActiveDisaster, type ForecastDisaster } from '../WeatherLayer';
 import { createCablePreviewLayers, type CableDrawingState } from './layers/cablePreviewLayer';
 import { createWaypointEditorLayers, type WaypointEditorState } from './layers/waypointEditorLayer';
 import { selectedBuildItem, buildCategory, buildMode, ghostPreviewInfo, TERRAIN_COST_MULTIPLIERS } from '$lib/stores/uiState';
@@ -1332,13 +1332,35 @@ export class MapRenderer {
         // No explicit renderLayers() call needed — the animation loop handles it
     }
 
-    /** Update forecast disasters (recomputed every 10 ticks for stability). */
+    /** Update forecast disasters (recomputed every 10 ticks for stability).
+     *  Uses server-side weather forecasts when available, falls back to client-side heuristic. */
     updateForecasts(regions: import('$lib/wasm/types').Region[], currentTick: number): void {
         // Only recompute every 10 ticks to avoid flicker (seed includes tick)
         const bucket = Math.floor(currentTick / 10);
         if (bucket === this.lastForecastTick) return;
         this.lastForecastTick = bucket;
-        this.forecastDisasters = computeDisasterForecasts(regions, bucket);
+
+        // Try server-side weather forecasts first (authoritative)
+        let serverForecasts: ForecastDisaster[] = [];
+        try {
+            const weatherData = bridge.getWeatherForecasts();
+            if (weatherData.length > 0) {
+                serverForecasts = convertWeatherForecasts(weatherData, regions, currentTick);
+            }
+        } catch {
+            // Fall through to client-side
+        }
+
+        // Client-side disaster risk heuristic (supplement)
+        const clientForecasts = computeDisasterForecasts(regions, bucket);
+
+        // Merge: server forecasts take priority
+        const coveredRegions = new Set(serverForecasts.map(f => f.regionId));
+        const supplemental = clientForecasts.filter(f => !coveredRegions.has(f.regionId));
+
+        this.forecastDisasters = [...serverForecasts, ...supplemental]
+            .sort((a, b) => b.probability - a.probability)
+            .slice(0, 8);
     }
 
     /** Get the current forecast disasters (for use by parent components). */

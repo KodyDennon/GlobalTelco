@@ -563,6 +563,27 @@ export function getDisasterForecasts(): DisasterForecast[] {
 	}
 }
 
+// ── Phase 7.5: Weather Forecasts ─────────────────────────────────────
+
+export interface WeatherForecast {
+	region_id: number;
+	region_name: string;
+	predicted_type: string;
+	probability: number;
+	eta_ticks: number;
+	predicted_severity: number;
+}
+
+export function getWeatherForecasts(): WeatherForecast[] {
+	try {
+		const json = bridge?.get_weather_forecasts() ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getWeatherForecasts');
+		return [];
+	}
+}
+
 // ── Road Network Queries (Fiber Auto-Routing) ────────────────────────
 
 export interface RoadSegmentInfo {

@@ -160,16 +160,16 @@
 - [ ] Query current budget state from WASM bridge on panel open
 - [ ] Show loading state while budget data is fetched
 
-### 3.2 — NetworkDashboard Estimated Data (Gaps #19a-d, #28)
+### 3.2 — NetworkDashboard Estimated Data (Gaps #19a-d, #28) --- COMPLETE
 
-**Current State:** 4 documented gaps where formulas use placeholder calculations instead of real sim data.
+**Current State:** All 4 gaps wired with real simulation data. No remaining placeholder formulas.
 
 **Fixes:**
-- [ ] **#19a — Per-infrastructure revenue:** Add `revenue_per_node` tracking to the revenue system in Rust. Expose via bridge query.
-- [ ] **#19b — SLA monitoring:** Add SLA target/penalty fields to Contract component. Expose via bridge query.
-- [ ] **#19c — Repair state:** Expose `repairing`, `repair_ticks_left`, `repair_health_per_tick` fields through the bridge's infrastructure query
-- [ ] **#19d + #28 — Capacity planning:** Add historical utilization tracking (last 100 ticks per node/edge). Expose as time series via bridge query.
-- [ ] Replace all placeholder formulas in NetworkDashboard.svelte with real data queries
+- [x] **#19a — Per-infrastructure revenue:** Added `revenue_generated` field to InfraNode and InfraEdge components. Revenue system now tracks per-asset revenue. Exposed via bridge. Edge `maintenance_cost` also now exposed.
+- [x] **#19b — SLA monitoring:** Added `sla_target`, `sla_current_performance`, `sla_penalty_accrued` fields to Contract component. Contract system now calculates SLA compliance per-tick based on provider health and capacity. Exposed via bridge with `sla_status` field.
+- [x] **#19c — Repair state:** Exposed `repairing`, `repair_ticks_left`, `repair_health_per_tick` fields through the bridge's infrastructure query for both nodes and edges. Template now shows remaining repair ticks.
+- [x] **#19d + #28 — Capacity planning:** Added `utilization_history` (HashMap<EntityId, VecDeque<f64>>) to GameWorld. Utilization system records last 100 ticks per node/edge. Exposed via bridge as `utilization_history: Vec<f64>`. `ticksUntilFull` now uses per-edge linear regression from real history.
+- [x] All placeholder formulas and TODO markers replaced in NetworkDashboard.svelte
 
 ### 3.3 — WorkforcePanel Missing Field
 
@@ -434,14 +434,18 @@
 
 *Goal: Complete all remaining phases from MAP_TERRAIN_FIBER_OVERHAUL_PLAN.md.*
 
-### 7.1 — Terrain Detail Within Procgen Cells (Phase 2.2.2 — NOT STARTED)
+### 7.1 — Terrain Detail Within Procgen Cells (Phase 2.2.2 — COMPLETE)
 
-- [ ] Mountain cells: procedural ridge/peak patterns (contour lines or darker patches)
-- [ ] Forest/Rural cells: subtle tree canopy texture or green variation
-- [ ] Desert cells: sand dune patterns (lighter/darker bands)
-- [ ] Ocean cells: depth gradient (lighter near coast, darker deep)
-- [ ] Urban cells: grid-like pattern suggesting city blocks
-- [ ] Implement via sub-cell noise patterns or procedural texture overlays in vectorTerrainLayer.ts
+- [x] Mountain cells: 4 concentric contour rings with per-vertex jitter for ridge appearance + peak highlight polygon
+- [x] Forest/Rural cells: 2-3 offset canopy patches with varying green shades for organic tree-canopy feel
+- [x] Desert cells: 3 concentric dune bands (alternating light/dark) + 2-3 diagonal wind-streak lines
+- [x] Ocean cells: always-visible depth gradient polygons (lighter inner patch for shallow, darker for deep)
+- [x] Urban cells: dense 60%-fill grid pattern with 4-5 lines each direction, per-cell rotation
+- [x] Suburban cells: scattered 2x2 block clusters suggesting residential neighborhoods
+- [x] Coastal cells: dual-ring shore-side gradient band (blue-green tint)
+- [x] Tundra cells: 3-4 crack lines with mid-point bends for permafrost pattern
+- [x] Frozen cells: 2-3 ice fracture lines with white-blue tint
+- [x] All terrain types processed (no sampling skip), ocean detail at all zooms, land detail at zoom 3+
 
 ### 7.2 — Real Earth Building Footprints (Phase 3.1.2 — PARTIAL)
 
@@ -497,13 +501,13 @@
 
 ### 8.1 — Full Audio Expansion (Phase 9 unchecked items)
 
-- [ ] Ambient background music tracks per era (synthesized or licensed loops)
-- [ ] Era-specific sound palettes (telegraph clicks, digital tones, etc.)
-- [ ] UI interaction sounds (panel open/close, tab switch, button hover, slider drag)
-- [ ] Environmental audio (city hum, ocean ambience, wind at mountains)
-- [ ] Disaster-specific audio cues (earthquake rumble, storm winds, cyber glitch)
-- [ ] Victory/achievement fanfare with escalating intensity
-- [ ] Audio ducking during important notifications
+- [x] Ambient background music tracks per era (synthesized or licensed loops)
+- [x] Era-specific sound palettes (telegraph clicks, digital tones, etc.)
+- [x] UI interaction sounds (panel open/close, tab switch, button hover, slider drag)
+- [x] Environmental audio (city hum, ocean ambience, wind at mountains)
+- [x] Disaster-specific audio cues (earthquake rumble, storm winds, cyber glitch)
+- [x] Victory/achievement fanfare with escalating intensity
+- [x] Audio ducking during important notifications
 
 ### 8.2 — Accessibility (Phase 13)
 

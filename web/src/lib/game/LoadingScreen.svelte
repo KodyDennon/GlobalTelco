@@ -32,10 +32,10 @@
 	const progressPct = $derived(Math.min(100, ((stage + 1) / stages.length) * 100));
 </script>
 
-<div class="loading-screen">
+<div class="loading-screen" role="status" aria-label="Loading game" aria-live="polite">
 	<!-- Animated background grid -->
-	<div class="bg-grid"></div>
-	<div class="bg-glow"></div>
+	<div class="bg-grid" aria-hidden="true"></div>
+	<div class="bg-glow" aria-hidden="true"></div>
 
 	<div class="loading-content">
 		<!-- Logo + tagline -->
@@ -53,7 +53,7 @@
 
 		<!-- Progress bar -->
 		<div class="progress-section">
-			<div class="progress-bar">
+			<div class="progress-bar" role="progressbar" aria-valuenow={Math.round(progressPct)} aria-valuemin={0} aria-valuemax={100} aria-label="Loading progress">
 				<div class="progress-fill" style="width: {progressPct}%">
 					<div class="progress-shine"></div>
 				</div>

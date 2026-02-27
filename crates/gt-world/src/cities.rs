@@ -111,7 +111,7 @@ fn generate_city_name(seed: u64) -> String {
     hash = hash
         .wrapping_mul(6364136223846793005)
         .wrapping_add(1442695040888963407);
-    let use_prefix = hash % 3 != 0; // 2/3 chance of prefix
+    let use_prefix = !hash.is_multiple_of(3); // 2/3 chance of prefix
     hash = hash
         .wrapping_mul(6364136223846793005)
         .wrapping_add(1442695040888963407);

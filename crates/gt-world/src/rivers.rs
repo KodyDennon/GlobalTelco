@@ -33,7 +33,7 @@ pub struct RiverSystem {
 /// 5. Compute per-cell moisture from ocean proximity and river proximity
 pub fn generate_rivers(
     grid: &VoronoiGrid,
-    elevations: &mut Vec<f64>,
+    elevations: &mut [f64],
     map_size: MapSize,
     seed: u64,
 ) -> RiverSystem {

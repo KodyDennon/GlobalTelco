@@ -26,7 +26,7 @@
 		forecasts.slice(0, 3)
 	);
 
-	/** Map disaster type to a display icon character. */
+	/** Map disaster/weather type to a display icon character. */
 	function disasterIcon(type: string): string {
 		const lower = type.toLowerCase();
 		if (lower.includes('earthquake')) return '/\\';
@@ -34,6 +34,7 @@
 		if (lower.includes('flood')) return '~~';
 		if (lower.includes('ice') || lower.includes('blizzard')) return '**';
 		if (lower.includes('storm') || lower.includes('thunder') || lower.includes('landslide')) return '//';
+		if (lower.includes('heat') || lower.includes('heatwave')) return '^^';
 		if (lower.includes('cyber')) return '<!>';
 		return '!!';
 	}
@@ -130,6 +131,7 @@
 					<button
 						class="alert-btn repair"
 						onclick={emergencyRepairAll}
+						aria-label="Emergency repair all damaged infrastructure"
 						use:tooltip={'Emergency repair all damaged infrastructure (costs extra)'}
 					>
 						Repair All
@@ -137,6 +139,7 @@
 					<button
 						class="alert-btn view"
 						onclick={() => viewAffected(disaster)}
+						aria-label="Zoom to {disaster.regionName} disaster area"
 						use:tooltip={'Zoom to the affected region'}
 					>
 						View
@@ -170,6 +173,7 @@
 					<button
 						class="alert-btn prepare"
 						onclick={() => prepareForecast(forecast)}
+						aria-label="Prepare for {forecast.disasterType} in {forecast.regionName}"
 						use:tooltip={'Zoom to region and open infrastructure panel to prepare'}
 					>
 						Prepare

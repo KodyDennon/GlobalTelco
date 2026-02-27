@@ -1,6 +1,7 @@
 import { ScatterplotLayer } from '@deck.gl/layers';
 import type { Layer } from '@deck.gl/core';
 import type { Region } from '$lib/wasm/types';
+import type { WeatherForecast } from '$lib/wasm/bridge';
 
 export interface WeatherState {
     enabled: boolean;
@@ -110,6 +111,53 @@ export function computeDisasterForecasts(
             lat: region.center_lat,
             estimatedTicks,
             probability: region.disaster_risk,
+        });
+    }
+
+    // Sort by probability descending (highest risk first)
+    forecasts.sort((a, b) => b.probability - a.probability);
+
+    return forecasts;
+}
+
+/**
+ * Convert server-side weather forecasts into ForecastDisaster entries for
+ * the existing visualization pipeline (map layers + DisasterAlert panel).
+ *
+ * Server-side forecasts use the deterministic RNG to predict actual future
+ * weather events with real probabilities, unlike the client-side heuristic
+ * which only estimates from disaster_risk.
+ *
+ * @param serverForecasts - Weather forecasts from bridge.getWeatherForecasts()
+ * @param regions - All regions (for center_lon/center_lat lookup)
+ * @param currentTick - Current simulation tick (for stable IDs)
+ * @returns ForecastDisaster array sorted by probability descending
+ */
+export function convertWeatherForecasts(
+    serverForecasts: WeatherForecast[],
+    regions: Region[],
+    currentTick: number,
+): ForecastDisaster[] {
+    const regionMap = new Map<number, Region>();
+    for (const r of regions) {
+        regionMap.set(r.id, r);
+    }
+
+    const forecasts: ForecastDisaster[] = [];
+
+    for (const wf of serverForecasts) {
+        const region = regionMap.get(wf.region_id);
+        if (!region) continue;
+
+        forecasts.push({
+            id: `weather-${wf.region_id}-${wf.predicted_type}-${currentTick}`,
+            disasterType: wf.predicted_type,
+            regionName: wf.region_name,
+            regionId: wf.region_id,
+            lon: region.center_lon,
+            lat: region.center_lat,
+            estimatedTicks: wf.eta_ticks,
+            probability: wf.probability,
         });
     }
 

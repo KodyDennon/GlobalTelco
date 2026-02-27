@@ -1,5 +1,6 @@
 import { writable, derived } from 'svelte/store';
 import { playerCorp } from './gameState';
+import { audioManager } from '$lib/audio/AudioManager';
 
 export type PanelType = 'none' | 'info' | 'dashboard' | 'infrastructure' | 'network' | 'research' | 'contracts' | 'region' | 'workforce' | 'advisor' | 'auctions' | 'mergers' | 'intel' | 'achievements' | 'spectrum';
 export type OverlayType = 'none' | 'terrain' | 'ownership' | 'population' | 'demand' | 'disaster' | 'coverage' | 'congestion' | 'traffic' | 'market_share' | 'ocean_depth' | 'spectrum' | 'elevation_contour' | 'submarine_reference' | 'coverage_overlap';
@@ -352,12 +353,14 @@ export function openPanelGroup(group: PanelGroupType, tab?: string) {
 	const tabs = PANEL_GROUP_TABS[group];
 	activePanelGroup.set(group);
 	activeGroupTab.set(tab ?? tabs[0]?.key ?? '');
+	audioManager.playSfx('ui_open');
 }
 
 // Helper to close active panel group
 export function closePanelGroup() {
 	activePanelGroup.set('none');
 	activeGroupTab.set('');
+	audioManager.playSfx('ui_close');
 }
 
 // Helper to show confirmation dialog

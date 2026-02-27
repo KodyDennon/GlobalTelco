@@ -222,16 +222,16 @@
 	<div class="pause-banner" role="alert">
 		<span class="pause-icon">||</span>
 		<span class="pause-text">PAUSED: {$autoPauseReason}</span>
-		<button class="resume-btn" onclick={() => setSpeed(1)} use:tooltip={'Resume game at normal speed (1x)'}>Resume</button>
+		<button class="resume-btn" onclick={() => setSpeed(1)} aria-label="Resume game at normal speed" use:tooltip={'Resume game at normal speed (1x)'}>Resume</button>
 	</div>
 {/if}
 
 {#if hasNotifs}
-	<div class="feed" class:expanded role="log" aria-live="polite">
-		<button class="feed-header" onclick={() => (expanded = !expanded)} use:tooltip={expanded ? 'Click to collapse event feed' : 'Click to expand and see more events'}>
+	<div class="feed" class:expanded role="log" aria-label="Game event feed" aria-live="polite">
+		<button class="feed-header" onclick={() => (expanded = !expanded)} aria-expanded={expanded} aria-label="Toggle event feed, {$notifications.length} events" use:tooltip={expanded ? 'Click to collapse event feed' : 'Click to expand and see more events'}>
 			<span class="feed-title">{$tr("game.events")}</span>
-			<span class="feed-count">{$notifications.length}</span>
-			<span class="toggle">{expanded ? "v" : "^"}</span>
+			<span class="feed-count" aria-hidden="true">{$notifications.length}</span>
+			<span class="toggle" aria-hidden="true">{expanded ? "v" : "^"}</span>
 		</button>
 		<div class="feed-list">
 			{#each recentNotifs as notif}

@@ -70,6 +70,7 @@ pub trait BridgeQuery {
     fn get_achievements(&self, corp_id: EntityId) -> String;
     fn get_victory_state(&self) -> String;
     fn get_traffic_flows(&self) -> String;
+    fn get_weather_forecasts(&self) -> String;
     fn save_game(&self) -> Result<String, String>;
     fn load_game(&mut self, data: &str) -> Result<(), String>;
 

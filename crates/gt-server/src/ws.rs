@@ -1253,7 +1253,7 @@ async fn handle_client_message(
             };
 
             let world_id = match &p.world_id {
-                Some(id) => id.clone(),
+                Some(id) => *id,
                 None => {
                     return Some(ServerMessage::Error {
                         code: ErrorCode::InvalidCommand,

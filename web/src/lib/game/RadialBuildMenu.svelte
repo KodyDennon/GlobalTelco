@@ -252,7 +252,7 @@
 {#if $radialMenuOpen}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="radial-backdrop" onclick={handleBackdropClick}>
+	<div class="radial-backdrop" onclick={handleBackdropClick} role="presentation">
 		<div class="radial-menu" style={menuStyle} role="menu" aria-label="Build menu">
 			<svg
 				viewBox="-160 -160 320 320"
@@ -267,6 +267,9 @@
 					<g
 						class="segment"
 						class:hovered={hoveredCategory === cat.key}
+						role="menuitem"
+						tabindex="0"
+						aria-label="{cat.label} build category"
 						onmouseenter={() => { cancelClose(); hoveredCategory = cat.key; }}
 						onmouseleave={() => scheduleClose()}
 						onclick={() => { /* handled by sub-menu items */ }}
@@ -304,6 +307,9 @@
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<div
 					class="flyout"
+					role="menu"
+					tabindex="0"
+					aria-label="{hoveredCategoryData.label} items"
 					style="transform: translate({screenFlyout.x}px, {screenFlyout.y}px);"
 					onmouseenter={() => { cancelClose(); hoveredCategory = hoveredCategoryData?.key ?? null; }}
 					onmouseleave={() => scheduleClose()}

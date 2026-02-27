@@ -460,6 +460,8 @@
 	},
 	"notifications": {
 		"disaster": "Disaster",
+		"weather": "Weather",
+		"weather_forecast": "Weather Forecast",
 		"infrastructure": "Infrastructure",
 		"finance": "Finance",
 		"contract": "Contract",

@@ -284,6 +284,7 @@
 			<div class="policy-row">
 				<span class="policy-label">Maintenance Budget</span>
 				<input type="range" min={0} max={5000000} step={50000} value={maintenanceBudget}
+					aria-label="Maintenance budget"
 					oninput={(e) => {
 						const val = Number((e.target as HTMLInputElement).value);
 						setMaintenanceBudget(val);
@@ -292,7 +293,7 @@
 			</div>
 			<div class="policy-row">
 				<span class="policy-label">Expansion Priority</span>
-				<select class="policy-select" value={expansionPriority}
+				<select class="policy-select" value={expansionPriority} aria-label="Expansion priority"
 					onchange={(e) => {
 						setExpansionPriority((e.target as HTMLSelectElement).value);
 					}}>
@@ -303,7 +304,7 @@
 			</div>
 			<div class="policy-row">
 				<span class="policy-label">Pricing Strategy</span>
-				<select class="policy-select" value={pricingStrategy}
+				<select class="policy-select" value={pricingStrategy} aria-label="Pricing strategy"
 					onchange={(e) => {
 						setPricingStrategy((e.target as HTMLSelectElement).value);
 					}}>
@@ -322,7 +323,7 @@
 			<div class="policy-cards">
 				<div class="policy-card">
 					<span class="policy-card-title">Expansion</span>
-					<select class="policy-select-lg" value={expansionPriority}
+					<select class="policy-select-lg" value={expansionPriority} aria-label="Expansion priority"
 						onchange={(e) => setExpansionPriority((e.target as HTMLSelectElement).value)}>
 						<option value="balanced">Balanced</option>
 						<option value="aggressive">Aggressive</option>
@@ -332,7 +333,7 @@
 				</div>
 				<div class="policy-card">
 					<span class="policy-card-title">Pricing</span>
-					<select class="policy-select-lg" value={pricingStrategy}
+					<select class="policy-select-lg" value={pricingStrategy} aria-label="Pricing strategy"
 						onchange={(e) => setPricingStrategy((e.target as HTMLSelectElement).value)}>
 						<option value="market">Market Rate</option>
 						<option value="undercut">Undercut (-10%)</option>
@@ -342,7 +343,7 @@
 				</div>
 				<div class="policy-card">
 					<span class="policy-card-title">Hiring</span>
-					<select class="policy-select-lg" value={hiringPolicy}
+					<select class="policy-select-lg" value={hiringPolicy} aria-label="Hiring policy"
 						onchange={(e) => setHiringPolicy((e.target as HTMLSelectElement).value)}>
 						<option value="normal">Normal</option>
 						<option value="freeze">Hiring Freeze</option>
@@ -353,7 +354,7 @@
 				</div>
 				<div class="policy-card">
 					<span class="policy-card-title">Research</span>
-					<select class="policy-select-lg" value={researchFocus}
+					<select class="policy-select-lg" value={researchFocus} aria-label="Research focus"
 						onchange={(e) => setResearchFocus((e.target as HTMLSelectElement).value)}>
 						<option value="balanced">Balanced</option>
 						<option value="cost_reduction">Cost Reduction</option>
@@ -504,14 +505,14 @@
 	<div class="section">
 		<div class="section-header">
 			<h3>{$tr('panels.loans', { count: debts.length })}</h3>
-			<button class="action-btn" onclick={() => (showLoanDialog = !showLoanDialog)} use:tooltip={() => `Take a loan to fund expansion\nYour credit rating: ${$playerCorp?.credit_rating ?? '---'}\nBetter ratings = lower interest`}>+ Take Loan</button>
+			<button class="action-btn" onclick={() => (showLoanDialog = !showLoanDialog)} aria-expanded={showLoanDialog} aria-label={showLoanDialog ? 'Cancel loan dialog' : 'Take a new loan'} use:tooltip={() => `Take a loan to fund expansion\nYour credit rating: ${$playerCorp?.credit_rating ?? '---'}\nBetter ratings = lower interest`}>+ Take Loan</button>
 		</div>
 
 		{#if showLoanDialog}
 			<div class="loan-dialog">
 				<label>
 					Amount:
-					<input type="range" min={100000} max={50000000} step={100000} bind:value={loanAmount} />
+					<input type="range" min={100000} max={50000000} step={100000} bind:value={loanAmount} aria-label="Loan amount" />
 					<span class="mono">{formatMoney(loanAmount)}</span>
 				</label>
 				<button class="confirm-btn" onclick={takeLoan} use:tooltip={() => `Confirm loan of ${formatMoney(loanAmount)}\nInterest rate depends on credit rating (${$playerCorp?.credit_rating ?? '---'})`}>{$tr('panels.confirm_loan')}</button>
@@ -536,6 +537,7 @@
 			<div class="policy-row">
 				<span class="policy-label">Maintenance Budget</span>
 				<input type="range" min={0} max={5000000} step={50000} value={maintenanceBudget}
+					aria-label="Maintenance budget"
 					oninput={(e) => {
 						const val = Number((e.target as HTMLInputElement).value);
 						setMaintenanceBudget(val);
@@ -544,7 +546,7 @@
 			</div>
 			<div class="policy-row">
 				<span class="policy-label">Expansion Priority</span>
-				<select class="policy-select" value={expansionPriority}
+				<select class="policy-select" value={expansionPriority} aria-label="Expansion priority"
 					onchange={(e) => {
 						setExpansionPriority((e.target as HTMLSelectElement).value);
 					}}>
@@ -555,7 +557,7 @@
 			</div>
 			<div class="policy-row">
 				<span class="policy-label">Pricing Strategy</span>
-				<select class="policy-select" value={pricingStrategy}
+				<select class="policy-select" value={pricingStrategy} aria-label="Pricing strategy"
 					onchange={(e) => {
 						setPricingStrategy((e.target as HTMLSelectElement).value);
 					}}>
