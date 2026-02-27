@@ -104,9 +104,35 @@
 	let contractRevenue = $derived(revenueContracts.reduce((s, c) => s + c.price_per_tick, 0));
 	let contractCost = $derived(expenseContracts.reduce((s, c) => s + c.price_per_tick, 0));
 	let aiCorps = $derived($allCorporations.filter((c) => !c.is_player));
+
+	// Interconnection metrics
+	let peeringCount = $derived(activeContracts.filter(c => c.contract_type === 'Peering').length);
+	let transitCount = $derived(activeContracts.filter(c => c.contract_type === 'Transit' || c.contract_type === 'SLA').length);
+	let transitRevenueTotal = $derived(activeContracts.reduce((s, c) => s + (c.transit_revenue ?? 0), 0));
+	let transitCostTotal = $derived(activeContracts.reduce((s, c) => s + (c.transit_cost ?? 0), 0));
 </script>
 
 <div class="panel" aria-label="Contracts panel">
+	<div class="section">
+		<h3>Interconnection Status</h3>
+		<div class="stat-row">
+			<span class="muted">Peering Agreements</span>
+			<span class="mono">{peeringCount}</span>
+		</div>
+		<div class="stat-row">
+			<span class="muted">Transit Agreements</span>
+			<span class="mono">{transitCount}</span>
+		</div>
+		<div class="stat-row">
+			<span class="muted">Transit Revenue</span>
+			<span class="mono green">{formatMoney(transitRevenueTotal)}/tick</span>
+		</div>
+		<div class="stat-row">
+			<span class="muted">Transit Cost</span>
+			<span class="mono red">{formatMoney(transitCostTotal)}/tick</span>
+		</div>
+	</div>
+
 	<div class="section">
 		<h3>{$tr('panels.summary')}</h3>
 		<div class="stat-row">
@@ -310,7 +336,14 @@
 		{#each activeContracts as contract}
 			<div class="contract-card">
 				<div class="contract-info">
-					<div class="contract-type">{contract.contract_type}</div>
+					<div class="contract-header">
+						<span class="contract-type type-{contract.contract_type.toLowerCase()}">{contract.contract_type}</span>
+						{#if contract.from === ($playerCorp?.id ?? 0)}
+							<span class="badge income">{$tr('panels.income')}</span>
+						{:else}
+							<span class="badge expense">{$tr('panels.expense')}</span>
+						{/if}
+					</div>
 					<div class="contract-parties">
 						<span>{contract.from_name}</span>
 						<span class="arrow">&rarr;</span>
@@ -320,18 +353,33 @@
 						<span class="mono">{formatMoney(contract.price_per_tick)}/tick</span>
 						<span class="muted">{$tr('panels.ends_tick', { tick: contract.end_tick })}</span>
 					</div>
+					{#if contract.traffic_current > 0}
+						<div class="contract-traffic">
+							<span class="muted">Traffic:</span>
+							<span class="mono">{contract.traffic_current.toFixed(0)}</span>
+							<div class="traffic-bar">
+								<div class="traffic-fill" style="width: {Math.min(contract.traffic_capacity_pct, 100)}%"></div>
+							</div>
+							<span class="mono muted">{contract.traffic_capacity_pct.toFixed(0)}%</span>
+						</div>
+					{/if}
+					{#if contract.transit_revenue > 0}
+						<div class="contract-terms">
+							<span class="muted">Transit earned:</span>
+							<span class="mono green">{formatMoney(contract.transit_revenue)}/tick</span>
+						</div>
+					{/if}
+					{#if contract.transit_cost > 0}
+						<div class="contract-terms">
+							<span class="muted">Transit cost:</span>
+							<span class="mono red">{formatMoney(contract.transit_cost)}/tick</span>
+						</div>
+					{/if}
 					{#if contract.sla_status}
 						<div class="contract-sla">
 							<span class="sla-badge sla-{contract.sla_status}">{contract.sla_current_performance.toFixed(1)}%</span>
 							<span class="muted">target {contract.sla_target.toFixed(1)}%</span>
 						</div>
-					{/if}
-				</div>
-				<div class="contract-badge">
-					{#if contract.from === ($playerCorp?.id ?? 0)}
-						<span class="badge income">{$tr('panels.income')}</span>
-					{:else}
-						<span class="badge expense">{$tr('panels.expense')}</span>
 					{/if}
 				</div>
 			</div>
@@ -710,5 +758,47 @@
 
 	.sla-low {
 		color: var(--text-muted);
+	}
+
+	.contract-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.type-peering {
+		color: var(--green);
+	}
+
+	.type-transit {
+		color: var(--blue, #3b82f6);
+	}
+
+	.type-sla {
+		color: var(--amber, #f59e0b);
+	}
+
+	.contract-traffic {
+		display: flex;
+		gap: 6px;
+		align-items: center;
+		font-size: 11px;
+		margin-top: 2px;
+	}
+
+	.traffic-bar {
+		flex: 1;
+		height: 4px;
+		background: rgba(55, 65, 81, 0.4);
+		border-radius: 2px;
+		overflow: hidden;
+		min-width: 40px;
+	}
+
+	.traffic-fill {
+		height: 100%;
+		background: var(--blue, #3b82f6);
+		border-radius: 2px;
+		transition: width 0.3s ease;
 	}
 </style>

@@ -143,6 +143,23 @@ pub struct TrafficDemand {
     pub demand: f64,
 }
 
+/// Permission level for traffic crossing corporate boundaries.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum TransitPermission {
+    /// Same corporation — free routing, no penalty.
+    OwnNetwork,
+    /// Settlement-free peering contract — traffic allowed, no payment.
+    PeeringContract,
+    /// Paid transit contract — traffic allowed, originator pays per unit.
+    TransitContract { price_per_unit: f64 },
+    /// Allied corporations — reduced cost routing.
+    Alliance { revenue_share_pct: f64 },
+    /// Co-owned infrastructure — free routing.
+    CoOwned,
+    /// No agreement — traffic blocked.
+    Blocked,
+}
+
 /// Aggregated traffic flow data stored on GameWorld.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TrafficMatrix {
@@ -166,6 +183,9 @@ pub struct TrafficMatrix {
     pub corp_traffic_served: std::collections::HashMap<EntityId, f64>,
     /// Per-corporation traffic dropped
     pub corp_traffic_dropped: std::collections::HashMap<EntityId, f64>,
+    /// Per-contract traffic flow (contract_id → traffic units routed through it)
+    #[serde(default)]
+    pub contract_traffic: std::collections::HashMap<EntityId, f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -228,6 +248,58 @@ pub enum NodeType {
 }
 
 impl NodeType {
+    /// All node type variants for iteration.
+    pub const ALL: &'static [NodeType] = &[
+        // Original 8
+        NodeType::CentralOffice,
+        NodeType::ExchangePoint,
+        NodeType::CellTower,
+        NodeType::DataCenter,
+        NodeType::SatelliteGround,
+        NodeType::SubmarineLanding,
+        NodeType::WirelessRelay,
+        NodeType::BackboneRouter,
+        // Era 1: Telegraph
+        NodeType::TelegraphOffice,
+        NodeType::TelegraphRelay,
+        NodeType::CableHut,
+        // Era 2: Telephone
+        NodeType::ManualExchange,
+        NodeType::AutomaticExchange,
+        NodeType::TelephonePole,
+        NodeType::LongDistanceRelay,
+        // Era 3: Early Digital
+        NodeType::DigitalSwitch,
+        NodeType::MicrowaveTower,
+        NodeType::CoaxHub,
+        NodeType::EarlyDataCenter,
+        NodeType::SatelliteGroundStation,
+        // Era 4: Internet
+        NodeType::FiberPOP,
+        NodeType::InternetExchangePoint,
+        NodeType::SubseaLandingStation,
+        NodeType::ColocationFacility,
+        NodeType::ISPGateway,
+        // Era 5: Modern
+        NodeType::MacroCell,
+        NodeType::SmallCell,
+        NodeType::EdgeDataCenter,
+        NodeType::HyperscaleDataCenter,
+        NodeType::CloudOnRamp,
+        NodeType::ContentDeliveryNode,
+        NodeType::FiberSplicePoint,
+        NodeType::DWDM_Terminal,
+        NodeType::FiberDistributionHub,
+        NodeType::NetworkAccessPoint,
+        // Era 6: Near Future
+        NodeType::LEO_SatelliteGateway,
+        NodeType::QuantumRepeater,
+        NodeType::MeshDroneRelay,
+        NodeType::UnderwaterDataCenter,
+        NodeType::NeuromorphicEdgeNode,
+        NodeType::TerahertzRelay,
+    ];
+
     /// Human-readable display name for UI.
     pub fn display_name(&self) -> &'static str {
         match self {
@@ -765,6 +837,42 @@ pub enum EdgeType {
 }
 
 impl EdgeType {
+    /// All edge type variants for iteration.
+    pub const ALL: &'static [EdgeType] = &[
+        // Original 7
+        EdgeType::FiberLocal,
+        EdgeType::FiberRegional,
+        EdgeType::FiberNational,
+        EdgeType::Copper,
+        EdgeType::Microwave,
+        EdgeType::Satellite,
+        EdgeType::Submarine,
+        // Era 1: Telegraph
+        EdgeType::TelegraphWire,
+        EdgeType::SubseaTelegraphCable,
+        // Era 2: Telephone
+        EdgeType::CopperTrunkLine,
+        EdgeType::LongDistanceCopper,
+        // Era 3: Early Digital
+        EdgeType::CoaxialCable,
+        EdgeType::MicrowaveLink,
+        EdgeType::EarlySatelliteLink,
+        // Era 4: Internet
+        EdgeType::SubseaFiberCable,
+        // Era 5: Modern
+        EdgeType::FiberMetro,
+        EdgeType::FiberLongHaul,
+        EdgeType::DWDM_Backbone,
+        EdgeType::SatelliteLEOLink,
+        EdgeType::FeederFiber,
+        EdgeType::DistributionFiber,
+        EdgeType::DropCable,
+        // Era 6: Near Future
+        EdgeType::QuantumFiberLink,
+        EdgeType::TerahertzBeam,
+        EdgeType::LaserInterSatelliteLink,
+    ];
+
     /// Returns the set of tier pairs this edge type can connect.
     /// Each tuple is (min_tier, max_tier) — the edge can connect nodes
     /// whose tiers fall within this range (order: lower tier first).

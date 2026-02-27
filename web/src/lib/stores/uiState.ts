@@ -3,7 +3,7 @@ import { playerCorp } from './gameState';
 import { audioManager } from '$lib/audio/AudioManager';
 
 export type PanelType = 'none' | 'info' | 'dashboard' | 'infrastructure' | 'network' | 'research' | 'contracts' | 'region' | 'workforce' | 'advisor' | 'auctions' | 'mergers' | 'intel' | 'achievements' | 'spectrum';
-export type OverlayType = 'none' | 'terrain' | 'ownership' | 'population' | 'demand' | 'disaster' | 'coverage' | 'congestion' | 'traffic' | 'market_share' | 'ocean_depth' | 'spectrum' | 'elevation_contour' | 'submarine_reference' | 'coverage_overlap' | 'density';
+export type OverlayType = 'none' | 'terrain' | 'ownership' | 'population' | 'demand' | 'disaster' | 'coverage' | 'congestion' | 'traffic' | 'market_share' | 'ocean_depth' | 'spectrum' | 'elevation_contour' | 'submarine_reference' | 'coverage_overlap' | 'density' | 'interconnection';
 export type PanelGroupType = 'finance' | 'operations' | 'diplomacy' | 'research' | 'market' | 'info';
 
 // ── Company Size Tier (Management Scaling) ───────────────────────────────────
@@ -212,21 +212,57 @@ export const edgeTargets = writable<Array<{
 // Tier compatibility matrix — matches Rust EdgeType::allowed_tier_connections()
 // Keys: "T{from}-T{to}" where from <= to (sorted by tier value)
 const TIER_MAP: Record<string, number> = {
-	CellTower: 1, WirelessRelay: 1,
-	CentralOffice: 2, ExchangePoint: 2,
-	DataCenter: 3,
-	BackboneRouter: 4,
-	SatelliteGround: 5, SubmarineLanding: 5,
+	// Access (T1) — 9 types
+	CellTower: 1, WirelessRelay: 1, TelegraphOffice: 1, TelegraphRelay: 1,
+	TelephonePole: 1, SmallCell: 1, NetworkAccessPoint: 1, MeshDroneRelay: 1, TerahertzRelay: 1,
+	// Aggregation (T2) — 13 types
+	CentralOffice: 2, ExchangePoint: 2, ManualExchange: 2, AutomaticExchange: 2,
+	LongDistanceRelay: 2, DigitalSwitch: 2, CoaxHub: 2, FiberPOP: 2, ISPGateway: 2,
+	MacroCell: 2, FiberSplicePoint: 2, FiberDistributionHub: 2, QuantumRepeater: 2,
+	// Core (T3) — 10 types
+	DataCenter: 3, MicrowaveTower: 3, EarlyDataCenter: 3, InternetExchangePoint: 3,
+	ColocationFacility: 3, EdgeDataCenter: 3, ContentDeliveryNode: 3, DWDM_Terminal: 3,
+	CloudOnRamp: 3, NeuromorphicEdgeNode: 3,
+	// Backbone (T4) — 3 types
+	BackboneRouter: 4, HyperscaleDataCenter: 4, SatelliteGroundStation: 4,
+	// Global (T5) — 6 types
+	SatelliteGround: 5, SubmarineLanding: 5, CableHut: 5, SubseaLandingStation: 5,
+	LEO_SatelliteGateway: 5, UnderwaterDataCenter: 5,
 };
 
 const EDGE_ALLOWED_TIERS: Record<string, [number, number][]> = {
+	// Original 7
 	Copper:         [[1,1],[1,2]],
 	FiberLocal:     [[1,1],[1,2],[2,2]],
-	Microwave:      [[1,1],[1,2],[2,2],[2,3]],
 	FiberRegional:  [[2,2],[2,3],[3,3]],
 	FiberNational:  [[3,3],[3,4],[4,4]],
+	Microwave:      [[1,1],[1,2],[2,2],[2,3]],
 	Satellite:      [[3,5],[4,5],[5,5]],
 	Submarine:      [[5,5]],
+	// Era 1: Telegraph
+	TelegraphWire:          [[1,1],[1,2],[2,2]],
+	SubseaTelegraphCable:   [[5,5],[2,5]],
+	// Era 2: Telephone
+	CopperTrunkLine:        [[1,2],[2,2]],
+	LongDistanceCopper:     [[2,2],[2,3],[3,3]],
+	// Era 3: Early Digital
+	CoaxialCable:           [[1,1],[1,2],[2,2]],
+	MicrowaveLink:          [[2,2],[2,3],[3,3],[3,4]],
+	EarlySatelliteLink:     [[3,5],[4,5],[5,5]],
+	// Era 4: Internet
+	SubseaFiberCable:       [[4,5],[5,5]],
+	// Era 5: Modern
+	FiberMetro:             [[2,2],[2,3],[3,3]],
+	FiberLongHaul:          [[3,3],[3,4],[4,4]],
+	DWDM_Backbone:          [[3,4],[4,4],[4,5]],
+	SatelliteLEOLink:       [[1,5],[3,5],[4,5],[5,5]],
+	FeederFiber:            [[2,2],[2,3]],
+	DistributionFiber:      [[1,2],[2,2]],
+	DropCable:              [[1,1],[1,2]],
+	// Era 6: Near Future
+	QuantumFiberLink:       [[3,3],[3,4],[4,4],[4,5]],
+	TerahertzBeam:          [[1,1],[1,2],[2,2]],
+	LaserInterSatelliteLink:[[5,5],[4,5]],
 };
 
 /** Check if an edge type can connect two node types. */
@@ -266,6 +302,19 @@ export function getEdgeTypesForSource(sourceType: string): string[] {
 export function getNodeTier(nodeType: string): number {
 	return TIER_MAP[nodeType] ?? 0;
 }
+
+// ── Diplomatic Context Menu State ─────────────────────────────────────────────
+export interface DiploMenuState {
+	visible: boolean;
+	x: number;
+	y: number;
+	corpId: number;
+	corpName: string;
+	nodeId: number;
+	nodeType: string;
+	entityType: 'node' | 'edge';
+}
+export const diploMenu = writable<DiploMenuState | null>(null);
 
 // ── Build Mode Ghost Preview Data ─────────────────────────────────────────────
 // Exposed by MapRenderer during node placement so the HUD can display

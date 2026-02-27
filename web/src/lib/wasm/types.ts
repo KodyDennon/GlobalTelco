@@ -270,6 +270,14 @@ export interface ContractInfo {
 	sla_status: 'ok' | 'at_risk' | 'breach';
 	/** Accumulated SLA penalty amount. */
 	sla_penalty_accrued: number;
+	/** Current traffic flowing through this contract (units). */
+	traffic_current: number;
+	/** Traffic as a percentage of contracted capacity. */
+	traffic_capacity_pct: number;
+	/** Transit revenue earned from this contract this tick (provider perspective). */
+	transit_revenue: number;
+	/** Transit cost paid for this contract this tick (consumer perspective). */
+	transit_cost: number;
 }
 
 export interface DebtInfo {
@@ -315,6 +323,8 @@ export interface BuildOption {
 	label: string;
 	node_type: string;
 	network_level: string;
+	tier?: number;
+	era?: string;
 	cost: number;
 	build_ticks: number;
 	affordable: boolean;

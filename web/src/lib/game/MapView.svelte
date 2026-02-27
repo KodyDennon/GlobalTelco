@@ -26,6 +26,7 @@
 		buildCategory,
 		activePanelGroup,
 		closePanelGroup,
+		diploMenu,
 	} from "$lib/stores/uiState";
 	import * as bridge from "$lib/wasm/bridge";
 	import { gameCommand } from '$lib/game/commandRouter';
@@ -38,7 +39,7 @@
 	let cleanup: (() => void) | null = null;
 
 	function handleEntitySelected(e: CustomEvent) {
-		const { id, type } = e.detail;
+		const { id, type, owner, owner_name, node_type, edge_type, screenX, screenY } = e.detail;
 		const currentBuildMode = get(buildMode);
 
 		if (currentBuildMode === "edge" && type === "node") {
@@ -62,6 +63,26 @@
 
 		selectedEntityId.set(id);
 		selectedEntityType.set(type);
+
+		// Show diplomatic context menu for non-player infrastructure
+		if ((type === 'node' || type === 'edge') && id !== null && owner !== undefined) {
+			const playerId = bridge.getPlayerCorpId();
+			if (owner !== playerId) {
+				diploMenu.set({
+					visible: true,
+					x: screenX ?? 300,
+					y: screenY ?? 300,
+					corpId: owner,
+					corpName: owner_name ?? `Corp #${owner}`,
+					nodeId: id,
+					nodeType: node_type ?? edge_type ?? '',
+					entityType: type,
+				});
+				return;
+			}
+		}
+		// Close diplo menu when clicking own infrastructure
+		diploMenu.set(null);
 	}
 
 	function loadEdgeTargets(sourceId: number) {
@@ -105,6 +126,9 @@
 	}
 
 	function handleMapClicked(e: CustomEvent) {
+		// Close diplomatic context menu when clicking empty map
+		diploMenu.set(null);
+
 		// Close any open floating panel when clicking the map
 		if (get(activePanelGroup) !== 'none') {
 			closePanelGroup();

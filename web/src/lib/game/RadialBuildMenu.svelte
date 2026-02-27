@@ -31,46 +31,97 @@
 
 	const CATEGORIES: BuildCategory[] = [
 		{
-			key: 'backbone',
-			label: 'Backbone',
-			color: '#818cf8',
-			items: [
-				{ key: 'BackboneRouter', name: 'Backbone Router', category: 'node', tier: 'T4' },
-				{ key: 'SubmarineLanding', name: 'Submarine Landing', category: 'node', tier: 'T5' },
-				{ key: 'SatelliteGround', name: 'Satellite Ground', category: 'node', tier: 'T5' },
-			],
-		},
-		{
-			key: 'distribution',
-			label: 'Distribution',
-			color: '#60a5fa',
-			items: [
-				{ key: 'CentralOffice', name: 'Central Office', category: 'node', tier: 'T2' },
-				{ key: 'ExchangePoint', name: 'Exchange Point', category: 'node', tier: 'T2' },
-				{ key: 'DataCenter', name: 'Data Center', category: 'node', tier: 'T3' },
-			],
-		},
-		{
 			key: 'access',
 			label: 'Access',
 			color: '#34d399',
 			items: [
 				{ key: 'CellTower', name: 'Cell Tower', category: 'node', tier: 'T1' },
 				{ key: 'WirelessRelay', name: 'Wireless Relay', category: 'node', tier: 'T1' },
+				{ key: 'SmallCell', name: 'Small Cell (5G)', category: 'node', tier: 'T1' },
+				{ key: 'TelephonePole', name: 'Telephone Pole', category: 'node', tier: 'T1' },
+				{ key: 'TelegraphOffice', name: 'Telegraph Office', category: 'node', tier: 'T1' },
+				{ key: 'TelegraphRelay', name: 'Telegraph Relay', category: 'node', tier: 'T1' },
+				{ key: 'NetworkAccessPoint', name: 'Network Access Point', category: 'node', tier: 'T1' },
+				{ key: 'MeshDroneRelay', name: 'Mesh Drone Relay', category: 'node', tier: 'T1' },
+				{ key: 'TerahertzRelay', name: 'Terahertz Relay', category: 'node', tier: 'T1' },
 			],
 		},
 		{
-			key: 'cables',
-			label: 'Cables',
+			key: 'metro',
+			label: 'Metro',
+			color: '#60a5fa',
+			items: [
+				{ key: 'CentralOffice', name: 'Central Office', category: 'node', tier: 'T2' },
+				{ key: 'ExchangePoint', name: 'Exchange Point', category: 'node', tier: 'T2' },
+				{ key: 'FiberPOP', name: 'Fiber POP', category: 'node', tier: 'T2' },
+				{ key: 'ISPGateway', name: 'ISP Gateway', category: 'node', tier: 'T2' },
+				{ key: 'MacroCell', name: 'Macro Cell (4G/5G)', category: 'node', tier: 'T2' },
+				{ key: 'DigitalSwitch', name: 'Digital Switch', category: 'node', tier: 'T2' },
+				{ key: 'CoaxHub', name: 'Coax Hub', category: 'node', tier: 'T2' },
+				{ key: 'ManualExchange', name: 'Manual Exchange', category: 'node', tier: 'T2' },
+				{ key: 'AutomaticExchange', name: 'Auto Exchange', category: 'node', tier: 'T2' },
+				{ key: 'LongDistanceRelay', name: 'Long Distance Relay', category: 'node', tier: 'T2' },
+				{ key: 'FiberSplicePoint', name: 'Fiber Splice Point', category: 'node', tier: 'T2' },
+				{ key: 'FiberDistributionHub', name: 'Fiber Dist. Hub', category: 'node', tier: 'T2' },
+				{ key: 'QuantumRepeater', name: 'Quantum Repeater', category: 'node', tier: 'T2' },
+			],
+		},
+		{
+			key: 'core',
+			label: 'Core',
+			color: '#818cf8',
+			items: [
+				{ key: 'DataCenter', name: 'Data Center', category: 'node', tier: 'T3' },
+				{ key: 'InternetExchangePoint', name: 'Internet Exchange', category: 'node', tier: 'T3' },
+				{ key: 'ColocationFacility', name: 'Colocation Facility', category: 'node', tier: 'T3' },
+				{ key: 'EdgeDataCenter', name: 'Edge Data Center', category: 'node', tier: 'T3' },
+				{ key: 'ContentDeliveryNode', name: 'CDN Node', category: 'node', tier: 'T3' },
+				{ key: 'CloudOnRamp', name: 'Cloud On-Ramp', category: 'node', tier: 'T3' },
+				{ key: 'DWDM_Terminal', name: 'DWDM Terminal', category: 'node', tier: 'T3' },
+				{ key: 'MicrowaveTower', name: 'Microwave Tower', category: 'node', tier: 'T3' },
+				{ key: 'EarlyDataCenter', name: 'Early Data Center', category: 'node', tier: 'T3' },
+				{ key: 'NeuromorphicEdgeNode', name: 'Neuromorphic Edge', category: 'node', tier: 'T3' },
+			],
+		},
+		{
+			key: 'global',
+			label: 'Global',
+			color: '#a78bfa',
+			items: [
+				{ key: 'BackboneRouter', name: 'Backbone Router', category: 'node', tier: 'T4' },
+				{ key: 'HyperscaleDataCenter', name: 'Hyperscale DC', category: 'node', tier: 'T4' },
+				{ key: 'SatelliteGroundStation', name: 'Satellite Ground (GEO)', category: 'node', tier: 'T4' },
+				{ key: 'SatelliteGround', name: 'Satellite Ground', category: 'node', tier: 'T5' },
+				{ key: 'SubmarineLanding', name: 'Submarine Landing', category: 'node', tier: 'T5' },
+				{ key: 'SubseaLandingStation', name: 'Subsea Landing', category: 'node', tier: 'T5' },
+				{ key: 'CableHut', name: 'Cable Hut', category: 'node', tier: 'T5' },
+				{ key: 'LEO_SatelliteGateway', name: 'LEO Satellite GW', category: 'node', tier: 'T5' },
+				{ key: 'UnderwaterDataCenter', name: 'Underwater DC', category: 'node', tier: 'T5' },
+			],
+		},
+		{
+			key: 'wired',
+			label: 'Wired',
 			color: '#fbbf24',
 			items: [
 				{ key: 'Copper', name: 'Copper', category: 'edge' },
 				{ key: 'FiberLocal', name: 'Fiber Local', category: 'edge' },
-				{ key: 'Microwave', name: 'Microwave', category: 'edge' },
 				{ key: 'FiberRegional', name: 'Fiber Regional', category: 'edge' },
 				{ key: 'FiberNational', name: 'Fiber National', category: 'edge' },
-				{ key: 'Satellite', name: 'Satellite Link', category: 'edge' },
+				{ key: 'FiberMetro', name: 'Fiber Metro', category: 'edge' },
+				{ key: 'FiberLongHaul', name: 'Fiber Long Haul', category: 'edge' },
+				{ key: 'DWDM_Backbone', name: 'DWDM Backbone', category: 'edge' },
+				{ key: 'FeederFiber', name: 'Feeder Fiber', category: 'edge' },
+				{ key: 'DistributionFiber', name: 'Distribution Fiber', category: 'edge' },
+				{ key: 'DropCable', name: 'Drop Cable', category: 'edge' },
 				{ key: 'Submarine', name: 'Submarine Cable', category: 'edge' },
+				{ key: 'SubseaFiberCable', name: 'Subsea Fiber', category: 'edge' },
+				{ key: 'SubseaTelegraphCable', name: 'Subsea Telegraph', category: 'edge' },
+				{ key: 'TelegraphWire', name: 'Telegraph Wire', category: 'edge' },
+				{ key: 'CopperTrunkLine', name: 'Copper Trunk', category: 'edge' },
+				{ key: 'LongDistanceCopper', name: 'Long Distance Cu', category: 'edge' },
+				{ key: 'CoaxialCable', name: 'Coaxial Cable', category: 'edge' },
+				{ key: 'QuantumFiberLink', name: 'Quantum Fiber', category: 'edge' },
 			],
 		},
 		{
@@ -78,18 +129,13 @@
 			label: 'Wireless',
 			color: '#22d3ee',
 			items: [
-				{ key: 'CellTower', name: 'Cell Tower', category: 'node', tier: 'T1' },
-				{ key: 'WirelessRelay', name: 'Wireless Relay', category: 'node', tier: 'T1' },
-				{ key: 'SatelliteGround', name: 'Satellite Ground', category: 'node', tier: 'T5' },
-			],
-		},
-		{
-			key: 'infrastructure',
-			label: 'Infra',
-			color: '#a78bfa',
-			items: [
-				{ key: 'DataCenter', name: 'Data Center', category: 'node', tier: 'T3' },
-				{ key: 'BackboneRouter', name: 'Backbone Router', category: 'node', tier: 'T4' },
+				{ key: 'Microwave', name: 'Microwave', category: 'edge' },
+				{ key: 'MicrowaveLink', name: 'Microwave Link', category: 'edge' },
+				{ key: 'Satellite', name: 'Satellite Link', category: 'edge' },
+				{ key: 'EarlySatelliteLink', name: 'Early Satellite', category: 'edge' },
+				{ key: 'SatelliteLEOLink', name: 'Satellite LEO', category: 'edge' },
+				{ key: 'TerahertzBeam', name: 'Terahertz Beam', category: 'edge' },
+				{ key: 'LaserInterSatelliteLink', name: 'Laser ISL', category: 'edge' },
 			],
 		},
 	];
@@ -423,11 +469,12 @@
 		top: 50%;
 		left: 50%;
 		min-width: 200px;
+		max-height: 400px;
+		overflow-y: auto;
 		background: rgba(17, 24, 39, 0.97);
 		border: 1px solid rgba(55, 65, 81, 0.6);
 		border-radius: 8px;
 		box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-		overflow: hidden;
 		pointer-events: auto;
 		z-index: 52;
 	}

@@ -6,8 +6,9 @@
 //! 3. Node/edge loads accumulate from actual traffic flowing through them
 //! 4. Congestion occurs when links exceed capacity; excess traffic is dropped
 
+use crate::components::ContractStatus;
 use crate::world::GameWorld;
-use gt_common::types::{EntityId, NetworkTier, NodeType, TrafficDemand, TrafficMatrix};
+use gt_common::types::{EntityId, NetworkTier, NodeType, TrafficDemand, TrafficMatrix, TransitPermission};
 use std::collections::HashMap;
 
 // ─── Public entry point ───────────────────────────────────────────────────────
@@ -157,35 +158,122 @@ fn reset_edge_latency(world: &mut GameWorld) {
 }
 
 fn apply_exchange_point_latency(world: &mut GameWorld) {
-    let exchange_points: Vec<(u64, f64)> = {
+    // Build transit permissions to check for active peering contracts
+    let transit_perms = build_transit_permissions(world);
+
+    // Collect all exchange point and IXP nodes
+    let exchange_points: Vec<(u64, f64, bool)> = {
         let mut v: Vec<_> = world
             .infra_nodes
             .iter()
             .filter(|(id, node)| {
-                node.node_type == NodeType::ExchangePoint
+                (node.node_type == NodeType::ExchangePoint
+                    || node.node_type == NodeType::InternetExchangePoint)
                     && !world.constructions.contains_key(id)
             })
             .map(|(&id, node)| {
                 let health = world.healths.get(&id).map(|h| h.condition).unwrap_or(1.0);
-                let reduction = (node.max_throughput / 5000.0).min(1.0) * 0.3 * health;
-                (id, reduction)
+                let is_ixp = node.node_type == NodeType::InternetExchangePoint;
+                // IXPs provide 40% base reduction vs ExchangePoints' 30%
+                let base_reduction = if is_ixp { 0.4 } else { 0.3 };
+                let reduction = (node.max_throughput / 5000.0).min(1.0) * base_reduction * health;
+                (id, reduction, is_ixp)
             })
             .collect();
         v.sort_unstable_by_key(|t| t.0);
         v
     };
 
+    // Collect which corps are connected to each exchange point
+    let mut ep_connected_corps: std::collections::HashMap<u64, Vec<u64>> =
+        std::collections::HashMap::new();
+    for &(ep_id, _, _) in &exchange_points {
+        let ep_owner = world
+            .infra_nodes
+            .get(&ep_id)
+            .map(|n| n.owner)
+            .unwrap_or(0);
+        let mut connected: Vec<u64> = vec![ep_owner];
+
+        // Find all corps that have edges connecting to this EP
+        for edge in world.infra_edges.values() {
+            let other_node = if edge.source == ep_id {
+                edge.target
+            } else if edge.target == ep_id {
+                edge.source
+            } else {
+                continue;
+            };
+            if let Some(other) = world.infra_nodes.get(&other_node) {
+                if !connected.contains(&other.owner) {
+                    connected.push(other.owner);
+                }
+            }
+        }
+        connected.sort_unstable();
+        connected.dedup();
+        ep_connected_corps.insert(ep_id, connected);
+    }
+
     let mut reductions: Vec<(u64, f64)> = Vec::new();
-    for (ep_id, reduction) in &exchange_points {
+    for &(ep_id, base_reduction, _is_ixp) in &exchange_points {
+        let connected = ep_connected_corps.get(&ep_id).cloned().unwrap_or_default();
+
         let mut eids: Vec<u64> = world
             .infra_edges
             .iter()
-            .filter(|(_, edge)| edge.source == *ep_id || edge.target == *ep_id)
+            .filter(|(_, edge)| edge.source == ep_id || edge.target == ep_id)
             .map(|(&id, _)| id)
             .collect();
         eids.sort_unstable();
+
         for eid in eids {
-            reductions.push((eid, *reduction));
+            let edge = match world.infra_edges.get(&eid) {
+                Some(e) => e,
+                None => continue,
+            };
+
+            // Determine the two corps involved in this edge
+            let other_node = if edge.source == ep_id {
+                edge.target
+            } else {
+                edge.source
+            };
+            let ep_owner = world
+                .infra_nodes
+                .get(&ep_id)
+                .map(|n| n.owner)
+                .unwrap_or(0);
+            let other_owner = world
+                .infra_nodes
+                .get(&other_node)
+                .map(|n| n.owner)
+                .unwrap_or(0);
+
+            let mut reduction = base_reduction;
+
+            // Peering bonus: if both corps connected to this EP have a peering contract,
+            // apply full reduction. Otherwise reduce the bonus.
+            if ep_owner != other_owner && ep_owner != 0 && other_owner != 0 {
+                let both_connected = connected.contains(&ep_owner)
+                    && connected.contains(&other_owner);
+                let (perm, _) =
+                    lookup_permission(&transit_perms, ep_owner, other_owner);
+                let has_peering = matches!(
+                    perm,
+                    gt_common::types::TransitPermission::PeeringContract
+                );
+
+                if both_connected && has_peering {
+                    // Full reduction — this is the ideal peering scenario
+                    // (already set to base_reduction)
+                } else {
+                    // Without a peering contract at this EP, reduced benefit
+                    reduction *= 0.5;
+                }
+            }
+
+            reductions.push((eid, reduction));
         }
     }
     reductions.sort_unstable_by_key(|t| t.0);
@@ -196,6 +284,129 @@ fn apply_exchange_point_latency(world: &mut GameWorld) {
             edge.latency_ms = edge.latency_ms.max(0.1);
         }
     }
+}
+
+// ─── Transit Permission Cache ─────────────────────────────────────────────────
+
+/// Lookup cache: (corp_a, corp_b) → permission level (ordered so a < b).
+/// Also maps contract_id for Transit contracts to enable per-contract traffic tracking.
+pub type TransitPermissionCache = HashMap<(EntityId, EntityId), (TransitPermission, Option<EntityId>)>;
+
+/// Build a lookup of transit permissions between every pair of corporations.
+/// Scans active contracts, alliances, and co-ownership to determine what traffic
+/// is allowed across corporate boundaries.
+pub fn build_transit_permissions(world: &GameWorld) -> TransitPermissionCache {
+    let mut cache = TransitPermissionCache::new();
+
+    // 1. Active contracts (Peering and Transit)
+    for (&contract_id, contract) in &world.contracts {
+        if contract.status != ContractStatus::Active {
+            continue;
+        }
+        let (a, b) = ordered_pair(contract.from, contract.to);
+        match contract.contract_type {
+            crate::components::ContractType::Peering => {
+                // Peering is settlement-free, prefer it over alliance
+                cache.insert((a, b), (TransitPermission::PeeringContract, Some(contract_id)));
+            }
+            crate::components::ContractType::Transit => {
+                // Transit: paid, price_per_unit derived from contract
+                let price_per_unit = if contract.capacity > 0.0 {
+                    contract.price_per_tick as f64 / contract.capacity
+                } else {
+                    0.0
+                };
+                // Only upgrade: Transit is better than Alliance but worse than Peering
+                let existing = cache.get(&(a, b));
+                let dominated = matches!(
+                    existing,
+                    Some((TransitPermission::PeeringContract, _))
+                );
+                if !dominated {
+                    cache.insert(
+                        (a, b),
+                        (TransitPermission::TransitContract { price_per_unit }, Some(contract_id)),
+                    );
+                }
+            }
+            crate::components::ContractType::SLA => {
+                // SLA contracts also enable transit (they're premium transit)
+                let price_per_unit = if contract.capacity > 0.0 {
+                    contract.price_per_tick as f64 / contract.capacity
+                } else {
+                    0.0
+                };
+                let existing = cache.get(&(a, b));
+                let dominated = matches!(
+                    existing,
+                    Some((TransitPermission::PeeringContract, _))
+                        | Some((TransitPermission::TransitContract { .. }, _))
+                );
+                if !dominated {
+                    cache.insert(
+                        (a, b),
+                        (TransitPermission::TransitContract { price_per_unit }, Some(contract_id)),
+                    );
+                }
+            }
+        }
+    }
+
+    // 2. Alliances (only if no better contract exists)
+    for alliance in world.alliances.values() {
+        let members = &alliance.member_corp_ids;
+        for i in 0..members.len() {
+            for j in (i + 1)..members.len() {
+                let (a, b) = ordered_pair(members[i], members[j]);
+                cache.entry((a, b)).or_insert((
+                    TransitPermission::Alliance {
+                        revenue_share_pct: alliance.revenue_share_pct,
+                    },
+                    None,
+                ));
+            }
+        }
+    }
+
+    // 3. Co-ownership: if node A is co-owned by corps X and Y, they get free transit
+    for ownership in world.ownerships.values() {
+        let primary = ownership.owner;
+        for &(co_owner, _share) in &ownership.co_owners {
+            let (a, b) = ordered_pair(primary, co_owner);
+            // Co-owned is best — override everything except own network
+            cache.insert((a, b), (TransitPermission::CoOwned, None));
+        }
+        // Also handle co-owner pairs
+        for i in 0..ownership.co_owners.len() {
+            for j in (i + 1)..ownership.co_owners.len() {
+                let (a, b) = ordered_pair(ownership.co_owners[i].0, ownership.co_owners[j].0);
+                cache.insert((a, b), (TransitPermission::CoOwned, None));
+            }
+        }
+    }
+
+    cache
+}
+
+/// Order a pair of entity IDs so the smaller one is first.
+pub fn ordered_pair(a: EntityId, b: EntityId) -> (EntityId, EntityId) {
+    if a <= b { (a, b) } else { (b, a) }
+}
+
+/// Look up transit permission between two corporations.
+pub fn lookup_permission(
+    cache: &TransitPermissionCache,
+    owner_a: EntityId,
+    owner_b: EntityId,
+) -> (TransitPermission, Option<EntityId>) {
+    if owner_a == owner_b {
+        return (TransitPermission::OwnNetwork, None);
+    }
+    let (a, b) = ordered_pair(owner_a, owner_b);
+    cache
+        .get(&(a, b))
+        .copied()
+        .unwrap_or((TransitPermission::Blocked, None))
 }
 
 // ─── OD Traffic Matrix ────────────────────────────────────────────────────────
@@ -262,6 +473,7 @@ fn recompute_traffic_matrix_if_needed(world: &mut GameWorld) {
         total_dropped: 0.0,
         corp_traffic_served: HashMap::new(),
         corp_traffic_dropped: HashMap::new(),
+        contract_traffic: HashMap::new(),
     };
 }
 
@@ -273,11 +485,26 @@ struct RoutingContext {
     backbone_nodes: Vec<u64>,
     node_cap: HashMap<u64, f64>,
     edge_cap: HashMap<u64, f64>,
+    /// Node ID → owner corp ID for ownership boundary detection
+    node_owners: HashMap<u64, u64>,
+    /// Transit permission cache for cross-corp routing
+    transit_permissions: TransitPermissionCache,
 }
 
 fn accumulate_traffic_flows(world: &mut GameWorld) {
     // Reset loads
     reset_all_loads(world);
+
+    // Build transit permission cache before routing
+    let transit_permissions = build_transit_permissions(world);
+
+    // Build node ownership map
+    let node_owners: HashMap<u64, u64> = world
+        .infra_nodes
+        .iter()
+        .filter(|(id, _)| !world.constructions.contains_key(id))
+        .map(|(&id, node)| (id, node.owner))
+        .collect();
 
     // Build lookup structures
     let ctx = RoutingContext {
@@ -285,6 +512,8 @@ fn accumulate_traffic_flows(world: &mut GameWorld) {
         node_cap: collect_node_capacities(world),
         edge_cap: collect_edge_capacities(world),
         backbone_nodes: find_backbone_nodes(world),
+        node_owners,
+        transit_permissions,
     };
 
     let mut accum = TrafficAccumulator::new();
@@ -313,6 +542,8 @@ struct TrafficAccumulator {
     total_dropped: f64,
     corp_served: HashMap<u64, f64>,
     corp_dropped: HashMap<u64, f64>,
+    /// Per-contract traffic flow (contract_id → traffic units routed through it)
+    contract_traffic: HashMap<u64, f64>,
 }
 
 impl TrafficAccumulator {
@@ -324,6 +555,7 @@ impl TrafficAccumulator {
             total_dropped: 0.0,
             corp_served: HashMap::new(),
             corp_dropped: HashMap::new(),
+            contract_traffic: HashMap::new(),
         }
     }
 
@@ -337,6 +569,10 @@ impl TrafficAccumulator {
         if let Some(o) = owner {
             *self.corp_dropped.entry(o).or_insert(0.0) += amount;
         }
+    }
+
+    fn record_contract_traffic(&mut self, contract_id: u64, amount: f64) {
+        *self.contract_traffic.entry(contract_id).or_insert(0.0) += amount;
     }
 }
 
@@ -477,10 +713,7 @@ fn route_od_pair(
 
     match path {
         Some(ref p) if p.len() >= 2 => {
-            let served = push_traffic_on_path(
-                p, od.demand, &ctx.node_cap, &ctx.edge_cap,
-                &mut accum.node_load, &mut accum.edge_load, &world.network,
-            );
+            let served = push_traffic_on_path(p, od.demand, ctx, accum, &world.network);
             accum.record_served(served, src_owner);
             if served < od.demand {
                 accum.record_dropped(od.demand - served, Some(src_owner));
@@ -519,10 +752,7 @@ fn route_external_traffic(
 
     match best_path {
         Some(ref p) if p.len() >= 2 => {
-            let served = push_traffic_on_path(
-                p, demand, &ctx.node_cap, &ctx.edge_cap,
-                &mut accum.node_load, &mut accum.edge_load, &world.network,
-            );
+            let served = push_traffic_on_path(p, demand, ctx, accum, &world.network);
             accum.record_served(served, owner);
             if served < demand {
                 accum.record_dropped(demand - served, Some(owner));
@@ -539,30 +769,29 @@ fn route_external_traffic(
     }
 }
 
-/// Push traffic along a path, respecting capacity. Returns traffic actually served.
+/// Push traffic along a path, respecting capacity and tracking cross-corp contract usage.
+/// Returns traffic actually served.
 fn push_traffic_on_path(
     path: &[u64],
     demand: f64,
-    node_cap: &HashMap<u64, f64>,
-    edge_cap: &HashMap<u64, f64>,
-    node_load: &mut HashMap<u64, f64>,
-    edge_load: &mut HashMap<u64, f64>,
+    ctx: &RoutingContext,
+    accum: &mut TrafficAccumulator,
     network: &gt_infrastructure::NetworkGraph,
 ) -> f64 {
     // Find bottleneck
     let mut min_remaining = demand;
 
     for &nid in path {
-        let cap = node_cap.get(&nid).copied().unwrap_or(0.0);
-        let current = node_load.get(&nid).copied().unwrap_or(0.0);
+        let cap = ctx.node_cap.get(&nid).copied().unwrap_or(0.0);
+        let current = accum.node_load.get(&nid).copied().unwrap_or(0.0);
         let remaining = (cap * 1.2 - current).max(0.0);
         min_remaining = min_remaining.min(remaining);
     }
 
     for i in 0..path.len() - 1 {
         if let Some(eid) = network.get_edge_id(path[i], path[i + 1]) {
-            let cap = edge_cap.get(&eid).copied().unwrap_or(0.0);
-            let current = edge_load.get(&eid).copied().unwrap_or(0.0);
+            let cap = ctx.edge_cap.get(&eid).copied().unwrap_or(0.0);
+            let current = accum.edge_load.get(&eid).copied().unwrap_or(0.0);
             let remaining = (cap * 1.2 - current).max(0.0);
             min_remaining = min_remaining.min(remaining);
         }
@@ -573,13 +802,23 @@ fn push_traffic_on_path(
         return 0.0;
     }
 
-    // Apply load
+    // Apply load and track cross-corp boundary crossings
     for &nid in path {
-        *node_load.entry(nid).or_insert(0.0) += served;
+        *accum.node_load.entry(nid).or_insert(0.0) += served;
     }
     for i in 0..path.len() - 1 {
         if let Some(eid) = network.get_edge_id(path[i], path[i + 1]) {
-            *edge_load.entry(eid).or_insert(0.0) += served;
+            *accum.edge_load.entry(eid).or_insert(0.0) += served;
+        }
+
+        // Track per-contract traffic when crossing corporate boundaries
+        let owner_a = ctx.node_owners.get(&path[i]).copied().unwrap_or(0);
+        let owner_b = ctx.node_owners.get(&path[i + 1]).copied().unwrap_or(0);
+        if owner_a != owner_b && owner_a != 0 && owner_b != 0 {
+            let (_, contract_id) = lookup_permission(&ctx.transit_permissions, owner_a, owner_b);
+            if let Some(cid) = contract_id {
+                accum.record_contract_traffic(cid, served);
+            }
         }
     }
 
@@ -610,6 +849,7 @@ fn apply_loads(world: &mut GameWorld, accum: &TrafficAccumulator) {
     world.traffic_matrix.total_dropped = accum.total_dropped;
     world.traffic_matrix.corp_traffic_served = accum.corp_served.clone();
     world.traffic_matrix.corp_traffic_dropped = accum.corp_dropped.clone();
+    world.traffic_matrix.contract_traffic = accum.contract_traffic.clone();
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────

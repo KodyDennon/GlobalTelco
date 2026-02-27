@@ -434,6 +434,31 @@ impl WasmBridge {
                 } else {
                     "breach"
                 };
+                // Per-contract traffic flow data
+                let traffic_current = self
+                    .world
+                    .traffic_matrix
+                    .contract_traffic
+                    .get(&id)
+                    .copied()
+                    .unwrap_or(0.0);
+                let traffic_capacity_pct = if c.capacity > 0.0 {
+                    (traffic_current / c.capacity * 100.0).min(100.0)
+                } else {
+                    0.0
+                };
+                // Transit revenue/cost for this contract this tick
+                let price_per_unit = if c.capacity > 0.0 {
+                    c.price_per_tick as f64 / c.capacity
+                } else {
+                    0.0
+                };
+                let transit_amount = (traffic_current * price_per_unit) as i64;
+                let (transit_revenue, transit_cost) = if c.from == corp_id {
+                    (transit_amount, 0_i64)
+                } else {
+                    (0_i64, transit_amount)
+                };
                 serde_json::json!({
                     "id": id,
                     "contract_type": format!("{:?}", c.contract_type),
@@ -451,6 +476,10 @@ impl WasmBridge {
                     "sla_current_performance": c.sla_current_performance,
                     "sla_status": sla_status,
                     "sla_penalty_accrued": c.sla_penalty_accrued,
+                    "traffic_current": traffic_current,
+                    "traffic_capacity_pct": traffic_capacity_pct,
+                    "transit_revenue": transit_revenue,
+                    "transit_cost": transit_cost,
                 })
             })
             .collect();
@@ -529,7 +558,10 @@ impl WasmBridge {
 
     /// Get buildable node options for a given map coordinate.
     /// Uses nearest grid cell for terrain cost modifier lookup.
+    /// Returns all 41 node types with era, tier, and terrain-adjusted cost.
     pub fn get_buildable_nodes(&self, lon: f64, lat: f64) -> String {
+        use gt_common::types::NodeType;
+
         let player_id = self.world.player_corp_id().unwrap_or(0);
         let fin = self.world.financials.get(&player_id);
         let cash = fin.map(|f| f.cash).unwrap_or(0);
@@ -543,32 +575,21 @@ impl WasmBridge {
             })
             .unwrap_or(1.0);
 
-        // (label, node_type, network_level, base_cost, build_ticks)
-        let node_types = [
-            ("Cell Tower", "CellTower", "Local", 200_000i64, 10),
-            ("Wireless Relay", "WirelessRelay", "Local", 100_000, 10),
-            ("Central Office", "CentralOffice", "Local", 500_000, 20),
-            ("Exchange Point", "ExchangePoint", "Regional", 2_000_000, 30),
-            ("Backbone Router", "BackboneRouter", "National", 3_000_000, 50),
-            ("Data Center", "DataCenter", "National", 10_000_000, 50),
-            ("Satellite Ground", "SatelliteGround", "Continental", 5_000_000, 40),
-            ("Submarine Landing", "SubmarineLanding", "Global", 20_000_000, 60),
-        ];
-
-        let options: Vec<serde_json::Value> = node_types
-            .iter()
-            .map(|(label, node_type, level, base_cost, ticks)| {
-                let cost = (*base_cost as f64 * terrain_mult) as i64;
-                serde_json::json!({
-                    "label": label,
-                    "node_type": node_type,
-                    "network_level": level,
-                    "cost": cost,
-                    "build_ticks": ticks,
-                    "affordable": cash >= cost,
-                })
+        let options: Vec<serde_json::Value> = NodeType::ALL.iter().map(|nt| {
+            let base_cost = nt.construction_cost();
+            let cost = (base_cost as f64 * terrain_mult) as i64;
+            let build_ticks = (base_cost / 10_000).max(5);
+            serde_json::json!({
+                "label": nt.display_name(),
+                "node_type": format!("{:?}", nt),
+                "network_level": format!("{:?}", nt.tier()),
+                "tier": nt.tier().value(),
+                "era": nt.era().display_name(),
+                "cost": cost,
+                "build_ticks": build_ticks,
+                "affordable": cash >= cost,
             })
-            .collect();
+        }).collect();
 
         serde_json::to_string(&options).unwrap_or_default()
     }
@@ -588,18 +609,6 @@ impl WasmBridge {
             .cloned()
             .unwrap_or_default();
 
-        // Use the cheapest common edge type (Copper) for the base cost estimate,
-        // but also include per-type costs for accurate UI display.
-        let edge_types_costs: &[(EdgeType, i64)] = &[
-            (EdgeType::Copper, 10_000),
-            (EdgeType::FiberLocal, 20_000),
-            (EdgeType::FiberRegional, 40_000),
-            (EdgeType::FiberNational, 80_000),
-            (EdgeType::Microwave, 20_000),
-            (EdgeType::Satellite, 0),     // flat cost
-            (EdgeType::Submarine, 200_000),
-        ];
-
         let targets: Vec<serde_json::Value> = player_nodes
             .iter()
             .filter(|&&nid| nid != source_id && !self.world.constructions.contains_key(&nid))
@@ -618,10 +627,11 @@ impl WasmBridge {
                 let c = 2.0 * a.sqrt().asin();
                 let dist_km = 6371.0 * c;
 
-                // Use cheapest applicable cost for the summary estimate
-                let min_cost = edge_types_costs.iter().map(|(et, cpk)| {
-                    if *et == EdgeType::Satellite { 5_000_000i64 }
-                    else { (*cpk as f64 * dist_km) as i64 }
+                // Use cheapest cost across all 25 edge types for summary estimate
+                let min_cost = EdgeType::ALL.iter().map(|et| {
+                    let cpk = et.cost_per_km();
+                    if cpk == 0 { 5_000_000i64 } // flat cost for satellite types
+                    else { (cpk as f64 * dist_km) as i64 }
                 }).min().unwrap_or(0);
 
                 Some(serde_json::json!({

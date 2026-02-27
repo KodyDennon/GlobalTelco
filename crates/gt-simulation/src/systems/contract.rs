@@ -54,8 +54,33 @@ pub fn run(world: &mut GameWorld) {
         }
     }
 
-    // Process expired contracts
+    // Process expired contracts — settle SLA penalties on expiry
     for &id in &expired {
+        // Settle accrued SLA penalty: transfer from provider to consumer
+        if let Some(contract) = world.contracts.get(&id) {
+            let penalty = contract.sla_penalty_accrued;
+            let provider = contract.from;
+            let consumer = contract.to;
+
+            if penalty > 0 {
+                if let Some(fin) = world.financials.get_mut(&provider) {
+                    fin.cash -= penalty;
+                }
+                if let Some(fin) = world.financials.get_mut(&consumer) {
+                    fin.cash += penalty;
+                }
+                world.event_queue.push(
+                    tick,
+                    gt_common::events::GameEvent::SLAPenaltyPaid {
+                        provider,
+                        consumer,
+                        contract: id,
+                        amount: penalty,
+                    },
+                );
+            }
+        }
+
         if let Some(contract) = world.contracts.get_mut(&id) {
             contract.status = ContractStatus::Expired;
         }

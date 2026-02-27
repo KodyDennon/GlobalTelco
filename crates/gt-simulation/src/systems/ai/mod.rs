@@ -146,12 +146,13 @@ fn run_corporation(
     // 3. Finance management (all strategies)
     finance::manage(world, corp_id, ai, tick);
 
-    // 4. Contract proposals (Expand and Compete only)
-    if matches!(strategy, AIStrategy::Expand | AIStrategy::Compete) {
+    // 4. Contract proposals — all strategies need interconnection contracts
+    //    (except Survive mode — too broke to negotiate)
+    if !matches!(strategy, AIStrategy::Survive) {
         contracts::propose(world, corp_id, ai, tick);
     }
 
-    // 5. Evaluate incoming contracts
+    // 5. Evaluate incoming contracts (always — even in Survive, free peering helps)
     contracts::evaluate_incoming(world, corp_id, ai, tick);
 
     // 6. Auction bidding

@@ -11,6 +11,7 @@
 	import Tutorial from "./Tutorial.svelte";
 	import Chat from "./Chat.svelte";
 	import CableDrawingMode from "./CableDrawingMode.svelte";
+	import DiplomaticContextMenu from "./DiplomaticContextMenu.svelte";
 	import MiniMap from "./MiniMap.svelte";
 	import BookmarkManager from "./BookmarkManager.svelte";
 	import SearchOverlay from "./SearchOverlay.svelte";
@@ -385,6 +386,7 @@
 		<HUD />
 		<DisasterAlert disasters={activeDisasters} forecasts={disasterForecasts} />
 		<CableDrawingMode />
+		<DiplomaticContextMenu />
 		<InfoPanel />
 		<RadialBuildMenu />
 		<BuildHotbar />

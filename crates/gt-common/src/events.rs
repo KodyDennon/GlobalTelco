@@ -373,6 +373,20 @@ pub enum GameEvent {
         tier: String,
     },
 
+    // Transit & Interconnection
+    TransitPayment {
+        provider: EntityId,
+        consumer: EntityId,
+        contract: EntityId,
+        amount: Money,
+    },
+    SLAPenaltyPaid {
+        provider: EntityId,
+        consumer: EntityId,
+        contract: EntityId,
+        amount: Money,
+    },
+
     // Maintenance Priority
     MaintenancePrioritySet {
         entity: EntityId,
@@ -529,6 +543,14 @@ impl GameEvent {
 
             // Pricing — private
             GameEvent::PricingChanged { corporation, .. } => vec![*corporation],
+
+            // Transit & Interconnection — relevant to both parties
+            GameEvent::TransitPayment {
+                provider, consumer, ..
+            }
+            | GameEvent::SLAPenaltyPaid {
+                provider, consumer, ..
+            } => vec![*provider, *consumer],
 
             // Maintenance — private
             GameEvent::MaintenancePrioritySet { .. } => vec![],

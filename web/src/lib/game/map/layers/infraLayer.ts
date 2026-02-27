@@ -610,10 +610,14 @@ export function createInfraLayers(opts: {
         dashJustified: true,
         pickable: true,
         autoHighlight: true,
-        onClick: ({ object }: any) => {
+        onClick: ({ object, x, y }: any) => {
             if (object) {
                 window.dispatchEvent(new CustomEvent('entity-selected', {
-                    detail: { id: object.id, type: 'edge' },
+                    detail: {
+                        id: object.id, type: 'edge',
+                        owner: object.owner, owner_name: object.owner_name,
+                        edge_type: object.edge_type, screenX: x, screenY: y,
+                    },
                 }));
             }
         },
@@ -753,10 +757,14 @@ export function createInfraLayers(opts: {
             },
             pickable: true,
             autoHighlight: true,
-            onClick: ({ object }: any) => {
+            onClick: ({ object, x, y }: any) => {
                 if (object) {
                     window.dispatchEvent(new CustomEvent('entity-selected', {
-                        detail: { id: object.id, type: 'node' },
+                        detail: {
+                            id: object.id, type: 'node',
+                            owner: object.owner, owner_name: object.owner_name,
+                            node_type: object.node_type, screenX: x, screenY: y,
+                        },
                     }));
                 }
             },
@@ -797,10 +805,14 @@ export function createInfraLayers(opts: {
                 getColor: (d: ProcessedNode) => d.color,
                 pickable: true,
                 autoHighlight: true,
-                onClick: ({ object }: any) => {
+                onClick: ({ object, x, y }: any) => {
                     if (object) {
                         window.dispatchEvent(new CustomEvent('entity-selected', {
-                            detail: { id: object.id, type: 'node' },
+                            detail: {
+                                id: object.id, type: 'node',
+                                owner: object.owner, owner_name: object.owner_name,
+                                node_type: object.node_type, screenX: x, screenY: y,
+                            },
                         }));
                     }
                 },
@@ -816,10 +828,14 @@ export function createInfraLayers(opts: {
                 radiusMinPixels: 6,
                 radiusMaxPixels: 24,
                 pickable: true,
-                onClick: ({ object }: any) => {
+                onClick: ({ object, x, y }: any) => {
                     if (object) {
                         window.dispatchEvent(new CustomEvent('entity-selected', {
-                            detail: { id: object.id, type: 'node' },
+                            detail: {
+                                id: object.id, type: 'node',
+                                owner: object.owner, owner_name: object.owner_name,
+                                node_type: object.node_type, screenX: x, screenY: y,
+                            },
                         }));
                     }
                 },

@@ -11,6 +11,7 @@
 
 use std::collections::HashSet;
 
+use crate::components::ContractStatus;
 use crate::world::GameWorld;
 use gt_common::types::{EdgeType, EntityId, NodeType};
 
@@ -54,6 +55,10 @@ pub fn run(world: &mut GameWorld) {
             );
         }
     }
+
+    // Process transit settlements (paid transit) and alliance revenue sharing
+    calculate_transit_settlements(world, tick);
+    calculate_alliance_traffic_revenue(world, tick);
 }
 
 // ─── Node Revenue (traffic-based) ─────────────────────────────────────────────
@@ -528,4 +533,167 @@ fn quality_multiplier(world: &GameWorld, node_id: EntityId, health: f64) -> f64 
         .unwrap_or(0.0);
 
     health_factor * (1.0 + satisfaction_bonus)
+}
+
+// ─── Transit Settlements (paid Transit contracts) ────────────────────────────
+
+/// For each active Transit contract with traffic flowing through it,
+/// credit the transit provider and debit the originator.
+/// Peering contracts are settlement-free (no payment exchanged).
+fn calculate_transit_settlements(world: &mut GameWorld, tick: u64) {
+    // Collect contract traffic data
+    let contract_traffic = world.traffic_matrix.contract_traffic.clone();
+
+    // Process each contract with traffic
+    let mut contract_ids: Vec<u64> = contract_traffic.keys().copied().collect();
+    contract_ids.sort_unstable();
+
+    for contract_id in contract_ids {
+        let traffic = match contract_traffic.get(&contract_id) {
+            Some(&t) if t > 0.0 => t,
+            _ => continue,
+        };
+
+        let (contract_type, provider, consumer, price_per_tick, capacity) =
+            match world.contracts.get(&contract_id) {
+                Some(c) if c.status == ContractStatus::Active => {
+                    (c.contract_type, c.from, c.to, c.price_per_tick, c.capacity)
+                }
+                _ => continue,
+            };
+
+        // Only Transit and SLA contracts generate settlement payments
+        // Peering is settlement-free
+        if contract_type == crate::components::ContractType::Peering {
+            continue;
+        }
+
+        // Transit revenue = traffic * (price_per_tick / capacity)
+        // This proportionally charges based on how much of the contract capacity is used
+        let price_per_unit = if capacity > 0.0 {
+            price_per_tick as f64 / capacity
+        } else {
+            0.0
+        };
+        let payment = (traffic * price_per_unit) as i64;
+        if payment <= 0 {
+            continue;
+        }
+
+        // Credit provider, debit consumer
+        if let Some(fin) = world.financials.get_mut(&provider) {
+            fin.cash += payment;
+        }
+        if let Some(fin) = world.financials.get_mut(&consumer) {
+            fin.cash -= payment;
+        }
+
+        world.event_queue.push(
+            tick,
+            gt_common::events::GameEvent::TransitPayment {
+                provider,
+                consumer,
+                contract: contract_id,
+                amount: payment,
+            },
+        );
+    }
+}
+
+// ─── Alliance Traffic Revenue Sharing ────────────────────────────────────────
+
+/// When alliance members' traffic flows through each other's network,
+/// the transit provider earns reduced revenue at the alliance's revenue_share_pct rate.
+fn calculate_alliance_traffic_revenue(world: &mut GameWorld, tick: u64) {
+    use crate::systems::utilization::{build_transit_permissions, ordered_pair};
+    use gt_common::types::TransitPermission;
+
+    let transit_perms = build_transit_permissions(world);
+
+    // Build node ownership map
+    let node_owners: std::collections::HashMap<u64, u64> = world
+        .infra_nodes
+        .iter()
+        .filter(|(id, _)| !world.constructions.contains_key(id))
+        .map(|(&id, node)| (id, node.owner))
+        .collect();
+
+    // For each edge with traffic, check if it crosses an alliance boundary
+    let edge_traffic = world.traffic_matrix.edge_traffic.clone();
+    let mut alliance_payments: Vec<(u64, u64, i64)> = Vec::new(); // (provider, consumer, amount)
+
+    let mut edge_ids: Vec<u64> = edge_traffic.keys().copied().collect();
+    edge_ids.sort_unstable();
+
+    for edge_id in edge_ids {
+        let traffic = match edge_traffic.get(&edge_id) {
+            Some(&t) if t > 0.0 => t,
+            _ => continue,
+        };
+
+        let edge = match world.infra_edges.get(&edge_id) {
+            Some(e) => e,
+            None => continue,
+        };
+
+        let owner_a = node_owners.get(&edge.source).copied().unwrap_or(0);
+        let owner_b = node_owners.get(&edge.target).copied().unwrap_or(0);
+
+        if owner_a == owner_b || owner_a == 0 || owner_b == 0 {
+            continue;
+        }
+
+        let (a, b) = ordered_pair(owner_a, owner_b);
+        let (perm, _) = transit_perms
+            .get(&(a, b))
+            .copied()
+            .unwrap_or((TransitPermission::Blocked, None));
+
+        if let TransitPermission::Alliance { revenue_share_pct } = perm {
+            // Edge owner earns reduced revenue from alliance traffic
+            let edge_owner = edge.owner;
+            let other = if edge_owner == owner_a { owner_b } else { owner_a };
+
+            let rate = edge.edge_type.traffic_revenue_rate();
+            let alliance_revenue = (traffic * rate * revenue_share_pct) as i64;
+
+            if alliance_revenue > 0 {
+                alliance_payments.push((edge_owner, other, alliance_revenue));
+            }
+        }
+    }
+
+    // Apply alliance payments
+    for (provider, _consumer, amount) in &alliance_payments {
+        if let Some(fin) = world.financials.get_mut(provider) {
+            fin.cash += amount;
+        }
+    }
+
+    // Boost trust for alliances with active traffic flow
+    let mut alliance_pairs_with_traffic: HashSet<(u64, u64)> = HashSet::new();
+    for &(provider, consumer, _) in &alliance_payments {
+        let (a, b) = ordered_pair(provider, consumer);
+        alliance_pairs_with_traffic.insert((a, b));
+    }
+
+    let _ = tick; // tick used above in transit_settlements
+    for alliance in world.alliances.values_mut() {
+        for i in 0..alliance.member_corp_ids.len() {
+            for j in (i + 1)..alliance.member_corp_ids.len() {
+                let (a, b) = ordered_pair(alliance.member_corp_ids[i], alliance.member_corp_ids[j]);
+                if alliance_pairs_with_traffic.contains(&(a, b)) {
+                    // Boost trust slightly for smooth traffic flow
+                    if let Some(trust) = alliance.trust_scores.get_mut(&alliance.member_corp_ids[i])
+                    {
+                        *trust = (*trust + 0.001).min(1.0);
+                    }
+                    if let Some(trust) = alliance.trust_scores.get_mut(&alliance.member_corp_ids[j])
+                    {
+                        *trust = (*trust + 0.001).min(1.0);
+                    }
+                }
+            }
+        }
+    }
 }
