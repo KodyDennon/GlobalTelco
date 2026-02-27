@@ -125,10 +125,8 @@ All game state is managed through an Entity Component System. Entities are IDs, 
 
 **Core entity types:** InfrastructureNode, InfrastructureEdge, Corporation, Subsidiary, Employee/Team, Region, City, Contract, LandParcel, TechResearch, DebtInstrument, Patent, LicenseAgreement, Alliance, Lawsuit, GovernmentGrant
 
-**Systems run in deterministic order each tick (20+):**
-1. construction → 2. maintenance → 3. population → 4. coverage → 5. demand → 6. routing → 7. utilization → 8. revenue → 9. cost → 10. finance → 11. contract → 12. ai → 13. disaster → 14. regulation → 15. research → 16. market → 17. auction → 18. covert_ops → 19. lobbying → 20. achievement
-
-**Planned system additions:** patent, alliance, legal, grants
+**Systems run in deterministic order each tick (27 systems):**
+1. construction → 2. maintenance → 3. population → 4. coverage → 5. demand → 6. routing → 7. utilization → 8. spectrum → 9. ftth → 10. revenue → 11. cost → 12. finance → 13. contract → 14. ai → 15. disaster → 16. regulation → 17. research → 18. patent → 19. market → 20. auction → 21. covert_ops → 22. lobbying → 23. alliance → 24. legal → 25. grants → 26. achievement → 27. stock_market
 
 ## Key Architecture Concepts
 

@@ -54,6 +54,7 @@ body {
 	background: var(--bg-primary);
 	color: var(--text-primary);
 	font-family: var(--font-sans);
+	font-size: calc(16px * var(--ui-scale, 1));
 	line-height: 1.5;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
