@@ -28,11 +28,13 @@ Concrete design decisions for the GlobalTelco infrastructure empire builder. Thi
 - Multiplayer (WebSocket, delta sync, ghost entities, speed voting, admin)
 
 ### Not Yet Implemented
-- FTTH access network game loop (partial — nodes exist but no building-level demand)
 - Submarine cable mechanics (partial — nodes exist but no ship/waypoint system)
 - Weather system (partial — disasters exist but no weather forecast/patterns)
-- City density zones (not started)
 - Spectrum interference modeling (not started)
+
+### Recently Completed
+- FTTH access network game loop — CO→FDH→NAP chain validation, NAP auto-coverage of nearby buildings, guided FTTH Builder wizard (5 steps), building-level demand with zone-based revenue
+- City density zones — procedural buildings in 5 zones (downtown, commercial, residential inner/outer, suburban) with population-scaled radii, dual color palette for Real Earth vs procgen
 
 ### Cancelled
 - Fog of War — cancelled by design decision; all competitor infrastructure is visible by default
