@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="100%" height="100%">
+    <defs>
+        <filter id="neon-glow-geos" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+            <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+    </defs>
+    <!-- Large GEO Satellite Body (bus-style, biggest) -->
+    <rect x="20" y="20" width="24" height="20" rx="3" fill="none" stroke="#fbbf24" stroke-width="2.5" filter="url(#neon-glow-geos)"/>
+    <!-- Massive Solar Arrays (GEO sats have huge panels) -->
+    <rect x="0" y="24" width="18" height="12" rx="1" fill="none" stroke="#fcd34d" stroke-width="2" filter="url(#neon-glow-geos)"/>
+    <rect x="46" y="24" width="18" height="12" rx="1" fill="none" stroke="#fcd34d" stroke-width="2" filter="url(#neon-glow-geos)"/>
+    <!-- Solar array fold lines -->
+    <line x1="6" y1="24" x2="6" y2="36" stroke="#f59e0b" stroke-width="0.8" filter="url(#neon-glow-geos)" opacity="0.5"/>
+    <line x1="12" y1="24" x2="12" y2="36" stroke="#f59e0b" stroke-width="0.8" filter="url(#neon-glow-geos)" opacity="0.5"/>
+    <line x1="52" y1="24" x2="52" y2="36" stroke="#f59e0b" stroke-width="0.8" filter="url(#neon-glow-geos)" opacity="0.5"/>
+    <line x1="58" y1="24" x2="58" y2="36" stroke="#f59e0b" stroke-width="0.8" filter="url(#neon-glow-geos)" opacity="0.5"/>
+    <!-- Large High-gain Antenna Dish -->
+    <path d="M 24 20 Q 32 8 40 20" fill="none" stroke="#fde68a" stroke-width="2.5" filter="url(#neon-glow-geos)"/>
+    <line x1="32" y1="20" x2="32" y2="12" stroke="#fbbf24" stroke-width="2" filter="url(#neon-glow-geos)"/>
+    <circle cx="32" cy="10" r="3" fill="#fef3c7" filter="url(#neon-glow-geos)"/>
+    <!-- Broadcast beam (wide C/Ku band coverage) -->
+    <path d="M 24 40 L 14 56" fill="none" stroke="#fde68a" stroke-width="1.5" stroke-dasharray="3 2" filter="url(#neon-glow-geos)" opacity="0.5"/>
+    <path d="M 40 40 L 50 56" fill="none" stroke="#fde68a" stroke-width="1.5" stroke-dasharray="3 2" filter="url(#neon-glow-geos)" opacity="0.5"/>
+    <path d="M 32 40 L 32 58" fill="none" stroke="#fde68a" stroke-width="1.5" stroke-dasharray="3 2" filter="url(#neon-glow-geos)" opacity="0.5"/>
+    <!-- Wide footprint arc -->
+    <path d="M 8 60 Q 32 52 56 60" fill="none" stroke="#fbbf24" stroke-width="1.5" filter="url(#neon-glow-geos)" opacity="0.3"/>
+    <!-- Transponder modules -->
+    <rect x="24" y="24" width="16" height="6" rx="1" fill="none" stroke="#f59e0b" stroke-width="1" filter="url(#neon-glow-geos)"/>
+    <circle cx="27" cy="27" r="1" fill="#34d399" filter="url(#neon-glow-geos)"/>
+    <circle cx="32" cy="27" r="1" fill="#34d399" filter="url(#neon-glow-geos)"/>
+    <circle cx="37" cy="27" r="1" fill="#fbbf24" filter="url(#neon-glow-geos)"/>
+    <!-- Thruster nozzle -->
+    <rect x="30" y="40" width="4" height="3" rx="1" fill="#f59e0b" fill-opacity="0.5" stroke="#fbbf24" stroke-width="1" filter="url(#neon-glow-geos)"/>
+</svg>

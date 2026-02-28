@@ -195,7 +195,15 @@ fn categorize_command(command: &Command) -> CommandCategory {
         | Command::RepairNode { .. }
         | Command::RepairEdge { .. }
         | Command::EmergencyRepair { .. }
-        | Command::UpdateEdgeWaypoints { .. } => CommandCategory::Build,
+        | Command::UpdateEdgeWaypoints { .. }
+        | Command::BuildConstellation { .. }
+        | Command::OrderSatellites { .. }
+        | Command::ScheduleLaunch { .. }
+        | Command::ContractLaunch { .. }
+        | Command::DeorbitSatellite { .. }
+        | Command::OrderTerminals { .. }
+        | Command::ShipTerminals { .. }
+        | Command::ServiceSatellite { .. } => CommandCategory::Build,
 
         Command::TakeLoan { .. }
         | Command::RepayLoan { .. }
@@ -204,7 +212,8 @@ fn categorize_command(command: &Command) -> CommandCategory {
         | Command::CancelInsurance { .. }
         | Command::PlaceBid { .. }
         | Command::ProposeAcquisition { .. }
-        | Command::ProposeContract { .. } => CommandCategory::Financial,
+        | Command::ProposeContract { .. }
+        | Command::SetSatellitePricing { .. } => CommandCategory::Financial,
 
         Command::StartResearch { .. }
         | Command::CancelResearch { .. } => CommandCategory::Research,

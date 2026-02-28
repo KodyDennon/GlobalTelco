@@ -53,6 +53,11 @@ export const EDGE_STYLES: Record<string, { color: [number, number, number]; widt
     QuantumFiberLink:      { color: [192, 132, 252], width: 6 },    // near-future
     TerahertzBeam:         { color: [244, 114, 182], width: 6 },    // near-future
     LaserInterSatelliteLink: { color: [251, 191, 36], width: 6 },   // near-future
+
+    // Satellite dynamic edges
+    SatelliteDownlink:   { color: [56, 189, 248], width: 2 },     // sky blue — sat to ground
+    IntraplaneISL:       { color: [96, 165, 250], width: 2 },     // blue — in-plane laser link
+    CrossplaneISL:       { color: [129, 140, 248], width: 2 },    // indigo — cross-plane laser link
 };
 
 /** Night-earth satellite palette for terrain — high contrast against #030810 background. */
@@ -107,8 +112,13 @@ export const NETWORK_TIER_LABEL: Record<string, string> = {
 
 /**
  * Convert a Rust CamelCase enum variant name to a kebab-case icon key.
- * e.g. "CellTower" -> "cell-tower", "DataCenter" -> "data-center"
+ * Handles acronyms (ISPGateway -> isp-gateway), underscores (DWDM_Terminal -> dwdm-terminal),
+ * and standard camelCase (CellTower -> cell-tower).
  */
 export function toIconKey(camelCase: string): string {
-    return camelCase.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
+    return camelCase
+        .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')  // ISPGateway -> ISP-Gateway
+        .replace(/([a-z])([A-Z])/g, '$1-$2')          // CellTower -> Cell-Tower
+        .replace(/_/g, '-')                             // DWDM_Terminal -> DWDM-Terminal
+        .toLowerCase();
 }

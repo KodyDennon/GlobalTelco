@@ -75,11 +75,19 @@
 		Microwave: 'Microwave',
 		Satellite: 'Satellite',
 		Submarine: 'Submarine',
+		// Satellite infrastructure
+		SatelliteFactory: 'Sat Factory',
+		TerminalFactory: 'Terminal Factory',
+		SatelliteWarehouse: 'Sat Warehouse',
+		LaunchPad: 'Launch Pad',
+		LEO_GroundStation: 'LEO Ground',
+		MEO_GroundStation: 'MEO Ground',
 	};
 
 	const PANEL_GROUPS: Array<{ key: PanelGroupType; label: string; tip: string }> = [
 		{ key: 'finance', label: 'Finance', tip: 'Dashboard, loans, budgets, and market share' },
 		{ key: 'operations', label: 'Operations', tip: 'Infrastructure management and workforce' },
+		{ key: 'satellite', label: 'Satellite', tip: 'Constellation fleet, launches, terminals, and debris' },
 		{ key: 'diplomacy', label: 'Diplomacy', tip: 'Espionage, sabotage, and lobbying' },
 		{ key: 'research', label: 'Research', tip: 'Technology tree and R&D budget' },
 		{ key: 'market', label: 'Market', tip: 'Contracts, auctions, and mergers' },
@@ -102,6 +110,7 @@
 		coverage_overlap: 'Show coverage overlap — cells with 2+ corporations competing. Red = hotspot, darker = more competitors.',
 		spectrum: 'Show spectrum licenses — regions colored by dominant holder, wireless coverage circles by frequency band, interference zones in red.',
 		density: 'Show city density zones — Downtown (red), Commercial (blue), Residential (green), Suburban (yellow). Based on population tier.',
+		satellite: 'Show satellite positions, inter-satellite links, and coverage footprints. Satellite overlay.',
 	};
 
 	const OVERLAYS: Array<{ key: OverlayType; label: string; cls?: string }> = [
@@ -120,6 +129,7 @@
 		{ key: 'submarine_reference', label: 'Cables', cls: 'cables' },
 		{ key: 'spectrum', label: 'Spectrum', cls: 'spectrum' },
 		{ key: 'density', label: 'Density', cls: 'density' },
+		{ key: 'satellite', label: 'Sats', cls: 'satellite' },
 	];
 </script>
 
@@ -243,6 +253,7 @@
 					class:overlap={overlay.cls === 'overlap'}
 					class:spectrum={overlay.cls === 'spectrum'}
 					class:density={overlay.cls === 'density'}
+				class:satellite={overlay.cls === 'satellite'}
 					onclick={() => toggleOverlay(overlay.key)}
 					use:tooltip={OVERLAY_TIPS[overlay.key] ?? overlay.label}
 					aria-pressed={currentOverlay === overlay.key}
@@ -596,6 +607,15 @@
 	.overlay-btn.density.active {
 		background: rgba(251, 146, 60, 0.2);
 		color: #fdba74;
+	}
+
+	.overlay-btn.satellite {
+		color: #38bdf8;
+	}
+
+	.overlay-btn.satellite.active {
+		background: rgba(56, 189, 248, 0.2);
+		color: #7dd3fc;
 	}
 
 	.sandbox-indicator {

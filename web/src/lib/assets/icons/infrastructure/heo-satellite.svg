@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="100%" height="100%">
+    <defs>
+        <filter id="neon-glow-heos" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+            <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+    </defs>
+    <!-- Elliptical Orbit Path (background indicator) -->
+    <ellipse cx="32" cy="32" rx="28" ry="16" fill="none" stroke="#a855f7" stroke-width="1" stroke-dasharray="4 4" filter="url(#neon-glow-heos)" opacity="0.3"/>
+    <!-- Satellite Body -->
+    <rect x="24" y="18" width="16" height="14" rx="2" fill="none" stroke="#a855f7" stroke-width="2" filter="url(#neon-glow-heos)"/>
+    <!-- Solar Panels -->
+    <rect x="6" y="20" width="16" height="10" rx="1" fill="none" stroke="#fbbf24" stroke-width="1.5" filter="url(#neon-glow-heos)"/>
+    <rect x="42" y="20" width="16" height="10" rx="1" fill="none" stroke="#fbbf24" stroke-width="1.5" filter="url(#neon-glow-heos)"/>
+    <!-- Solar cell lines -->
+    <line x1="12" y1="20" x2="12" y2="30" stroke="#f59e0b" stroke-width="0.5" filter="url(#neon-glow-heos)" opacity="0.5"/>
+    <line x1="50" y1="20" x2="50" y2="30" stroke="#f59e0b" stroke-width="0.5" filter="url(#neon-glow-heos)" opacity="0.5"/>
+    <!-- Molniya-style antenna (steerable) -->
+    <path d="M 28 18 Q 32 10 36 18" fill="none" stroke="#c4b5fd" stroke-width="2" filter="url(#neon-glow-heos)"/>
+    <circle cx="32" cy="12" r="2.5" fill="#ddd6fe" filter="url(#neon-glow-heos)"/>
+    <!-- High-latitude coverage beam (polar regions) -->
+    <line x1="26" y1="32" x2="18" y2="52" stroke="#c4b5fd" stroke-width="1.5" stroke-dasharray="2 2" filter="url(#neon-glow-heos)" opacity="0.5"/>
+    <line x1="38" y1="32" x2="46" y2="52" stroke="#c4b5fd" stroke-width="1.5" stroke-dasharray="2 2" filter="url(#neon-glow-heos)" opacity="0.5"/>
+    <!-- Apogee indicator (satellite lingers at top of ellipse) -->
+    <circle cx="32" cy="16" r="6" fill="none" stroke="#a855f7" stroke-width="1" stroke-dasharray="2 3" filter="url(#neon-glow-heos)" opacity="0.4"/>
+    <!-- Perigee speed lines (at bottom of orbit) -->
+    <line x1="22" y1="50" x2="30" y2="48" stroke="#a855f7" stroke-width="1" filter="url(#neon-glow-heos)" opacity="0.3"/>
+    <line x1="34" y1="48" x2="42" y2="50" stroke="#a855f7" stroke-width="1" filter="url(#neon-glow-heos)" opacity="0.3"/>
+    <!-- Status LEDs -->
+    <circle cx="28" cy="22" r="1" fill="#34d399" filter="url(#neon-glow-heos)"/>
+    <circle cx="32" cy="22" r="1" fill="#34d399" filter="url(#neon-glow-heos)"/>
+    <circle cx="36" cy="22" r="1" fill="#a855f7" filter="url(#neon-glow-heos)"/>
+</svg>

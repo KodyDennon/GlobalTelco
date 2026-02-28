@@ -3,8 +3,8 @@ import { playerCorp } from './gameState';
 import { audioManager } from '$lib/audio/AudioManager';
 
 export type PanelType = 'none' | 'info' | 'dashboard' | 'infrastructure' | 'network' | 'research' | 'contracts' | 'region' | 'workforce' | 'advisor' | 'auctions' | 'mergers' | 'intel' | 'achievements' | 'spectrum';
-export type OverlayType = 'none' | 'terrain' | 'ownership' | 'population' | 'demand' | 'disaster' | 'coverage' | 'congestion' | 'traffic' | 'market_share' | 'ocean_depth' | 'spectrum' | 'elevation_contour' | 'submarine_reference' | 'coverage_overlap' | 'density' | 'interconnection';
-export type PanelGroupType = 'finance' | 'operations' | 'diplomacy' | 'research' | 'market' | 'info';
+export type OverlayType = 'none' | 'terrain' | 'ownership' | 'population' | 'demand' | 'disaster' | 'coverage' | 'congestion' | 'traffic' | 'market_share' | 'ocean_depth' | 'spectrum' | 'elevation_contour' | 'submarine_reference' | 'coverage_overlap' | 'density' | 'interconnection' | 'satellite';
+export type PanelGroupType = 'finance' | 'operations' | 'diplomacy' | 'research' | 'market' | 'info' | 'satellite';
 
 // ── Company Size Tier (Management Scaling) ───────────────────────────────────
 // Small: 1-10 nodes (hands-on), Medium: 11-100 (teams/budgets), Large: 101+ (policies/departments)
@@ -62,6 +62,12 @@ export const PANEL_GROUP_TABS: Record<PanelGroupType, Array<{ key: string; label
 		{ key: 'advisor', label: 'Advisor', component: 'advisor' },
 		{ key: 'achievements', label: 'Achievements', component: 'achievements' },
 	],
+	satellite: [
+		{ key: 'satellites', label: 'Fleet', component: 'satellites' },
+		{ key: 'launch', label: 'Launch', component: 'launch' },
+		{ key: 'terminals', label: 'Terminals', component: 'terminals' },
+		{ key: 'debris', label: 'Debris', component: 'debris' },
+	],
 };
 
 // Panel group display names
@@ -72,6 +78,7 @@ export const PANEL_GROUP_NAMES: Record<PanelGroupType, string> = {
 	research: 'Research',
 	market: 'Market',
 	info: 'Info',
+	satellite: 'Satellite',
 };
 
 // New panel group system

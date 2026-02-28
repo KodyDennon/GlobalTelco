@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="100%" height="100%">
+    <defs>
+        <filter id="neon-glow-isp" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
+            <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+        <linearGradient id="isp-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#0284c7" stop-opacity="0.3"/>
+            <stop offset="100%" stop-color="#1d4ed8" stop-opacity="0.2"/>
+        </linearGradient>
+    </defs>
+    <!-- Gateway Router Body -->
+    <rect x="10" y="24" width="44" height="20" rx="5" fill="url(#isp-grad)" stroke="#0ea5e9" stroke-width="2" filter="url(#neon-glow-isp)"/>
+    <!-- WAN port (upstream/internet) — top -->
+    <line x1="32" y1="24" x2="32" y2="10" stroke="#38bdf8" stroke-width="2.5" filter="url(#neon-glow-isp)"/>
+    <circle cx="32" cy="8" r="4" fill="none" stroke="#38bdf8" stroke-width="2" filter="url(#neon-glow-isp)"/>
+    <circle cx="32" cy="8" r="1.5" fill="#7dd3fc" filter="url(#neon-glow-isp)"/>
+    <!-- Globe icon (internet) on WAN -->
+    <path d="M 28 8 Q 32 4 36 8" fill="none" stroke="#7dd3fc" stroke-width="1" filter="url(#neon-glow-isp)"/>
+    <path d="M 28 8 Q 32 12 36 8" fill="none" stroke="#7dd3fc" stroke-width="1" filter="url(#neon-glow-isp)"/>
+    <!-- LAN ports (downstream) — bottom fan-out -->
+    <line x1="20" y1="44" x2="14" y2="54" stroke="#0ea5e9" stroke-width="2" filter="url(#neon-glow-isp)"/>
+    <line x1="28" y1="44" x2="24" y2="56" stroke="#0ea5e9" stroke-width="2" filter="url(#neon-glow-isp)"/>
+    <line x1="36" y1="44" x2="40" y2="56" stroke="#0ea5e9" stroke-width="2" filter="url(#neon-glow-isp)"/>
+    <line x1="44" y1="44" x2="50" y2="54" stroke="#0ea5e9" stroke-width="2" filter="url(#neon-glow-isp)"/>
+    <!-- LAN endpoint dots -->
+    <circle cx="14" cy="56" r="2.5" fill="#38bdf8" filter="url(#neon-glow-isp)"/>
+    <circle cx="24" cy="58" r="2.5" fill="#38bdf8" filter="url(#neon-glow-isp)"/>
+    <circle cx="40" cy="58" r="2.5" fill="#38bdf8" filter="url(#neon-glow-isp)"/>
+    <circle cx="50" cy="56" r="2.5" fill="#38bdf8" filter="url(#neon-glow-isp)"/>
+    <!-- Port status lights -->
+    <circle cx="16" cy="30" r="1.5" fill="#34d399" filter="url(#neon-glow-isp)"/>
+    <circle cx="22" cy="30" r="1.5" fill="#34d399" filter="url(#neon-glow-isp)"/>
+    <circle cx="28" cy="30" r="1.5" fill="#34d399" filter="url(#neon-glow-isp)"/>
+    <circle cx="34" cy="30" r="1.5" fill="#f59e0b" filter="url(#neon-glow-isp)"/>
+    <circle cx="40" cy="30" r="1.5" fill="#34d399" filter="url(#neon-glow-isp)"/>
+    <circle cx="46" cy="30" r="1.5" fill="#34d399" filter="url(#neon-glow-isp)"/>
+    <!-- Throughput indicator -->
+    <rect x="18" y="36" width="28" height="3" rx="1" fill="none" stroke="#0ea5e9" stroke-width="1" filter="url(#neon-glow-isp)"/>
+    <rect x="18" y="36" width="20" height="3" rx="1" fill="#0ea5e9" fill-opacity="0.4" filter="url(#neon-glow-isp)"/>
+</svg>

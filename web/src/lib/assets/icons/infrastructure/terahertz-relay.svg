@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="100%" height="100%">
+    <defs>
+        <filter id="neon-glow-thz" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+            <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+    </defs>
+    <!-- Compact Unit on Pole -->
+    <rect x="30" y="34" width="4" height="24" fill="none" stroke="#6b7280" stroke-width="2" filter="url(#neon-glow-thz)"/>
+    <!-- THz Emitter Array (diamond shaped) -->
+    <polygon points="32,8 46,22 32,36 18,22" fill="none" stroke="#d946ef" stroke-width="2" filter="url(#neon-glow-thz)"/>
+    <polygon points="32,14 40,22 32,30 24,22" fill="none" stroke="#e879f9" stroke-width="1.5" filter="url(#neon-glow-thz)"/>
+    <!-- THz wave emitters at each face -->
+    <circle cx="32" cy="8" r="2.5" fill="#f0abfc" filter="url(#neon-glow-thz)"/>
+    <circle cx="46" cy="22" r="2.5" fill="#f0abfc" filter="url(#neon-glow-thz)"/>
+    <circle cx="18" cy="22" r="2.5" fill="#f0abfc" filter="url(#neon-glow-thz)"/>
+    <!-- Ultra-high frequency beams (very tight, pencil beams) -->
+    <line x1="32" y1="6" x2="32" y2="0" stroke="#fdf4ff" stroke-width="2" filter="url(#neon-glow-thz)"/>
+    <line x1="48" y1="22" x2="56" y2="22" stroke="#fdf4ff" stroke-width="2" filter="url(#neon-glow-thz)"/>
+    <line x1="16" y1="22" x2="8" y2="22" stroke="#fdf4ff" stroke-width="2" filter="url(#neon-glow-thz)"/>
+    <!-- Frequency ripples (very fast oscillation) -->
+    <path d="M 30 2 L 31 0 L 32 2 L 33 0 L 34 2" fill="none" stroke="#fdf4ff" stroke-width="1" filter="url(#neon-glow-thz)" opacity="0.6"/>
+    <path d="M 56 20 L 58 21 L 56 22 L 58 23 L 56 24" fill="none" stroke="#fdf4ff" stroke-width="1" filter="url(#neon-glow-thz)" opacity="0.6"/>
+    <path d="M 8 20 L 6 21 L 8 22 L 6 23 L 8 24" fill="none" stroke="#fdf4ff" stroke-width="1" filter="url(#neon-glow-thz)" opacity="0.6"/>
+    <!-- Central processing node -->
+    <circle cx="32" cy="22" r="4" fill="#a21caf" fill-opacity="0.4" stroke="#d946ef" stroke-width="1.5" filter="url(#neon-glow-thz)"/>
+    <circle cx="32" cy="22" r="1.5" fill="#f0abfc" filter="url(#neon-glow-thz)"/>
+    <!-- Base mount -->
+    <line x1="24" y1="58" x2="40" y2="58" stroke="#6b7280" stroke-width="2" filter="url(#neon-glow-thz)"/>
+</svg>

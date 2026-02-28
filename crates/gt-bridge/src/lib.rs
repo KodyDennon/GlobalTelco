@@ -39,6 +39,24 @@ pub struct EdgeArrays {
     pub edge_types: Vec<u32>,
 }
 
+/// Satellite data as flat typed arrays for orbital overlay rendering.
+pub struct SatelliteArrays {
+    /// Entity IDs
+    pub ids: Vec<u32>,
+    /// Owner corp IDs
+    pub owners: Vec<u32>,
+    /// [lon0, lat0, lon1, lat1, ...] — 2 floats per satellite (sub-satellite point)
+    pub positions: Vec<f64>,
+    /// [altitude0, altitude1, ...] — km above Earth
+    pub altitudes: Vec<f64>,
+    /// Orbit type enum discriminants (0=LEO, 1=MEO, 2=GEO, 3=HEO)
+    pub orbit_types: Vec<u32>,
+    /// Status enum discriminants
+    pub statuses: Vec<u32>,
+    /// Fuel level (0.0-1.0 fraction)
+    pub fuel_levels: Vec<f64>,
+}
+
 /// Trait defining the shared query API between WASM and Tauri bridges.
 ///
 /// JSON methods return `String` for compatibility with both wasm-bindgen
@@ -74,7 +92,15 @@ pub trait BridgeQuery {
     fn save_game(&self) -> Result<String, String>;
     fn load_game(&mut self, data: &str) -> Result<(), String>;
 
+    // ── Satellite queries ───────────────────────────────────────────────
+    fn get_constellation_data(&self, corp_id: EntityId) -> String;
+    fn get_orbital_view(&self) -> String;
+    fn get_launch_schedule(&self, corp_id: EntityId) -> String;
+    fn get_terminal_inventory(&self, corp_id: EntityId) -> String;
+    fn get_debris_status(&self) -> String;
+
     // ── Typed array queries (hot-path rendering) ────────────────────────
     fn get_infra_arrays(&self) -> InfraArrays;
     fn get_edge_arrays(&self) -> EdgeArrays;
+    fn get_satellite_arrays(&self) -> SatelliteArrays;
 }

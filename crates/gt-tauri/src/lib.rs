@@ -10,7 +10,7 @@
 
 use std::sync::Mutex;
 
-use gt_bridge::{BridgeQuery, EdgeArrays, InfraArrays};
+use gt_bridge::{BridgeQuery, EdgeArrays, InfraArrays, SatelliteArrays};
 use gt_common::types::{EntityId, WorldConfig};
 use gt_simulation::world::GameWorld;
 
@@ -273,6 +273,79 @@ impl BridgeQuery for TauriBridge {
         Ok(())
     }
 
+    fn get_constellation_data(&self, corp_id: EntityId) -> String {
+        let w = self.world.lock().unwrap();
+        let constellations: Vec<serde_json::Value> = w.constellations
+            .iter()
+            .filter(|(_, c)| c.owner == corp_id)
+            .map(|(&id, c)| {
+                serde_json::json!({
+                    "id": id,
+                    "name": c.name,
+                    "orbit_type": format!("{:?}", c.orbit_type),
+                    "operational_count": c.operational_count,
+                    "total_target": c.num_planes * c.sats_per_plane,
+                })
+            })
+            .collect();
+        serde_json::to_string(&constellations).unwrap_or_default()
+    }
+
+    fn get_orbital_view(&self) -> String {
+        let w = self.world.lock().unwrap();
+        let sats: Vec<serde_json::Value> = w.satellites
+            .iter()
+            .map(|(&id, sat)| {
+                let pos = w.positions.get(&id);
+                let owner = w.ownerships.get(&id).map(|o| o.owner).unwrap_or(0);
+                serde_json::json!({
+                    "id": id, "owner": owner,
+                    "lon": pos.map(|p| p.x).unwrap_or(0.0),
+                    "lat": pos.map(|p| p.y).unwrap_or(0.0),
+                    "altitude_km": sat.altitude_km,
+                    "status": format!("{:?}", sat.status),
+                })
+            })
+            .collect();
+        serde_json::to_string(&sats).unwrap_or_default()
+    }
+
+    fn get_launch_schedule(&self, corp_id: EntityId) -> String {
+        let w = self.world.lock().unwrap();
+        let launches: Vec<serde_json::Value> = w.launch_pads
+            .iter()
+            .filter(|(_, lp)| lp.owner == corp_id)
+            .map(|(&id, lp)| {
+                serde_json::json!({
+                    "launch_pad_id": id,
+                    "cooldown_remaining": lp.cooldown_remaining,
+                    "queue_size": lp.launch_queue.len(),
+                })
+            })
+            .collect();
+        serde_json::to_string(&launches).unwrap_or_default()
+    }
+
+    fn get_terminal_inventory(&self, _corp_id: EntityId) -> String {
+        r#"{"factories":[],"warehouses":[]}"#.to_string()
+    }
+
+    fn get_debris_status(&self) -> String {
+        let w = self.world.lock().unwrap();
+        let shells: Vec<serde_json::Value> = w.orbital_shells
+            .iter()
+            .enumerate()
+            .map(|(i, s)| {
+                serde_json::json!({
+                    "index": i,
+                    "debris_count": s.debris_count,
+                    "cascade_active": s.cascade_active,
+                })
+            })
+            .collect();
+        serde_json::to_string(&shells).unwrap_or_default()
+    }
+
     fn get_infra_arrays(&self) -> InfraArrays {
         let w = self.world.lock().unwrap();
         let count = w.infra_nodes.len();
@@ -330,6 +403,38 @@ impl BridgeQuery for TauriBridge {
         }
 
         EdgeArrays { ids, owners, endpoints, stats, edge_types }
+    }
+
+    fn get_satellite_arrays(&self) -> SatelliteArrays {
+        let w = self.world.lock().unwrap();
+        let count = w.satellites.len();
+        let mut ids = Vec::with_capacity(count);
+        let mut owners = Vec::with_capacity(count);
+        let mut positions = Vec::with_capacity(count * 2);
+        let mut altitudes = Vec::with_capacity(count);
+        let mut orbit_types = Vec::with_capacity(count);
+        let mut statuses = Vec::with_capacity(count);
+        let mut fuel_levels = Vec::with_capacity(count);
+
+        for (&eid, sat) in &w.satellites {
+            ids.push(eid as u32);
+            let owner = w.ownerships.get(&eid).map(|o| o.owner).unwrap_or(0);
+            owners.push(owner as u32);
+            let pos = w.positions.get(&eid);
+            positions.push(pos.map(|p| p.x).unwrap_or(0.0));
+            positions.push(pos.map(|p| p.y).unwrap_or(0.0));
+            altitudes.push(sat.altitude_km);
+            orbit_types.push(sat.orbit_type as u32);
+            statuses.push(sat.status as u32);
+            let fuel_frac = if sat.fuel_capacity > 0.0 {
+                sat.fuel_remaining / sat.fuel_capacity
+            } else {
+                0.0
+            };
+            fuel_levels.push(fuel_frac);
+        }
+
+        SatelliteArrays { ids, owners, positions, altitudes, orbit_types, statuses, fuel_levels }
     }
 }
 

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="100%" height="100%">
+    <defs>
+        <filter id="neon-glow-cdn" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+            <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+        <linearGradient id="cdn-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#a78bfa" stop-opacity="0.25"/>
+            <stop offset="100%" stop-color="#4c1d95" stop-opacity="0.1"/>
+        </linearGradient>
+    </defs>
+    <!-- Cache Server Box -->
+    <rect x="14" y="24" width="36" height="24" rx="4" fill="url(#cdn-grad)" stroke="#a78bfa" stroke-width="2" filter="url(#neon-glow-cdn)"/>
+    <!-- Play/Stream Button (CDN content delivery) -->
+    <polygon points="28,30 28,42 40,36" fill="none" stroke="#c4b5fd" stroke-width="2" filter="url(#neon-glow-cdn)"/>
+    <circle cx="34" cy="36" r="1.5" fill="#ddd6fe" filter="url(#neon-glow-cdn)"/>
+    <!-- Cache hit indicators -->
+    <circle cx="18" cy="28" r="1.5" fill="#34d399" filter="url(#neon-glow-cdn)"/>
+    <circle cx="18" cy="33" r="1.5" fill="#34d399" filter="url(#neon-glow-cdn)"/>
+    <circle cx="18" cy="38" r="1.5" fill="#34d399" filter="url(#neon-glow-cdn)"/>
+    <circle cx="18" cy="43" r="1.5" fill="#f59e0b" filter="url(#neon-glow-cdn)"/>
+    <!-- Distribution arrows (fanning outward) -->
+    <line x1="32" y1="24" x2="32" y2="14" stroke="#c4b5fd" stroke-width="2" filter="url(#neon-glow-cdn)"/>
+    <line x1="20" y1="24" x2="12" y2="14" stroke="#a78bfa" stroke-width="1.5" filter="url(#neon-glow-cdn)"/>
+    <line x1="44" y1="24" x2="52" y2="14" stroke="#a78bfa" stroke-width="1.5" filter="url(#neon-glow-cdn)"/>
+    <!-- Arrow tips -->
+    <circle cx="32" cy="12" r="2" fill="#c4b5fd" filter="url(#neon-glow-cdn)"/>
+    <circle cx="12" cy="12" r="2" fill="#a78bfa" filter="url(#neon-glow-cdn)"/>
+    <circle cx="52" cy="12" r="2" fill="#a78bfa" filter="url(#neon-glow-cdn)"/>
+    <!-- Upstream connection -->
+    <line x1="32" y1="48" x2="32" y2="56" stroke="#8b5cf6" stroke-width="2" filter="url(#neon-glow-cdn)"/>
+    <circle cx="32" cy="58" r="2.5" fill="#7c3aed" filter="url(#neon-glow-cdn)"/>
+    <!-- Storage capacity bar -->
+    <rect x="22" y="44" width="20" height="2" rx="1" fill="none" stroke="#a78bfa" stroke-width="1" filter="url(#neon-glow-cdn)"/>
+    <rect x="22" y="44" width="15" height="2" rx="1" fill="#a78bfa" fill-opacity="0.5" filter="url(#neon-glow-cdn)"/>
+</svg>

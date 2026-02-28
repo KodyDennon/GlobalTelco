@@ -40,6 +40,7 @@ import { createWeatherLayers, computeDisasterForecasts, convertWeatherForecasts,
 import { createCablePreviewLayers, type CableDrawingState } from './layers/cablePreviewLayer';
 import { createWaypointEditorLayers, type WaypointEditorState } from './layers/waypointEditorLayer';
 import { createOverlayLayers as createSpectrumAndOtherOverlays, createDensityOverlayLayers } from './layers/overlayLayers';
+import { createSatelliteLayers } from './layers/satelliteLayer';
 import { selectedBuildItem, buildCategory, buildMode, ghostPreviewInfo, TERRAIN_COST_MULTIPLIERS } from '$lib/stores/uiState';
 import type { BuildOption } from '$lib/wasm/types';
 
@@ -457,6 +458,8 @@ export class MapRenderer {
                 playerCorpId: bridge.isInitialized() ? bridge.getPlayerCorpId() : undefined,
                 activeDisasters: this.activeDisasters,
             }),
+            // 8b. Satellite overlay (orbital positions, ISL links, coverage footprints)
+            ...createSatelliteLayers(this.activeOverlay === 'satellite', this.currentZoom),
             // 9. Cable drawing preview (between infra and selection)
             ...createCablePreviewLayers(this.cableDrawingState),
             // 10. Annotations and weather

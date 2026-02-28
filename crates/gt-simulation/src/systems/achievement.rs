@@ -166,6 +166,32 @@ pub fn run(world: &mut GameWorld) {
             }
         }
 
+        // Satellite achievements — count operational sats via constellations owned by this corp
+        let sat_count: usize = world
+            .constellations
+            .values()
+            .filter(|c| c.owner == corp_id)
+            .map(|c| c.operational_count as usize)
+            .sum();
+
+        if !tracker.is_unlocked("first_satellite") && sat_count >= 1 {
+            newly_unlocked.push("first_satellite".to_string());
+        }
+        if !tracker.is_unlocked("constellation") && sat_count >= 50 {
+            newly_unlocked.push("constellation".to_string());
+        }
+        if !tracker.is_unlocked("mega_constellation") && sat_count >= 500 {
+            newly_unlocked.push("mega_constellation".to_string());
+        }
+
+        // Kessler survivor: operational sats while any shell has cascade active
+        if !tracker.is_unlocked("kessler_survivor") && sat_count > 0 {
+            let cascade_active = world.orbital_shells.iter().any(|sh| sh.cascade_active);
+            if cascade_active {
+                newly_unlocked.push("kessler_survivor".to_string());
+            }
+        }
+
         // Update progress for node count
         if let Some(t) = world.achievements.get_mut(&corp_id) {
             t.set_progress("nodes", node_count as f64);

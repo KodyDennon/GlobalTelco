@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="100%" height="100%">
+    <defs>
+        <filter id="neon-glow-lsg" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+            <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+    </defs>
+    <!-- Phased Array Antenna (flat panel) -->
+    <rect x="10" y="14" width="44" height="8" rx="2" fill="none" stroke="#e879f9" stroke-width="2" filter="url(#neon-glow-lsg)"/>
+    <!-- Phased array elements (grid of dots) -->
+    <circle cx="16" cy="18" r="1" fill="#f0abfc" filter="url(#neon-glow-lsg)"/>
+    <circle cx="22" cy="18" r="1" fill="#f0abfc" filter="url(#neon-glow-lsg)"/>
+    <circle cx="28" cy="18" r="1" fill="#f0abfc" filter="url(#neon-glow-lsg)"/>
+    <circle cx="34" cy="18" r="1" fill="#f0abfc" filter="url(#neon-glow-lsg)"/>
+    <circle cx="40" cy="18" r="1" fill="#f0abfc" filter="url(#neon-glow-lsg)"/>
+    <circle cx="46" cy="18" r="1" fill="#f0abfc" filter="url(#neon-glow-lsg)"/>
+    <circle cx="52" cy="18" r="1" fill="#f0abfc" filter="url(#neon-glow-lsg)"/>
+    <!-- Multi-beam uplinks (tracking multiple sats) -->
+    <line x1="16" y1="14" x2="8" y2="4" stroke="#d946ef" stroke-width="1.5" stroke-dasharray="2 2" filter="url(#neon-glow-lsg)"/>
+    <line x1="28" y1="14" x2="24" y2="4" stroke="#d946ef" stroke-width="1.5" stroke-dasharray="2 2" filter="url(#neon-glow-lsg)"/>
+    <line x1="40" y1="14" x2="44" y2="4" stroke="#d946ef" stroke-width="1.5" stroke-dasharray="2 2" filter="url(#neon-glow-lsg)"/>
+    <line x1="52" y1="14" x2="58" y2="4" stroke="#d946ef" stroke-width="1.5" stroke-dasharray="2 2" filter="url(#neon-glow-lsg)"/>
+    <!-- Satellite targets (small dots in sky) -->
+    <circle cx="8" cy="3" r="2" fill="#f0abfc" filter="url(#neon-glow-lsg)"/>
+    <circle cx="24" cy="3" r="2" fill="#f0abfc" filter="url(#neon-glow-lsg)"/>
+    <circle cx="44" cy="3" r="2" fill="#f0abfc" filter="url(#neon-glow-lsg)"/>
+    <circle cx="58" cy="3" r="2" fill="#f0abfc" filter="url(#neon-glow-lsg)"/>
+    <!-- Equipment Shelter -->
+    <rect x="18" y="26" width="28" height="20" rx="3" fill="none" stroke="#c026d3" stroke-width="2" filter="url(#neon-glow-lsg)"/>
+    <!-- Processing modules inside -->
+    <rect x="22" y="30" width="20" height="5" rx="1" fill="none" stroke="#d946ef" stroke-width="1" filter="url(#neon-glow-lsg)"/>
+    <rect x="22" y="38" width="20" height="5" rx="1" fill="none" stroke="#d946ef" stroke-width="1" filter="url(#neon-glow-lsg)"/>
+    <!-- LEDs -->
+    <circle cx="24" cy="32" r="1" fill="#34d399" filter="url(#neon-glow-lsg)"/>
+    <circle cx="28" cy="32" r="1" fill="#34d399" filter="url(#neon-glow-lsg)"/>
+    <circle cx="24" cy="40" r="1" fill="#34d399" filter="url(#neon-glow-lsg)"/>
+    <!-- Fiber backhaul out -->
+    <line x1="32" y1="46" x2="32" y2="56" stroke="#e879f9" stroke-width="2" filter="url(#neon-glow-lsg)"/>
+    <circle cx="32" cy="58" r="2.5" fill="#d946ef" filter="url(#neon-glow-lsg)"/>
+</svg>

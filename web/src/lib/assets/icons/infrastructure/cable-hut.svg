@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="100%" height="100%">
+    <defs>
+        <filter id="neon-glow-ch" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+            <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+        <linearGradient id="ch-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#92400e" stop-opacity="0.3"/>
+            <stop offset="100%" stop-color="#451a03" stop-opacity="0.1"/>
+        </linearGradient>
+    </defs>
+    <!-- Small Hut -->
+    <rect x="18" y="34" width="28" height="22" fill="url(#ch-grad)" stroke="#b45309" stroke-width="2" filter="url(#neon-glow-ch)"/>
+    <!-- Sloped Roof -->
+    <path d="M 14 34 L 32 22 L 50 34 Z" fill="none" stroke="#d97706" stroke-width="2" filter="url(#neon-glow-ch)"/>
+    <!-- Door -->
+    <rect x="28" y="44" width="8" height="12" fill="none" stroke="#d97706" stroke-width="1.5" filter="url(#neon-glow-ch)"/>
+    <!-- Cables entering from left -->
+    <path d="M 2 30 C 8 28 12 32 18 38" fill="none" stroke="#fbbf24" stroke-width="2" filter="url(#neon-glow-ch)"/>
+    <path d="M 2 36 C 8 34 12 36 18 42" fill="none" stroke="#f59e0b" stroke-width="1.5" filter="url(#neon-glow-ch)"/>
+    <!-- Cables exiting right -->
+    <path d="M 46 38 C 52 32 56 28 62 30" fill="none" stroke="#fbbf24" stroke-width="2" filter="url(#neon-glow-ch)"/>
+    <path d="M 46 42 C 52 36 56 34 62 36" fill="none" stroke="#f59e0b" stroke-width="1.5" filter="url(#neon-glow-ch)"/>
+    <!-- Junction indicator light -->
+    <circle cx="32" cy="22" r="2.5" fill="#fde68a" filter="url(#neon-glow-ch)"/>
+    <!-- Cable junction box inside (visible through door) -->
+    <rect x="30" y="46" width="4" height="4" fill="#d97706" fill-opacity="0.5" filter="url(#neon-glow-ch)"/>
+</svg>

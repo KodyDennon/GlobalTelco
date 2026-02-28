@@ -24,6 +24,7 @@ pub mod contracts;
 pub mod diplomacy;
 pub mod finance;
 pub mod helpers;
+pub mod satellite;
 
 use crate::components::*;
 use crate::world::GameWorld;
@@ -171,6 +172,9 @@ fn run_corporation(
 
     // 10. Evaluate co-ownership proposals
     diplomacy::evaluate_co_ownership_proposals(world, corp_id, ai, tick);
+
+    // 11. Satellite operations (SatellitePioneer archetype)
+    satellite::run_satellite_ai(world, corp_id, ai, fin, tick);
 }
 
 // ─── Strategy Selection ──────────────────────────────────────────────────────

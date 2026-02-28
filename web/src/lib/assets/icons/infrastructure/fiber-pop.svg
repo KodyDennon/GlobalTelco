@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="100%" height="100%">
+    <defs>
+        <filter id="neon-glow-fp" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
+            <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+        <linearGradient id="fp-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.3"/>
+            <stop offset="100%" stop-color="#1e3a5f" stop-opacity="0.1"/>
+        </linearGradient>
+    </defs>
+    <!-- Main POP Cabinet -->
+    <rect x="14" y="16" width="36" height="40" rx="4" fill="url(#fp-grad)" stroke="#3b82f6" stroke-width="2" filter="url(#neon-glow-fp)"/>
+    <!-- Fiber patch panels (dense port grid) -->
+    <rect x="18" y="22" width="28" height="10" rx="2" fill="none" stroke="#60a5fa" stroke-width="1.5" filter="url(#neon-glow-fp)"/>
+    <!-- LC fiber ports (grid of small dots) -->
+    <circle cx="22" cy="25" r="1" fill="#93c5fd" filter="url(#neon-glow-fp)"/>
+    <circle cx="26" cy="25" r="1" fill="#3b82f6" filter="url(#neon-glow-fp)"/>
+    <circle cx="30" cy="25" r="1" fill="#93c5fd" filter="url(#neon-glow-fp)"/>
+    <circle cx="34" cy="25" r="1" fill="#93c5fd" filter="url(#neon-glow-fp)"/>
+    <circle cx="38" cy="25" r="1" fill="#3b82f6" filter="url(#neon-glow-fp)"/>
+    <circle cx="42" cy="25" r="1" fill="#93c5fd" filter="url(#neon-glow-fp)"/>
+    <circle cx="22" cy="29" r="1" fill="#93c5fd" filter="url(#neon-glow-fp)"/>
+    <circle cx="26" cy="29" r="1" fill="#93c5fd" filter="url(#neon-glow-fp)"/>
+    <circle cx="30" cy="29" r="1" fill="#3b82f6" filter="url(#neon-glow-fp)"/>
+    <circle cx="34" cy="29" r="1" fill="#93c5fd" filter="url(#neon-glow-fp)"/>
+    <circle cx="38" cy="29" r="1" fill="#93c5fd" filter="url(#neon-glow-fp)"/>
+    <circle cx="42" cy="29" r="1" fill="#93c5fd" filter="url(#neon-glow-fp)"/>
+    <!-- Router/Switch Module -->
+    <rect x="18" y="36" width="28" height="8" rx="2" fill="none" stroke="#60a5fa" stroke-width="1.5" filter="url(#neon-glow-fp)"/>
+    <circle cx="22" cy="40" r="1.5" fill="#34d399" filter="url(#neon-glow-fp)"/>
+    <circle cx="27" cy="40" r="1.5" fill="#34d399" filter="url(#neon-glow-fp)"/>
+    <circle cx="32" cy="40" r="1.5" fill="#f59e0b" filter="url(#neon-glow-fp)"/>
+    <circle cx="37" cy="40" r="1.5" fill="#34d399" filter="url(#neon-glow-fp)"/>
+    <circle cx="42" cy="40" r="1.5" fill="#34d399" filter="url(#neon-glow-fp)"/>
+    <!-- UPS module -->
+    <rect x="18" y="48" width="28" height="4" rx="1" fill="none" stroke="#2563eb" stroke-width="1" filter="url(#neon-glow-fp)"/>
+    <!-- Fiber trunk cables entering -->
+    <line x1="14" y1="26" x2="4" y2="20" stroke="#93c5fd" stroke-width="2" filter="url(#neon-glow-fp)"/>
+    <line x1="50" y1="26" x2="60" y2="20" stroke="#93c5fd" stroke-width="2" filter="url(#neon-glow-fp)"/>
+    <!-- Top label: POP -->
+    <rect x="24" y="17" width="16" height="3" rx="1" fill="#3b82f6" fill-opacity="0.4" stroke="#60a5fa" stroke-width="0.5" filter="url(#neon-glow-fp)"/>
+    <!-- Uplink -->
+    <line x1="32" y1="16" x2="32" y2="8" stroke="#93c5fd" stroke-width="2" filter="url(#neon-glow-fp)"/>
+    <circle cx="32" cy="6" r="3" fill="#60a5fa" filter="url(#neon-glow-fp)"/>
+</svg>

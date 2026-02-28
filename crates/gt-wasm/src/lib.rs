@@ -1468,6 +1468,167 @@ impl WasmBridge {
         serde_json::to_string(&json).unwrap_or_default()
     }
 
+    // ── Satellite Queries ─────────────────────────────────────────────────
+
+    pub fn get_constellation_data(&self, corp_id: u64) -> String {
+        let constellations: Vec<serde_json::Value> = self.world.constellations
+            .iter()
+            .filter(|(_, c)| c.owner == corp_id)
+            .map(|(&id, c)| {
+                serde_json::json!({
+                    "id": id,
+                    "name": c.name,
+                    "orbit_type": format!("{:?}", c.orbit_type),
+                    "target_altitude_km": c.target_altitude_km,
+                    "target_inclination_deg": c.target_inclination_deg,
+                    "num_planes": c.num_planes,
+                    "sats_per_plane": c.sats_per_plane,
+                    "total_target": c.num_planes * c.sats_per_plane,
+                    "operational_count": c.operational_count,
+                    "satellite_ids": c.satellite_ids,
+                })
+            })
+            .collect();
+        serde_json::to_string(&constellations).unwrap_or_default()
+    }
+
+    pub fn get_orbital_view(&self) -> String {
+        let satellites: Vec<serde_json::Value> = self.world.satellites
+            .iter()
+            .map(|(&id, sat)| {
+                let pos = self.world.positions.get(&id);
+                let owner = self.world.ownerships.get(&id).map(|o| o.owner).unwrap_or(0);
+                serde_json::json!({
+                    "id": id,
+                    "owner": owner,
+                    "lon": pos.map(|p| p.x).unwrap_or(0.0),
+                    "lat": pos.map(|p| p.y).unwrap_or(0.0),
+                    "altitude_km": sat.altitude_km,
+                    "orbit_type": format!("{:?}", sat.orbit_type),
+                    "status": format!("{:?}", sat.status),
+                    "fuel_remaining": sat.fuel_remaining,
+                    "fuel_capacity": sat.fuel_capacity,
+                    "constellation_id": sat.constellation_id,
+                })
+            })
+            .collect();
+        serde_json::to_string(&satellites).unwrap_or_default()
+    }
+
+    pub fn get_launch_schedule(&self, corp_id: u64) -> String {
+        let launches: Vec<serde_json::Value> = self.world.launch_pads
+            .iter()
+            .filter(|(_, lp)| lp.owner == corp_id)
+            .map(|(&id, lp)| {
+                serde_json::json!({
+                    "launch_pad_id": id,
+                    "cooldown_remaining": lp.cooldown_remaining,
+                    "reusable": lp.reusable,
+                    "queue": lp.launch_queue.iter().map(|(rt, sats)| {
+                        serde_json::json!({
+                            "rocket_type": rt,
+                            "satellite_count": sats.len(),
+                        })
+                    }).collect::<Vec<_>>(),
+                })
+            })
+            .collect();
+        serde_json::to_string(&launches).unwrap_or_default()
+    }
+
+    pub fn get_terminal_inventory(&self, corp_id: u64) -> String {
+        let factories: Vec<serde_json::Value> = self.world.terminal_factories
+            .iter()
+            .filter(|(_, tf)| tf.owner == corp_id)
+            .map(|(&id, tf)| {
+                serde_json::json!({
+                    "factory_id": id,
+                    "tier": format!("{:?}", tf.tier),
+                    "produced_stored": tf.produced_stored,
+                    "production_progress": tf.production_progress,
+                })
+            })
+            .collect();
+
+        let warehouses: Vec<serde_json::Value> = self.world.warehouses
+            .iter()
+            .filter(|(_, w)| w.owner == corp_id)
+            .map(|(&id, w)| {
+                serde_json::json!({
+                    "warehouse_id": id,
+                    "region_id": w.region_id,
+                    "terminal_inventory": w.terminal_inventory,
+                    "distribution_rate": w.distribution_rate,
+                })
+            })
+            .collect();
+
+        serde_json::json!({
+            "factories": factories,
+            "warehouses": warehouses,
+        }).to_string()
+    }
+
+    pub fn get_debris_status(&self) -> String {
+        let shells: Vec<serde_json::Value> = self.world.orbital_shells
+            .iter()
+            .enumerate()
+            .map(|(i, shell)| {
+                serde_json::json!({
+                    "index": i,
+                    "min_altitude_km": shell.min_altitude_km,
+                    "max_altitude_km": shell.max_altitude_km,
+                    "debris_count": shell.debris_count,
+                    "collision_probability": shell.collision_probability,
+                    "kessler_threshold": shell.kessler_threshold,
+                    "cascade_active": shell.cascade_active,
+                })
+            })
+            .collect();
+        serde_json::to_string(&shells).unwrap_or_default()
+    }
+
+    /// Hot-path typed array query for satellite positions (orbital overlay).
+    pub fn get_satellite_arrays(&self) -> js_sys::Array {
+        let w = &self.world;
+        let count = w.satellites.len();
+        let mut ids = Vec::with_capacity(count);
+        let mut owners_vec = Vec::with_capacity(count);
+        let mut positions = Vec::with_capacity(count * 2);
+        let mut altitudes = Vec::with_capacity(count);
+        let mut orbit_types_vec = Vec::with_capacity(count);
+        let mut statuses_vec = Vec::with_capacity(count);
+        let mut fuel_levels = Vec::with_capacity(count);
+
+        for (&eid, sat) in &w.satellites {
+            ids.push(eid as u32);
+            let owner = w.ownerships.get(&eid).map(|o| o.owner).unwrap_or(0);
+            owners_vec.push(owner as u32);
+            let pos = w.positions.get(&eid);
+            positions.push(pos.map(|p| p.x).unwrap_or(0.0));
+            positions.push(pos.map(|p| p.y).unwrap_or(0.0));
+            altitudes.push(sat.altitude_km);
+            orbit_types_vec.push(sat.orbit_type as u32);
+            statuses_vec.push(sat.status as u32);
+            let fuel_frac = if sat.fuel_capacity > 0.0 {
+                sat.fuel_remaining / sat.fuel_capacity
+            } else {
+                0.0
+            };
+            fuel_levels.push(fuel_frac);
+        }
+
+        let result = js_sys::Array::new();
+        result.push(&Uint32Array::from(&ids[..]).into());
+        result.push(&Uint32Array::from(&owners_vec[..]).into());
+        result.push(&Float64Array::from(&positions[..]).into());
+        result.push(&Float64Array::from(&altitudes[..]).into());
+        result.push(&Uint32Array::from(&orbit_types_vec[..]).into());
+        result.push(&Uint32Array::from(&statuses_vec[..]).into());
+        result.push(&Float64Array::from(&fuel_levels[..]).into());
+        result
+    }
+
     // ── Road Network Queries (Fiber Auto-Routing) ────────────────────────
 
     /// A* pathfinding along the road network between two (lon, lat) points.
@@ -1644,6 +1805,26 @@ impl gt_bridge::BridgeQuery for WasmBridge {
         Ok(())
     }
 
+    fn get_constellation_data(&self, corp_id: gt_common::types::EntityId) -> String {
+        WasmBridge::get_constellation_data(self, corp_id)
+    }
+
+    fn get_orbital_view(&self) -> String {
+        WasmBridge::get_orbital_view(self)
+    }
+
+    fn get_launch_schedule(&self, corp_id: gt_common::types::EntityId) -> String {
+        WasmBridge::get_launch_schedule(self, corp_id)
+    }
+
+    fn get_terminal_inventory(&self, corp_id: gt_common::types::EntityId) -> String {
+        WasmBridge::get_terminal_inventory(self, corp_id)
+    }
+
+    fn get_debris_status(&self) -> String {
+        WasmBridge::get_debris_status(self)
+    }
+
     fn get_infra_arrays(&self) -> gt_bridge::InfraArrays {
         let w = &self.world;
         let count = w.infra_nodes.len();
@@ -1714,6 +1895,46 @@ impl gt_bridge::BridgeQuery for WasmBridge {
             endpoints,
             stats,
             edge_types: edge_types_vec,
+        }
+    }
+
+    fn get_satellite_arrays(&self) -> gt_bridge::SatelliteArrays {
+        let w = &self.world;
+        let count = w.satellites.len();
+        let mut ids = Vec::with_capacity(count);
+        let mut owners_vec = Vec::with_capacity(count);
+        let mut positions = Vec::with_capacity(count * 2);
+        let mut altitudes = Vec::with_capacity(count);
+        let mut orbit_types_vec = Vec::with_capacity(count);
+        let mut statuses_vec = Vec::with_capacity(count);
+        let mut fuel_levels = Vec::with_capacity(count);
+
+        for (&eid, sat) in &w.satellites {
+            ids.push(eid as u32);
+            let owner = w.ownerships.get(&eid).map(|o| o.owner).unwrap_or(0);
+            owners_vec.push(owner as u32);
+            let pos = w.positions.get(&eid);
+            positions.push(pos.map(|p| p.x).unwrap_or(0.0));
+            positions.push(pos.map(|p| p.y).unwrap_or(0.0));
+            altitudes.push(sat.altitude_km);
+            orbit_types_vec.push(sat.orbit_type as u32);
+            statuses_vec.push(sat.status as u32);
+            let fuel_frac = if sat.fuel_capacity > 0.0 {
+                sat.fuel_remaining / sat.fuel_capacity
+            } else {
+                0.0
+            };
+            fuel_levels.push(fuel_frac);
+        }
+
+        gt_bridge::SatelliteArrays {
+            ids,
+            owners: owners_vec,
+            positions,
+            altitudes,
+            orbit_types: orbit_types_vec,
+            statuses: statuses_vec,
+            fuel_levels,
         }
     }
 }

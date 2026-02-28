@@ -285,6 +285,10 @@
 		legal: () => import("$lib/panels/LegalPanel.svelte"),
 		patents: () => import("$lib/panels/PatentPanel.svelte"),
 		stockmarket: () => import("$lib/panels/StockMarketPanel.svelte"),
+		satellites: () => import("$lib/panels/SatellitePanel.svelte"),
+		launch: () => import("$lib/panels/LaunchPanel.svelte"),
+		terminals: () => import("$lib/panels/TerminalPanel.svelte"),
+		debris: () => import("$lib/panels/DebrisPanel.svelte"),
 	};
 
 	let PanelComponent: any = $state(null);

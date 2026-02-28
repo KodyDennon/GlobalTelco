@@ -78,6 +78,9 @@ export function edgeWidthByType(edgeType: string): number {
         case 'Satellite':
         case 'SatelliteLEOLink':
         case 'EarlySatelliteLink':
+        case 'SatelliteDownlink':
+        case 'IntraplaneISL':
+        case 'CrossplaneISL':
             return 3;
 
         // National / long-haul — 4px
@@ -1163,6 +1166,9 @@ function edgeTierRank(edgeType: string): number {
         case 'Satellite':
         case 'SatelliteLEOLink':
         case 'EarlySatelliteLink':
+        case 'SatelliteDownlink':
+        case 'IntraplaneISL':
+        case 'CrossplaneISL':
         case 'Submarine':
         case 'SubseaFiberCable':
         case 'SubseaTelegraphCable':

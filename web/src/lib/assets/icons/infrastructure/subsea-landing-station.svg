@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="100%" height="100%">
+    <defs>
+        <filter id="neon-glow-sls" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
+            <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+        <linearGradient id="sls-water" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#0ea5e9" stop-opacity="0.3"/>
+            <stop offset="100%" stop-color="#0c4a6e" stop-opacity="0.15"/>
+        </linearGradient>
+    </defs>
+    <!-- Beach/Shore Line -->
+    <path d="M 0 44 Q 16 40 32 44 Q 48 48 64 44" fill="none" stroke="#0ea5e9" stroke-width="1.5" filter="url(#neon-glow-sls)" opacity="0.5"/>
+    <!-- Landing Station Building -->
+    <rect x="16" y="20" width="24" height="22" rx="2" fill="url(#sls-water)" stroke="#0ea5e9" stroke-width="2" filter="url(#neon-glow-sls)"/>
+    <!-- Roof/parapet -->
+    <rect x="14" y="18" width="28" height="4" rx="1" fill="none" stroke="#38bdf8" stroke-width="1.5" filter="url(#neon-glow-sls)"/>
+    <!-- Submarine cables entering from water -->
+    <path d="M 28 42 C 28 50 20 56 8 60" fill="none" stroke="#7dd3fc" stroke-width="4" filter="url(#neon-glow-sls)"/>
+    <path d="M 32 42 C 34 52 40 58 56 60" fill="none" stroke="#7dd3fc" stroke-width="3" filter="url(#neon-glow-sls)"/>
+    <!-- Data pulses on cables -->
+    <circle cx="18" cy="52" r="2" fill="#bae6fd" filter="url(#neon-glow-sls)"/>
+    <circle cx="44" cy="54" r="1.5" fill="#bae6fd" filter="url(#neon-glow-sls)"/>
+    <!-- Equipment inside building -->
+    <rect x="20" y="26" width="16" height="5" rx="1" fill="none" stroke="#38bdf8" stroke-width="1" filter="url(#neon-glow-sls)"/>
+    <rect x="20" y="34" width="16" height="5" rx="1" fill="none" stroke="#38bdf8" stroke-width="1" filter="url(#neon-glow-sls)"/>
+    <!-- Status LEDs -->
+    <circle cx="22" cy="28" r="1" fill="#34d399" filter="url(#neon-glow-sls)"/>
+    <circle cx="26" cy="28" r="1" fill="#34d399" filter="url(#neon-glow-sls)"/>
+    <circle cx="22" cy="36" r="1" fill="#34d399" filter="url(#neon-glow-sls)"/>
+    <!-- Terrestrial fiber uplink -->
+    <line x1="28" y1="18" x2="28" y2="10" stroke="#38bdf8" stroke-width="2" filter="url(#neon-glow-sls)"/>
+    <circle cx="28" cy="8" r="3" fill="#0ea5e9" filter="url(#neon-glow-sls)"/>
+    <!-- Signal rings -->
+    <circle cx="28" cy="8" r="7" fill="none" stroke="#38bdf8" stroke-width="1" stroke-dasharray="2 2" filter="url(#neon-glow-sls)" opacity="0.5"/>
+</svg>

@@ -627,6 +627,135 @@ export function getRoadSegments(): RoadSegmentInfo[] {
 	}
 }
 
+// ── Satellite Queries ────────────────────────────────────────────────
+
+export interface ConstellationData {
+	id: number;
+	name: string;
+	orbit_type: string;
+	target_altitude_km: number;
+	target_inclination_deg: number;
+	num_planes: number;
+	sats_per_plane: number;
+	total_target: number;
+	operational_count: number;
+	satellite_ids: number[];
+}
+
+export interface OrbitalSatellite {
+	id: number;
+	owner: number;
+	lon: number;
+	lat: number;
+	altitude_km: number;
+	orbit_type: string;
+	status: string;
+	fuel_remaining: number;
+	fuel_capacity: number;
+	constellation_id: number;
+}
+
+export interface LaunchPadInfo {
+	launch_pad_id: number;
+	cooldown_remaining: number;
+	reusable: boolean;
+	queue: { rocket_type: string; satellite_count: number }[];
+}
+
+export interface TerminalInventory {
+	factories: { factory_id: number; tier: string; produced_stored: number; production_progress: number }[];
+	warehouses: { warehouse_id: number; region_id: number; terminal_inventory: number; distribution_rate: number }[];
+}
+
+export interface OrbitalShellStatus {
+	index: number;
+	min_altitude_km: number;
+	max_altitude_km: number;
+	debris_count: number;
+	collision_probability: number;
+	kessler_threshold: number;
+	cascade_active: boolean;
+}
+
+export function getConstellationData(corpId: number): ConstellationData[] {
+	try {
+		const json = bridge?.get_constellation_data(BigInt(corpId)) ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getConstellationData');
+		return [];
+	}
+}
+
+export function getOrbitalView(): OrbitalSatellite[] {
+	try {
+		const json = bridge?.get_orbital_view() ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getOrbitalView');
+		return [];
+	}
+}
+
+export function getLaunchSchedule(corpId: number): LaunchPadInfo[] {
+	try {
+		const json = bridge?.get_launch_schedule(BigInt(corpId)) ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getLaunchSchedule');
+		return [];
+	}
+}
+
+export function getTerminalInventory(corpId: number): TerminalInventory {
+	try {
+		const json = bridge?.get_terminal_inventory(BigInt(corpId)) ?? '{"factories":[],"warehouses":[]}';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getTerminalInventory');
+		return { factories: [], warehouses: [] };
+	}
+}
+
+export function getDebrisStatus(): OrbitalShellStatus[] {
+	try {
+		const json = bridge?.get_debris_status() ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getDebrisStatus');
+		return [];
+	}
+}
+
+export interface SatelliteArrays {
+	ids: Uint32Array;
+	owners: Uint32Array;
+	positions: Float64Array;
+	altitudes: Float64Array;
+	orbitTypes: Uint32Array;
+	statuses: Uint32Array;
+	fuelLevels: Float64Array;
+}
+
+export function getSatelliteArrays(): SatelliteArrays | null {
+	try {
+		const result = bridge?.get_satellite_arrays();
+		if (!result || result.length < 7) return null;
+		return {
+			ids: result[0] as Uint32Array,
+			owners: result[1] as Uint32Array,
+			positions: result[2] as Float64Array,
+			altitudes: result[3] as Float64Array,
+			orbitTypes: result[4] as Uint32Array,
+			statuses: result[5] as Uint32Array,
+			fuelLevels: result[6] as Float64Array,
+		};
+	} catch (e) {
+		onBridgeError(e, 'getSatelliteArrays');
+		return null;
+	}
+}
+
 // ── Tauri Native Filesystem ───────────────────────────────────────────
 
 export async function saveGameNative(slot: number, data: string): Promise<string | null> {

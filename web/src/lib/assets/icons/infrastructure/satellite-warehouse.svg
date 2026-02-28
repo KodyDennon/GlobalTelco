@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="100%" height="100%">
+    <defs>
+        <filter id="neon-glow-sw" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+            <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+        <linearGradient id="sw-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#0891b2" stop-opacity="0.25"/>
+            <stop offset="100%" stop-color="#164e63" stop-opacity="0.1"/>
+        </linearGradient>
+    </defs>
+    <!-- Warehouse Building (wide, low) -->
+    <rect x="6" y="24" width="52" height="30" rx="3" fill="url(#sw-grad)" stroke="#06b6d4" stroke-width="2" filter="url(#neon-glow-sw)"/>
+    <!-- Arched Roof -->
+    <path d="M 6 24 Q 32 12 58 24" fill="none" stroke="#22d3ee" stroke-width="2" filter="url(#neon-glow-sw)"/>
+    <!-- Rolling Door -->
+    <rect x="24" y="38" width="16" height="16" fill="none" stroke="#22d3ee" stroke-width="1.5" filter="url(#neon-glow-sw)"/>
+    <line x1="24" y1="42" x2="40" y2="42" stroke="#06b6d4" stroke-width="0.8" filter="url(#neon-glow-sw)"/>
+    <line x1="24" y1="46" x2="40" y2="46" stroke="#06b6d4" stroke-width="0.8" filter="url(#neon-glow-sw)"/>
+    <line x1="24" y1="50" x2="40" y2="50" stroke="#06b6d4" stroke-width="0.8" filter="url(#neon-glow-sw)"/>
+    <!-- Stacked terminal boxes (inventory) -->
+    <rect x="10" y="34" width="8" height="6" rx="1" fill="none" stroke="#67e8f9" stroke-width="1" filter="url(#neon-glow-sw)"/>
+    <rect x="10" y="42" width="8" height="6" rx="1" fill="none" stroke="#67e8f9" stroke-width="1" filter="url(#neon-glow-sw)"/>
+    <rect x="10" y="28" width="8" height="6" rx="1" fill="none" stroke="#67e8f9" stroke-width="1" filter="url(#neon-glow-sw)"/>
+    <rect x="46" y="34" width="8" height="6" rx="1" fill="none" stroke="#67e8f9" stroke-width="1" filter="url(#neon-glow-sw)"/>
+    <rect x="46" y="42" width="8" height="6" rx="1" fill="none" stroke="#67e8f9" stroke-width="1" filter="url(#neon-glow-sw)"/>
+    <!-- Terminal dish icon on boxes -->
+    <circle cx="14" cy="31" r="2" fill="none" stroke="#a5f3fc" stroke-width="1" filter="url(#neon-glow-sw)"/>
+    <circle cx="50" cy="37" r="2" fill="none" stroke="#a5f3fc" stroke-width="1" filter="url(#neon-glow-sw)"/>
+    <!-- Inventory count display -->
+    <rect x="26" y="26" width="12" height="4" rx="1" fill="#06b6d4" fill-opacity="0.4" stroke="#22d3ee" stroke-width="0.5" filter="url(#neon-glow-sw)"/>
+    <!-- Delivery truck dock -->
+    <rect x="42" y="50" width="10" height="4" rx="1" fill="none" stroke="#0891b2" stroke-width="1.5" filter="url(#neon-glow-sw)"/>
+</svg>

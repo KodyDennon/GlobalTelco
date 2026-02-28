@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="100%" height="100%">
+    <defs>
+        <filter id="neon-glow-tp" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+            <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+    </defs>
+    <!-- Main Pole -->
+    <rect x="29" y="10" width="6" height="50" fill="none" stroke="#b45309" stroke-width="2" filter="url(#neon-glow-tp)"/>
+    <!-- Top Cross Arm -->
+    <rect x="10" y="12" width="44" height="3" rx="1" fill="none" stroke="#d97706" stroke-width="2" filter="url(#neon-glow-tp)"/>
+    <!-- Middle Cross Arm -->
+    <rect x="14" y="22" width="36" height="3" rx="1" fill="none" stroke="#d97706" stroke-width="1.5" filter="url(#neon-glow-tp)"/>
+    <!-- Glass Insulators on top arm -->
+    <path d="M 14 12 L 14 8" stroke="#38bdf8" stroke-width="2" filter="url(#neon-glow-tp)"/>
+    <circle cx="14" cy="7" r="2" fill="#7dd3fc" filter="url(#neon-glow-tp)"/>
+    <path d="M 26 12 L 26 8" stroke="#38bdf8" stroke-width="2" filter="url(#neon-glow-tp)"/>
+    <circle cx="26" cy="7" r="2" fill="#7dd3fc" filter="url(#neon-glow-tp)"/>
+    <path d="M 38 12 L 38 8" stroke="#38bdf8" stroke-width="2" filter="url(#neon-glow-tp)"/>
+    <circle cx="38" cy="7" r="2" fill="#7dd3fc" filter="url(#neon-glow-tp)"/>
+    <path d="M 50 12 L 50 8" stroke="#38bdf8" stroke-width="2" filter="url(#neon-glow-tp)"/>
+    <circle cx="50" cy="7" r="2" fill="#7dd3fc" filter="url(#neon-glow-tp)"/>
+    <!-- Wires drooping between poles (catenary) -->
+    <path d="M 2 7 Q 14 4 26 7" fill="none" stroke="#f59e0b" stroke-width="1" filter="url(#neon-glow-tp)"/>
+    <path d="M 38 7 Q 50 4 62 7" fill="none" stroke="#f59e0b" stroke-width="1" filter="url(#neon-glow-tp)"/>
+    <!-- Transformer can -->
+    <rect x="36" y="32" width="6" height="10" rx="2" fill="none" stroke="#fb923c" stroke-width="1.5" filter="url(#neon-glow-tp)"/>
+    <circle cx="39" cy="34" r="1.5" fill="#fde68a" filter="url(#neon-glow-tp)"/>
+    <!-- Ground wire -->
+    <line x1="29" y1="45" x2="24" y2="60" stroke="#78716c" stroke-width="1" stroke-dasharray="2 2" filter="url(#neon-glow-tp)"/>
+</svg>
