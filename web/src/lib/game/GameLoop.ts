@@ -41,6 +41,7 @@ let lastAutoSaveTick = 0;
 const AUTO_SAVE_INTERVAL = 50; // ticks between auto-saves
 let mpCleanupFns: Array<() => void> = [];
 let isMultiplayerMode = false; // true when game is server-driven
+let tickInFlight = false; // prevents overlapping async ticks (native sim)
 
 // High-water mark: the highest tick we've applied from the server.
 // Prevents stale snapshots from rolling back the displayed tick.
@@ -105,12 +106,30 @@ function loop(timestamp: number) {
 		tickAccumulator += delta;
 		const interval = getTickInterval();
 
-		while (tickAccumulator >= interval) {
-			tickAccumulator -= interval;
-			const t0 = performance.now();
-			bridge.tick();
-			const t1 = performance.now();
-			simTickTime.set(Math.round((t1 - t0) * 100) / 100);
+		if (bridge.isNativeSim()) {
+			// Native sim: async tick via Tauri IPC. Only one in flight at a time.
+			if (!tickInFlight && tickAccumulator >= interval) {
+				tickAccumulator -= interval;
+				tickInFlight = true;
+				const t0 = performance.now();
+				bridge.tick().then(() => {
+					const t1 = performance.now();
+					simTickTime.set(Math.round((t1 - t0) * 100) / 100);
+					tickInFlight = false;
+				}).catch((e) => {
+					console.error('[GameLoop] Native tick failed:', e);
+					tickInFlight = false;
+				});
+			}
+		} else {
+			// WASM: synchronous ticks
+			while (tickAccumulator >= interval) {
+				tickAccumulator -= interval;
+				const t0 = performance.now();
+				bridge.tick();
+				const t1 = performance.now();
+				simTickTime.set(Math.round((t1 - t0) * 100) / 100);
+			}
 		}
 	}
 
@@ -210,7 +229,7 @@ function checkCriticalEvent(event: GameEvent): string | null {
 
 async function performAutoSave(tick: number) {
 	try {
-		const data = bridge.saveGame();
+		const data = await bridge.saveGame();
 		const corp = get(playerCorp);
 		const slot = getNextAutoSaveSlot();
 		await saveToSlot(slot, slot, data, tick, corp?.name ?? 'Unknown', 'Normal', 'Internet');
@@ -307,7 +326,7 @@ export async function initGame(config?: Partial<import('$lib/wasm/types').WorldC
 		}
 	});
 
-	bridge.newGame(config);
+	await bridge.newGame(config);
 	loadingStage.set(2);
 
 	// Yield so the loading screen renders "Initializing Audio..."
@@ -349,7 +368,7 @@ export async function initMultiplayer(saveData: string) {
 		}
 	});
 
-	bridge.loadGame(saveData);
+	await bridge.loadGame(saveData);
 	loadingStage.set(2);
 	await yieldToUI();
 	await audioManager.init();
@@ -414,7 +433,7 @@ export async function initMultiplayer(saveData: string) {
 	// Snapshots fully replace WASM state. Guard against:
 	//   1. Stale snapshots (tick < high-water mark)
 	//   2. Concurrent loads (skip if another snapshot is being applied)
-	const handleSnapshotReload = (e: Event) => {
+	const handleSnapshotReload = async (e: Event) => {
 		const { state_json, tick } = (e as CustomEvent).detail;
 
 		// Skip stale snapshots — a newer tick update already arrived
@@ -431,7 +450,9 @@ export async function initMultiplayer(saveData: string) {
 
 		try {
 			mpSnapshotLoading = true;
-			bridge.loadGame(state_json);
+			// loadGame is async when native sim, but we handle it in both cases
+			const loadResult = bridge.loadGame(state_json);
+			if (loadResult instanceof Promise) await loadResult;
 			mpHighWaterTick = tick;
 
 			// Refresh stores from WASM, but force the tick to our high-water mark
@@ -462,9 +483,10 @@ export async function initMultiplayer(saveData: string) {
 		const { tick, ops } = (e as CustomEvent).detail;
 		if (!Array.isArray(ops) || ops.length === 0) return;
 
-		// Apply deltas to local WASM state
+		// Apply deltas to local sim state
 		try {
-			bridge.applyBatch(ops);
+			const batchResult = bridge.applyBatch(ops);
+			if (batchResult instanceof Promise) batchResult.catch((err: unknown) => console.error('[MP] Failed to apply batch:', err));
 		} catch (err) {
 			console.error('[MP] Failed to apply command broadcast:', err);
 		}
@@ -528,7 +550,7 @@ export async function initMultiplayer(saveData: string) {
 
 export async function quickSave(): Promise<void> {
 	if (!bridge.isInitialized()) return;
-	const data = bridge.saveGame();
+	const data = await bridge.saveGame();
 	const info = bridge.getWorldInfo();
 	const corp = get(playerCorp);
 	await saveToSlot(
@@ -545,14 +567,14 @@ export async function quickSave(): Promise<void> {
 export async function quickLoad(): Promise<boolean> {
 	const result = await loadFromSlot(QUICK_SAVE_SLOT);
 	if (!result) return false;
-	bridge.loadGame(result.data);
+	await bridge.loadGame(result.data);
 	lastAutoSaveTick = 0;
 	updateStores();
 	return true;
 }
 
 export async function loadFromSave(data: string): Promise<void> {
-	bridge.loadGame(data);
+	await bridge.loadGame(data);
 	lastAutoSaveTick = 0;
 	initialized.set(true);
 	updateStores();

@@ -6,13 +6,16 @@ on:
       - 'desktop-v*'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
+          - platform: macos-15
             target: aarch64-apple-darwin
             name: macOS ARM
           - platform: macos-13
@@ -36,6 +39,10 @@ jobs:
           targets: wasm32-unknown-unknown,${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            desktop/src-tauri -> target
 
       - uses: oven-sh/setup-bun@v2
 
@@ -46,11 +53,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
+      # Install wasm-pack (use pre-built binary on unix, cargo install on windows)
+      - name: Install wasm-pack (unix)
+        if: matrix.platform != 'windows-latest'
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Install wasm-pack (windows)
+        if: matrix.platform == 'windows-latest'
+        run: cargo install wasm-pack
+
       # Build WASM module
       - name: Build WASM
-        run: |
-          cargo install wasm-pack
-          wasm-pack build crates/gt-wasm --target web --out-dir ../../web/src/lib/wasm/pkg
+        run: wasm-pack build crates/gt-wasm --target web --out-dir ../../web/src/lib/wasm/pkg
 
       # Install frontend dependencies
       - name: Install frontend dependencies
@@ -65,21 +79,7 @@ jobs:
           projectPath: desktop
           tagName: ${{ github.ref_name }}
           releaseName: 'GlobalTelco ${{ github.ref_name }}'
-          releaseBody: 'Desktop release for GlobalTelco'
+          releaseBody: 'Desktop release for GlobalTelco. See assets below to download for your platform.'
           releaseDraft: true
           prerelease: false
-
-  web-deploy:
-    runs-on: ubuntu-latest
-    name: Deploy Web
-    needs: build
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-      - uses: oven-sh/setup-bun@v2
-      - run: cargo install wasm-pack
-      - run: wasm-pack build crates/gt-wasm --target web --out-dir ../../web/src/lib/wasm/pkg
-      - run: cd web && bun install && bun run build
+          args: --target ${{ matrix.target }}

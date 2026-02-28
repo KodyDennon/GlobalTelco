@@ -744,8 +744,10 @@ dependencies = [
  "gt-bridge",
  "gt-common",
  "gt-simulation",
+ "gt-world",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

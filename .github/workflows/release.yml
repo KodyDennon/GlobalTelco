@@ -6,7 +6,7 @@ on:
       - 'engine-v*'
       - 'server-v*'
       - 'web-v*'
-      - 'desktop-v*'
+      # desktop-v* is handled by desktop-release.yml (tauri-action creates the release)
 
 permissions:
   contents: write

@@ -1,13 +1,43 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
   "productName": "GlobalTelco",
-  "version": "0.1.1",
-  "identifier": "com.globaltelco.app",
+  "version": "1.2.0",
+  "identifier": "com.globaltelco.desktop",
   "build": {
     "frontendDist": "../../web/build",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "cd ../../web && bun run dev",
-    "beforeBuildCommand": "cd ../../web && bun run build"
+    "beforeDevCommand": "cd ../web && bun run dev",
+    "beforeBuildCommand": "cd ../web && bun install && bun run build"
+  },
+  "bundle": {
+    "active": true,
+    "category": "Game",
+    "shortDescription": "Build a telecom empire from local ISP to global infrastructure giant",
+    "longDescription": "GlobalTelco is a 2D infrastructure empire builder mixing city builder, tycoon/business sim, and grand strategy. Build and operate telecom infrastructure on a political map, growing from a local ISP to a global telecom empire. Features offline single-player and async persistent multiplayer.",
+    "copyright": "Copyright 2025 GlobalTelco",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "linux": {
+      "deb": {
+        "depends": []
+      },
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "both"
+      }
+    }
   },
   "app": {
     "windows": [
@@ -25,14 +55,5 @@
       "csp": null
     }
   },
-  "plugins": {
-    "fs": {
-      "scope": {
-        "allow": [
-          "$APPDATA/**",
-          "$APPDATA/saves/**"
-        ]
-      }
-    }
-  }
+  "plugins": {}
 }

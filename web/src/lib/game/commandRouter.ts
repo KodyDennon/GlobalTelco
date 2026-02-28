@@ -54,22 +54,25 @@ export function gameCommand(command: Record<string, unknown>): number | null {
 		return seq;
 	} else {
 		// Single-player: execute locally
-		const failed = bridge.processCommand(command);
+		const isBuild = 'BuildNode' in command || 'BuildEdge' in command;
+
+		// processCommand is async — fire and handle result
+		bridge.processCommand(command).then((failed) => {
+			// Play build placement sound on success
+			if (!failed && isBuild) {
+				audioManager.playSfx('build');
+			}
+
+			// Auto-exit build mode if a build command failed (e.g. insufficient funds)
+			if (failed && isBuild) {
+				audioManager.playSfx('error');
+				exitPlacementMode();
+			}
+		});
 
 		// Immediately signal map to re-render so new nodes/edges appear
 		// without waiting for the 2-second fallback interval
 		window.dispatchEvent(new CustomEvent('map-dirty'));
-
-		// Play build placement sound on success
-		if (!failed && ('BuildNode' in command || 'BuildEdge' in command)) {
-			audioManager.playSfx('build');
-		}
-
-		// Auto-exit build mode if a build command failed (e.g. insufficient funds)
-		if (failed && ('BuildNode' in command || 'BuildEdge' in command)) {
-			audioManager.playSfx('error');
-			exitPlacementMode();
-		}
 
 		return null;
 	}

@@ -18,24 +18,30 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
-      - name: Cache Rust build
-        uses: actions/cache@v4
+      - uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+          workspaces: |
+            . -> target
+            desktop/src-tauri -> target
 
-      - name: Build workspace
-        run: cargo build --release
+      - name: Install Linux dependencies (for desktop check)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      - name: Build server (with postgres)
-        run: cargo build --release --bin gt-server --features postgres
-
+      # Run tests first (debug mode) to catch issues early
       - name: Run tests
         run: cargo test
+
+      # Build release artifacts
+      - name: Build workspace (release)
+        run: cargo build --release
+
+      - name: Build server with postgres
+        run: cargo build --release --bin gt-server --features postgres
+
+      - name: Check desktop app compiles
+        run: cd desktop && cargo check
 
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
@@ -45,5 +51,11 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
 
+      - name: Install frontend dependencies
+        run: cd web && bun install
+
+      - name: Type-check frontend
+        run: cd web && bun run check
+
       - name: Build frontend
-        run: cd web && bun install && bun run build
+        run: cd web && bun run build

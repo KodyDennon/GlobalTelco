@@ -1,1 +1,1 @@
-{}
+{"default":{"identifier":"default","description":"Default permissions for GlobalTelco desktop app","local":true,"windows":["main"],"permissions":["core:default","shell:allow-open","dialog:default","process:default",{"identifier":"fs:allow-appdata-read-recursive","allow":[{"path":"$APPDATA/**"}]},{"identifier":"fs:allow-appdata-write-recursive","allow":[{"path":"$APPDATA/**"}]},"fs:allow-exists","fs:allow-mkdir","fs:allow-remove","fs:allow-rename"]}}
