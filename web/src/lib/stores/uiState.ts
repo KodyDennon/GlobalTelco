@@ -1,4 +1,4 @@
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import { playerCorp } from './gameState';
 import { audioManager } from '$lib/audio/AudioManager';
 
@@ -422,4 +422,127 @@ export function closePanelGroup() {
 // Helper to show confirmation dialog
 export function showConfirm(message: string, onConfirm: () => void) {
 	confirmDialog.set({ visible: true, message, onConfirm });
+}
+
+// ── Node Functional Supersession ──────────────────────────────────────────────
+// Each chain is ordered old-to-new. When a newer node in the chain is buildable,
+// older nodes in that chain are hidden from the build menu.
+export const NODE_SUPERSESSION_CHAINS: string[][] = [
+	// Local switching/exchange
+	['TelegraphOffice', 'ManualExchange', 'AutomaticExchange', 'DigitalSwitch', 'CentralOffice'],
+	// Access tower/pole
+	['TelephonePole', 'CellTower', 'MacroCell'],
+	// Relay/repeater
+	['TelegraphRelay', 'LongDistanceRelay', 'WirelessRelay', 'MicrowaveTower'],
+	// Data center evolution
+	['EarlyDataCenter', 'DataCenter', 'ColocationFacility'],
+	// Submarine landing
+	['CableHut', 'SubmarineLanding', 'SubseaLandingStation'],
+	// Satellite ground (GEO)
+	['SatelliteGround', 'SatelliteGroundStation'],
+	// Hub/POP
+	['CoaxHub', 'FiberPOP'],
+	// Exchange point
+	['ExchangePoint', 'InternetExchangePoint'],
+];
+
+/**
+ * Given a set of buildable node type names, filter out superseded nodes.
+ * For each chain, finds the latest buildable node and hides all earlier ones.
+ */
+export function getVisibleNodes(buildableNodes: Set<string>): Set<string> {
+	const hidden = new Set<string>();
+	for (const chain of NODE_SUPERSESSION_CHAINS) {
+		// Find the latest buildable node in this chain
+		let latestIdx = -1;
+		for (let i = chain.length - 1; i >= 0; i--) {
+			if (buildableNodes.has(chain[i])) {
+				latestIdx = i;
+				break;
+			}
+		}
+		// Hide all nodes before the latest
+		if (latestIdx > 0) {
+			for (let i = 0; i < latestIdx; i++) {
+				hidden.add(chain[i]);
+			}
+		}
+	}
+	const visible = new Set<string>();
+	for (const node of buildableNodes) {
+		if (!hidden.has(node)) {
+			visible.add(node);
+		}
+	}
+	return visible;
+}
+
+// ── Edge Function Groups ──────────────────────────────────────────────────────
+// Ordered old-to-new within each group. The build menu shows only the best
+// available (latest buildable) per group, with expand to see older.
+export const EDGE_FUNCTION_GROUPS: Record<string, string[]> = {
+	'Local Access': ['TelegraphWire', 'CopperTrunkLine', 'CoaxialCable', 'Copper', 'FiberLocal'],
+	'Metro/Regional': ['LongDistanceCopper', 'FiberRegional', 'FiberMetro'],
+	'National/Backbone': ['FiberNational', 'FiberLongHaul', 'DWDM_Backbone', 'QuantumFiberLink'],
+	'Submarine': ['SubseaTelegraphCable', 'Submarine', 'SubseaFiberCable'],
+	'Terrestrial Wireless': ['Microwave', 'MicrowaveLink', 'TerahertzBeam'],
+	'Satellite Link': ['EarlySatelliteLink', 'Satellite', 'SatelliteLEOLink', 'LaserInterSatelliteLink'],
+};
+
+// FTTH edges excluded from the radial menu (only in guided builder)
+export const FTTH_EDGE_TYPES = new Set(['FeederFiber', 'DistributionFiber', 'DropCable']);
+
+// FTTH nodes excluded from the radial menu (only in guided builder)
+export const FTTH_NODE_TYPES = new Set(['FiberSplicePoint', 'FiberDistributionHub', 'NetworkAccessPoint']);
+
+// Edge type → icon key mapping (5 available icons: fiber-optic, copper, microwave, satellite, submarine)
+export const EDGE_ICON_MAP: Record<string, string> = {
+	TelegraphWire: 'copper',
+	CopperTrunkLine: 'copper',
+	CoaxialCable: 'copper',
+	Copper: 'copper',
+	LongDistanceCopper: 'copper',
+	FiberLocal: 'fiber-optic',
+	FiberRegional: 'fiber-optic',
+	FiberMetro: 'fiber-optic',
+	FiberNational: 'fiber-optic',
+	FiberLongHaul: 'fiber-optic',
+	DWDM_Backbone: 'fiber-optic',
+	QuantumFiberLink: 'fiber-optic',
+	FeederFiber: 'fiber-optic',
+	DistributionFiber: 'fiber-optic',
+	DropCable: 'fiber-optic',
+	Microwave: 'microwave',
+	MicrowaveLink: 'microwave',
+	TerahertzBeam: 'microwave',
+	SubseaTelegraphCable: 'submarine',
+	Submarine: 'submarine',
+	SubseaFiberCable: 'submarine',
+	EarlySatelliteLink: 'satellite',
+	Satellite: 'satellite',
+	SatelliteLEOLink: 'satellite',
+	LaserInterSatelliteLink: 'satellite',
+};
+
+// ── FTTH Builder State ────────────────────────────────────────────────────────
+export const ftthBuilderActive = writable<boolean>(false);
+
+// ── Hotbar pinning helper ─────────────────────────────────────────────────────
+/** Add an item to the first empty hotbar slot. Returns true if successful. */
+export function addToHotbar(itemType: string, category: 'node' | 'edge'): boolean {
+	let success = false;
+	hotbarSlots.update(slots => {
+		const emptyIdx = slots.findIndex(s => s.itemType === null);
+		if (emptyIdx === -1) return slots;
+		const updated = [...slots];
+		updated[emptyIdx] = { itemType, category };
+		success = true;
+		return updated;
+	});
+	return success;
+}
+
+/** Check if an item is already in the hotbar */
+export function isInHotbar(itemType: string): boolean {
+	return get(hotbarSlots).some(s => s.itemType === itemType);
 }

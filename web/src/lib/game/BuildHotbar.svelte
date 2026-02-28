@@ -6,10 +6,13 @@
 		buildMode,
 		enterPlacementMode,
 		exitPlacementMode,
+		EDGE_ICON_MAP,
 	} from '$lib/stores/uiState';
 	import type { HotbarSlot } from '$lib/stores/uiState';
 	import { tooltip } from '$lib/ui/tooltip';
 	import { playerCorp, notifications } from '$lib/stores/gameState';
+	import { icons } from '$lib/assets/icons/index';
+	import { toIconKey } from '$lib/game/map/constants';
 	import * as bridge from '$lib/wasm/bridge';
 	import { get } from 'svelte/store';
 
@@ -24,14 +27,33 @@
 		BackboneRouter: 'Backbone',
 		SatelliteGround: 'Satellite',
 		SubmarineLanding: 'Sub Landing',
+		SatelliteFactory: 'Sat Factory',
+		TerminalFactory: 'Term Factory',
+		SatelliteWarehouse: 'Sat Warehouse',
+		LaunchPad: 'Launch Pad',
+		LEO_GroundStation: 'LEO Ground',
+		MEO_GroundStation: 'MEO Ground',
+		SmallCell: 'Small Cell',
+		MacroCell: 'Macro Cell',
+		FiberPOP: 'Fiber POP',
+		ColocationFacility: 'Colo Facility',
 		// Edges
 		Copper: 'Copper',
 		FiberLocal: 'Fiber Local',
 		FiberRegional: 'Fiber Reg.',
 		FiberNational: 'Fiber Nat.',
+		FiberMetro: 'Fiber Metro',
+		FiberLongHaul: 'Fiber LH',
+		DWDM_Backbone: 'DWDM',
 		Microwave: 'Microwave',
+		MicrowaveLink: 'uWave Link',
 		Satellite: 'Satellite',
 		Submarine: 'Submarine',
+		SubseaFiberCable: 'Subsea Fiber',
+		QuantumFiberLink: 'Quantum',
+		TerahertzBeam: 'THz Beam',
+		SatelliteLEOLink: 'LEO Link',
+		LaserInterSatelliteLink: 'Laser ISL',
 	};
 
 	// Short names for the hotbar display
@@ -44,13 +66,32 @@
 		BackboneRouter: 'Bbone',
 		SatelliteGround: 'Sat.',
 		SubmarineLanding: 'SubL.',
+		SatelliteFactory: 'SatF',
+		TerminalFactory: 'TrmF',
+		SatelliteWarehouse: 'SatW',
+		LaunchPad: 'Pad',
+		LEO_GroundStation: 'LEO',
+		MEO_GroundStation: 'MEO',
+		SmallCell: 'Cell',
+		MacroCell: 'Macro',
+		FiberPOP: 'POP',
+		ColocationFacility: 'Colo',
 		Copper: 'Cu',
 		FiberLocal: 'F.Loc',
 		FiberRegional: 'F.Reg',
 		FiberNational: 'F.Nat',
+		FiberMetro: 'F.Met',
+		FiberLongHaul: 'F.LH',
+		DWDM_Backbone: 'DWDM',
 		Microwave: 'uWave',
+		MicrowaveLink: 'uW.Lk',
 		Satellite: 'Sat',
 		Submarine: 'SubC',
+		SubseaFiberCable: 'SubF',
+		QuantumFiberLink: 'QFib',
+		TerahertzBeam: 'THz',
+		SatelliteLEOLink: 'LEOl',
+		LaserInterSatelliteLink: 'LISL',
 	};
 
 	// Category badge color
@@ -59,13 +100,25 @@
 		edge: '#fbbf24',
 	};
 
+	/** Get icon SVG for a hotbar slot item */
+	function getSlotIcon(slot: HotbarSlot): string | null {
+		if (!slot.itemType) return null;
+		if (slot.category === 'node') {
+			const key = toIconKey(slot.itemType);
+			return (icons as Record<string, string>)[key] ?? null;
+		}
+		// Edge type: use EDGE_ICON_MAP
+		const iconKey = EDGE_ICON_MAP[slot.itemType];
+		if (!iconKey) return null;
+		return (icons as Record<string, string>)[iconKey] ?? null;
+	}
+
 	// ── Drag-and-drop state ──────────────────────────────────────────────────
 	let dragSourceIndex: number | null = $state(null);
 	let dragOverIndex: number | null = $state(null);
 
 	function handleDragStart(e: DragEvent, index: number) {
 		const slot = $hotbarSlots[index];
-		// Only allow dragging filled slots
 		if (!slot || !slot.itemType) {
 			e.preventDefault();
 			return;
@@ -98,7 +151,6 @@
 			return;
 		}
 
-		// Swap the two slots
 		const slots = [...$hotbarSlots];
 		const temp = slots[dragSourceIndex];
 		slots[dragSourceIndex] = slots[targetIndex];
@@ -117,11 +169,9 @@
 	function canAfford(nodeType: string): boolean {
 		const corp = get(playerCorp);
 		if (!corp) return false;
-		// Get build options at center of current view (approximate)
 		const options = bridge.getBuildableNodes(0, 0);
 		const opt = options.find(o => o.node_type === nodeType);
 		if (opt) return opt.affordable;
-		// If not in build options, check raw cost estimate
 		return corp.cash > 0;
 	}
 
@@ -129,13 +179,11 @@
 		const slot = $hotbarSlots[index];
 		if (!slot || !slot.itemType || !slot.category) return;
 
-		// Toggle off if already active
 		if ($selectedBuildItem === slot.itemType && $buildCategory === slot.category) {
 			exitPlacementMode();
 			return;
 		}
 
-		// Affordability check for node placements
 		if (slot.category === 'node' && !canAfford(slot.itemType)) {
 			const info = bridge.getWorldInfo();
 			notifications.update((n) => [
@@ -161,6 +209,7 @@
 		{@const isActive = slot.itemType !== null && $selectedBuildItem === slot.itemType && $buildCategory === slot.category}
 		{@const isDragging = dragSourceIndex === i}
 		{@const isDragOver = dragOverIndex === i && dragSourceIndex !== i}
+		{@const slotIcon = getSlotIcon(slot)}
 		<button
 			class="hotbar-slot"
 			class:active={isActive}
@@ -180,7 +229,12 @@
 		>
 			<span class="slot-key">{i + 1}</span>
 			{#if slot.itemType}
-				<span class="slot-name">{ITEM_SHORT[slot.itemType] ?? slot.itemType}</span>
+				<div class="slot-content">
+					{#if slotIcon}
+						<span class="slot-icon">{@html slotIcon}</span>
+					{/if}
+					<span class="slot-name">{ITEM_SHORT[slot.itemType] ?? slot.itemType}</span>
+				</div>
 				{#if slot.category}
 					<span class="slot-badge" style="background: {CATEGORY_COLOR[slot.category] ?? '#6b7280'}">
 						{slot.category === 'node' ? 'N' : 'E'}
@@ -271,17 +325,37 @@
 		color: #10b981;
 	}
 
+	.slot-content {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		margin-top: 4px;
+	}
+
+	.slot-icon {
+		width: 16px;
+		height: 16px;
+		flex-shrink: 0;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.slot-icon :global(svg) {
+		width: 16px;
+		height: 16px;
+	}
+
 	.slot-name {
-		font-size: 10px;
+		font-size: 9px;
 		font-family: var(--font-mono, monospace);
 		color: #d1d5db;
 		font-weight: 500;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		max-width: 48px;
+		max-width: 32px;
 		text-align: center;
-		margin-top: 4px;
 	}
 
 	.hotbar-slot.active .slot-name {

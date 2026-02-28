@@ -7,10 +7,20 @@
 		buildMode,
 		buildEdgeSource,
 		buildMenuLocation,
+		getVisibleNodes,
+		ftthBuilderActive,
+		addToHotbar,
+		isInHotbar,
+		EDGE_FUNCTION_GROUPS,
+		FTTH_EDGE_TYPES,
+		FTTH_NODE_TYPES,
+		EDGE_ICON_MAP,
 	} from '$lib/stores/uiState';
 	import { formatMoney } from '$lib/stores/gameState';
 	import * as bridge from '$lib/wasm/bridge';
 	import { gameCommand } from '$lib/game/commandRouter';
+	import { icons } from '$lib/assets/icons/index';
+	import { toIconKey } from '$lib/game/map/constants';
 	import type { BuildOption } from '$lib/wasm/types';
 
 	// ── Category definitions ──────────────────────────────────────────────────
@@ -29,7 +39,8 @@
 		items: BuildItem[];
 	}
 
-	const CATEGORIES: BuildCategory[] = [
+	// All node categories — items will be filtered by supersession at render time
+	const NODE_CATEGORIES: BuildCategory[] = [
 		{
 			key: 'access',
 			label: 'Access',
@@ -41,7 +52,6 @@
 				{ key: 'TelephonePole', name: 'Telephone Pole', category: 'node', tier: 'T1' },
 				{ key: 'TelegraphOffice', name: 'Telegraph Office', category: 'node', tier: 'T1' },
 				{ key: 'TelegraphRelay', name: 'Telegraph Relay', category: 'node', tier: 'T1' },
-				{ key: 'NetworkAccessPoint', name: 'Network Access Point', category: 'node', tier: 'T1' },
 				{ key: 'MeshDroneRelay', name: 'Mesh Drone Relay', category: 'node', tier: 'T1' },
 				{ key: 'TerahertzRelay', name: 'Terahertz Relay', category: 'node', tier: 'T1' },
 			],
@@ -61,8 +71,6 @@
 				{ key: 'ManualExchange', name: 'Manual Exchange', category: 'node', tier: 'T2' },
 				{ key: 'AutomaticExchange', name: 'Auto Exchange', category: 'node', tier: 'T2' },
 				{ key: 'LongDistanceRelay', name: 'Long Distance Relay', category: 'node', tier: 'T2' },
-				{ key: 'FiberSplicePoint', name: 'Fiber Splice Point', category: 'node', tier: 'T2' },
-				{ key: 'FiberDistributionHub', name: 'Fiber Dist. Hub', category: 'node', tier: 'T2' },
 				{ key: 'QuantumRepeater', name: 'Quantum Repeater', category: 'node', tier: 'T2' },
 			],
 		},
@@ -99,50 +107,57 @@
 				{ key: 'UnderwaterDataCenter', name: 'Underwater DC', category: 'node', tier: 'T5' },
 			],
 		},
-		{
-			key: 'wired',
-			label: 'Wired',
-			color: '#fbbf24',
-			items: [
-				{ key: 'Copper', name: 'Copper', category: 'edge' },
-				{ key: 'FiberLocal', name: 'Fiber Local', category: 'edge' },
-				{ key: 'FiberRegional', name: 'Fiber Regional', category: 'edge' },
-				{ key: 'FiberNational', name: 'Fiber National', category: 'edge' },
-				{ key: 'FiberMetro', name: 'Fiber Metro', category: 'edge' },
-				{ key: 'FiberLongHaul', name: 'Fiber Long Haul', category: 'edge' },
-				{ key: 'DWDM_Backbone', name: 'DWDM Backbone', category: 'edge' },
-				{ key: 'FeederFiber', name: 'Feeder Fiber', category: 'edge' },
-				{ key: 'DistributionFiber', name: 'Distribution Fiber', category: 'edge' },
-				{ key: 'DropCable', name: 'Drop Cable', category: 'edge' },
-				{ key: 'Submarine', name: 'Submarine Cable', category: 'edge' },
-				{ key: 'SubseaFiberCable', name: 'Subsea Fiber', category: 'edge' },
-				{ key: 'SubseaTelegraphCable', name: 'Subsea Telegraph', category: 'edge' },
-				{ key: 'TelegraphWire', name: 'Telegraph Wire', category: 'edge' },
-				{ key: 'CopperTrunkLine', name: 'Copper Trunk', category: 'edge' },
-				{ key: 'LongDistanceCopper', name: 'Long Distance Cu', category: 'edge' },
-				{ key: 'CoaxialCable', name: 'Coaxial Cable', category: 'edge' },
-				{ key: 'QuantumFiberLink', name: 'Quantum Fiber', category: 'edge' },
-			],
-		},
-		{
-			key: 'wireless',
-			label: 'Wireless',
-			color: '#22d3ee',
-			items: [
-				{ key: 'Microwave', name: 'Microwave', category: 'edge' },
-				{ key: 'MicrowaveLink', name: 'Microwave Link', category: 'edge' },
-				{ key: 'Satellite', name: 'Satellite Link', category: 'edge' },
-				{ key: 'EarlySatelliteLink', name: 'Early Satellite', category: 'edge' },
-				{ key: 'SatelliteLEOLink', name: 'Satellite LEO', category: 'edge' },
-				{ key: 'TerahertzBeam', name: 'Terahertz Beam', category: 'edge' },
-				{ key: 'LaserInterSatelliteLink', name: 'Laser ISL', category: 'edge' },
-			],
-		},
+	];
+
+	// Edge category uses function groups (rendered differently)
+	const EDGE_CATEGORY: BuildCategory = {
+		key: 'edges',
+		label: 'Edges',
+		color: '#fbbf24',
+		items: [], // populated dynamically via groups
+	};
+
+	// Satellite category — new 7th segment
+	const SATELLITE_CATEGORY: BuildCategory = {
+		key: 'satellite',
+		label: 'Satellite',
+		color: '#fbbf24',
+		items: [
+			// Ground Stations
+			{ key: 'LEO_GroundStation', name: 'LEO Ground Station', category: 'node', tier: 'Sat' },
+			{ key: 'MEO_GroundStation', name: 'MEO Ground Station', category: 'node', tier: 'Sat' },
+			// Manufacturing
+			{ key: 'SatelliteFactory', name: 'Satellite Factory', category: 'node', tier: 'Sat' },
+			{ key: 'TerminalFactory', name: 'Terminal Factory', category: 'node', tier: 'Sat' },
+			// Logistics
+			{ key: 'SatelliteWarehouse', name: 'Satellite Warehouse', category: 'node', tier: 'Sat' },
+			{ key: 'LaunchPad', name: 'Launch Pad', category: 'node', tier: 'Sat' },
+			// Gateways
+			{ key: 'LEO_SatelliteGateway', name: 'LEO Satellite GW', category: 'node', tier: 'Sat' },
+		],
+	};
+
+	// Satellite sub-function headers for grouping in the flyout
+	const SAT_SUBGROUPS: Array<{ label: string; keys: Set<string> }> = [
+		{ label: 'Ground Stations', keys: new Set(['LEO_GroundStation', 'MEO_GroundStation']) },
+		{ label: 'Manufacturing', keys: new Set(['SatelliteFactory', 'TerminalFactory']) },
+		{ label: 'Logistics', keys: new Set(['SatelliteWarehouse', 'LaunchPad']) },
+		{ label: 'Gateways', keys: new Set(['LEO_SatelliteGateway']) },
+	];
+
+	// All 7 categories in radial order
+	const CATEGORIES: BuildCategory[] = [
+		...NODE_CATEGORIES,
+		EDGE_CATEGORY,
+		{ key: 'wireless', label: 'Wireless', color: '#22d3ee', items: [] }, // placeholder — edges rendered via groups
+		SATELLITE_CATEGORY,
 	];
 
 	let hoveredCategory: string | null = $state(null);
 	let buildOptions: BuildOption[] = $state([]);
 	let closeTimer: ReturnType<typeof setTimeout> | null = null;
+	let expandedGroups: Set<string> = $state(new Set());
+	let pinFlash: string | null = $state(null);
 
 	/** Delay clearing hoveredCategory so the flyout has time to receive mouseenter */
 	function scheduleClose() {
@@ -170,6 +185,12 @@
 		}
 	});
 
+	// Compute visible nodes (supersession-filtered)
+	let visibleNodes = $derived.by(() => {
+		const buildable = new Set(buildOptions.map(o => o.node_type));
+		return getVisibleNodes(buildable);
+	});
+
 	function getCostForNode(nodeType: string): number | null {
 		const opt = buildOptions.find(o => o.node_type === nodeType);
 		return opt ? opt.cost : null;
@@ -182,7 +203,6 @@
 
 	function selectItem(item: BuildItem) {
 		if (item.category === 'node') {
-			// For nodes opened via right-click, build immediately at that location
 			const geo = $radialMenuGeoPosition;
 			if (geo) {
 				const opt = buildOptions.find(o => o.node_type === item.key);
@@ -194,7 +214,6 @@
 			}
 			radialMenuOpen.set(false);
 		} else {
-			// For edges, enter edge placement mode
 			enterPlacementMode(item.key, 'edge');
 		}
 	}
@@ -203,6 +222,7 @@
 		cancelClose();
 		radialMenuOpen.set(false);
 		hoveredCategory = null;
+		expandedGroups = new Set();
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -212,22 +232,88 @@
 	}
 
 	function handleBackdropClick(e: MouseEvent) {
-		// Only close if clicking the backdrop itself
 		if ((e.target as HTMLElement).classList.contains('radial-backdrop')) {
 			close();
 		}
 	}
 
+	function toggleEdgeGroup(groupName: string) {
+		const next = new Set(expandedGroups);
+		if (next.has(groupName)) {
+			next.delete(groupName);
+		} else {
+			next.add(groupName);
+		}
+		expandedGroups = next;
+	}
+
+	function handlePinToHotbar(e: MouseEvent, item: BuildItem) {
+		e.stopPropagation();
+		if (isInHotbar(item.key)) return;
+		const success = addToHotbar(item.key, item.category);
+		if (success) {
+			pinFlash = item.key;
+			setTimeout(() => { pinFlash = null; }, 600);
+		}
+	}
+
+	/** Get icon SVG string for a node type */
+	function getNodeIcon(nodeType: string): string | null {
+		const key = toIconKey(nodeType);
+		return (icons as Record<string, string>)[key] ?? null;
+	}
+
+	/** Get icon SVG string for an edge type */
+	function getEdgeIcon(edgeType: string): string | null {
+		const iconKey = EDGE_ICON_MAP[edgeType];
+		if (!iconKey) return null;
+		return (icons as Record<string, string>)[iconKey] ?? null;
+	}
+
+	/** Filter node items: remove superseded and FTTH-only nodes */
+	function filterNodeItems(items: BuildItem[]): BuildItem[] {
+		return items.filter(item => {
+			if (FTTH_NODE_TYPES.has(item.key)) return false;
+			return visibleNodes.has(item.key);
+		});
+	}
+
+	// Edge display names for groups
+	const EDGE_DISPLAY_NAMES: Record<string, string> = {
+		TelegraphWire: 'Telegraph Wire',
+		CopperTrunkLine: 'Copper Trunk',
+		CoaxialCable: 'Coaxial Cable',
+		Copper: 'Copper',
+		FiberLocal: 'Fiber Local',
+		LongDistanceCopper: 'Long Distance Cu',
+		FiberRegional: 'Fiber Regional',
+		FiberMetro: 'Fiber Metro',
+		FiberNational: 'Fiber National',
+		FiberLongHaul: 'Fiber Long Haul',
+		DWDM_Backbone: 'DWDM Backbone',
+		QuantumFiberLink: 'Quantum Fiber',
+		SubseaTelegraphCable: 'Subsea Telegraph',
+		Submarine: 'Submarine Cable',
+		SubseaFiberCable: 'Subsea Fiber',
+		Microwave: 'Microwave',
+		MicrowaveLink: 'Microwave Link',
+		TerahertzBeam: 'Terahertz Beam',
+		EarlySatelliteLink: 'Early Satellite',
+		Satellite: 'Satellite Link',
+		SatelliteLEOLink: 'Satellite LEO',
+		LaserInterSatelliteLink: 'Laser ISL',
+	};
+
 	// Geometry calculations for radial segments
 	const RADIUS_INNER = 50;
 	const RADIUS_OUTER = 140;
-	const SEGMENT_COUNT = CATEGORIES.length;
+	const SEGMENT_COUNT = CATEGORIES.length; // 7
 
 	function getSegmentPath(index: number): string {
 		const angleStep = (2 * Math.PI) / SEGMENT_COUNT;
 		const startAngle = index * angleStep - Math.PI / 2 - angleStep / 2;
 		const endAngle = startAngle + angleStep;
-		const gap = 0.03; // small gap between segments
+		const gap = 0.03;
 
 		const x1Inner = Math.cos(startAngle + gap) * RADIUS_INNER;
 		const y1Inner = Math.sin(startAngle + gap) * RADIUS_INNER;
@@ -260,7 +346,6 @@
 		};
 	}
 
-	// Sub-menu flyout position
 	function getFlyoutPosition(index: number): { x: number; y: number } {
 		const angleStep = (2 * Math.PI) / SEGMENT_COUNT;
 		const midAngle = index * angleStep - Math.PI / 2;
@@ -271,7 +356,6 @@
 		};
 	}
 
-	// Get the hovered category data
 	let hoveredCategoryData = $derived(
 		hoveredCategory ? CATEGORIES.find(c => c.key === hoveredCategory) : null
 	);
@@ -282,7 +366,20 @@
 		hoveredCategoryIndex >= 0 ? getFlyoutPosition(hoveredCategoryIndex) : { x: 0, y: 0 }
 	);
 
-	// Clamp menu position to keep it on screen
+	// Determine flyout type: 'nodes' | 'edges' | 'wireless' | 'satellite'
+	let flyoutType = $derived.by(() => {
+		if (!hoveredCategory) return 'nodes';
+		if (hoveredCategory === 'edges') return 'edges';
+		if (hoveredCategory === 'wireless') return 'wireless';
+		if (hoveredCategory === 'satellite') return 'satellite';
+		return 'nodes';
+	});
+
+	// Wired edge groups (for 'edges' flyout)
+	const WIRED_GROUPS = ['Local Access', 'Metro/Regional', 'National/Backbone', 'Submarine'];
+	// Wireless edge groups (for 'wireless' flyout)
+	const WIRELESS_GROUPS = ['Terrestrial Wireless', 'Satellite Link'];
+
 	let menuStyle = $derived.by(() => {
 		const pos = $radialMenuPosition;
 		const size = RADIUS_OUTER * 2 + 40;
@@ -295,7 +392,7 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-{#if $radialMenuOpen}
+{#if $radialMenuOpen && !$ftthBuilderActive}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="radial-backdrop" onclick={handleBackdropClick} role="presentation">
@@ -345,10 +442,7 @@
 
 			<!-- Flyout sub-menu when hovering a category -->
 			{#if hoveredCategoryData}
-				{@const screenFlyout = {
-					x: flyoutPos.x,
-					y: flyoutPos.y
-				}}
+				{@const screenFlyout = { x: flyoutPos.x, y: flyoutPos.y }}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<div
@@ -363,29 +457,185 @@
 					<div class="flyout-header" style="border-color: {hoveredCategoryData.color}">
 						{hoveredCategoryData.label}
 					</div>
-					{#each hoveredCategoryData.items as item}
-						{@const cost = item.category === 'node' ? getCostForNode(item.key) : null}
-						{@const affordable = item.category === 'node' ? isAffordable(item.key) : true}
-						<button
-							class="flyout-item"
-							class:unaffordable={!affordable}
-							onclick={() => selectItem(item)}
-							disabled={item.category === 'node' && !affordable}
-							role="menuitem"
-						>
-							<div class="item-left">
-								<span class="item-name">{item.name}</span>
-								{#if item.tier}
-									<span class="item-tier">{item.tier}</span>
-								{/if}
+
+					{#if flyoutType === 'nodes'}
+						<!-- Node items with icons, supersession filtering, and pin button -->
+						{#each filterNodeItems(hoveredCategoryData.items) as item}
+							{@const cost = getCostForNode(item.key)}
+							{@const affordable = isAffordable(item.key)}
+							{@const icon = getNodeIcon(item.key)}
+							{@const inHotbar = isInHotbar(item.key)}
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<!-- svelte-ignore a11y_click_events_have_key_events -->
+							<div
+								class="flyout-item"
+								class:unaffordable={!affordable}
+								onclick={() => { if (affordable) selectItem(item); }}
+								role="menuitem"
+								tabindex="0"
+							>
+								<div class="item-left">
+									{#if icon}
+										<span class="item-icon">{@html icon}</span>
+									{/if}
+									<span class="item-name">{item.name}</span>
+									{#if item.tier}
+										<span class="item-tier">{item.tier}</span>
+									{/if}
+								</div>
+								<div class="item-right">
+									{#if cost !== null}
+										<span class="item-cost" class:red={!affordable}>{formatMoney(cost)}</span>
+									{/if}
+									<button
+										class="pin-btn"
+										class:pinned={inHotbar}
+										class:flash={pinFlash === item.key}
+										onclick={(e) => handlePinToHotbar(e, item)}
+										title={inHotbar ? 'Already in hotbar' : 'Pin to hotbar'}
+										aria-label={inHotbar ? 'Already in hotbar' : 'Pin to hotbar'}
+									>
+										{inHotbar ? '\u2713' : '+'}
+									</button>
+								</div>
 							</div>
-							{#if cost !== null}
-								<span class="item-cost" class:red={!affordable}>{formatMoney(cost)}</span>
-							{:else if item.category === 'edge'}
-								<span class="item-hint">Link</span>
+						{/each}
+
+					{:else if flyoutType === 'edges' || flyoutType === 'wireless'}
+						<!-- Edge items grouped by function -->
+						{@const groups = flyoutType === 'edges' ? WIRED_GROUPS : WIRELESS_GROUPS}
+						{#each groups as groupName}
+							{@const edgeTypes = EDGE_FUNCTION_GROUPS[groupName] ?? []}
+							{@const isExpanded = expandedGroups.has(groupName)}
+							{@const bestEdge = edgeTypes[edgeTypes.length - 1]}
+							{#if edgeTypes.length > 0}
+								<div class="edge-group">
+									<button
+										class="edge-group-header"
+										onclick={() => toggleEdgeGroup(groupName)}
+										aria-expanded={isExpanded}
+									>
+										<span class="group-label">{groupName}</span>
+										<span class="group-chevron" class:expanded={isExpanded}>{isExpanded ? '\u25BC' : '\u25B6'}</span>
+									</button>
+									{#if isExpanded}
+										<!-- Show all edges in group -->
+										{#each edgeTypes as edgeType}
+											{@const edgeIcon = getEdgeIcon(edgeType)}
+											{@const eName = EDGE_DISPLAY_NAMES[edgeType] ?? edgeType}
+											{@const edgeItem = { key: edgeType, name: eName, category: 'edge' as const }}
+											{@const inHotbar = isInHotbar(edgeType)}
+											<!-- svelte-ignore a11y_no_static_element_interactions -->
+											<!-- svelte-ignore a11y_click_events_have_key_events -->
+											<div
+												class="flyout-item edge-item"
+												onclick={() => selectItem(edgeItem)}
+												role="menuitem"
+												tabindex="0"
+											>
+												<div class="item-left">
+													{#if edgeIcon}
+														<span class="item-icon">{@html edgeIcon}</span>
+													{/if}
+													<span class="item-name">{eName}</span>
+												</div>
+												<div class="item-right">
+													<span class="item-hint">Link</span>
+													<button
+														class="pin-btn"
+														class:pinned={inHotbar}
+														class:flash={pinFlash === edgeType}
+														onclick={(e) => handlePinToHotbar(e, edgeItem)}
+														title={inHotbar ? 'Already in hotbar' : 'Pin to hotbar'}
+														aria-label={inHotbar ? 'Already in hotbar' : 'Pin to hotbar'}
+													>
+														{inHotbar ? '\u2713' : '+'}
+													</button>
+												</div>
+											</div>
+										{/each}
+									{:else}
+										<!-- Show only best available -->
+										{@const edgeIcon = getEdgeIcon(bestEdge)}
+										{@const eName = EDGE_DISPLAY_NAMES[bestEdge] ?? bestEdge}
+										{@const edgeItem = { key: bestEdge, name: eName, category: 'edge' as const }}
+										{@const inHotbar = isInHotbar(bestEdge)}
+										<!-- svelte-ignore a11y_no_static_element_interactions -->
+										<!-- svelte-ignore a11y_click_events_have_key_events -->
+										<div
+											class="flyout-item edge-item"
+											onclick={() => selectItem(edgeItem)}
+											role="menuitem"
+											tabindex="0"
+										>
+											<div class="item-left">
+												{#if edgeIcon}
+													<span class="item-icon">{@html edgeIcon}</span>
+												{/if}
+												<span class="item-name">{eName}</span>
+											</div>
+											<div class="item-right">
+												<span class="item-hint">Link</span>
+												<button
+													class="pin-btn"
+													class:pinned={inHotbar}
+													class:flash={pinFlash === bestEdge}
+													onclick={(e) => handlePinToHotbar(e, edgeItem)}
+													title={inHotbar ? 'Already in hotbar' : 'Pin to hotbar'}
+													aria-label={inHotbar ? 'Already in hotbar' : 'Pin to hotbar'}
+												>
+													{inHotbar ? '\u2713' : '+'}
+												</button>
+											</div>
+										</div>
+									{/if}
+								</div>
 							{/if}
-						</button>
-					{/each}
+						{/each}
+
+					{:else if flyoutType === 'satellite'}
+						<!-- Satellite items grouped by sub-function -->
+						{#each SAT_SUBGROUPS as subgroup}
+							<div class="sat-subgroup-header">{subgroup.label}</div>
+							{#each SATELLITE_CATEGORY.items.filter(it => subgroup.keys.has(it.key)) as item}
+								{@const cost = getCostForNode(item.key)}
+								{@const affordable = isAffordable(item.key)}
+								{@const icon = getNodeIcon(item.key)}
+								{@const inHotbar = isInHotbar(item.key)}
+								<!-- svelte-ignore a11y_no_static_element_interactions -->
+								<!-- svelte-ignore a11y_click_events_have_key_events -->
+								<div
+									class="flyout-item"
+									class:unaffordable={!affordable}
+									onclick={() => { if (affordable) selectItem(item); }}
+									role="menuitem"
+									tabindex="0"
+								>
+									<div class="item-left">
+										{#if icon}
+											<span class="item-icon">{@html icon}</span>
+										{/if}
+										<span class="item-name">{item.name}</span>
+									</div>
+									<div class="item-right">
+										{#if cost !== null}
+											<span class="item-cost" class:red={!affordable}>{formatMoney(cost)}</span>
+										{/if}
+										<button
+											class="pin-btn"
+											class:pinned={inHotbar}
+											class:flash={pinFlash === item.key}
+											onclick={(e) => handlePinToHotbar(e, item)}
+											title={inHotbar ? 'Already in hotbar' : 'Pin to hotbar'}
+											aria-label={inHotbar ? 'Already in hotbar' : 'Pin to hotbar'}
+										>
+											{inHotbar ? '\u2713' : '+'}
+										</button>
+									</div>
+								</div>
+							{/each}
+						{/each}
+					{/if}
 				</div>
 			{/if}
 		</div>
@@ -468,8 +718,8 @@
 		position: absolute;
 		top: 50%;
 		left: 50%;
-		min-width: 200px;
-		max-height: 400px;
+		min-width: 220px;
+		max-height: 440px;
 		overflow-y: auto;
 		background: rgba(17, 24, 39, 0.97);
 		border: 1px solid rgba(55, 65, 81, 0.6);
@@ -495,7 +745,7 @@
 		align-items: center;
 		justify-content: space-between;
 		width: 100%;
-		padding: 8px 14px;
+		padding: 6px 14px;
 		background: none;
 		border: none;
 		color: #d1d5db;
@@ -506,24 +756,40 @@
 		text-align: left;
 	}
 
-	.flyout-item:hover:not(:disabled) {
+	.flyout-item:hover:not(.unaffordable) {
 		background: rgba(55, 65, 81, 0.4);
 		color: #f3f4f6;
 	}
 
-	.flyout-item:disabled {
+	.flyout-item.unaffordable {
 		opacity: 0.4;
 		cursor: not-allowed;
 	}
 
-	.flyout-item.unaffordable {
-		opacity: 0.5;
+	.item-left {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
 	}
 
-	.item-left {
-		display: flex;
+	.item-right {
+		display: inline-flex;
 		align-items: center;
-		gap: 8px;
+		gap: 6px;
+	}
+
+	.item-icon {
+		width: 20px;
+		height: 20px;
+		flex-shrink: 0;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.item-icon :global(svg) {
+		width: 20px;
+		height: 20px;
 	}
 
 	.item-name {
@@ -554,5 +820,106 @@
 		font-size: 10px;
 		color: #6b7280;
 		font-style: italic;
+	}
+
+	/* ── Pin to hotbar button ──────────────────────────────────────────────── */
+
+	.pin-btn {
+		width: 20px;
+		height: 20px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(55, 65, 81, 0.4);
+		border: 1px solid rgba(75, 85, 99, 0.5);
+		border-radius: 4px;
+		color: #9ca3af;
+		font-size: 13px;
+		font-weight: 700;
+		cursor: pointer;
+		transition: all 0.15s;
+		padding: 0;
+		line-height: 1;
+	}
+
+	.pin-btn:hover:not(.pinned) {
+		background: rgba(16, 185, 129, 0.2);
+		border-color: rgba(16, 185, 129, 0.5);
+		color: #10b981;
+	}
+
+	.pin-btn.pinned {
+		background: rgba(16, 185, 129, 0.15);
+		border-color: rgba(16, 185, 129, 0.4);
+		color: #10b981;
+		cursor: default;
+	}
+
+	.pin-btn.flash {
+		animation: pin-flash 0.6s ease-out;
+	}
+
+	@keyframes pin-flash {
+		0% { background: rgba(16, 185, 129, 0.5); }
+		100% { background: rgba(16, 185, 129, 0.15); }
+	}
+
+	/* ── Edge group headers ────────────────────────────────────────────────── */
+
+	.edge-group {
+		border-bottom: 1px solid rgba(55, 65, 81, 0.2);
+	}
+
+	.edge-group:last-child {
+		border-bottom: none;
+	}
+
+	.edge-group-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+		padding: 6px 14px;
+		background: rgba(31, 41, 55, 0.3);
+		border: none;
+		color: #9ca3af;
+		font-size: 10px;
+		font-weight: 700;
+		font-family: var(--font-sans, system-ui, sans-serif);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		cursor: pointer;
+		transition: background 0.12s;
+	}
+
+	.edge-group-header:hover {
+		background: rgba(55, 65, 81, 0.3);
+		color: #d1d5db;
+	}
+
+	.group-chevron {
+		font-size: 8px;
+		transition: transform 0.15s;
+	}
+
+	.edge-item {
+		padding-left: 20px;
+	}
+
+	/* ── Satellite sub-group headers ───────────────────────────────────────── */
+
+	.sat-subgroup-header {
+		padding: 5px 14px 3px;
+		font-size: 9px;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: #fbbf24;
+		background: rgba(251, 191, 36, 0.05);
+		border-top: 1px solid rgba(251, 191, 36, 0.1);
+	}
+
+	.sat-subgroup-header:first-child {
+		border-top: none;
 	}
 </style>

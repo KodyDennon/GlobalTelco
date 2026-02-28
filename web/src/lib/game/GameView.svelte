@@ -6,6 +6,7 @@
 	import InfoPanel from "./InfoPanel.svelte";
 	import RadialBuildMenu from "./RadialBuildMenu.svelte";
 	import BuildHotbar from "./BuildHotbar.svelte";
+	import FTTHBuilder from "./FTTHBuilder.svelte";
 	import NotificationFeed from "./NotificationFeed.svelte";
 	import Tooltip from "./Tooltip.svelte";
 	import Tutorial from "./Tutorial.svelte";
@@ -394,6 +395,7 @@
 		<InfoPanel />
 		<RadialBuildMenu />
 		<BuildHotbar />
+		<FTTHBuilder />
 		<NotificationFeed />
 		<Tooltip />
 		<Tutorial />

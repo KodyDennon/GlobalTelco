@@ -15,6 +15,7 @@
 		canEdgeConnect,
 		getEdgeTypesForSource,
 		ghostPreviewInfo,
+		ftthBuilderActive,
 	} from '$lib/stores/uiState';
 	import type { PanelGroupType, OverlayType } from '$lib/stores/uiState';
 	import { isMultiplayer, connectionState, playerList } from '$lib/stores/multiplayerState';
@@ -219,6 +220,16 @@
 				<span class="build-hint-idle" use:tooltip={'Right-click the map to open the radial build menu.\nUse keys 1-9 for hotbar shortcuts.'}>Right-click to build</span>
 			{/if}
 		</div>
+
+		<button
+			class="ftth-toggle-btn"
+			class:active={$ftthBuilderActive}
+			onclick={() => ftthBuilderActive.update(v => !v)}
+			use:tooltip={'FTTH Guided Builder — step-by-step fiber-to-the-home construction (CO → Feeder → Hub → Distribution → Drop)'}
+			aria-pressed={$ftthBuilderActive}
+		>
+			FTTH
+		</button>
 
 		<div class="divider"></div>
 
@@ -688,6 +699,35 @@
 	.no-targets {
 		color: var(--red);
 		font-weight: 600;
+	}
+
+	/* ── FTTH toggle button ────────────────────────────────────────────────── */
+
+	.ftth-toggle-btn {
+		background: rgba(16, 185, 129, 0.1);
+		border: 1px solid rgba(16, 185, 129, 0.3);
+		color: #34d399;
+		font-size: 10px;
+		font-family: var(--font-mono);
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		padding: 4px 10px;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: all 0.15s;
+		white-space: nowrap;
+	}
+
+	.ftth-toggle-btn:hover {
+		background: rgba(16, 185, 129, 0.2);
+		border-color: rgba(16, 185, 129, 0.5);
+	}
+
+	.ftth-toggle-btn.active {
+		background: rgba(16, 185, 129, 0.25);
+		border-color: rgba(16, 185, 129, 0.6);
+		color: #10b981;
+		box-shadow: 0 0 8px rgba(16, 185, 129, 0.15);
 	}
 
 </style>
