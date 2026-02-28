@@ -23,7 +23,7 @@ import { createInfraLayers } from './layers/infraLayer';
 import { createVectorTerrainLayers, buildVectorTerrainData, disposeVectorTerrainData } from './layers/vectorTerrainLayer';
 import { createOceanDepthLayers as createOceanDepthLayersFn, buildOceanDepthData, disposeOceanDepthData } from './layers/oceanDepthLayer';
 import { createRoadsLayers, buildRoadData, disposeRoadData } from './layers/roadsLayer';
-import { createBuildingsLayers, buildBuildingData, disposeBuildingData, updateBuildingCoverage } from './layers/buildingsLayer';
+import { createBuildingsLayers, buildBuildingData, disposeBuildingData, updateBuildingCoverage, setRealEarthMode } from './layers/buildingsLayer';
 import { createRiversLayers, buildRiverData, disposeRiverData } from './layers/riversLayer';
 import { createTerrainDetailLayers, buildTerrainDetailData, disposeTerrainDetailData } from './layers/terrainDetailLayer';
 import { createElevationContourLayers, buildElevationData, disposeElevationData } from './layers/elevationLayer';
@@ -143,6 +143,7 @@ export class MapRenderer {
 
         // Determine world type before creating map
         this.isRealEarth = bridge.isInitialized() && bridge.isRealEarth();
+        setRealEarthMode(this.isRealEarth);
 
         // Create MapLibre GL map
         const style = this.isRealEarth ? satelliteMapStyle : procgenMapStyle;

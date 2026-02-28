@@ -16,7 +16,7 @@
 		{ key: 'feeder', label: 'Feeder', edgeType: 'FeederFiber', description: 'Draw Feeder Fiber from CO' },
 		{ key: 'hub', label: 'Hub', nodeType: 'FiberDistributionHub', description: 'Place Distribution Hub at feeder end' },
 		{ key: 'dist', label: 'Dist.', edgeType: 'DistributionFiber', description: 'Draw Distribution Fiber from hub' },
-		{ key: 'drop', label: 'Drop', edgeType: 'DropCable', description: 'Connect Drop Cables to subscribers' },
+		{ key: 'nap', label: 'NAP', nodeType: 'NetworkAccessPoint', description: 'Place NAP — auto-covers nearby subscribers' },
 	] as const;
 
 	let currentStep = $state(0);
@@ -104,6 +104,13 @@
 				{/if}
 			{/each}
 		</div>
+
+		<!-- Coverage info on final step -->
+		{#if currentStep === STEPS.length - 1}
+			<div class="ftth-info">
+				Active NAPs serve all buildings within range (500m urban, up to 2km rural). No manual wiring needed.
+			</div>
+		{/if}
 
 		<!-- Controls -->
 		<div class="ftth-controls">
@@ -297,5 +304,16 @@
 
 	.ftth-btn.done:hover {
 		background: rgba(239, 68, 68, 0.25);
+	}
+
+	.ftth-info {
+		font-size: 10px;
+		color: #6ee7b7;
+		background: rgba(16, 185, 129, 0.08);
+		border: 1px solid rgba(16, 185, 129, 0.2);
+		border-radius: 4px;
+		padding: 6px 10px;
+		margin-bottom: 8px;
+		line-height: 1.4;
 	}
 </style>

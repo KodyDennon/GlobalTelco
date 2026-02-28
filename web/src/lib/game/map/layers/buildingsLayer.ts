@@ -94,8 +94,8 @@ const ZONE_DEMAND: Record<BuildingZone, number> = {
     suburban: 5,
 };
 
-/** Default zone colors (Bloomberg terminal aesthetic -- dark navy tones) */
-const ZONE_COLORS: Record<BuildingZone, [number, number, number, number]> = {
+/** Default zone colors (Bloomberg terminal aesthetic -- dark navy tones) for procgen */
+const ZONE_COLORS_PROCGEN: Record<BuildingZone, [number, number, number, number]> = {
     downtown: [32, 36, 48, 200],
     commercial: [30, 34, 46, 195],
     residential_inner: [28, 32, 44, 190],
@@ -103,13 +103,45 @@ const ZONE_COLORS: Record<BuildingZone, [number, number, number, number]> = {
     suburban: [24, 28, 40, 180],
 };
 
+/** Brighter zone colors for Real Earth mode (visible against satellite imagery) */
+const ZONE_COLORS_REAL_EARTH: Record<BuildingZone, [number, number, number, number]> = {
+    downtown: [140, 145, 165, 210],
+    commercial: [120, 125, 145, 200],
+    residential_inner: [105, 110, 130, 195],
+    residential_outer: [90, 95, 115, 190],
+    suburban: [80, 85, 105, 180],
+};
+
+/** Active zone color palette — set by setRealEarthMode() */
+let ZONE_COLORS: Record<BuildingZone, [number, number, number, number]> = { ...ZONE_COLORS_PROCGEN };
+
+/** Whether real earth rendering is active (brighter buildings with outlines) */
+let realEarthMode = false;
+
+/** Set the rendering mode for buildings. Call once during MapRenderer init. */
+export function setRealEarthMode(isRealEarth: boolean): void {
+    realEarthMode = isRealEarth;
+    ZONE_COLORS = isRealEarth ? { ...ZONE_COLORS_REAL_EARTH } : { ...ZONE_COLORS_PROCGEN };
+    STATUS_COLORS = isRealEarth ? { ...STATUS_COLORS_REAL_EARTH } : { ...STATUS_COLORS_PROCGEN };
+}
+
 /** Connection status override colors */
-const STATUS_COLORS: Record<ConnectionStatus, [number, number, number, number]> = {
+const STATUS_COLORS_PROCGEN: Record<ConnectionStatus, [number, number, number, number]> = {
     unserved: [60, 60, 70, 150],
     covered: [30, 120, 60, 160],
     connected: [16, 185, 129, 200],
-    competitor: [180, 80, 80, 150],  // default competitor tint, overridden per-corp
+    competitor: [180, 80, 80, 150],
 };
+
+/** Brighter status colors for Real Earth mode */
+const STATUS_COLORS_REAL_EARTH: Record<ConnectionStatus, [number, number, number, number]> = {
+    unserved: [130, 130, 145, 190],
+    covered: [40, 180, 80, 210],
+    connected: [20, 220, 160, 230],
+    competitor: [220, 90, 90, 200],
+};
+
+let STATUS_COLORS: Record<ConnectionStatus, [number, number, number, number]> = { ...STATUS_COLORS_PROCGEN };
 
 /** Building zone ring definitions. */
 export interface ZoneConfig {
@@ -1423,14 +1455,18 @@ export function createBuildingsLayers(currentZoom: number, demandOverlayActive: 
         data: cachedBuildings,
         getPolygon: (d: BuildingFootprint) => d.polygon,
         getFillColor: (d: BuildingFootprint) => colorFn(d),
-        stroked: false,
+        stroked: realEarthMode,
+        getLineColor: realEarthMode ? [180, 185, 200, 160] as [number, number, number, number] : [0, 0, 0, 0] as [number, number, number, number],
+        getLineWidth: 1,
+        lineWidthUnits: 'pixels' as const,
+        lineWidthMinPixels: 1,
         filled: true,
         pickable: currentZoom >= 8,
         autoHighlight: currentZoom >= 8,
         highlightColor: [255, 255, 255, 60],
         parameters: { depthTest: false },
         updateTriggers: {
-            getFillColor: [cachedCityCount, coverageVersion, demandOverlayActive],
+            getFillColor: [cachedCityCount, coverageVersion, demandOverlayActive, realEarthMode],
         },
     }));
 

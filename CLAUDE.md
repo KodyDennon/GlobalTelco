@@ -303,7 +303,6 @@ Players ──► Cloudflare Workers (auth, matchmaking, APIs, CDN)
 - Fog of war partial (espionage/sabotage missions exist but no full intel level tiers with decay)
 - Management scaling UI not implemented (small/medium/large company tier detection)
 - Dynamic AI spawning mid-game not implemented (AI corps only created at game start)
-- Building footprints not rendered in Real Earth mode
 - Submarine cable mechanics partial (landing stations exist but no cable ship construction mechanic)
 - No colorblind mode or full accessibility features
 - No localization beyond English (i18n framework exists)

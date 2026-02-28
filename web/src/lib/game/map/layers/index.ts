@@ -10,7 +10,7 @@ export { createPathfindingPreviewLayer } from './pathfindingLayer';
 export { createVectorTerrainLayers, buildVectorTerrainData, hasVectorTerrainData, disposeVectorTerrainData } from './vectorTerrainLayer';
 export { createRoadsLayers, buildRoadData, disposeRoadData, getCachedCityStreets } from './roadsLayer';
 export type { CityStreet } from './roadsLayer';
-export { createBuildingsLayers, buildBuildingData, disposeBuildingData } from './buildingsLayer';
+export { createBuildingsLayers, buildBuildingData, disposeBuildingData, setRealEarthMode } from './buildingsLayer';
 export { createOceanDepthLayers, buildOceanDepthData, disposeOceanDepthData } from './oceanDepthLayer';
 export { createRiversLayers, buildRiverData, disposeRiverData, getCachedRiverPaths } from './riversLayer';
 export { createTerrainDetailLayers, buildTerrainDetailData, disposeTerrainDetailData } from './terrainDetailLayer';

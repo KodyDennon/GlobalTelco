@@ -1115,7 +1115,7 @@ Parallelizable pairs:
 | Item | Status | Evidence / Gap |
 |------|--------|----------------|
 | 3.1.1 Real Earth road layer | DONE | OpenFreeMap vector tiles: motorway/primary/secondary/minor styled by classification |
-| 3.1.2 Building footprint layer | DONE | `buildingsLayer.ts`: procedural buildings with shadow layer, zone-based coloring, zoom 7+, street-aligned placement |
+| 3.1.2 Building footprint layer | DONE | `buildingsLayer.ts`: procedural buildings with shadow layer, zone-based coloring, zoom 7+, street-aligned placement. Dual color palette: bright (Real Earth) vs dark (procgen) with outlined strokes for satellite imagery contrast via `setRealEarthMode()` |
 | 3.1.3 Road-infrastructure interaction | DONE | `CableDrawingMode.svelte`: cursor snap to nearest road segment (50px threshold), Shift to override. `infraLayer.ts`: cable offset (3-5px) from road centerlines at zoom >7. Auto-route via `bridge.roadPathfind()` with cost comparison |
 | 3.2.1 Inter-city road network | DONE | `roadsLayer.ts`: Prim's MST for intra-region highways, inter-region connections, A* terrain pathfinding, Douglas-Peucker simplification |
 | 3.2.2 Intra-city street generation | DONE | `roadsLayer.ts`: `generateCityStreets()` with 4 layout styles — Grid (American), Radial (European), Organic (Asian/Old-World), Mixed. Population-tiered density (Hamlet→Megalopolis). `CityStreet` interface (avenue/main/residential/alley). PathLayer at zoom 7+ |
