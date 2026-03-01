@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.1 (2026-03-01)
+
+### Refactoring
+
+- Restructure modules into subdirectories, introduce a new query system, and add spectrum management types and commands. (06bbc65)
+
+### Other
+
+- **web:** v1.5.0 (c6babaa)
+- **server:** v0.10.0 (d09cd1b)
+
+
 ## 1.5.0 (2026-03-01)
 
 ### Features
