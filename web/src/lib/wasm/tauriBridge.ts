@@ -52,6 +52,11 @@ import type {
 	TerminalInventory,
 	OrbitalShellStatus,
 	SatelliteArrays,
+	AllianceInfo,
+	LawsuitInfo,
+	StockMarketInfo,
+	RegionPricingInfo,
+	MaintenancePriorityInfo,
 } from './bridge';
 
 import {
@@ -127,6 +132,16 @@ let cachedTerminalCorpId = -1;
 let cachedDebrisStatus: OrbitalShellStatus[] = [];
 let cachedWorldPreview: WorldPreviewData | null = null;
 let cachedWorldGeoJSON: unknown = null;
+let cachedAlliances: AllianceInfo[] = [];
+let cachedAlliancesCorpId = -1;
+let cachedLawsuits: LawsuitInfo[] = [];
+let cachedLawsuitsCorpId = -1;
+let cachedStockMarket: StockMarketInfo = { public: false, total_shares: 0, share_price: 0, dividends_per_share: 0, ipo_tick: null, shareholder_satisfaction: 0, board_votes: [] };
+let cachedStockMarketCorpId = -1;
+let cachedRegionPricing: RegionPricingInfo[] = [];
+let cachedRegionPricingCorpId = -1;
+let cachedMaintenancePrioritiesList: MaintenancePriorityInfo[] = [];
+let cachedMaintenancePrioritiesCorpId = -1;
 
 let lastFullRefreshTick = -1;
 
@@ -235,7 +250,7 @@ async function refreshFull(): Promise<void> {
 
 	// Refresh player-specific data
 	if (cachedPlayerCorpId > 0) {
-		const [infraJson, contractsJson, debtJson, damagedJson, covertJson, lobbyJson, achieveJson, constJson, launchJson, termJson] = await Promise.all([
+		const [infraJson, contractsJson, debtJson, damagedJson, covertJson, lobbyJson, achieveJson, constJson, launchJson, termJson, alliancesJson, lawsuitsJson, stockJson, pricingJson, maintJson] = await Promise.all([
 			invoke('sim_get_infrastructure_list', { id: cachedPlayerCorpId }) as Promise<string>,
 			invoke('sim_get_contracts', { id: cachedPlayerCorpId }) as Promise<string>,
 			invoke('sim_get_debt_instruments', { id: cachedPlayerCorpId }) as Promise<string>,
@@ -246,6 +261,11 @@ async function refreshFull(): Promise<void> {
 			invoke('sim_get_constellation_data', { id: cachedPlayerCorpId }) as Promise<string>,
 			invoke('sim_get_launch_schedule', { id: cachedPlayerCorpId }) as Promise<string>,
 			invoke('sim_get_terminal_inventory', { id: cachedPlayerCorpId }) as Promise<string>,
+			invoke('sim_get_alliances', { id: cachedPlayerCorpId }) as Promise<string>,
+			invoke('sim_get_lawsuits', { id: cachedPlayerCorpId }) as Promise<string>,
+			invoke('sim_get_stock_market', { id: cachedPlayerCorpId }) as Promise<string>,
+			invoke('sim_get_region_pricing', { id: cachedPlayerCorpId }) as Promise<string>,
+			invoke('sim_get_maintenance_priorities', { id: cachedPlayerCorpId }) as Promise<string>,
 		]);
 		cachedPlayerInfraList = JSON.parse(infraJson);
 		cachedContracts = JSON.parse(contractsJson);
@@ -266,6 +286,16 @@ async function refreshFull(): Promise<void> {
 		cachedLaunchCorpId = cachedPlayerCorpId;
 		cachedTerminalInventory = JSON.parse(termJson);
 		cachedTerminalCorpId = cachedPlayerCorpId;
+		cachedAlliances = JSON.parse(alliancesJson);
+		cachedAlliancesCorpId = cachedPlayerCorpId;
+		cachedLawsuits = JSON.parse(lawsuitsJson);
+		cachedLawsuitsCorpId = cachedPlayerCorpId;
+		cachedStockMarket = JSON.parse(stockJson);
+		cachedStockMarketCorpId = cachedPlayerCorpId;
+		cachedRegionPricing = JSON.parse(pricingJson);
+		cachedRegionPricingCorpId = cachedPlayerCorpId;
+		cachedMaintenancePrioritiesList = JSON.parse(maintJson);
+		cachedMaintenancePrioritiesCorpId = cachedPlayerCorpId;
 	}
 
 	// Debris + orbital view (not corp-specific)
@@ -506,6 +536,46 @@ export function getCachedTerminalInventory(corpId: number): TerminalInventory {
 }
 
 export function getCachedDebrisStatus(): OrbitalShellStatus[] { return cachedDebrisStatus; }
+
+export function getCachedAlliances(corpId: number): AllianceInfo[] {
+	if (corpId !== cachedAlliancesCorpId) {
+		cachedAlliancesCorpId = corpId;
+		invoke('sim_get_alliances', { id: corpId }).then((json) => { cachedAlliances = JSON.parse(json as string); }).catch(() => {});
+	}
+	return cachedAlliances;
+}
+
+export function getCachedLawsuits(corpId: number): LawsuitInfo[] {
+	if (corpId !== cachedLawsuitsCorpId) {
+		cachedLawsuitsCorpId = corpId;
+		invoke('sim_get_lawsuits', { id: corpId }).then((json) => { cachedLawsuits = JSON.parse(json as string); }).catch(() => {});
+	}
+	return cachedLawsuits;
+}
+
+export function getCachedStockMarket(corpId: number): StockMarketInfo {
+	if (corpId !== cachedStockMarketCorpId) {
+		cachedStockMarketCorpId = corpId;
+		invoke('sim_get_stock_market', { id: corpId }).then((json) => { cachedStockMarket = JSON.parse(json as string); }).catch(() => {});
+	}
+	return cachedStockMarket;
+}
+
+export function getCachedRegionPricing(corpId: number): RegionPricingInfo[] {
+	if (corpId !== cachedRegionPricingCorpId) {
+		cachedRegionPricingCorpId = corpId;
+		invoke('sim_get_region_pricing', { id: corpId }).then((json) => { cachedRegionPricing = JSON.parse(json as string); }).catch(() => {});
+	}
+	return cachedRegionPricing;
+}
+
+export function getCachedMaintenancePriorities(corpId: number): MaintenancePriorityInfo[] {
+	if (corpId !== cachedMaintenancePrioritiesCorpId) {
+		cachedMaintenancePrioritiesCorpId = corpId;
+		invoke('sim_get_maintenance_priorities', { id: corpId }).then((json) => { cachedMaintenancePrioritiesList = JSON.parse(json as string); }).catch(() => {});
+	}
+	return cachedMaintenancePrioritiesList;
+}
 
 export function getCachedWorldPreview(config: Partial<WorldConfig>): WorldPreviewData | null {
 	// Fire async fetch; return cached (possibly null on first call)

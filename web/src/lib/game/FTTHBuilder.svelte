@@ -6,10 +6,6 @@
 		selectedBuildItem,
 		buildCategory,
 	} from '$lib/stores/uiState';
-	import { formatMoney, playerCorp } from '$lib/stores/gameState';
-	import * as bridge from '$lib/wasm/bridge';
-	import { gameCommand } from '$lib/game/commandRouter';
-
 	// FTTH chain steps
 	const STEPS = [
 		{ key: 'co', label: 'CO', nodeType: 'CentralOffice', description: 'Place or select a Central Office' },
@@ -20,7 +16,6 @@
 	] as const;
 
 	let currentStep = $state(0);
-	let totalCost = $state(0);
 
 	// Track placement progress
 	$effect(() => {
@@ -64,7 +59,6 @@
 		exitPlacementMode();
 		ftthBuilderActive.set(false);
 		currentStep = 0;
-		totalCost = 0;
 	}
 
 	function handleKeydown(e: KeyboardEvent) {

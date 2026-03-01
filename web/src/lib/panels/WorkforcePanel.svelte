@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { playerCorp, formatMoney, worldInfo, policyState } from '$lib/stores/gameState';
 	import { showConfirm, companyTier, companyTierLabel } from '$lib/stores/uiState';
-	import * as bridge from '$lib/wasm/bridge';
 	import { gameCommand } from '$lib/game/commandRouter';
 	import { tr } from '$lib/i18n/index';
 	import { tooltip } from '$lib/ui/tooltip';

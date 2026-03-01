@@ -64,6 +64,11 @@ fn main() {
             commands::queries::sim_get_terminal_inventory,
             commands::queries::sim_get_infrastructure_list,
             commands::queries::sim_get_available_spectrum,
+            commands::queries::sim_get_alliances,
+            commands::queries::sim_get_lawsuits,
+            commands::queries::sim_get_stock_market,
+            commands::queries::sim_get_region_pricing,
+            commands::queries::sim_get_maintenance_priorities,
             // ── JSON queries (coords / viewport) ─────────────────────
             commands::queries::sim_get_buildable_nodes,
             commands::queries::sim_get_visible_entities,

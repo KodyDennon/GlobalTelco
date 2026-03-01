@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { playerCorp, formatMoney, allCorporations } from '$lib/stores/gameState';
+	import { playerCorp, formatMoney, allCorporations, worldInfo } from '$lib/stores/gameState';
 	import { gameCommand } from '$lib/game/commandRouter';
 	import { tooltip } from '$lib/ui/tooltip';
+	import * as bridge from '$lib/wasm/bridge';
 
-	// ── Local UI state for lawsuits (no bridge query yet) ───────────────────────
 	interface Lawsuit {
 		id: number;
 		plaintiff: string;
@@ -24,6 +24,25 @@
 	];
 
 	let lawsuits: Lawsuit[] = $state([]);
+
+	// Load lawsuits from bridge on tick changes
+	$effect(() => {
+		const corp = $playerCorp;
+		const _tick = $worldInfo.tick;
+		if (!corp) return;
+		const raw = bridge.getLawsuits(corp.id);
+		lawsuits = raw.map((l) => ({
+			id: l.id,
+			plaintiff: l.plaintiff_name,
+			plaintiff_id: l.plaintiff,
+			defendant: l.defendant_name,
+			defendant_id: l.defendant,
+			lawsuit_type: l.lawsuit_type,
+			damages: l.damages_claimed,
+			status: l.status as Lawsuit['status'],
+			filed_tick: l.filed_tick,
+		}));
+	});
 	let showFileForm = $state(false);
 
 	// File lawsuit form fields

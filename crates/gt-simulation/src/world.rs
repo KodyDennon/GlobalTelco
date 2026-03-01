@@ -1321,6 +1321,41 @@ impl GameWorld {
         id
     }
 
+    /// Create a new player corporation with all required components.
+    /// Used by the multiplayer server when a new player joins a world.
+    /// Returns the new corporation's EntityId.
+    pub fn create_player_corporation(&mut self, name: &str) -> EntityId {
+        let era_config = gt_common::config::EraConfig::from_era(self.config.starting_era);
+        let difficulty = gt_common::config::DifficultyConfig::from_preset(self.config.difficulty);
+        let starting_capital =
+            (era_config.starting_capital as f64 * difficulty.starting_capital_multiplier) as Money;
+
+        let corp_id = self.allocate_entity();
+        self.corporations
+            .insert(corp_id, Corporation::new(name, true));
+        self.financials.insert(
+            corp_id,
+            Financial {
+                cash: starting_capital,
+                revenue_per_tick: 0,
+                cost_per_tick: 0,
+                debt: 0,
+            },
+        );
+        self.policies.insert(corp_id, Policy::default());
+        self.workforces.insert(
+            corp_id,
+            Workforce {
+                employee_count: 10,
+                skill_level: 0.5,
+                morale: 0.8,
+                salary_per_tick: 1000,
+                maintenance_crew_count: 1,
+            },
+        );
+        corp_id
+    }
+
     pub fn deterministic_random(&mut self) -> f64 {
         // Simple LCG for deterministic per-tick randomness
         self.tick_rng_counter = self

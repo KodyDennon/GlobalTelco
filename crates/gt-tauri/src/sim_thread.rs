@@ -83,6 +83,11 @@ pub enum QueryKind {
     RoadSegments,
     PlayerCorpId,
     IsRealEarth,
+    Alliances(EntityId),
+    Lawsuits(EntityId),
+    StockMarket(EntityId),
+    RegionPricing(EntityId),
+    MaintenancePriorities(EntityId),
 }
 
 /// Binary query kinds for typed array data.
@@ -426,6 +431,11 @@ fn dispatch_json_query(bridge: &mut crate::TauriBridge, kind: QueryKind) -> Stri
             let val = bridge.is_real_earth();
             serde_json::to_string(&val).unwrap_or_default()
         }
+        QueryKind::Alliances(id) => bridge.get_alliances(id),
+        QueryKind::Lawsuits(id) => bridge.get_lawsuits(id),
+        QueryKind::StockMarket(id) => bridge.get_stock_market(id),
+        QueryKind::RegionPricing(id) => bridge.get_region_pricing(id),
+        QueryKind::MaintenancePriorities(id) => bridge.get_maintenance_priorities(id),
     }
 }
 

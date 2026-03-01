@@ -1,7 +1,5 @@
 <script lang="ts">
 	import { regions, cities, formatMoney, formatPopulation, allCorporations } from '$lib/stores/gameState';
-
-	import * as bridge from '$lib/wasm/bridge';
 	import PopulationChart from '$lib/charts/PopulationChart.svelte';
 
 	let totalPop = $derived($cities.reduce((s, c) => s + c.population, 0));

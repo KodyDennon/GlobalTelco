@@ -852,6 +852,111 @@ export function getSatelliteArrays(): SatelliteArrays | null {
 	}
 }
 
+// ── Alliance, Legal, Stock Market, Pricing, Maintenance Queries ───────
+
+export interface AllianceInfo {
+	id: number;
+	name: string;
+	member_corp_ids: number[];
+	member_names: string[];
+	trust_scores: Record<string, number>;
+	revenue_share_pct: number;
+	formed_tick: number;
+}
+
+export function getAlliances(corpId: number): AllianceInfo[] {
+	if (useNativeSim) return tauriBridge.getCachedAlliances(corpId);
+	try {
+		const json = bridge?.get_alliances(BigInt(corpId)) ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getAlliances');
+		return [];
+	}
+}
+
+export interface LawsuitInfo {
+	id: number;
+	plaintiff: number;
+	plaintiff_name: string;
+	defendant: number;
+	defendant_name: string;
+	lawsuit_type: string;
+	damages_claimed: number;
+	filing_cost: number;
+	filed_tick: number;
+	resolution_tick: number | null;
+	status: string;
+	outcome: string | null;
+}
+
+export function getLawsuits(corpId: number): LawsuitInfo[] {
+	if (useNativeSim) return tauriBridge.getCachedLawsuits(corpId);
+	try {
+		const json = bridge?.get_lawsuits(BigInt(corpId)) ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getLawsuits');
+		return [];
+	}
+}
+
+export interface StockMarketInfo {
+	public: boolean;
+	total_shares: number;
+	share_price: number;
+	dividends_per_share: number;
+	ipo_tick: number | null;
+	shareholder_satisfaction: number;
+	board_votes: { proposal: string; votes_for: number; votes_against: number; deadline_tick: number }[];
+}
+
+export function getStockMarket(corpId: number): StockMarketInfo {
+	if (useNativeSim) return tauriBridge.getCachedStockMarket(corpId);
+	try {
+		const json = bridge?.get_stock_market(BigInt(corpId)) ?? '{}';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getStockMarket');
+		return { public: false, total_shares: 0, share_price: 0, dividends_per_share: 0, ipo_tick: null, shareholder_satisfaction: 0, board_votes: [] };
+	}
+}
+
+export interface RegionPricingInfo {
+	region_id: number;
+	region_name: string;
+	tier: string;
+	price_per_unit: number;
+}
+
+export function getRegionPricing(corpId: number): RegionPricingInfo[] {
+	if (useNativeSim) return tauriBridge.getCachedRegionPricing(corpId);
+	try {
+		const json = bridge?.get_region_pricing(BigInt(corpId)) ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getRegionPricing');
+		return [];
+	}
+}
+
+export interface MaintenancePriorityInfo {
+	node_id: number;
+	priority: string;
+	auto_repair: boolean;
+}
+
+export function getMaintenancePriorities(corpId: number): MaintenancePriorityInfo[] {
+	if (useNativeSim) return tauriBridge.getCachedMaintenancePriorities(corpId);
+	try {
+		const json = bridge?.get_maintenance_priorities(BigInt(corpId)) ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getMaintenancePriorities');
+		return [];
+	}
+}
+
 // ── Tauri Native Filesystem ───────────────────────────────────────────
 
 export async function saveGameNative(slot: number, data: string): Promise<string | null> {

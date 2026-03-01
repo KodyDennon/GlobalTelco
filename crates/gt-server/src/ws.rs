@@ -823,9 +823,9 @@ async fn handle_client_message(
                     (existing_corp, ticks, was_proxy)
                 } else {
                     drop(existing_players);
-                    // New player -- create corporation
+                    // New player -- create corporation with full components
                     let mut w = world.world.lock().await;
-                    let new_corp = w.allocate_entity();
+                    let new_corp = w.create_player_corporation(&p.username);
                     (new_corp, 0, false)
                 }
             };

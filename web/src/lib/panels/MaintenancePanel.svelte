@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { playerCorp, formatMoney } from '$lib/stores/gameState';
+	import { playerCorp, formatMoney, worldInfo } from '$lib/stores/gameState';
 	import * as bridge from '$lib/wasm/bridge';
 	import { gameCommand } from '$lib/game/commandRouter';
 	import type { InfraNode, InfrastructureList } from '$lib/wasm/types';
@@ -23,14 +23,23 @@
 
 	let infra: InfrastructureList = $state({ nodes: [], edges: [] });
 
-	// Track priority and auto-repair per node (local UI state)
+	// Track priority and auto-repair per node — initialized from bridge data
 	let nodePriorities: Map<number, MaintenancePriority> = $state(new Map());
 	let nodeAutoRepair: Map<number, boolean> = $state(new Map());
 
 	$effect(() => {
 		const corp = $playerCorp;
-		if (corp) {
-			infra = bridge.getInfrastructureList(corp.id);
+		const _tick = $worldInfo.tick;
+		if (!corp) return;
+		infra = bridge.getInfrastructureList(corp.id);
+		// Initialize priority/auto-repair from node data (fields added to infra list)
+		for (const node of infra.nodes) {
+			if ((node as any).maintenance_priority && !nodePriorities.has(node.id)) {
+				nodePriorities.set(node.id, (node as any).maintenance_priority as MaintenancePriority);
+			}
+			if ((node as any).auto_repair !== undefined && !nodeAutoRepair.has(node.id)) {
+				nodeAutoRepair.set(node.id, (node as any).auto_repair);
+			}
 		}
 	});
 

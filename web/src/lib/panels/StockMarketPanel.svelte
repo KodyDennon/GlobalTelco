@@ -1,8 +1,7 @@
 <script lang="ts">
-	import { playerCorp, formatMoney } from '$lib/stores/gameState';
+	import { playerCorp, formatMoney, worldInfo } from '$lib/stores/gameState';
+	import * as bridge from '$lib/wasm/bridge';
 
-	// Stock market data (will be populated from WASM bridge in future)
-	// For now, derive from corporation financial data
 	let isPublic = $state(false);
 	let totalShares = $state(1000);
 	let sharePrice = $state(0);
@@ -21,34 +20,23 @@
 	let marketCap = $derived(sharePrice * totalShares);
 	let netProfit = $derived(($playerCorp?.revenue_per_tick ?? 0) - ($playerCorp?.cost_per_tick ?? 0));
 
-	// Derive stock market estimates from financial data
+	// Load stock market data from bridge
 	$effect(() => {
 		const corp = $playerCorp;
+		const _tick = $worldInfo.tick;
 		if (!corp) return;
-
-		const nodeCount = corp.infrastructure_count;
-		const cash = corp.cash;
-		const profit = corp.revenue_per_tick - corp.cost_per_tick;
-
-		// Auto-IPO conditions (mirrors Rust logic)
-		if (nodeCount >= 50 && cash >= 1_000_000) {
-			isPublic = true;
-		}
-
-		if (isPublic) {
-			// Mirror the Rust share price formula
-			const basePrice = nodeCount * 10 + 50; // reputation ~ 50
-			const cashComponent = Math.floor(cash / totalShares / 10);
-			const profitComponent = Math.floor((profit * 10) / totalShares);
-			sharePrice = Math.max(1, basePrice + cashComponent + profitComponent);
-
-			// Dividend calculation (mirrors Rust)
-			if (profit > 0 && cash > corp.cost_per_tick * 20) {
-				dividendsPerShare = Math.floor(profit / 10 / totalShares);
-			} else {
-				dividendsPerShare = 0;
-			}
-		}
+		const sm = bridge.getStockMarket(corp.id);
+		isPublic = sm.public;
+		totalShares = sm.total_shares || 1000;
+		sharePrice = sm.share_price;
+		dividendsPerShare = sm.dividends_per_share;
+		satisfaction = sm.shareholder_satisfaction;
+		boardVotes = (sm.board_votes ?? []).map((v) => ({
+			proposal: v.proposal,
+			votesFor: v.votes_for,
+			votesAgainst: v.votes_against,
+			deadlineTick: v.deadline_tick,
+		}));
 	});
 
 	let satisfactionLabel = $derived(

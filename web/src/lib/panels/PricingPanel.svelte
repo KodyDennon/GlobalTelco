@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { playerCorp, formatMoney, regions } from '$lib/stores/gameState';
+	import { playerCorp, formatMoney, regions, worldInfo } from '$lib/stores/gameState';
 	import { gameCommand } from '$lib/game/commandRouter';
 	import { tooltip } from '$lib/ui/tooltip';
+	import * as bridge from '$lib/wasm/bridge';
 	import type { Region } from '$lib/wasm/types';
 
 	type PricingTier = 'Budget' | 'Standard' | 'Premium';
@@ -19,8 +20,19 @@
 		{ label: 'Premium', revenueMultiplier: 1.8, customerMultiplier: 0.6, color: 'var(--amber, #f59e0b)' }
 	];
 
-	// Track pricing per region (local UI state)
+	// Track pricing per region
 	let regionPricing: Map<number, { tier: PricingTier; pricePerUnit: number }> = $state(new Map());
+
+	// Load initial pricing from bridge
+	$effect(() => {
+		const corp = $playerCorp;
+		const _tick = $worldInfo.tick;
+		if (!corp) return;
+		const raw = bridge.getRegionPricing(corp.id);
+		if (raw.length > 0) {
+			regionPricing = new Map(raw.map((rp) => [rp.region_id, { tier: rp.tier as PricingTier, pricePerUnit: rp.price_per_unit }]));
+		}
+	});
 
 	// Regions the player operates in (all regions for now; in full impl, filtered by owned infra)
 	let operatingRegions = $derived($regions);

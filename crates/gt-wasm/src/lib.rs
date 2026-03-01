@@ -234,6 +234,9 @@ impl WasmBridge {
                     "repair_health_per_tick": node.repair_health_per_tick,
                     "revenue_generated": node.revenue_generated,
                     "utilization_history": util_history,
+                    "insured": node.insured,
+                    "maintenance_priority": format!("{:?}", self.world.maintenance_priorities.get(&id).map(|m| m.tier).unwrap_or_default()),
+                    "auto_repair": self.world.maintenance_priorities.get(&id).map(|m| m.auto_repair).unwrap_or(true),
                 }))
             })
             .collect();
@@ -1468,6 +1471,116 @@ impl WasmBridge {
         serde_json::to_string(&json).unwrap_or_default()
     }
 
+    // ── Additional Queries ─────────────────────────────────────────────────
+
+    pub fn get_alliances(&self, corp_id: u64) -> String {
+        let alliances: Vec<serde_json::Value> = self.world.alliances
+            .iter()
+            .filter(|(_, a)| a.member_corp_ids.contains(&corp_id))
+            .map(|(&id, a)| {
+                let member_names: Vec<String> = a.member_corp_ids.iter()
+                    .filter_map(|cid| self.world.corporations.get(cid).map(|c| c.name.clone()))
+                    .collect();
+                let trust_map: std::collections::HashMap<String, f64> = a.trust_scores.iter()
+                    .map(|(cid, &score)| (cid.to_string(), score))
+                    .collect();
+                serde_json::json!({
+                    "id": id,
+                    "name": a.name,
+                    "member_corp_ids": a.member_corp_ids,
+                    "member_names": member_names,
+                    "trust_scores": trust_map,
+                    "revenue_share_pct": a.revenue_share_pct,
+                    "formed_tick": a.formed_tick,
+                })
+            })
+            .collect();
+        serde_json::to_string(&alliances).unwrap_or_default()
+    }
+
+    pub fn get_lawsuits(&self, corp_id: u64) -> String {
+        let lawsuits: Vec<serde_json::Value> = self.world.lawsuits
+            .iter()
+            .filter(|(_, l)| l.plaintiff == corp_id || l.defendant == corp_id)
+            .map(|(&id, l)| {
+                let plaintiff_name = self.world.corporations.get(&l.plaintiff).map(|c| c.name.as_str()).unwrap_or("Unknown");
+                let defendant_name = self.world.corporations.get(&l.defendant).map(|c| c.name.as_str()).unwrap_or("Unknown");
+                serde_json::json!({
+                    "id": id,
+                    "plaintiff": l.plaintiff,
+                    "plaintiff_name": plaintiff_name,
+                    "defendant": l.defendant,
+                    "defendant_name": defendant_name,
+                    "lawsuit_type": format!("{:?}", l.lawsuit_type),
+                    "damages_claimed": l.damages_claimed,
+                    "filing_cost": l.filing_cost,
+                    "filed_tick": l.filed_tick,
+                    "resolution_tick": l.resolution_tick,
+                    "status": format!("{:?}", l.status),
+                    "outcome": l.outcome.as_ref().map(|o| format!("{:?}", o)),
+                })
+            })
+            .collect();
+        serde_json::to_string(&lawsuits).unwrap_or_default()
+    }
+
+    pub fn get_stock_market(&self, corp_id: u64) -> String {
+        let sm = self.world.stock_market.get(&corp_id);
+        let data = serde_json::json!({
+            "public": sm.map(|s| s.public).unwrap_or(false),
+            "total_shares": sm.map(|s| s.total_shares).unwrap_or(0),
+            "share_price": sm.map(|s| s.share_price).unwrap_or(0),
+            "dividends_per_share": sm.map(|s| s.dividends_per_share).unwrap_or(0),
+            "ipo_tick": sm.and_then(|s| s.ipo_tick),
+            "shareholder_satisfaction": sm.map(|s| s.shareholder_satisfaction).unwrap_or(0.0),
+            "board_votes": sm.map(|s| {
+                s.board_votes.iter().map(|v| serde_json::json!({
+                    "proposal": v.proposal,
+                    "votes_for": v.votes_for,
+                    "votes_against": v.votes_against,
+                    "deadline_tick": v.deadline_tick,
+                })).collect::<Vec<_>>()
+            }).unwrap_or_default(),
+        });
+        serde_json::to_string(&data).unwrap_or_default()
+    }
+
+    pub fn get_region_pricing(&self, corp_id: u64) -> String {
+        let pricing: Vec<serde_json::Value> = self.world.region_pricing
+            .iter()
+            .filter(|((cid, _), _)| *cid == corp_id)
+            .map(|((_, region_id), rp)| {
+                let region_name = self.world.regions.get(region_id).map(|r| r.name.as_str()).unwrap_or("Unknown");
+                serde_json::json!({
+                    "region_id": region_id,
+                    "region_name": region_name,
+                    "tier": format!("{:?}", rp.tier),
+                    "price_per_unit": rp.price_per_unit,
+                })
+            })
+            .collect();
+        serde_json::to_string(&pricing).unwrap_or_default()
+    }
+
+    pub fn get_maintenance_priorities(&self, corp_id: u64) -> String {
+        let node_ids = self.world.corp_infra_nodes
+            .get(&corp_id)
+            .cloned()
+            .unwrap_or_default();
+        let priorities: Vec<serde_json::Value> = node_ids
+            .iter()
+            .filter_map(|&id| {
+                let mp = self.world.maintenance_priorities.get(&id)?;
+                Some(serde_json::json!({
+                    "node_id": id,
+                    "priority": format!("{:?}", mp.tier),
+                    "auto_repair": mp.auto_repair,
+                }))
+            })
+            .collect();
+        serde_json::to_string(&priorities).unwrap_or_default()
+    }
+
     // ── Satellite Queries ─────────────────────────────────────────────────
 
     pub fn get_constellation_data(&self, corp_id: u64) -> String {
@@ -1803,6 +1916,26 @@ impl gt_bridge::BridgeQuery for WasmBridge {
     fn load_game(&mut self, data: &str) -> Result<(), String> {
         self.world = GameWorld::load_game(data).map_err(|e| format!("Load failed: {}", e))?;
         Ok(())
+    }
+
+    fn get_alliances(&self, corp_id: gt_common::types::EntityId) -> String {
+        WasmBridge::get_alliances(self, corp_id)
+    }
+
+    fn get_lawsuits(&self, corp_id: gt_common::types::EntityId) -> String {
+        WasmBridge::get_lawsuits(self, corp_id)
+    }
+
+    fn get_stock_market(&self, corp_id: gt_common::types::EntityId) -> String {
+        WasmBridge::get_stock_market(self, corp_id)
+    }
+
+    fn get_region_pricing(&self, corp_id: gt_common::types::EntityId) -> String {
+        WasmBridge::get_region_pricing(self, corp_id)
+    }
+
+    fn get_maintenance_priorities(&self, corp_id: gt_common::types::EntityId) -> String {
+        WasmBridge::get_maintenance_priorities(self, corp_id)
     }
 
     fn get_constellation_data(&self, corp_id: gt_common::types::EntityId) -> String {

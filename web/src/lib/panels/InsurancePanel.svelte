@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { playerCorp, formatMoney } from '$lib/stores/gameState';
+	import { playerCorp, formatMoney, worldInfo } from '$lib/stores/gameState';
 	import * as bridge from '$lib/wasm/bridge';
 	import { gameCommand } from '$lib/game/commandRouter';
 	import type { InfraNode, InfrastructureList } from '$lib/wasm/types';
@@ -7,13 +7,19 @@
 
 	let infra: InfrastructureList = $state({ nodes: [], edges: [] });
 
-	// Track which nodes are insured (local UI state — toggled via commands)
+	// Track which nodes are insured — initialized from bridge data
 	let insuredNodes: Set<number> = $state(new Set());
+	let initialized = false;
 
 	$effect(() => {
 		const corp = $playerCorp;
-		if (corp) {
-			infra = bridge.getInfrastructureList(corp.id);
+		const _tick = $worldInfo.tick;
+		if (!corp) return;
+		infra = bridge.getInfrastructureList(corp.id);
+		// Initialize insured set from node.insured field on first load
+		if (!initialized && infra.nodes.length > 0) {
+			insuredNodes = new Set(infra.nodes.filter((n) => (n as any).insured).map((n) => n.id));
+			initialized = true;
 		}
 	});
 

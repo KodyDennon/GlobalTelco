@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { playerCorp, allCorporations } from '$lib/stores/gameState';
+	import { playerCorp, allCorporations, worldInfo } from '$lib/stores/gameState';
 	import { gameCommand } from '$lib/game/commandRouter';
 	import { tooltip } from '$lib/ui/tooltip';
+	import * as bridge from '$lib/wasm/bridge';
 
-	// ── Local UI state for alliances (no bridge query yet) ──────────────────────
 	interface Alliance {
 		id: number;
 		name: string;
@@ -15,6 +15,23 @@
 	}
 
 	let alliances: Alliance[] = $state([]);
+
+	// Load alliances from bridge on tick changes
+	$effect(() => {
+		const corp = $playerCorp;
+		const _tick = $worldInfo.tick;
+		if (!corp) return;
+		const raw = bridge.getAlliances(corp.id);
+		alliances = raw.map((a) => ({
+			id: a.id,
+			name: a.name,
+			members: a.member_names,
+			trust: a.trust_scores[String(corp.id)] ?? 0.5,
+			revenue_share: a.revenue_share_pct,
+			status: 'Active' as const,
+			proposer_id: a.member_corp_ids[0] ?? 0,
+		}));
+	});
 	let showProposeForm = $state(false);
 
 	// Propose form fields

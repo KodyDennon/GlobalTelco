@@ -66,6 +66,11 @@ json_query_u64!(sim_get_launch_schedule, LaunchSchedule);
 json_query_u64!(sim_get_terminal_inventory, TerminalInventory);
 json_query_u64!(sim_get_infrastructure_list, InfrastructureList);
 json_query_u64!(sim_get_available_spectrum, AvailableSpectrum);
+json_query_u64!(sim_get_alliances, Alliances);
+json_query_u64!(sim_get_lawsuits, Lawsuits);
+json_query_u64!(sim_get_stock_market, StockMarket);
+json_query_u64!(sim_get_region_pricing, RegionPricing);
+json_query_u64!(sim_get_maintenance_priorities, MaintenancePriorities);
 
 // ── Queries with (lon, lat) ──────────────────────────────────────────────
 

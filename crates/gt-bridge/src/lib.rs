@@ -92,6 +92,13 @@ pub trait BridgeQuery {
     fn save_game(&self) -> Result<String, String>;
     fn load_game(&mut self, data: &str) -> Result<(), String>;
 
+    // ── Additional queries ──────────────────────────────────────────────
+    fn get_alliances(&self, corp_id: EntityId) -> String;
+    fn get_lawsuits(&self, corp_id: EntityId) -> String;
+    fn get_stock_market(&self, corp_id: EntityId) -> String;
+    fn get_region_pricing(&self, corp_id: EntityId) -> String;
+    fn get_maintenance_priorities(&self, corp_id: EntityId) -> String;
+
     // ── Satellite queries ───────────────────────────────────────────────
     fn get_constellation_data(&self, corp_id: EntityId) -> String;
     fn get_orbital_view(&self) -> String;
