@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.0 (2026-03-01)
+
+### Features
+
+- Implement 8-phase multiplayer overhaul (460e54c)
+- Implement new bridge queries for alliances, pricing, lawsuits, and stock market data, and add a `create_player_corporation` function to the simulation. (58cd4d2)
+
+### Chores
+
+- Update Rust dependencies. (458da55)
+
+
 ## 1.3.1 (2026-03-01)
 
 ### Other
