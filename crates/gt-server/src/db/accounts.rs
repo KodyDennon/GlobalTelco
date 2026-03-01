@@ -163,4 +163,85 @@ impl Database {
             .await?;
         Ok(())
     }
+
+    pub async fn list_accounts(
+        &self,
+        search: Option<&str>,
+        limit: i64,
+        offset: i64,
+        sort: &str,
+        order: &str,
+    ) -> Result<(Vec<AccountListRow>, i64), sqlx::Error> {
+        // Validate sort column to prevent SQL injection
+        let sort_col = match sort {
+            "username" => "username",
+            "email" => "email",
+            "created_at" => "created_at",
+            "last_login" => "last_login",
+            _ => "created_at",
+        };
+        let order_dir = if order.eq_ignore_ascii_case("asc") {
+            "ASC"
+        } else {
+            "DESC"
+        };
+
+        if let Some(q) = search {
+            let pattern = format!("%{q}%");
+            let total: (i64,) = sqlx::query_as(
+                "SELECT COUNT(*) FROM accounts WHERE (username ILIKE $1 OR email ILIKE $1)",
+            )
+            .bind(&pattern)
+            .fetch_one(&self.pool)
+            .await?;
+
+            // Use a dynamic query string with validated column name
+            let query = format!(
+                "SELECT id, username, email, display_name, avatar_id, auth_provider, is_guest, created_at, last_login, deleted_at
+                 FROM accounts WHERE (username ILIKE $1 OR email ILIKE $1)
+                 ORDER BY {} {} LIMIT $2 OFFSET $3",
+                sort_col, order_dir
+            );
+            let rows = sqlx::query_as::<_, AccountListRow>(&query)
+                .bind(&pattern)
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(&self.pool)
+                .await?;
+
+            Ok((rows, total.0))
+        } else {
+            let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM accounts")
+                .fetch_one(&self.pool)
+                .await?;
+
+            let query = format!(
+                "SELECT id, username, email, display_name, avatar_id, auth_provider, is_guest, created_at, last_login, deleted_at
+                 FROM accounts
+                 ORDER BY {} {} LIMIT $1 OFFSET $2",
+                sort_col, order_dir
+            );
+            let rows = sqlx::query_as::<_, AccountListRow>(&query)
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(&self.pool)
+                .await?;
+
+            Ok((rows, total.0))
+        }
+    }
+}
+
+#[derive(sqlx::FromRow)]
+pub struct AccountListRow {
+    pub id: Uuid,
+    pub username: String,
+    pub email: Option<String>,
+    pub display_name: Option<String>,
+    pub avatar_id: Option<String>,
+    pub auth_provider: Option<String>,
+    pub is_guest: bool,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub last_login: Option<chrono::DateTime<chrono::Utc>>,
+    pub deleted_at: Option<chrono::DateTime<chrono::Utc>>,
 }

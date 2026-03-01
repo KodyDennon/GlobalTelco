@@ -187,6 +187,9 @@ pub async fn handle_socket(socket: WebSocket, state: Arc<AppState>, ip: IpAddr) 
             }
         };
 
+        // Increment WS message counter
+        state.ws_message_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         // Spectators cannot send game commands, uploads, or deletes
         if let Some(ref p) = player {
             if p.is_spectator {

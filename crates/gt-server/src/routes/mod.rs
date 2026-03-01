@@ -67,6 +67,15 @@ pub fn create_router(state: Arc<AppState>, tile_dir: Option<String>) -> Router {
         .route("/api/admin/debug/{world_id}", get(admin_debug_world))
         .route("/api/admin/ban", post(admin_ban_player))
         .route("/api/admin/unban", post(admin_unban_player))
+        // Admin: accounts, connections, chat, assign, spectator, transfer, votes, config
+        .route("/api/admin/accounts", get(admin_list_accounts))
+        .route("/api/admin/connections", get(admin_list_connections))
+        .route("/api/admin/worlds/{world_id}/chat", get(admin_world_chat))
+        .route("/api/admin/worlds/{world_id}/assign", post(admin_assign_player))
+        .route("/api/admin/worlds/{world_id}/spectator", post(admin_toggle_spectator))
+        .route("/api/admin/worlds/{world_id}/transfer", post(admin_transfer_world))
+        .route("/api/admin/worlds/{world_id}/votes", get(admin_world_votes))
+        .route("/api/admin/config", get(admin_server_config))
         // Phase 2: World Catalog
         .route("/api/catalog", get(list_catalog))
         .route("/api/catalog/{template_id}", get(get_catalog_template))

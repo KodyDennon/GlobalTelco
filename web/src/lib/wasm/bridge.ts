@@ -561,7 +561,19 @@ export function getInfraNodesTyped(): InfraNodesTyped {
 	if (useNativeSim) return tauriBridge.getCachedInfraNodesTyped();
 	try {
 		if (bridge && typeof bridge.get_infra_nodes_typed === 'function') {
-			return bridge.get_infra_nodes_typed() as InfraNodesTyped;
+			const arr = bridge.get_infra_nodes_typed();
+			if (arr && arr.length >= 8) {
+				return {
+					count: arr[0] as number,
+					ids: arr[1] as Uint32Array,
+					owners: arr[2] as Uint32Array,
+					positions: arr[3] as Float64Array,
+					stats: arr[4] as Float64Array,
+					node_types: arr[5] as Uint32Array,
+					network_levels: arr[6] as Uint32Array,
+					construction_flags: arr[7] as Uint8Array,
+				};
+			}
 		}
 	} catch (e) {
 		onBridgeError(e, 'getInfraNodesTyped');
@@ -573,7 +585,17 @@ export function getInfraEdgesTyped(): InfraEdgesTyped {
 	if (useNativeSim) return tauriBridge.getCachedInfraEdgesTyped();
 	try {
 		if (bridge && typeof bridge.get_infra_edges_typed === 'function') {
-			return bridge.get_infra_edges_typed() as InfraEdgesTyped;
+			const arr = bridge.get_infra_edges_typed();
+			if (arr && arr.length >= 6) {
+				return {
+					count: arr[0] as number,
+					ids: arr[1] as Uint32Array,
+					owners: arr[2] as Uint32Array,
+					endpoints: arr[3] as Float64Array,
+					stats: arr[4] as Float64Array,
+					edge_types: arr[5] as Uint32Array,
+				};
+			}
 		}
 	} catch (e) {
 		onBridgeError(e, 'getInfraEdgesTyped');
@@ -585,7 +607,16 @@ export function getCorporationsTyped(): CorporationsTyped {
 	if (useNativeSim) return tauriBridge.getCachedCorporationsTyped();
 	try {
 		if (bridge && typeof bridge.get_corporations_typed === 'function') {
-			return bridge.get_corporations_typed() as CorporationsTyped;
+			const arr = bridge.get_corporations_typed();
+			if (arr && arr.length >= 5) {
+				return {
+					count: arr[0] as number,
+					ids: arr[1] as Uint32Array,
+					financials: arr[2] as Float64Array,
+					name_offsets: arr[3] as Uint32Array,
+					names_packed: arr[4] as Uint8Array,
+				};
+			}
 		}
 	} catch (e) {
 		onBridgeError(e, 'getCorporationsTyped');

@@ -1,6 +1,6 @@
 {
   "installCommand": "sh scripts/vercel-install.sh",
-  "buildCommand": "export PATH=\"/rust/bin:$PATH\" && cd .. && wasm-pack build crates/gt-wasm --target web --out-dir ../../web/src/lib/wasm/pkg && cd web && bun run build",
+  "buildCommand": "export PATH=\"/rust/bin:$PATH\" && export RUSTFLAGS=\"-C target-feature=+simd128\" && cd .. && wasm-pack build crates/gt-wasm --target web --release --out-dir ../../web/src/lib/wasm/pkg && cd web && bun run build",
   "outputDirectory": "build",
   "cleanUrls": true,
   "rewrites": [
@@ -10,7 +10,15 @@
     {
       "source": "/(.*)\\.wasm",
       "headers": [
-        { "key": "Content-Type", "value": "application/wasm" }
+        { "key": "Content-Type", "value": "application/wasm" },
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
+        { "key": "Cross-Origin-Embedder-Policy", "value": "require-corp" }
       ]
     }
   ]

@@ -16,6 +16,9 @@ use crate::tick;
 use super::extract_admin_claims;
 use super::worlds::default_max_players;
 
+// Import EntityId for assign endpoint
+use gt_common::types::EntityId;
+
 // ── Admin Endpoints ───────────────────────────────────────────────────────
 
 pub(crate) async fn admin_list_players(
@@ -113,18 +116,34 @@ pub(crate) async fn admin_pause_world(
     }
 }
 
+#[derive(Deserialize, Default)]
+pub(crate) struct AuditLogQuery {
+    #[serde(default = "default_audit_limit")]
+    limit: Option<i64>,
+    #[serde(default)]
+    offset: Option<i64>,
+}
+
+fn default_audit_limit() -> Option<i64> {
+    Some(100)
+}
+
 pub(crate) async fn admin_audit_log(
     headers: HeaderMap,
     State(state): State<Arc<AppState>>,
+    axum::extract::Query(params): axum::extract::Query<AuditLogQuery>,
 ) -> impl IntoResponse {
     if let Err(e) = extract_admin_claims(&headers) {
         return e;
     }
 
+    let limit = params.limit.unwrap_or(100);
+    let offset = params.offset.unwrap_or(0);
+
     // Use DB-backed paginated audit log when available
     #[cfg(feature = "postgres")]
     if let Some(db) = state.db.as_ref() {
-        match db.query_audit_log(100, 0, None).await {
+        match db.query_audit_log(limit, offset, None).await {
             Ok((entries, total)) => {
                 let result: Vec<serde_json::Value> = entries
                     .into_iter()
@@ -151,9 +170,13 @@ pub(crate) async fn admin_audit_log(
         }
     }
 
-    // Fallback to in-memory audit log
+    // Fallback to in-memory audit log (apply pagination)
     let log = state.get_audit_log().await;
-    (StatusCode::OK, Json(serde_json::json!({ "audit_log": log })))
+    let total = log.len();
+    let start = (offset as usize).min(total);
+    let end = (start + limit as usize).min(total);
+    let page = &log[start..end];
+    (StatusCode::OK, Json(serde_json::json!({ "audit_log": page, "total": total })))
 }
 
 pub(crate) async fn admin_health(
@@ -235,6 +258,19 @@ pub(crate) async fn admin_create_world(
         );
         #[cfg(not(feature = "postgres"))]
         tick::spawn_world_tick_loop(world);
+    }
+
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        let _ = db
+            .insert_audit_log(
+                "admin",
+                "create_world",
+                Some(&world_id.to_string()),
+                Some(&serde_json::json!({ "name": body.name })),
+                None,
+            )
+            .await;
     }
 
     (
@@ -333,6 +369,20 @@ pub(crate) async fn admin_set_speed(
             let mut w = world.world.lock().await;
             w.process_command(gt_common::commands::Command::SetSpeed(target_speed));
             let speed = w.speed();
+
+            #[cfg(feature = "postgres")]
+            if let Some(db) = state.db.as_ref() {
+                let _ = db
+                    .insert_audit_log(
+                        "admin",
+                        "set_speed",
+                        Some(&world_id.to_string()),
+                        Some(&serde_json::json!({ "speed": body.speed })),
+                        None,
+                    )
+                    .await;
+            }
+
             (
                 StatusCode::OK,
                 Json(serde_json::json!({
@@ -374,6 +424,19 @@ pub(crate) async fn admin_broadcast(
             .as_secs(),
     };
 
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        let _ = db
+            .insert_audit_log(
+                "admin",
+                "broadcast",
+                body.world_id.as_ref().map(|w| w.to_string()).as_deref(),
+                Some(&serde_json::json!({ "message": body.message })),
+                None,
+            )
+            .await;
+    }
+
     if let Some(wid) = body.world_id {
         let sent = state.broadcast_to_world(&wid, msg).await;
         if sent {
@@ -404,8 +467,12 @@ pub(crate) async fn admin_broadcast(
 
 #[derive(Deserialize)]
 pub(crate) struct BanRequest {
-    world_id: Uuid,
-    player_id: Uuid,
+    account_id: Uuid,
+    reason: String,
+    #[serde(default)]
+    world_id: Option<Uuid>,
+    #[serde(default)]
+    expires_at: Option<String>,
 }
 
 pub(crate) async fn admin_ban_player(
@@ -417,93 +484,172 @@ pub(crate) async fn admin_ban_player(
         return e;
     }
 
-    let world = match state.get_world(&body.world_id).await {
-        Some(w) => w,
-        None => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(serde_json::json!({ "error": "World not found" })),
-            );
+    // Parse optional expiry
+    let expires_at_dt = body.expires_at.as_deref().and_then(|s| {
+        chrono::DateTime::parse_from_rfc3339(s).ok().map(|dt| dt.with_timezone(&chrono::Utc))
+    });
+
+    if let Some(wid) = body.world_id {
+        // World-specific ban
+        let world = match state.get_world(&wid).await {
+            Some(w) => w,
+            None => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({ "error": "World not found" })),
+                );
+            }
+        };
+        world.banned_players.write().await.insert(body.account_id);
+
+        #[cfg(feature = "postgres")]
+        if let Some(db) = state.db.as_ref() {
+            let _ = db.create_ban(body.account_id, Some(wid), &body.reason, expires_at_dt).await;
+            let _ = db
+                .insert_audit_log(
+                    "admin",
+                    "ban_player",
+                    Some(&body.account_id.to_string()),
+                    Some(&serde_json::json!({ "world_id": wid, "reason": body.reason })),
+                    None,
+                )
+                .await;
         }
-    };
 
-    // Add to in-memory ban list
-    world.banned_players.write().await.insert(body.player_id);
+        // Also kick them if currently connected
+        let kicked = state.kick_player(&body.account_id).await;
+        world.remove_player(&body.account_id).await;
 
-    // Persist ban to database and log the action
-    #[cfg(feature = "postgres")]
-    if let Some(db) = state.db.as_ref() {
-        let _ = db.create_ban(body.player_id, Some(body.world_id), "Banned by admin", None).await;
-        let _ = db
-            .insert_audit_log(
-                "admin",
-                "ban_player",
-                Some(&body.player_id.to_string()),
-                Some(&serde_json::json!({ "world_id": body.world_id })),
-                None,
-            )
-            .await;
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "banned": true,
+                "account_id": body.account_id,
+                "world_id": wid,
+                "also_kicked": kicked,
+            })),
+        )
+    } else {
+        // Global ban — add to all worlds
+        let worlds = state.worlds.read().await;
+        for instance in worlds.values() {
+            instance.banned_players.write().await.insert(body.account_id);
+        }
+        drop(worlds);
+
+        #[cfg(feature = "postgres")]
+        if let Some(db) = state.db.as_ref() {
+            let _ = db.create_ban(body.account_id, None, &body.reason, expires_at_dt).await;
+            let _ = db
+                .insert_audit_log(
+                    "admin",
+                    "ban_player_global",
+                    Some(&body.account_id.to_string()),
+                    Some(&serde_json::json!({ "reason": body.reason })),
+                    None,
+                )
+                .await;
+        }
+
+        let kicked = state.kick_player(&body.account_id).await;
+
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "banned": true,
+                "account_id": body.account_id,
+                "world_id": null,
+                "also_kicked": kicked,
+            })),
+        )
     }
+}
 
-    // Also kick them if currently connected
-    let kicked = state.kick_player(&body.player_id).await;
-    world.remove_player(&body.player_id).await;
-
-    (
-        StatusCode::OK,
-        Json(serde_json::json!({
-            "banned": true,
-            "player_id": body.player_id,
-            "world_id": body.world_id,
-            "also_kicked": kicked,
-        })),
-    )
+#[derive(Deserialize)]
+pub(crate) struct UnbanRequest {
+    account_id: Uuid,
+    #[serde(default)]
+    world_id: Option<Uuid>,
 }
 
 pub(crate) async fn admin_unban_player(
     headers: HeaderMap,
     State(state): State<Arc<AppState>>,
-    Json(body): Json<BanRequest>,
+    Json(body): Json<UnbanRequest>,
 ) -> impl IntoResponse {
     if let Err(e) = extract_admin_claims(&headers) {
         return e;
     }
 
-    let world = match state.get_world(&body.world_id).await {
-        Some(w) => w,
-        None => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(serde_json::json!({ "error": "World not found" })),
-            );
+    if let Some(wid) = body.world_id {
+        let world = match state.get_world(&wid).await {
+            Some(w) => w,
+            None => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({ "error": "World not found" })),
+                );
+            }
+        };
+
+        let was_banned = world.banned_players.write().await.remove(&body.account_id);
+
+        #[cfg(feature = "postgres")]
+        if let Some(db) = state.db.as_ref() {
+            let _ = db.remove_ban(body.account_id, Some(wid)).await;
+            let _ = db
+                .insert_audit_log(
+                    "admin",
+                    "unban_player",
+                    Some(&body.account_id.to_string()),
+                    Some(&serde_json::json!({ "world_id": wid })),
+                    None,
+                )
+                .await;
         }
-    };
 
-    let was_banned = world.banned_players.write().await.remove(&body.player_id);
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "unbanned": was_banned,
+                "account_id": body.account_id,
+                "world_id": wid,
+            })),
+        )
+    } else {
+        // Global unban — remove from all worlds
+        let worlds = state.worlds.read().await;
+        let mut was_banned = false;
+        for instance in worlds.values() {
+            if instance.banned_players.write().await.remove(&body.account_id) {
+                was_banned = true;
+            }
+        }
+        drop(worlds);
 
-    // Remove from database and log the action
-    #[cfg(feature = "postgres")]
-    if let Some(db) = state.db.as_ref() {
-        let _ = db.remove_ban(body.player_id, Some(body.world_id)).await;
-        let _ = db
-            .insert_audit_log(
-                "admin",
-                "unban_player",
-                Some(&body.player_id.to_string()),
-                Some(&serde_json::json!({ "world_id": body.world_id })),
-                None,
-            )
-            .await;
+        #[cfg(feature = "postgres")]
+        if let Some(db) = state.db.as_ref() {
+            let _ = db.remove_ban(body.account_id, None).await;
+            let _ = db
+                .insert_audit_log(
+                    "admin",
+                    "unban_player_global",
+                    Some(&body.account_id.to_string()),
+                    None,
+                    None,
+                )
+                .await;
+        }
+
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "unbanned": was_banned,
+                "account_id": body.account_id,
+                "world_id": null,
+            })),
+        )
     }
-
-    (
-        StatusCode::OK,
-        Json(serde_json::json!({
-            "unbanned": was_banned,
-            "player_id": body.player_id,
-            "world_id": body.world_id,
-        })),
-    )
 }
 
 // ── Debug Endpoint ──────────────────────────────────────────────────────
@@ -617,6 +763,15 @@ pub(crate) async fn admin_create_template(
             .await
         {
             Ok(id) => {
+                let _ = db
+                    .insert_audit_log(
+                        "admin",
+                        "create_template",
+                        Some(&id.to_string()),
+                        Some(&serde_json::json!({ "name": req.name })),
+                        None,
+                    )
+                    .await;
                 return (
                     StatusCode::OK,
                     Json(serde_json::json!({ "id": id, "status": "created" })),
@@ -706,6 +861,15 @@ pub(crate) async fn admin_update_template(
             .await
         {
             Ok(true) => {
+                let _ = db
+                    .insert_audit_log(
+                        "admin",
+                        "update_template",
+                        Some(&id.to_string()),
+                        Some(&serde_json::json!({ "name": req.name })),
+                        None,
+                    )
+                    .await;
                 return (
                     StatusCode::OK,
                     Json(serde_json::json!({ "status": "updated" })),
@@ -745,6 +909,15 @@ pub(crate) async fn admin_delete_template(
     if let Some(db) = state.db.as_ref() {
         match db.delete_world_template(id).await {
             Ok(true) => {
+                let _ = db
+                    .insert_audit_log(
+                        "admin",
+                        "delete_template",
+                        Some(&id.to_string()),
+                        None,
+                        None,
+                    )
+                    .await;
                 return (
                     StatusCode::OK,
                     Json(serde_json::json!({ "status": "deleted" })),
@@ -916,6 +1089,16 @@ pub(crate) async fn admin_resolve_reset(
             );
         }
 
+        let _ = db
+            .insert_audit_log(
+                "admin",
+                "resolve_reset",
+                Some(&req.request_id.to_string()),
+                Some(&serde_json::json!({ "account_id": pending.account_id })),
+                None,
+            )
+            .await;
+
         return (
             StatusCode::OK,
             Json(serde_json::json!({
@@ -944,6 +1127,8 @@ pub(crate) async fn admin_metrics(
     let mut world_metrics = Vec::new();
     for instance in worlds.values() {
         let w = instance.world.lock().await;
+        let tick_history: Vec<u64> = instance.tick_history.read().await.iter().copied().collect();
+        let system_times: std::collections::HashMap<String, u64> = w.system_times.clone();
         world_metrics.push(serde_json::json!({
             "id": instance.id,
             "name": instance.name,
@@ -959,6 +1144,10 @@ pub(crate) async fn admin_metrics(
             },
             "last_tick_us": instance.last_tick_duration_us.load(std::sync::atomic::Ordering::Relaxed),
             "avg_tick_us": instance.avg_tick_duration_us.load(std::sync::atomic::Ordering::Relaxed),
+            "max_tick_us": instance.max_tick_us.load(std::sync::atomic::Ordering::Relaxed),
+            "p99_tick_us": instance.p99_tick_us.load(std::sync::atomic::Ordering::Relaxed),
+            "tick_history": tick_history,
+            "system_times": system_times,
             "entity_count": w.corporations.len() + w.infra_nodes.len() + w.infra_edges.len(),
             "broadcast_subscribers": instance.broadcast_tx.receiver_count(),
         }));
@@ -968,6 +1157,8 @@ pub(crate) async fn admin_metrics(
 
     let online_count = state.online_players.read().await.len();
     let memory_estimate_bytes = state.memory_usage_estimate().await;
+    let memory_mb = memory_estimate_bytes as f64 / 1_048_576.0;
+    let ws_msg_per_sec = state.ws_messages_per_sec().await;
 
     (
         StatusCode::OK,
@@ -978,6 +1169,473 @@ pub(crate) async fn admin_metrics(
                 "connected_players": online_count,
                 "world_count": world_count,
                 "memory_estimate_bytes": memory_estimate_bytes,
+                "memory_mb": memory_mb,
+                "ws_messages_per_sec": ws_msg_per_sec,
+            },
+        })),
+    )
+}
+
+// ── New Admin Endpoints ─────────────────────────────────────────────────
+
+// 1. List accounts (paginated, searchable)
+#[derive(Deserialize, Default)]
+pub(crate) struct ListAccountsQuery {
+    #[serde(default)]
+    search: Option<String>,
+    #[serde(default = "default_page")]
+    page: Option<i64>,
+    #[serde(default = "default_per_page")]
+    per_page: Option<i64>,
+    #[serde(default)]
+    sort: Option<String>,
+    #[serde(default)]
+    order: Option<String>,
+}
+
+fn default_page() -> Option<i64> {
+    Some(1)
+}
+
+fn default_per_page() -> Option<i64> {
+    Some(50)
+}
+
+pub(crate) async fn admin_list_accounts(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    axum::extract::Query(params): axum::extract::Query<ListAccountsQuery>,
+) -> impl IntoResponse {
+    if let Err(e) = extract_admin_claims(&headers) {
+        return e;
+    }
+
+    let page = params.page.unwrap_or(1).max(1);
+    let per_page = params.per_page.unwrap_or(50).clamp(1, 200);
+    let offset = (page - 1) * per_page;
+    let sort = params.sort.as_deref().unwrap_or("created_at");
+    let order = params.order.as_deref().unwrap_or("desc");
+
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.list_accounts(params.search.as_deref(), per_page, offset, sort, order).await {
+            Ok((accounts, total)) => {
+                let result: Vec<serde_json::Value> = accounts
+                    .into_iter()
+                    .map(|a| {
+                        serde_json::json!({
+                            "id": a.id,
+                            "username": a.username,
+                            "email": a.email,
+                            "display_name": a.display_name,
+                            "avatar_id": a.avatar_id,
+                            "auth_provider": a.auth_provider,
+                            "is_guest": a.is_guest,
+                            "created_at": a.created_at,
+                            "last_login": a.last_login,
+                            "deleted_at": a.deleted_at,
+                        })
+                    })
+                    .collect();
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({
+                        "accounts": result,
+                        "total": total,
+                        "page": page,
+                        "per_page": per_page,
+                    })),
+                );
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    // Fallback: return in-memory accounts
+    let accounts = state.accounts.read().await;
+    let list: Vec<serde_json::Value> = accounts
+        .values()
+        .map(|a| {
+            serde_json::json!({
+                "id": a.id,
+                "username": a.username,
+                "email": a.email,
+                "display_name": a.display_name,
+                "avatar_id": a.avatar_id,
+                "auth_provider": a.auth_provider,
+                "is_guest": a.is_guest,
+            })
+        })
+        .collect();
+    let total = list.len();
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "accounts": list,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+        })),
+    )
+}
+
+// 2. List connections
+pub(crate) async fn admin_list_connections(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    if let Err(e) = extract_admin_claims(&headers) {
+        return e;
+    }
+
+    let players = state.players.read().await;
+    let online = state.online_players.read().await;
+    let worlds = state.worlds.read().await;
+
+    let connections: Vec<serde_json::Value> = players
+        .values()
+        .map(|p| {
+            let presence = online.get(&p.id);
+            let world_name = p.world_id.and_then(|wid| {
+                worlds.get(&wid).map(|w| w.name.clone())
+            });
+            serde_json::json!({
+                "id": p.id,
+                "username": p.username,
+                "world_id": p.world_id,
+                "world_name": world_name,
+                "corp_id": p.corp_id,
+                "is_guest": p.is_guest,
+                "is_spectator": p.is_spectator,
+                "connected_at": presence.map(|pr| pr.connected_at),
+            })
+        })
+        .collect();
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "connections": connections })),
+    )
+}
+
+// 3. World chat history
+#[derive(Deserialize, Default)]
+pub(crate) struct ChatQuery {
+    #[serde(default)]
+    limit: Option<i64>,
+    #[serde(default)]
+    before: Option<String>,
+}
+
+pub(crate) async fn admin_world_chat(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Path(world_id): Path<Uuid>,
+    axum::extract::Query(params): axum::extract::Query<ChatQuery>,
+) -> impl IntoResponse {
+    if let Err(e) = extract_admin_claims(&headers) {
+        return e;
+    }
+
+    // Verify world exists
+    if state.get_world(&world_id).await.is_none() {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "World not found" })),
+        );
+    }
+
+    let limit = params.limit.unwrap_or(50).clamp(1, 500);
+    let before = params.before.as_deref().and_then(|s| {
+        chrono::DateTime::parse_from_rfc3339(s).ok().map(|dt| dt.with_timezone(&chrono::Utc))
+    });
+
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.list_chat_messages(world_id, limit, before).await {
+            Ok(messages) => {
+                let result: Vec<serde_json::Value> = messages
+                    .into_iter()
+                    .map(|m| {
+                        serde_json::json!({
+                            "id": m.id,
+                            "world_id": m.world_id,
+                            "account_id": m.account_id,
+                            "username": m.username,
+                            "message": m.message,
+                            "created_at": m.created_at.to_rfc3339(),
+                        })
+                    })
+                    .collect();
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({ "messages": result })),
+                );
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "messages": [] })),
+    )
+}
+
+// 4. Assign player to corporation
+#[derive(Deserialize)]
+pub(crate) struct AssignPlayerRequest {
+    player_id: Uuid,
+    corp_id: EntityId,
+}
+
+pub(crate) async fn admin_assign_player(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Path(world_id): Path<Uuid>,
+    Json(body): Json<AssignPlayerRequest>,
+) -> impl IntoResponse {
+    if let Err(e) = extract_admin_claims(&headers) {
+        return e;
+    }
+
+    let world = match state.get_world(&world_id).await {
+        Some(w) => w,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": "World not found" })),
+            );
+        }
+    };
+
+    // Update the world's players map
+    world.players.write().await.insert(body.player_id, body.corp_id);
+
+    // Update the connected player's corp_id if they're online
+    if let Some(player) = state.players.write().await.get_mut(&body.player_id) {
+        player.corp_id = Some(body.corp_id);
+    }
+
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        let _ = db
+            .insert_audit_log(
+                "admin",
+                "assign_player",
+                Some(&body.player_id.to_string()),
+                Some(&serde_json::json!({ "world_id": world_id, "corp_id": body.corp_id })),
+                None,
+            )
+            .await;
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "assigned": true,
+            "player_id": body.player_id,
+            "corp_id": body.corp_id,
+            "world_id": world_id,
+        })),
+    )
+}
+
+// 5. Toggle spectator mode
+#[derive(Deserialize)]
+pub(crate) struct SpectatorRequest {
+    player_id: Uuid,
+    spectator: bool,
+}
+
+pub(crate) async fn admin_toggle_spectator(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Path(world_id): Path<Uuid>,
+    Json(body): Json<SpectatorRequest>,
+) -> impl IntoResponse {
+    if let Err(e) = extract_admin_claims(&headers) {
+        return e;
+    }
+
+    // Verify world exists
+    if state.get_world(&world_id).await.is_none() {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "World not found" })),
+        );
+    }
+
+    let mut players = state.players.write().await;
+    if let Some(player) = players.get_mut(&body.player_id) {
+        player.is_spectator = body.spectator;
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "player_id": body.player_id,
+                "spectator": body.spectator,
+                "world_id": world_id,
+            })),
+        )
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Player not found" })),
+        )
+    }
+}
+
+// 6. Transfer world ownership
+#[derive(Deserialize)]
+pub(crate) struct TransferWorldRequest {
+    new_owner_id: Uuid,
+}
+
+pub(crate) async fn admin_transfer_world(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Path(world_id): Path<Uuid>,
+    Json(body): Json<TransferWorldRequest>,
+) -> impl IntoResponse {
+    if let Err(e) = extract_admin_claims(&headers) {
+        return e;
+    }
+
+    let world = match state.get_world(&world_id).await {
+        Some(w) => w,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": "World not found" })),
+            );
+        }
+    };
+
+    let prev_owner = world.creator_id.read().await.clone();
+    *world.creator_id.write().await = Some(body.new_owner_id);
+
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        let _ = db
+            .insert_audit_log(
+                "admin",
+                "transfer_world",
+                Some(&world_id.to_string()),
+                Some(&serde_json::json!({
+                    "previous_owner": prev_owner,
+                    "new_owner": body.new_owner_id,
+                })),
+                None,
+            )
+            .await;
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "world_id": world_id,
+            "previous_owner": prev_owner,
+            "new_owner_id": body.new_owner_id,
+        })),
+    )
+}
+
+// 7. World speed votes
+pub(crate) async fn admin_world_votes(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Path(world_id): Path<Uuid>,
+) -> impl IntoResponse {
+    if let Err(e) = extract_admin_claims(&headers) {
+        return e;
+    }
+
+    let world = match state.get_world(&world_id).await {
+        Some(w) => w,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": "World not found" })),
+            );
+        }
+    };
+
+    let speed_votes = world.speed_votes.read().await;
+    let creator_id = world.creator_id.read().await;
+    let w = world.world.lock().await;
+    let current_speed = format!("{:?}", w.speed());
+    drop(w);
+
+    let votes: serde_json::Value = serde_json::to_value(
+        speed_votes.iter().map(|(k, v)| (k.to_string(), v.clone())).collect::<std::collections::HashMap<_, _>>()
+    ).unwrap_or_default();
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "world_id": world_id,
+            "speed_votes": votes,
+            "current_speed": current_speed,
+            "creator_id": *creator_id,
+        })),
+    )
+}
+
+// 8. Server configuration
+pub(crate) async fn admin_server_config(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    if let Err(e) = extract_admin_claims(&headers) {
+        return e;
+    }
+
+    let env_vars = serde_json::json!({
+        "ADMIN_KEY": std::env::var("ADMIN_KEY").is_ok(),
+        "DATABASE_URL": std::env::var("DATABASE_URL").is_ok(),
+        "JWT_SECRET": std::env::var("GT_JWT_SECRET").is_ok(),
+        "GITHUB_CLIENT_ID": std::env::var("GITHUB_CLIENT_ID").is_ok(),
+        "GITHUB_CLIENT_SECRET": std::env::var("GITHUB_CLIENT_SECRET").is_ok(),
+        "TILE_DIR": std::env::var("TILE_DIR").is_ok(),
+        "CORS_ORIGIN": std::env::var("CORS_ORIGIN").is_ok(),
+        "CORS_ORIGINS": std::env::var("CORS_ORIGINS").is_ok(),
+        "R2_ACCOUNT_ID": std::env::var("R2_ACCOUNT_ID").is_ok(),
+        "R2_ACCESS_KEY_ID": std::env::var("R2_ACCESS_KEY_ID").is_ok(),
+        "R2_SECRET_ACCESS_KEY": std::env::var("R2_SECRET_ACCESS_KEY").is_ok(),
+        "R2_BUCKET_NAME": std::env::var("R2_BUCKET_NAME").is_ok(),
+    });
+
+    let has_postgres = state.db.is_some();
+    let has_r2;
+    #[cfg(feature = "r2")]
+    {
+        has_r2 = state.r2.is_some();
+    }
+    #[cfg(not(feature = "r2"))]
+    {
+        has_r2 = false;
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "env_vars": env_vars,
+            "database": {
+                "connected": has_postgres,
+            },
+            "features": {
+                "postgres": has_postgres,
+                "r2": has_r2,
             },
         })),
     )

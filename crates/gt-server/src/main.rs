@@ -258,28 +258,59 @@ async fn main() {
     // Start tick loops for all worlds
     tick::start_all_tick_loops(&state).await;
 
-    // CORS — restrict in production when CORS_ORIGIN is set
-    let cors = if let Ok(origin) = std::env::var("CORS_ORIGIN") {
-        info!("CORS restricted to origin: {}", origin);
-        CorsLayer::new()
-            .allow_origin(origin.parse::<HeaderValue>().expect("Invalid CORS_ORIGIN value"))
-            .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
-            .allow_headers([
-                header::AUTHORIZATION,
-                header::CONTENT_TYPE,
-                header::UPGRADE,
-                header::CONNECTION,
-                HeaderName::from_static("sec-websocket-key"),
-                HeaderName::from_static("sec-websocket-version"),
-                HeaderName::from_static("sec-websocket-protocol"),
-                HeaderName::from_static("x-admin-key"),
-            ])
-    } else {
-        info!("CORS open (no CORS_ORIGIN set — dev mode)");
+    // CORS — restrict in production when CORS_ORIGIN or CORS_ORIGINS is set
+    let cors_origins: Vec<HeaderValue> = {
+        let mut origins = Vec::new();
+        // Support CORS_ORIGINS (comma-separated) first, then CORS_ORIGIN (single) for backward compat
+        if let Ok(multi) = std::env::var("CORS_ORIGINS") {
+            for origin in multi.split(',') {
+                let trimmed = origin.trim();
+                if !trimmed.is_empty() {
+                    if let Ok(val) = trimmed.parse::<HeaderValue>() {
+                        origins.push(val);
+                    }
+                }
+            }
+        }
+        if let Ok(single) = std::env::var("CORS_ORIGIN") {
+            let trimmed = single.trim();
+            if !trimmed.is_empty() {
+                if let Ok(val) = trimmed.parse::<HeaderValue>() {
+                    if !origins.iter().any(|o| o == &val) {
+                        origins.push(val);
+                    }
+                }
+            }
+        }
+        origins
+    };
+
+    let allowed_headers = [
+        header::AUTHORIZATION,
+        header::CONTENT_TYPE,
+        header::UPGRADE,
+        header::CONNECTION,
+        HeaderName::from_static("sec-websocket-key"),
+        HeaderName::from_static("sec-websocket-version"),
+        HeaderName::from_static("sec-websocket-protocol"),
+        HeaderName::from_static("x-admin-key"),
+    ];
+
+    let cors = if cors_origins.is_empty() {
+        info!("CORS open (no CORS_ORIGIN/CORS_ORIGINS set -- dev mode)");
         CorsLayer::new()
             .allow_origin(Any)
             .allow_methods(Any)
             .allow_headers(Any)
+    } else {
+        info!("CORS restricted to {} origin(s)", cors_origins.len());
+        for o in &cors_origins {
+            info!("  CORS origin: {}", o.to_str().unwrap_or("?"));
+        }
+        CorsLayer::new()
+            .allow_origin(cors_origins)
+            .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
+            .allow_headers(allowed_headers)
     };
 
     // Build router

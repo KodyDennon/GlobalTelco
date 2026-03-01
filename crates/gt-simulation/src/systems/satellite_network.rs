@@ -83,6 +83,18 @@ fn build_intraplane_isl(
     }
 }
 
+/// Spatial grid cell size in degrees for cross-plane ISL lookup.
+/// 5000km max range ≈ ~45 degrees at equator. Use 20-degree cells for
+/// a balance between grid resolution and neighbor search radius.
+const SPATIAL_GRID_DEG: f64 = 20.0;
+
+fn spatial_key(lon: f64, lat: f64) -> (i32, i32) {
+    (
+        (lon / SPATIAL_GRID_DEG).floor() as i32,
+        (lat / SPATIAL_GRID_DEG).floor() as i32,
+    )
+}
+
 fn build_crossplane_isl(
     world: &mut GameWorld,
     sats: &[(EntityId, f64, f64, f64, EntityId, u32, u32)],
@@ -100,28 +112,44 @@ fn build_crossplane_isl(
     }
 
     for (_, constellation_sats) in constellations {
-        // For each sat, find nearest sat in adjacent plane
+        // Build spatial hash grid for this constellation
+        let mut grid: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
+        for (idx, (_, lon, lat, _)) in constellation_sats.iter().enumerate() {
+            let key = spatial_key(*lon, *lat);
+            grid.entry(key).or_default().push(idx);
+        }
+
+        // For each sat, find nearest sat in adjacent plane using spatial grid
         for i in 0..constellation_sats.len() {
             let (sat_a, lon_a, lat_a, plane_a) = constellation_sats[i];
+            let key = spatial_key(lon_a, lat_a);
 
             let mut best_dist = f64::MAX;
             let mut best_id = None;
 
-            for j in 0..constellation_sats.len() {
-                if i == j {
-                    continue;
-                }
-                let (sat_b, lon_b, lat_b, plane_b) = constellation_sats[j];
+            // Check 3x3 neighborhood of grid cells (covers ~60 degrees = well beyond 5000km)
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    let neighbor_key = (key.0 + dx, key.1 + dy);
+                    if let Some(indices) = grid.get(&neighbor_key) {
+                        for &j in indices {
+                            if i == j {
+                                continue;
+                            }
+                            let (sat_b, lon_b, lat_b, plane_b) = constellation_sats[j];
 
-                // Only connect to adjacent planes
-                if plane_b != plane_a + 1 && plane_a != plane_b + 1 {
-                    continue;
-                }
+                            // Only connect to adjacent planes
+                            if plane_b != plane_a + 1 && plane_a != plane_b + 1 {
+                                continue;
+                            }
 
-                let dist = haversine_distance_km(lon_a, lat_a, lon_b, lat_b);
-                if dist < best_dist {
-                    best_dist = dist;
-                    best_id = Some(sat_b);
+                            let dist = haversine_distance_km(lon_a, lat_a, lon_b, lat_b);
+                            if dist < best_dist {
+                                best_dist = dist;
+                                best_id = Some(sat_b);
+                            }
+                        }
+                    }
                 }
             }
 

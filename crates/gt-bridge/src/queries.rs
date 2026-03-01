@@ -12,7 +12,7 @@ use gt_simulation::world::GameWorld;
 pub fn query_world_info(world: &GameWorld) -> String {
     let info = serde_json::json!({
         "tick": world.current_tick(),
-        "speed": format!("{:?}", world.speed()),
+        "speed": world.speed(),
         "entity_count": world.entity_count(),
         "region_count": world.regions.len(),
         "city_count": world.cities.len(),
@@ -40,7 +40,7 @@ pub fn query_corporation_data(world: &GameWorld, corp_id: EntityId) -> String {
         "id": corp_id,
         "name": corp.map(|c| c.name.as_str()).unwrap_or("Unknown"),
         "is_player": corp.map(|c| c.is_player).unwrap_or(false),
-        "credit_rating": corp.map(|c| format!("{:?}", c.credit_rating)).unwrap_or_default(),
+        "credit_rating": corp.map(|c| c.credit_rating),
         "cash": fin.map(|f| f.cash).unwrap_or(0),
         "revenue_per_tick": fin.map(|f| f.revenue_per_tick).unwrap_or(0),
         "cost_per_tick": fin.map(|f| f.cost_per_tick).unwrap_or(0),
@@ -132,7 +132,7 @@ pub fn query_all_corporations(world: &GameWorld) -> String {
                 "id": id,
                 "name": corp.name,
                 "is_player": corp.is_player,
-                "credit_rating": format!("{:?}", corp.credit_rating),
+                "credit_rating": corp.credit_rating,
                 "cash": fin.map(|f| f.cash).unwrap_or(0),
                 "revenue": fin.map(|f| f.revenue_per_tick).unwrap_or(0),
                 "cost": fin.map(|f| f.cost_per_tick).unwrap_or(0),
@@ -166,8 +166,8 @@ pub fn query_infrastructure_list(world: &GameWorld, corp_id: EntityId) -> String
                 .unwrap_or_default();
             Some(serde_json::json!({
                 "id": id,
-                "node_type": format!("{:?}", node.node_type),
-                "network_level": format!("{:?}", node.network_level),
+                "node_type": node.node_type,
+                "network_level": node.network_level,
                 "max_throughput": node.max_throughput,
                 "current_load": node.current_load,
                 "latency_ms": node.latency_ms,
@@ -186,7 +186,7 @@ pub fn query_infrastructure_list(world: &GameWorld, corp_id: EntityId) -> String
                 "revenue_generated": node.revenue_generated,
                 "utilization_history": util_history,
                 "insured": node.insured,
-                "maintenance_priority": format!("{:?}", world.maintenance_priorities.get(&id).map(|m| m.tier).unwrap_or_default()),
+                "maintenance_priority": world.maintenance_priorities.get(&id).map(|m| m.tier).unwrap_or_default(),
                 "auto_repair": world.maintenance_priorities.get(&id).map(|m| m.auto_repair).unwrap_or(true),
             }))
         })
@@ -216,7 +216,7 @@ pub fn query_infrastructure_list(world: &GameWorld, corp_id: EntityId) -> String
                 .unwrap_or_default();
             serde_json::json!({
                 "id": id,
-                "edge_type": format!("{:?}", e.edge_type),
+                "edge_type": e.edge_type,
                 "source": e.source,
                 "target": e.target,
                 "bandwidth": e.bandwidth,
@@ -232,7 +232,7 @@ pub fn query_infrastructure_list(world: &GameWorld, corp_id: EntityId) -> String
                 "src_cell": src_cell,
                 "dst_cell": dst_cell,
                 "waypoints": e.waypoints.iter().map(|&(lon, lat)| [lon, lat]).collect::<Vec<_>>(),
-                "deployment": format!("{:?}", e.deployment),
+                "deployment": e.deployment,
                 "maintenance_cost": e.maintenance_cost,
                 "repairing": e.repairing,
                 "repair_ticks_left": e.repair_ticks_left,
@@ -264,7 +264,7 @@ pub fn query_visible_entities(
                 Some(serde_json::json!({
                     "id": id,
                     "type": "node",
-                    "node_type": format!("{:?}", node.node_type),
+                    "node_type": node.node_type,
                     "owner": node.owner,
                     "x": pos.x,
                     "y": pos.y,
@@ -317,9 +317,9 @@ pub fn query_parcels_in_view(
                 Some(serde_json::json!({
                     "id": id,
                     "cell_index": parcel.cell_index,
-                    "terrain": format!("{:?}", parcel.terrain),
+                    "terrain": parcel.terrain,
                     "elevation": parcel.elevation,
-                    "zoning": format!("{:?}", parcel.zoning),
+                    "zoning": parcel.zoning,
                     "cost_modifier": parcel.cost_modifier,
                     "x": pos.x,
                     "y": pos.y,
@@ -369,8 +369,8 @@ pub fn query_all_infrastructure(world: &GameWorld) -> String {
                 .unwrap_or("Unknown");
             Some(serde_json::json!({
                 "id": id,
-                "node_type": format!("{:?}", node.node_type),
-                "network_level": format!("{:?}", node.network_level),
+                "node_type": node.node_type,
+                "network_level": node.network_level,
                 "max_throughput": node.max_throughput,
                 "current_load": node.current_load,
                 "latency_ms": node.latency_ms,
@@ -411,7 +411,7 @@ pub fn query_all_infrastructure(world: &GameWorld) -> String {
                 .unwrap_or(0);
             serde_json::json!({
                 "id": id,
-                "edge_type": format!("{:?}", e.edge_type),
+                "edge_type": e.edge_type,
                 "source": e.source,
                 "target": e.target,
                 "bandwidth": e.bandwidth,
@@ -429,7 +429,7 @@ pub fn query_all_infrastructure(world: &GameWorld) -> String {
                 "src_cell": src_cell,
                 "dst_cell": dst_cell,
                 "waypoints": e.waypoints.iter().map(|&(lon, lat)| [lon, lat]).collect::<Vec<_>>(),
-                "deployment": format!("{:?}", e.deployment),
+                "deployment": e.deployment,
             })
         })
         .collect();
@@ -438,10 +438,10 @@ pub fn query_all_infrastructure(world: &GameWorld) -> String {
 }
 
 pub fn query_grid_cells(world: &GameWorld) -> String {
-    let mut cell_terrain: std::collections::HashMap<usize, String> =
+    let mut cell_terrain: std::collections::HashMap<usize, gt_common::types::TerrainType> =
         std::collections::HashMap::new();
     for parcel in world.land_parcels.values() {
-        cell_terrain.insert(parcel.cell_index, format!("{:?}", parcel.terrain));
+        cell_terrain.insert(parcel.cell_index, parcel.terrain);
     }
 
     let cells: Vec<serde_json::Value> = world
@@ -451,8 +451,8 @@ pub fn query_grid_cells(world: &GameWorld) -> String {
         .map(|(i, &(lat, lon))| {
             let terrain = cell_terrain
                 .get(&i)
-                .cloned()
-                .unwrap_or_else(|| "Ocean".to_string());
+                .copied()
+                .unwrap_or(gt_common::types::TerrainType::OceanShallow);
             let neighbors = world
                 .grid_cell_neighbors
                 .get(i)
@@ -547,12 +547,11 @@ pub fn query_research_state(world: &GameWorld) -> String {
             let per_unit_price = patent_data.map(|p| p.per_unit_price).unwrap_or(0);
             let lease_duration = patent_data.map(|p| p.lease_duration).unwrap_or(0);
             let patent_license_type = patent_data
-                .map(|p| format!("{:?}", p.license_type))
-                .unwrap_or_default();
+                .map(|p| p.license_type);
 
             serde_json::json!({
                 "id": id,
-                "category": format!("{:?}", r.category),
+                "category": r.category,
                 "category_name": r.category.display_name(),
                 "name": r.name,
                 "description": r.description,
@@ -562,7 +561,7 @@ pub fn query_research_state(world: &GameWorld) -> String {
                 "researcher": r.researcher,
                 "researcher_name": researcher_name,
                 "completed": r.completed,
-                "patent_status": format!("{:?}", r.patent_status),
+                "patent_status": r.patent_status,
                 "patent_owner": r.patent_owner,
                 "patent_owner_name": patent_owner_name,
                 "license_price": r.license_price,
@@ -570,7 +569,7 @@ pub fn query_research_state(world: &GameWorld) -> String {
                 "throughput_bonus": r.throughput_bonus,
                 "cost_reduction": r.cost_reduction,
                 "reliability_bonus": r.reliability_bonus,
-                "independent_tier": format!("{:?}", r.independent_tier),
+                "independent_tier": r.independent_tier,
                 "per_unit_price": per_unit_price,
                 "lease_duration": lease_duration,
                 "patent_license_type": patent_license_type,
@@ -627,7 +626,7 @@ pub fn query_contracts(world: &GameWorld, corp_id: EntityId) -> String {
             };
             serde_json::json!({
                 "id": id,
-                "contract_type": format!("{:?}", c.contract_type),
+                "contract_type": c.contract_type,
                 "from": c.from,
                 "to": c.to,
                 "from_name": from_name,
@@ -636,7 +635,7 @@ pub fn query_contracts(world: &GameWorld, corp_id: EntityId) -> String {
                 "price_per_tick": c.price_per_tick,
                 "start_tick": c.start_tick,
                 "end_tick": c.end_tick,
-                "status": format!("{:?}", c.status),
+                "status": c.status,
                 "penalty": c.penalty,
                 "sla_target": c.sla_target,
                 "sla_current_performance": c.sla_current_performance,
@@ -713,8 +712,8 @@ pub fn query_buildable_nodes(world: &GameWorld, lon: f64, lat: f64) -> String {
             let build_ticks = (base_cost / 10_000).max(5);
             serde_json::json!({
                 "label": nt.display_name(),
-                "node_type": format!("{:?}", nt),
-                "network_level": format!("{:?}", nt.tier()),
+                "node_type": nt,
+                "network_level": nt.tier(),
                 "tier": nt.tier().value(),
                 "era": nt.era().display_name(),
                 "cost": cost,
@@ -772,7 +771,7 @@ pub fn query_buildable_edges(world: &GameWorld, source_id: EntityId) -> String {
 
             Some(serde_json::json!({
                 "target_id": nid,
-                "target_type": format!("{:?}", node.node_type),
+                "target_type": node.node_type,
                 "x": pos.x,
                 "y": pos.y,
                 "distance_km": dist_km,
@@ -807,7 +806,7 @@ pub fn query_damaged_nodes(world: &GameWorld, corp_id: EntityId) -> String {
             let emergency_cost = (base_cost as f64 * damage * 0.6) as i64;
             Some(serde_json::json!({
                 "id": id,
-                "node_type": format!("{:?}", node.node_type),
+                "node_type": node.node_type,
                 "health": health.condition,
                 "repair_cost": repair_cost,
                 "emergency_cost": emergency_cost,
@@ -843,7 +842,7 @@ pub fn query_auctions(world: &GameWorld) -> String {
                 "highest_bidder": highest.map(|(id, _)| id).unwrap_or(0),
                 "start_tick": a.start_tick,
                 "end_tick": a.end_tick,
-                "status": format!("{:?}", a.status),
+                "status": a.status,
             })
         })
         .collect();
@@ -872,7 +871,7 @@ pub fn query_acquisition_proposals(world: &GameWorld) -> String {
                 "target": p.target,
                 "target_name": target_name,
                 "offer": p.offer,
-                "status": format!("{:?}", p.status),
+                "status": p.status,
                 "tick": p.tick,
             })
         })
@@ -907,7 +906,7 @@ pub fn query_lobbying_campaigns(world: &GameWorld, corp_id: EntityId) -> String 
                 "id": id,
                 "region": c.region,
                 "region_name": region_name,
-                "policy": format!("{:?}", c.policy),
+                "policy": c.policy,
                 "budget_spent": c.budget_spent,
                 "budget_total": c.budget_total,
                 "influence": c.influence,
@@ -964,7 +963,7 @@ pub fn query_traffic_flows(world: &GameWorld) -> String {
                 "bandwidth": e.bandwidth,
                 "utilization": utilization,
                 "health": e.health,
-                "edge_type": format!("{:?}", e.edge_type),
+                "edge_type": e.edge_type,
                 "owner": e.owner,
                 "src_x": src_pos.map(|p| p.x).unwrap_or(0.0),
                 "src_y": src_pos.map(|p| p.y).unwrap_or(0.0),
@@ -990,7 +989,7 @@ pub fn query_traffic_flows(world: &GameWorld) -> String {
                 "traffic": traffic,
                 "max_throughput": node.max_throughput,
                 "utilization": utilization,
-                "node_type": format!("{:?}", node.node_type),
+                "node_type": node.node_type,
                 "owner": node.owner,
                 "x": pos.x,
                 "y": pos.y,
@@ -1033,7 +1032,7 @@ pub fn query_traffic_flows(world: &GameWorld) -> String {
             serde_json::json!({
                 "id": id,
                 "utilization": util,
-                "edge_type": edge.map(|e| format!("{:?}", e.edge_type)).unwrap_or_default(),
+                "edge_type": edge.map(|e| e.edge_type),
                 "owner": edge.map(|e| e.owner).unwrap_or(0),
             })
         })
@@ -1108,7 +1107,7 @@ pub fn query_spectrum_licenses(world: &GameWorld) -> String {
                 .unwrap_or("Unknown");
             serde_json::json!({
                 "id": id,
-                "band": format!("{:?}", l.band),
+                "band": l.band,
                 "band_name": l.band.display_name(),
                 "band_category": l.band.category(),
                 "region_id": l.region_id,
@@ -1146,7 +1145,7 @@ pub fn query_spectrum_auctions(world: &GameWorld) -> String {
                 .unwrap_or("None");
             serde_json::json!({
                 "id": id,
-                "band": format!("{:?}", a.band),
+                "band": a.band,
                 "band_name": a.band.display_name(),
                 "band_category": a.band.category(),
                 "region_id": a.region_id,
@@ -1168,29 +1167,28 @@ pub fn query_available_spectrum(world: &GameWorld, region_id: EntityId) -> Strin
     use gt_common::types::FrequencyBand;
     let tick = world.current_tick();
 
-    let licensed_bands: std::collections::HashSet<String> = world
+    let licensed_bands: std::collections::HashSet<gt_common::types::FrequencyBand> = world
         .spectrum_licenses
         .values()
         .filter(|l| l.region_id == region_id && l.is_active(tick))
-        .map(|l| format!("{:?}", l.band))
+        .map(|l| l.band)
         .collect();
 
-    let auction_bands: std::collections::HashSet<String> = world
+    let auction_bands: std::collections::HashSet<gt_common::types::FrequencyBand> = world
         .spectrum_auctions
         .values()
         .filter(|a| a.region_id == region_id && !a.is_ended(tick))
-        .map(|a| format!("{:?}", a.band))
+        .map(|a| a.band)
         .collect();
 
     let available: Vec<serde_json::Value> = FrequencyBand::all()
         .iter()
         .filter(|b| {
-            let name = format!("{:?}", b);
-            !licensed_bands.contains(&name) && !auction_bands.contains(&name)
+            !licensed_bands.contains(b) && !auction_bands.contains(b)
         })
         .map(|b| {
             serde_json::json!({
-                "band": format!("{:?}", b),
+                "band": b,
                 "band_name": b.display_name(),
                 "band_category": b.category(),
                 "coverage_radius_km": b.coverage_radius_km(),
@@ -1256,13 +1254,13 @@ pub fn query_lawsuits(world: &GameWorld, corp_id: EntityId) -> String {
                 "plaintiff_name": plaintiff_name,
                 "defendant": l.defendant,
                 "defendant_name": defendant_name,
-                "lawsuit_type": format!("{:?}", l.lawsuit_type),
+                "lawsuit_type": l.lawsuit_type,
                 "damages_claimed": l.damages_claimed,
                 "filing_cost": l.filing_cost,
                 "filed_tick": l.filed_tick,
                 "resolution_tick": l.resolution_tick,
-                "status": format!("{:?}", l.status),
-                "outcome": l.outcome.as_ref().map(|o| format!("{:?}", o)),
+                "status": l.status,
+                "outcome": l.outcome.as_ref(),
             })
         })
         .collect();
@@ -1304,7 +1302,7 @@ pub fn query_region_pricing(world: &GameWorld, corp_id: EntityId) -> String {
             serde_json::json!({
                 "region_id": region_id,
                 "region_name": region_name,
-                "tier": format!("{:?}", rp.tier),
+                "tier": rp.tier,
                 "price_per_unit": rp.price_per_unit,
             })
         })
@@ -1324,7 +1322,7 @@ pub fn query_maintenance_priorities(world: &GameWorld, corp_id: EntityId) -> Str
             let mp = world.maintenance_priorities.get(&id)?;
             Some(serde_json::json!({
                 "node_id": id,
-                "priority": format!("{:?}", mp.tier),
+                "priority": mp.tier,
                 "auto_repair": mp.auto_repair,
             }))
         })
@@ -1343,7 +1341,7 @@ pub fn query_constellation_data(world: &GameWorld, corp_id: EntityId) -> String 
             serde_json::json!({
                 "id": id,
                 "name": c.name,
-                "orbit_type": format!("{:?}", c.orbit_type),
+                "orbit_type": c.orbit_type,
                 "target_altitude_km": c.target_altitude_km,
                 "target_inclination_deg": c.target_inclination_deg,
                 "num_planes": c.num_planes,
@@ -1370,8 +1368,8 @@ pub fn query_orbital_view(world: &GameWorld) -> String {
                 "lon": pos.map(|p| p.x).unwrap_or(0.0),
                 "lat": pos.map(|p| p.y).unwrap_or(0.0),
                 "altitude_km": sat.altitude_km,
-                "orbit_type": format!("{:?}", sat.orbit_type),
-                "status": format!("{:?}", sat.status),
+                "orbit_type": sat.orbit_type,
+                "status": sat.status,
                 "fuel_remaining": sat.fuel_remaining,
                 "fuel_capacity": sat.fuel_capacity,
                 "constellation_id": sat.constellation_id,
@@ -1411,7 +1409,7 @@ pub fn query_terminal_inventory(world: &GameWorld, corp_id: EntityId) -> String 
         .map(|(&id, tf)| {
             serde_json::json!({
                 "factory_id": id,
-                "tier": format!("{:?}", tf.tier),
+                "tier": tf.tier,
                 "produced_stored": tf.produced_stored,
                 "production_progress": tf.production_progress,
             })
@@ -1481,7 +1479,7 @@ pub fn query_road_segments(world: &GameWorld) -> String {
                 "id": s.id,
                 "from": [s.from.0, s.from.1],
                 "to": [s.to.0, s.to.1],
-                "road_class": format!("{:?}", s.road_class),
+                "road_class": s.road_class,
                 "length_km": s.length_km,
                 "region_id": s.region_id,
             })

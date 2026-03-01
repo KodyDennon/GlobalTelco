@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -35,10 +35,13 @@ pub struct ConnectedPlayer {
 /// A single entry in the server audit log
 #[derive(Debug, Clone, Serialize)]
 pub struct AuditEntry {
-    pub tick: u64,
-    pub player_id: Uuid,
-    pub command_type: String,
-    pub timestamp: u64,
+    pub id: u64,
+    pub actor: String,
+    pub action: String,
+    pub target: Option<String>,
+    pub details: Option<serde_json::Value>,
+    pub ip_address: Option<String>,
+    pub created_at: String, // ISO 8601
 }
 
 /// Online presence for a connected player
@@ -76,6 +79,14 @@ pub struct WorldInstance {
     pub last_tick_duration_us: AtomicU64,
     /// Tick profiling: rolling average tick duration in microseconds
     pub avg_tick_duration_us: AtomicU64,
+    /// Last 60 tick durations (microseconds)
+    pub tick_history: RwLock<VecDeque<u64>>,
+    /// Max tick duration seen in last 60 ticks
+    pub max_tick_us: AtomicU64,
+    /// P99 tick duration from last 100 ticks
+    pub p99_tick_us: AtomicU64,
+    /// Raw samples for p99 computation (last 100 ticks)
+    pub tick_samples: Mutex<VecDeque<u64>>,
 }
 
 impl WorldInstance {
@@ -98,6 +109,10 @@ impl WorldInstance {
             invite_code: None,
             last_tick_duration_us: AtomicU64::new(0),
             avg_tick_duration_us: AtomicU64::new(0),
+            tick_history: RwLock::new(VecDeque::new()),
+            max_tick_us: AtomicU64::new(0),
+            p99_tick_us: AtomicU64::new(0),
+            tick_samples: Mutex::new(VecDeque::new()),
         }
     }
 
@@ -131,7 +146,7 @@ impl WorldInstance {
         self.players.write().await.remove(player_id)
     }
 
-    /// Record tick duration and update rolling average
+    /// Record tick duration and update rolling average, tick_history, max, and p99
     pub fn record_tick_duration(&self, duration_us: u64) {
         self.last_tick_duration_us.store(duration_us, Ordering::Relaxed);
         let prev = self.avg_tick_duration_us.load(Ordering::Relaxed);
@@ -142,6 +157,32 @@ impl WorldInstance {
             (prev * 9 + duration_us) / 10
         };
         self.avg_tick_duration_us.store(new_avg, Ordering::Relaxed);
+
+        // Update tick_history (cap 60) and recompute max
+        {
+            let mut history = self.tick_history.blocking_write();
+            history.push_back(duration_us);
+            if history.len() > 60 {
+                history.pop_front();
+            }
+            let max = history.iter().copied().max().unwrap_or(0);
+            self.max_tick_us.store(max, Ordering::Relaxed);
+        }
+
+        // Update tick_samples (cap 100) and recompute p99
+        {
+            let mut samples = self.tick_samples.blocking_lock();
+            samples.push_back(duration_us);
+            if samples.len() > 100 {
+                samples.pop_front();
+            }
+            // Compute p99: sort a copy and take the 99th percentile
+            let mut sorted: Vec<u64> = samples.iter().copied().collect();
+            sorted.sort_unstable();
+            let idx = ((sorted.len() as f64 * 0.99).ceil() as usize).saturating_sub(1).min(sorted.len().saturating_sub(1));
+            let p99 = sorted.get(idx).copied().unwrap_or(0);
+            self.p99_tick_us.store(p99, Ordering::Relaxed);
+        }
     }
 }
 
@@ -178,6 +219,14 @@ pub struct AppState {
     /// Cloudflare R2 object storage (optional)
     #[cfg(feature = "r2")]
     pub r2: Option<Arc<R2Storage>>,
+    /// Total WebSocket messages received
+    pub ws_message_count: AtomicU64,
+    /// Snapshot of ws_message_count for rate calculation
+    pub ws_count_snapshot: AtomicU64,
+    /// Time of last rate snapshot
+    pub ws_snapshot_time: Mutex<Instant>,
+    /// Counter for in-memory audit entry IDs
+    pub id_counter: AtomicU64,
 }
 
 impl AppState {
@@ -196,6 +245,10 @@ impl AppState {
             cf_reset_worker_url: None,
             #[cfg(feature = "r2")]
             r2: None,
+            ws_message_count: AtomicU64::new(0),
+            ws_count_snapshot: AtomicU64::new(0),
+            ws_snapshot_time: Mutex::new(Instant::now()),
+            id_counter: AtomicU64::new(1),
         }
     }
 
@@ -455,16 +508,17 @@ impl AppState {
     const MAX_AUDIT_LOG_ENTRIES: usize = 1000;
 
     /// Log a player command to the audit log
-    pub async fn log_command(&self, player_id: Uuid, command_type: String, tick: u64) {
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+    pub async fn log_command(&self, player_id: Uuid, command_type: String, _tick: u64) {
+        let id = self.id_counter.fetch_add(1, Ordering::Relaxed);
+        let created_at = chrono::Utc::now().to_rfc3339();
         let entry = AuditEntry {
-            tick,
-            player_id,
-            command_type,
-            timestamp,
+            id,
+            actor: player_id.to_string(),
+            action: command_type,
+            target: None,
+            details: None,
+            ip_address: None,
+            created_at,
         };
         let mut log = self.audit_log.write().await;
         log.push(entry);
@@ -473,6 +527,25 @@ impl AppState {
             let drain_count = log.len() - Self::MAX_AUDIT_LOG_ENTRIES;
             log.drain(..drain_count);
         }
+    }
+
+    /// Compute WebSocket messages per second since last snapshot
+    pub async fn ws_messages_per_sec(&self) -> f64 {
+        let current = self.ws_message_count.load(Ordering::Relaxed);
+        let prev = self.ws_count_snapshot.load(Ordering::Relaxed);
+        let mut last_time = self.ws_snapshot_time.lock().await;
+        let elapsed = last_time.elapsed().as_secs_f64();
+        if elapsed < 1.0 {
+            // Don't update snapshot too frequently, just compute from current values
+            if elapsed > 0.0 {
+                return (current - prev) as f64 / elapsed;
+            }
+            return 0.0;
+        }
+        let rate = (current - prev) as f64 / elapsed;
+        self.ws_count_snapshot.store(current, Ordering::Relaxed);
+        *last_time = Instant::now();
+        rate
     }
 
     /// Return a clone of the entire audit log

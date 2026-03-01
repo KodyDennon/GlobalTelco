@@ -613,12 +613,26 @@ pub(crate) async fn handle_client_message(
             };
             let _ = world.broadcast_tx.send(ServerMessage::ChatBroadcast {
                 sender: sender_name,
-                message: sanitized,
+                message: sanitized.clone(),
                 timestamp: std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_secs(),
             });
+
+            // Persist chat to DB
+            #[cfg(feature = "postgres")]
+            if let Some(db) = state.db.as_ref() {
+                let db = db.clone();
+                let wid = world_id;
+                let aid = p.id;
+                let uname = p.username.clone();
+                let msg_text = sanitized;
+                tokio::spawn(async move {
+                    let _ = db.insert_chat_message(wid, aid, &uname, &msg_text).await;
+                });
+            }
+
             None // Chat is broadcast to all, sender sees it via broadcast
         }
 

@@ -6,6 +6,10 @@ use gt_common::types::WorldConfig;
 use gt_simulation::world::GameWorld;
 use wasm_bindgen::prelude::*;
 
+#[cfg(target_family = "wasm")]
+#[global_allocator]
+static ALLOCATOR: talc::TalckWasm = unsafe { talc::TalckWasm::new_global() };
+
 #[wasm_bindgen(start)]
 pub fn init_panic_hook() {
     console_error_panic_hook::set_once();

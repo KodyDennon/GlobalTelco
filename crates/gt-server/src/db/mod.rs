@@ -9,6 +9,8 @@ mod accounts;
 #[cfg(feature = "postgres")]
 mod auth;
 #[cfg(feature = "postgres")]
+mod chat;
+#[cfg(feature = "postgres")]
 mod leaderboard;
 #[cfg(feature = "postgres")]
 mod moderation;
@@ -44,6 +46,8 @@ impl Database {
         sqlx::raw_sql(migration2).execute(&self.pool).await?;
         let migration3 = include_str!("../../migrations/003_r2_storage.sql");
         sqlx::raw_sql(migration3).execute(&self.pool).await?;
+        let migration4 = include_str!("../../migrations/004_chat_messages.sql");
+        sqlx::raw_sql(migration4).execute(&self.pool).await?;
         Ok(())
     }
 }

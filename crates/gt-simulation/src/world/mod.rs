@@ -176,6 +176,11 @@ pub struct GameWorld {
     #[serde(default)]
     pub maintenance_priorities: HashMap<EntityId, crate::components::MaintenancePriority>,
 
+    // Per-system timing from last tick (microseconds). Runtime profiling only.
+    #[serde(default)]
+    #[serde(skip)]
+    pub system_times: HashMap<String, u64>,
+
     // Intel levels: (spy_corp, target_corp) → intel level (0..3)
     // 0 = infra positions only (default), 1 = basic financials (ranges),
     // 2 = detailed financials (exact), 3 = operational data (utilization, health, throughput)
@@ -285,6 +290,7 @@ impl GameWorld {
             service_missions: Vec::new(),
             region_pricing: HashMap::new(),
             maintenance_priorities: HashMap::new(),
+            system_times: HashMap::new(),
             intel_levels: HashMap::new(),
             cell_to_parcel: HashMap::new(),
             cell_to_region: HashMap::new(),
@@ -368,7 +374,7 @@ impl GameWorld {
         }
         self.tick += 1;
         self.tick_rng_counter = self.tick.wrapping_mul(self.rng_seed.wrapping_add(1));
-        systems::run_all_systems(self);
+        systems::run_all_systems_timed(self);
     }
 
     /// Process a command using the world's current player_corp_id (single-player mode).
