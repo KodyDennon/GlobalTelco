@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.5.0 (2026-03-01)
+
+### Features
+
+- Implement Cloudflare R2 storage for snapshots and saves, and update deployment to use Cloudflare proxying. (80c3fb5)
+- Implement 8-phase multiplayer overhaul (460e54c)
+- Implement new bridge queries for alliances, pricing, lawsuits, and stock market data, and add a `create_player_corporation` function to the simulation. (58cd4d2)
+
+### Chores
+
+- Update Rust dependencies. (458da55)
+
+### Other
+
+- **server:** v0.10.0 (d09cd1b)
+- **engine:** v1.5.0 (00e48c7)
+- **desktop:** v2.1.0 (231facd)
+- **server:** v0.9.0 (375de96)
+- **engine:** v1.4.0 (de30b1b)
+- **engine:** v1.3.1 (cc91c7e)
+- **desktop:** v2.0.0 (ce2569e)
+
+
 ## 1.4.0 (2026-03-01)
 
 ### Features
