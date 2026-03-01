@@ -1,5 +1,7 @@
 # GlobalTelco Full Audit Fix + Feature Expansion Plan
 
+> **Note:** File paths in this plan reflect the structure at time of writing. Since then, large files have been modularized into subdirectories (e.g., `types.rs` → `types/`, `world.rs` → `world/`, `routes.rs` → `routes/`, `ws.rs` → `ws/`, `db.rs` → `db/`). See `Docs/technical_architecture.md` Section 2c for the current crate structure.
+
 ## Context
 
 The AUDIT.md identified 12 Critical, 26 Major, 25 Minor, and 15 Polish issues across UI/UX, gameplay/simulation, and server/multiplayer. This plan addresses ALL audit issues plus implements missing designed features based on extensive design doc review and user decisions.

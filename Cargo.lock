@@ -957,7 +957,7 @@ dependencies = [
 
 [[package]]
 name = "gt-ai"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "gt-common",
  "gt-economy",
@@ -968,7 +968,7 @@ dependencies = [
 
 [[package]]
 name = "gt-bridge"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "gt-common",
  "gt-simulation",
@@ -978,7 +978,7 @@ dependencies = [
 
 [[package]]
 name = "gt-common"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "chrono",
  "rand 0.8.5",
@@ -991,7 +991,7 @@ dependencies = [
 
 [[package]]
 name = "gt-economy"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "gt-common",
  "serde",
@@ -999,7 +999,7 @@ dependencies = [
 
 [[package]]
 name = "gt-infrastructure"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "gt-common",
  "serde",
@@ -1007,7 +1007,7 @@ dependencies = [
 
 [[package]]
 name = "gt-population"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "gt-common",
  "serde",
@@ -1015,7 +1015,7 @@ dependencies = [
 
 [[package]]
 name = "gt-server"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "argon2",
  "axum",
@@ -1047,7 +1047,7 @@ dependencies = [
 
 [[package]]
 name = "gt-simulation"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "bincode",
  "crc32fast",
@@ -1067,7 +1067,7 @@ dependencies = [
 
 [[package]]
 name = "gt-tauri"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "gt-bridge",
  "gt-common",
@@ -1080,7 +1080,7 @@ dependencies = [
 
 [[package]]
 name = "gt-wasm"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "console_error_panic_hook",
  "getrandom 0.2.17",
@@ -1096,7 +1096,7 @@ dependencies = [
 
 [[package]]
 name = "gt-world"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "delaunator",
  "gt-common",

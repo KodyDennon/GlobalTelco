@@ -1,5 +1,7 @@
 # GlobalTelco: Comprehensive Fix & Implementation Plan
 
+> **Note:** File paths in this plan reflect the structure at time of writing. Since then, large files have been modularized into subdirectories (e.g., `types.rs` → `types/`, `world.rs` → `world/`, `routes.rs` → `routes/`, `ws.rs` → `ws/`, `db.rs` → `db/`). See `Docs/technical_architecture.md` Section 2c for the current crate structure.
+
 > **Generated:** 2026-02-25
 > **Source:** FULL_GAME_AUDIT.md + all design docs + codebase verification
 > **Scope:** Fix all audit issues, implement all missing systems, complete overhaul plan, update all docs

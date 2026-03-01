@@ -25,16 +25,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 globaltelco/
 ├── crates/                    # Rust workspace
 │   ├── gt-common/             # Shared types, traits, serialization, protocol
+│   │   └── src/types/         # Modular type definitions (terrain, node, edge, spectrum, satellite, config)
 │   ├── gt-simulation/         # Core ECS engine, tick orchestrator
+│   │   └── src/world/         # GameWorld split into 12 modules (generation, queries, commands, serialization)
 │   ├── gt-world/              # World generation, geography, terrain
 │   ├── gt-economy/            # Corporations, finance, markets, contracts, research
 │   ├── gt-infrastructure/     # Network graph, nodes, edges, routing
 │   ├── gt-population/         # Demographics, migration, employment, demand
 │   ├── gt-ai/                 # AI corporation controllers, archetypes, strategy
-│   ├── gt-bridge/             # Shared BridgeQuery trait + typed array structs (WASM & Tauri)
+│   ├── gt-bridge/             # Shared BridgeQuery trait + typed arrays + shared query functions
 │   ├── gt-wasm/               # WASM bindings (wasm-bindgen bridge to JS + typed arrays)
 │   ├── gt-tauri/              # Tauri native bridge (BridgeQuery impl for desktop)
 │   └── gt-server/             # Multiplayer server binary (WebSocket, auth, persistence)
+│       └── src/               # Modular: routes/, ws/, db/ directories
 ├── web/                       # Svelte frontend
 │   ├── src/
 │   │   ├── lib/
@@ -109,7 +112,7 @@ wasm-pack build crates/gt-wasm --target web --out-dir ../../web/src/lib/wasm/pkg
 gt-server → gt-simulation, gt-common
 gt-wasm → gt-simulation, gt-bridge, gt-common
 gt-tauri → gt-simulation, gt-bridge, gt-common
-gt-bridge → gt-common
+gt-bridge → gt-simulation, gt-common
 gt-simulation → gt-world, gt-economy, gt-infrastructure, gt-population, gt-ai, gt-common
 gt-world → gt-common
 gt-economy → gt-common
@@ -125,10 +128,10 @@ All game state is managed through an Entity Component System. Entities are IDs, 
 
 **Core entity types:** InfrastructureNode, InfrastructureEdge, Corporation, Subsidiary, Employee/Team, Region, City, Contract, LandParcel, TechResearch, DebtInstrument, Patent, LicenseAgreement, Alliance, Lawsuit, GovernmentGrant
 
-**Systems run in deterministic order each tick (28 systems):**
-1. construction → 2. maintenance → 3. population → 4. coverage → 5. demand → 6. routing → 7. utilization → 8. spectrum → 9. ftth → 10. revenue → 11. cost → 12. finance → 13. contract → 14. ai → 15. weather → 16. disaster → 17. regulation → 18. research → 19. patent → 20. market → 21. auction → 22. covert_ops → 23. lobbying → 24. alliance → 25. legal → 26. grants → 27. achievement → 28. stock_market
+**Systems run in deterministic order each tick (36 systems):**
+1. construction → 2. orbital → 3. satellite_network → 4. maintenance → 5. population → 6. coverage → 7. demand → 8. routing → 9. utilization → 10. spectrum → 11. ftth → 12. manufacturing → 13. launch → 14. terminal_distribution → 15. satellite_revenue → 16. revenue → 17. cost → 18. finance → 19. contract → 20. ai → 21. weather → 22. disaster → 23. debris → 24. servicing → 25. regulation → 26. research → 27. patent → 28. market → 29. auction → 30. covert_ops → 31. lobbying → 32. alliance → 33. legal → 34. grants → 35. achievement → 36. stock_market
 
-*After all 28 systems, `resolve_spectrum_auctions()` runs to finalize spectrum auction results and expire licenses.*
+*After all 36 systems, `resolve_spectrum_auctions()` runs to finalize spectrum auction results and expire licenses.*
 
 ## Key Architecture Concepts
 
@@ -278,10 +281,10 @@ Players ──► Cloudflare Workers (auth, matchmaking, APIs, CDN)
 ## Current Implementation Status
 
 **Codebase counts (verified from source):**
-- **28 ECS systems** (construction, maintenance, population, coverage, demand, routing, utilization, spectrum, ftth, revenue, cost, finance, contract, ai, weather, disaster, regulation, research, patent, market, auction, covert_ops, lobbying, alliance, legal, grants, achievement, stock_market)
+- **36 ECS systems** (construction, orbital, satellite_network, maintenance, population, coverage, demand, routing, utilization, spectrum, ftth, manufacturing, launch, terminal_distribution, satellite_revenue, revenue, cost, finance, contract, ai, weather, disaster, debris, servicing, regulation, research, patent, market, auction, covert_ops, lobbying, alliance, legal, grants, achievement, stock_market)
 - **38 component modules** (achievements, acquisition, ai_state, alliance, auction, building, capacity, city, construction, contract, corporation, covert_ops, debt_instrument, demand, financial, grant, health, infra_edge, infra_node, land_parcel, lawsuit, lobbying, maintenance_priority, ownership, patent, policy, population, position, pricing, region, road_graph, spectrum, stock_market, tech_research, victory, weather, workforce)
-- **41 NodeType variants** across 6 eras (Telegraph through Near Future)
-- **25 EdgeType variants** across 6 eras
+- **51 NodeType variants** across 6 eras (Telegraph through Near Future)
+- **28 EdgeType variants** across 6 eras
 - **61 commands** (infrastructure, workforce, finance, contracts, research, policy, subsidiary, insurance, bankruptcy/auctions, M&A, espionage/sabotage, lobbying, alliance, legal, patents/licensing, grants, co-ownership, spectrum, pricing, maintenance, game control)
 - **66+ event types** with per-corporation relevance filtering for multiplayer
 - **23 frontend panels** (Dashboard, Infra, Workforce, Contract, Research, Region, Auction, Merger, Achievement, Advisor, Intel, Spectrum, Insurance, Repair, Grant, Pricing, Maintenance, StockMarket, Alliance, Legal, Patent, CoOwnership, NetworkDashboard)

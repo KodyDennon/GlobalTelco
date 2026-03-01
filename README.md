@@ -13,7 +13,7 @@ Mix of city builder, tycoon/business sim, and grand strategy. Web-based with off
 ## Features
 
 **Infrastructure Empire**
-- 33 node types and 15 edge types across 6 technology eras (Telegraph 1850s → Near Future 2030s)
+- 51 node types and 28 edge types across 6 technology eras (Telegraph 1850s → Near Future 2030s)
 - Full FTTH (Fiber-to-the-Home) game loop: Central Office → Feeder Fiber → Distribution Hub → NAP → Buildings
 - Submarine cable system with landing stations, bathymetry routing, and cable ships
 - Spectrum management with auctions, carrier aggregation, and interference simulation
@@ -128,17 +128,17 @@ cargo run --bin gt-server      # Run locally
 ```
 globaltelco/
 ├── crates/                    # Rust workspace (11 crates)
-│   ├── gt-common/             # Shared types, traits, protocol
-│   ├── gt-simulation/         # Core ECS engine (20+ systems)
+│   ├── gt-common/             # Shared types, traits, protocol (types/ modular directory)
+│   ├── gt-simulation/         # Core ECS engine, 36 systems (world/ modular directory)
 │   ├── gt-world/              # World generation, terrain, rivers
 │   ├── gt-economy/            # Finance, markets, contracts
 │   ├── gt-infrastructure/     # Network graph, routing
 │   ├── gt-population/         # Demographics, demand
 │   ├── gt-ai/                 # AI corporation controllers
-│   ├── gt-bridge/             # Shared bridge trait (WASM & Tauri)
-│   ├── gt-wasm/               # WASM bindings (wasm-bindgen)
-│   ├── gt-tauri/              # Tauri native bridge
-│   └── gt-server/             # Multiplayer server (Axum + WebSocket)
+│   ├── gt-bridge/             # Shared bridge trait + query functions (WASM & Tauri)
+│   ├── gt-wasm/               # WASM bindings (queries, typed arrays, bridge impl)
+│   ├── gt-tauri/              # Tauri native bridge (queries, bridge impl)
+│   └── gt-server/             # Multiplayer server (routes/, ws/, db/ directories)
 ├── web/                       # Svelte frontend
 │   └── src/lib/
 │       ├── wasm/              # TypeScript WASM bridge
@@ -159,8 +159,8 @@ globaltelco/
 
 **Multiplayer:** Server-authoritative. Clients send commands via WebSocket, the server validates and broadcasts state deltas to all players.
 
-**ECS tick order (20 deterministic systems):**
-construction → maintenance → population → coverage → demand → routing → utilization → revenue → cost → finance → contract → ai → disaster → regulation → research → market → auction → covert_ops → lobbying → achievement
+**ECS tick order (36 deterministic systems):**
+construction → orbital → satellite_network → maintenance → population → coverage → demand → routing → utilization → spectrum → ftth → manufacturing → launch → terminal_distribution → satellite_revenue → revenue → cost → finance → contract → ai → weather → disaster → debris → servicing → regulation → research → patent → market → auction → covert_ops → lobbying → alliance → legal → grants → achievement → stock_market
 
 See [Docs/](Docs/) for full design specifications.
 

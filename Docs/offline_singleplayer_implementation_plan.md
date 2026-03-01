@@ -28,7 +28,7 @@ This plan covers: world generation, AI corporations, save/load, speed controls, 
 │  │  │  - World generation                    │  │  │
 │  │  │  - AI corporations (gt-ai)             │  │  │
 │  │  │  - Economy, infra, population          │  │  │
-│  │  │  - All 20 systems per tick             │  │  │
+│  │  │  - All 36 systems per tick             │  │  │
 │  │  └────────────────────────────────────────┘  │  │
 │  └──────────────────────────────────────────────┘  │
 │                                                    │
@@ -44,7 +44,7 @@ This plan covers: world generation, AI corporations, save/load, speed controls, 
 
 ### 1a. Core Types (gt-common)
 
-**File:** `crates/gt-common/src/types.rs`
+**Directory:** `crates/gt-common/src/types/` (modular: mod.rs, terrain.rs, network.rs, node.rs, edge.rs, spectrum.rs, satellite.rs, config.rs)
 
 - `EntityId` — unique entity identifier (u64)
 - `Tick` — simulation tick counter (u64)
@@ -58,7 +58,7 @@ This plan covers: world generation, AI corporations, save/load, speed controls, 
 
 ### 1b. ECS World Container (gt-simulation)
 
-**File:** `crates/gt-simulation/src/world.rs`
+**Directory:** `crates/gt-simulation/src/world/` (modular: mod.rs, generation.rs, queries.rs, serialization.rs, commands_*.rs, utils.rs, tests.rs)
 
 - `GameWorld` struct — owns all component storage (SoA arrays), entity allocator, event queue, tick counter
 - `GameWorld::new(config: WorldConfig) -> Self` — creates empty world from config
@@ -98,29 +98,43 @@ One file per component group:
 
 Each system is a function: `fn system_name(world: &mut GameWorld)`
 
-20 core systems in deterministic tick order:
+36 systems in deterministic tick order:
 1. `construction_system` — advance construction timers, complete builds
-2. `maintenance_system` — check workforce vs maintenance needs, degrade unmaintained infra
-3. `population_system` — update populations, migration, employment based on infrastructure
-4. `coverage_system` — calculate network coverage per region, signal strength, dead zones
-5. `demand_system` — calculate regional demand based on population and economy
-6. `routing_system` — recalculate network routes if topology changed (dirty-flag optimization)
-7. `utilization_system` — calculate infrastructure utilization from routed demand
-8. `revenue_system` — calculate per-corp revenue from served demand
-9. `cost_system` — calculate maintenance, salary, interest costs
-10. `finance_system` — update corporate finances (income, balance sheet, credit rating)
-11. `contract_system` — process contract terms, renewals, breaches
-12. `ai_system` — AI corporations make decisions (build, hire, contract, research)
-13. `disaster_system` — roll for disasters, apply damage
-14. `regulation_system` — process regulatory changes, political events
-15. `research_system` — advance tech research progress
-16. `market_system` — dynamic AI spawning, mergers, bankruptcies
-17. `auction_system` — process spectrum and infrastructure auction bids, resolve winners
-18. `covert_ops_system` — execute espionage actions, intel gathering, sabotage resolution
-19. `lobbying_system` — process lobbying investments, political influence, regulation nudges
-20. `achievement_system` — check achievement conditions, unlock milestones, track stats
-
-Planned additional systems: alliance, legal, grants, fog_of_war, pricing, maintenance_scheduling
+2. `orbital_system` — update satellite positions via Keplerian mechanics
+3. `satellite_network_system` — rebuild dynamic ISL + ground station links
+4. `maintenance_system` — check workforce vs maintenance needs, degrade unmaintained infra
+5. `population_system` — update populations, migration, employment based on infrastructure
+6. `coverage_system` — calculate network coverage per region, signal strength, dead zones
+7. `demand_system` — calculate regional demand based on population and economy
+8. `routing_system` — recalculate network routes if topology changed (dirty-flag optimization)
+9. `utilization_system` — calculate infrastructure utilization from routed demand
+10. `spectrum_system` — manage spectrum allocation, frequency assignments, interference
+11. `ftth_system` — fiber-to-the-home chain validation, active NAP marking
+12. `manufacturing_system` — satellite + terminal factory production
+13. `launch_system` — rocket launches, reliability rolls, orbit insertion
+14. `terminal_distribution_system` — terminal warehouse → city adoption
+15. `satellite_revenue_system` — retail subscriber + wholesale bandwidth revenue
+16. `revenue_system` — calculate per-corp revenue from served demand
+17. `cost_system` — calculate maintenance, salary, interest costs
+18. `finance_system` — update corporate finances (income, balance sheet, credit rating)
+19. `contract_system` — process contract terms, renewals, breaches
+20. `ai_system` — AI corporations make decisions (build, hire, contract, research)
+21. `weather_system` — regional weather patterns, storms, disaster amplification
+22. `disaster_system` — roll for disasters, apply damage
+23. `debris_system` — orbital debris tracking, Kessler cascade threshold
+24. `servicing_system` — satellite refuel + repair missions
+25. `regulation_system` — process regulatory changes, political events
+26. `research_system` — advance tech research progress
+27. `patent_system` — license revenue collection, patent expiration, enforcement
+28. `market_system` — dynamic AI spawning, mergers, bankruptcies
+29. `auction_system` — process spectrum and infrastructure auction bids, resolve winners
+30. `covert_ops_system` — execute espionage actions, intel gathering, sabotage resolution
+31. `lobbying_system` — process lobbying investments, political influence, regulation nudges
+32. `alliance_system` — trust scoring, revenue sharing, dissolution checks
+33. `legal_system` — lawsuit resolution, damage calculation, settlement processing
+34. `grants_system` — government grant generation, progress tracking, completion payouts
+35. `achievement_system` — check achievement conditions, unlock milestones, track stats
+36. `stock_market_system` — stock price simulation, IPO, share trading, market events
 
 ---
 
@@ -241,7 +255,7 @@ When a player disconnects in multiplayer:
 
 ### 4b. Save/Load API (gt-wasm)
 
-**File:** `crates/gt-wasm/src/commands.rs`
+**File:** `crates/gt-wasm/src/queries.rs` (save/load commands dispatched via `lib.rs`)
 
 WASM bridge functions:
 - `save_game(slot_name: &str) -> Vec<u8>` — serialize world, return compressed bytes

@@ -101,123 +101,135 @@ All game state is managed through an ECS architecture. Entities are IDs, compone
 
 ### 2b. Systems (Processing Order Per Tick)
 
-Each economic tick, 27 systems run in deterministic order:
+Each economic tick, 36 systems run in deterministic order:
 
 1. `construction_system` — advance construction timers, complete builds
-2. `maintenance_system` — check workforce vs maintenance needs, degrade unmaintained infra
-3. `population_system` — update populations, migration, employment based on infrastructure
-4. `coverage_system` — calculate network coverage per region, signal strength, dead zones
-5. `demand_system` — calculate regional demand based on population and economy
-6. `routing_system` — recalculate network routes if topology changed
-7. `utilization_system` — calculate infrastructure utilization from routed demand
-8. `spectrum_system` — manage spectrum allocation, frequency assignments, interference
-9. `ftth_system` — fiber-to-the-home rollout, premises passed, take-up rates
-10. `revenue_system` — calculate per-corp revenue from served demand
-11. `cost_system` — calculate maintenance, salary, interest costs
-12. `finance_system` — update corporate finances (income, balance sheet, credit rating)
-13. `contract_system` — process contract terms, renewals, breaches
-14. `ai_system` — AI corporations make decisions (build, hire, contract, research)
-15. `disaster_system` — roll for disasters, apply damage
-16. `regulation_system` — process regulatory changes, political events
-17. `research_system` — advance tech research progress
-18. `patent_system` — license revenue collection, patent expiration, enforcement
-19. `market_system` — dynamic AI spawning, mergers, bankruptcies
-20. `auction_system` — process spectrum and infrastructure auction bids, resolve winners
-21. `covert_ops_system` — execute espionage actions, intel gathering, sabotage resolution
-22. `lobbying_system` — process lobbying investments, political influence, regulation nudges
-23. `alliance_system` — trust scoring, revenue sharing, dissolution checks
-24. `legal_system` — lawsuit resolution, damage calculation, settlement processing
-25. `grants_system` — government grant generation, progress tracking, completion payouts
-26. `achievement_system` — check achievement conditions, unlock milestones, track stats
-27. `stock_market_system` — stock price simulation, IPO, share trading, market events
+2. `orbital_system` — update satellite positions via Keplerian mechanics
+3. `satellite_network_system` — rebuild dynamic ISL + ground station links
+4. `maintenance_system` — check workforce vs maintenance needs, degrade unmaintained infra
+5. `population_system` — update populations, migration, employment based on infrastructure
+6. `coverage_system` — calculate network coverage per region, signal strength, dead zones
+7. `demand_system` — calculate regional demand based on population and economy
+8. `routing_system` — recalculate network routes if topology changed
+9. `utilization_system` — calculate infrastructure utilization from routed demand
+10. `spectrum_system` — manage spectrum allocation, frequency assignments, interference
+11. `ftth_system` — fiber-to-the-home rollout, premises passed, take-up rates
+12. `manufacturing_system` — satellite + terminal factory production
+13. `launch_system` — rocket launches, reliability rolls, orbit insertion
+14. `terminal_distribution_system` — terminal warehouse → city adoption
+15. `satellite_revenue_system` — retail subscriber + wholesale bandwidth revenue
+16. `revenue_system` — calculate per-corp revenue from served demand
+17. `cost_system` — calculate maintenance, salary, interest costs
+18. `finance_system` — update corporate finances (income, balance sheet, credit rating)
+19. `contract_system` — process contract terms, renewals, breaches
+20. `ai_system` — AI corporations make decisions (build, hire, contract, research)
+21. `weather_system` — regional weather patterns, storms, disaster amplification
+22. `disaster_system` — roll for disasters, apply damage
+23. `debris_system` — orbital debris tracking, Kessler cascade threshold
+24. `servicing_system` — satellite refuel + repair missions
+25. `regulation_system` — process regulatory changes, political events
+26. `research_system` — advance tech research progress
+27. `patent_system` — license revenue collection, patent expiration, enforcement
+28. `market_system` — dynamic AI spawning, mergers, bankruptcies
+29. `auction_system` — process spectrum and infrastructure auction bids, resolve winners
+30. `covert_ops_system` — execute espionage actions, intel gathering, sabotage resolution
+31. `lobbying_system` — process lobbying investments, political influence, regulation nudges
+32. `alliance_system` — trust scoring, revenue sharing, dissolution checks
+33. `legal_system` — lawsuit resolution, damage calculation, settlement processing
+34. `grants_system` — government grant generation, progress tracking, completion payouts
+35. `achievement_system` — check achievement conditions, unlock milestones, track stats
+36. `stock_market_system` — stock price simulation, IPO, share trading, market events
 
 ### 2c. Crate Structure
 
 ```
 crates/
 ├── gt-common/          # Shared types, traits, serialization
-│   ├── src/
-│   │   ├── types.rs        # Core type definitions
-│   │   ├── events.rs       # Event types
-│   │   ├── config.rs       # World/game configuration
-│   │   └── serialization.rs # Save/load serialization
+│   └── src/
+│       ├── types/          # Modular type definitions
+│       │   ├── mod.rs          # Type aliases (EntityId, Tick, Money), re-exports
+│       │   ├── terrain.rs      # TerrainType enum + cost/reliability methods
+│       │   ├── network.rs      # NetworkTier, TrafficDemand, TransitPermission
+│       │   ├── node.rs         # NodeType (51 variants) + full impl
+│       │   ├── edge.rs         # EdgeType (28 variants) + full impl
+│       │   ├── spectrum.rs     # FrequencyBand enum + coverage/cost methods
+│       │   ├── satellite.rs    # OrbitType, RocketType, FactoryTier, SatelliteStatus
+│       │   └── config.rs       # WorldConfig, Era, GameSpeed, DifficultyPreset, MapSize
+│       ├── events.rs       # Event types
+│       └── protocol.rs     # Multiplayer protocol types
 │
 ├── gt-simulation/      # Core ECS engine
-│   ├── src/
-│   │   ├── world.rs        # ECS world container
-│   │   ├── systems/        # All 27 ECS systems
-│   │   │   ├── spectrum.rs      # Spectrum allocation, frequency assignments, interference
-│   │   │   ├── ftth.rs          # Fiber-to-the-home rollout, premises passed, take-up rates
-│   │   │   ├── patent.rs        # License revenue collection, patent expiration, enforcement
-│   │   │   ├── alliance.rs      # Trust scoring, revenue sharing, dissolution
-│   │   │   ├── legal.rs         # Lawsuit resolution, damage calculation
-│   │   │   ├── grants.rs        # Government grant generation and completion
-│   │   │   ├── stock_market.rs  # Stock price simulation, IPO, share trading
-│   │   │   └── ...              # + 20 more systems (construction, maintenance, etc.)
-│   │   ├── components/     # All ECS components
-│   │   ├── events.rs       # Event queue
-│   │   └── tick.rs         # Tick processing orchestrator
+│   └── src/
+│       ├── world/          # GameWorld (split into 12 modules)
+│       │   ├── mod.rs              # Struct definition, new(), tick(), command dispatch
+│       │   ├── generation.rs       # generate_world(), create_corporations(), seed_tech/buildings
+│       │   ├── queries.rs          # All getter functions (config, tick, speed, entities, etc.)
+│       │   ├── serialization.rs    # save/load game (JSON + binary), apply_delta
+│       │   ├── commands_infra.rs   # Build/upgrade/decommission/repair node/edge commands
+│       │   ├── commands_finance.rs # Loans, bankruptcy, bailout, auctions, M&A commands
+│       │   ├── commands_ops.rs     # Espionage, sabotage, security, lobbying, contracts, research
+│       │   ├── commands_social.rs  # Alliance, lawsuit, co-ownership, buyout commands
+│       │   ├── commands_ip.rs      # Patent, license, independent research, grant commands
+│       │   ├── commands_spectrum.rs # Spectrum, cable ship, constellation, satellite commands
+│       │   ├── utils.rs           # haversine(), helper functions
+│       │   └── tests.rs           # Unit tests
+│       ├── systems/        # All 36 ECS systems
+│       ├── components/     # All ECS components
+│       └── events.rs       # Event queue
 │
 ├── gt-world/           # World generation and geography
-│   ├── src/
-│   │   ├── earth.rs        # Real Earth data loading (OSM, World Bank)
-│   │   ├── procgen.rs      # Procedural world generation
-│   │   ├── regions.rs      # Region/country management
-│   │   ├── cities.rs       # City placement and properties
-│   │   └── terrain.rs      # Terrain classification
-│
 ├── gt-economy/         # Economic simulation
-│   ├── src/
-│   │   ├── corporation.rs  # Corporation management
-│   │   ├── subsidiary.rs   # Subsidiary system
-│   │   ├── finance.rs      # Balance sheet, income, debt
-│   │   ├── market.rs       # Market dynamics, pricing
-│   │   ├── contracts.rs    # Contract system
-│   │   └── research.rs     # Tech tree and R&D
-│
 ├── gt-infrastructure/  # Network graph and infrastructure
-│   ├── src/
-│   │   ├── graph.rs        # Network topology
-│   │   ├── routing.rs      # Dijkstra routing
-│   │   ├── nodes.rs        # Infrastructure node types
-│   │   ├── edges.rs        # Infrastructure edge types
-│   │   └── construction.rs # Construction and maintenance
-│
 ├── gt-population/      # Population modeling
-│   ├── src/
-│   │   ├── demographics.rs # Birth/death/migration
-│   │   ├── employment.rs   # Job market simulation
-│   │   ├── migration.rs    # Population movement
-│   │   └── demand.rs       # Demand calculation from population
-│
 ├── gt-ai/              # AI corporation logic
-│   ├── src/
-│   │   ├── controller.rs   # AI decision-making framework
-│   │   ├── archetypes.rs   # 4 personality archetypes
-│   │   ├── strategy.rs     # Strategy selection (expand/consolidate/compete/survive)
-│   │   └── actions.rs      # AI action execution
 │
-├── gt-bridge/          # Shared bridge query trait
-│   ├── src/
-│   │   └── lib.rs          # BridgeQuery trait, InfraArrays, EdgeArrays structs
+├── gt-bridge/          # Shared bridge trait + shared query functions
+│   └── src/
+│       ├── lib.rs          # BridgeQuery trait, InfraArrays, EdgeArrays, SatelliteArrays
+│       └── queries.rs      # 40+ shared query functions (used by both WASM and Tauri bridges)
 │
 ├── gt-wasm/            # WASM bindings for browser
-│   ├── src/
-│   │   └── lib.rs          # wasm-bindgen entry, JSON queries, typed array exports, BridgeQuery impl
+│   └── src/
+│       ├── lib.rs          # WasmBridge struct, new_game(), tick(), command dispatch
+│       ├── queries.rs      # wasm_bindgen query methods (delegate to gt-bridge::queries)
+│       ├── typed_arrays.rs # Hot-path typed array exports (infra, edges, satellites)
+│       └── bridge_impl.rs  # BridgeQuery trait impl for WasmBridge
 │
 ├── gt-tauri/           # Tauri native bridge for desktop
-│   ├── src/
-│   │   └── lib.rs          # TauriBridge struct, BridgeQuery impl, cmd_new_game factory
+│   └── src/
+│       ├── lib.rs          # TauriBridge struct, new(), from_save()
+│       ├── queries.rs      # Query methods (delegate to gt-bridge::queries via Mutex)
+│       └── bridge_impl.rs  # BridgeQuery trait impl for TauriBridge
 │
 └── gt-server/          # Multiplayer server
-    ├── src/
-    │   ├── main.rs         # Server entry point
-    │   ├── ws.rs           # WebSocket handling, rate limiting, spatial validation, speed votes
-    │   ├── routes.rs       # HTTP API (worlds, auth, admin ban/unban)
-    │   ├── state.rs        # WorldInstance, AppState, player/vote/ban tracking
-    │   ├── tick.rs         # Tick processing, snapshot intervals
-    │   ├── auth.rs         # Authentication
-    │   └── persistence.rs  # PostgreSQL save/load
+    └── src/
+        ├── main.rs         # Server entry point
+        ├── routes/         # HTTP API handlers (7 modules)
+        │   ├── mod.rs          # Router setup, AuthClaims extractor
+        │   ├── auth.rs         # Register, login, OAuth, password reset
+        │   ├── profile.rs      # Player profile CRUD
+        │   ├── worlds.rs       # World list/create/join, WebSocket upgrade
+        │   ├── saves.rs        # Cloud save upload/download/delete
+        │   ├── admin.rs        # Admin endpoints (bans, monitoring, debug)
+        │   └── social.rs       # Friends, invites, leaderboard, history
+        ├── ws/             # WebSocket handling (6 modules)
+        │   ├── mod.rs          # handle_socket() orchestrator, constants
+        │   ├── validation.rs   # Command validation, categorization
+        │   ├── rate_limit.rs   # Per-type rate limiter
+        │   ├── chat.rs         # Chat sanitization and relay
+        │   ├── filtering.rs    # Per-player event visibility filtering
+        │   └── handler.rs      # Message processing loop
+        ├── db/             # Database layer (8 modules)
+        │   ├── mod.rs          # Database struct, connect(), migrations
+        │   ├── accounts.rs     # Account CRUD
+        │   ├── auth.rs         # Password reset tokens
+        │   ├── worlds.rs       # World templates, snapshots, history
+        │   ├── social.rs       # Friends, requests
+        │   ├── moderation.rs   # Bans, audit log
+        │   ├── saves.rs        # Cloud saves
+        │   └── leaderboard.rs  # Rankings, sessions
+        ├── state.rs        # WorldInstance, AppState
+        └── tick.rs         # Tick processing, snapshots
 
 desktop/src-tauri/      # Tauri desktop app (separate Cargo project)
     ├── src/

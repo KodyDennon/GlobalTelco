@@ -1,5 +1,7 @@
 # Satellite System Implementation Plan
 
+> **Note:** File paths in this plan reflect the structure at time of writing. Since then, large files have been modularized into subdirectories (e.g., `types.rs` → `types/`, `world.rs` → `world/`). See `Docs/technical_architecture.md` Section 2c for the current crate structure.
+
 ## Context
 
 GlobalTelco currently has satellite "ground stations" (SatelliteGround, SatelliteGroundStation, LEO_SatelliteGateway) that magically provide coverage — no actual satellites exist in orbit. This plan adds a full satellite vertical: orbital mechanics with moving satellites, constellation management, manufacturing supply chain (satellite + terminal factories), launch logistics (contract + own rockets), customer terminal distribution, orbital debris/Kessler syndrome, and AI satellite operators. Inspired by Starlink/HughesNet operations and SpaceX tycoon gameplay.
