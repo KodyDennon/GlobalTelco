@@ -11,6 +11,9 @@
 	import Tooltip from "./Tooltip.svelte";
 	import Tutorial from "./Tutorial.svelte";
 	import Chat from "./Chat.svelte";
+	import PlayerList from "./PlayerList.svelte";
+	import FriendsPanel from "$lib/menu/lobby/FriendsPanel.svelte";
+	import InviteNotification from "$lib/menu/lobby/InviteNotification.svelte";
 	import CableDrawingMode from "./CableDrawingMode.svelte";
 	import DiplomaticContextMenu from "./DiplomaticContextMenu.svelte";
 	import MiniMap from "./MiniMap.svelte";
@@ -53,6 +56,7 @@
 
 	let gameViewEl: HTMLElement = $state(null!);
 	let bookmarksPanelVisible = $state(false);
+	let friendsPanelVisible = $state(false);
 	let keyboardManager: KeyboardManager | null = null;
 	let effectManager: EventEffectManager | null = null;
 	let screenshotManager: ScreenshotManager | null = null;
@@ -248,10 +252,16 @@
 				}
 			}
 		};
+		const handleToggleFriends = () => {
+			friendsPanelVisible = !friendsPanelVisible;
+		};
+
 		window.addEventListener('game-event', handleGameEvent);
+		window.addEventListener('toggle-friends-panel', handleToggleFriends);
 
 		return () => {
 			window.removeEventListener('game-event', handleGameEvent);
+			window.removeEventListener('toggle-friends-panel', handleToggleFriends);
 		};
 	});
 
@@ -436,6 +446,13 @@
 		{/if}
 		{#if $isMultiplayer}
 			<Chat />
+			<PlayerList />
+			<InviteNotification onJoin={(worldId) => {}} />
+			{#if friendsPanelVisible}
+				<div class="friends-floating-panel">
+					<FriendsPanel visible={true} />
+				</div>
+			{/if}
 		{/if}
 		{#if $showPerfMonitor}
 			<PerfMonitor />
@@ -771,5 +788,15 @@
 	@keyframes bm-fade-in {
 		from { opacity: 0; transform: translateY(4px); }
 		to { opacity: 1; transform: translateY(0); }
+	}
+
+	/* ── Friends floating panel (in-game) ────────────────────────── */
+
+	.friends-floating-panel {
+		position: fixed;
+		top: 90px;
+		right: 16px;
+		z-index: 95;
+		animation: bm-fade-in 0.12s ease;
 	}
 </style>

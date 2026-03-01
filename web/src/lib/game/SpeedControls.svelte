@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { setSpeed, togglePause } from './GameLoop';
 	import { worldInfo } from '$lib/stores/gameState';
+	import { isMultiplayer, speedVotes } from '$lib/stores/multiplayerState';
 	import { tr } from '$lib/i18n/index';
 	import { tooltip } from '$lib/ui/tooltip';
 
@@ -18,6 +19,15 @@
 	const ludicrousSpeed = { labelKey: 'speed.label_32x', value: 32, key: 'Ludicrous', ariaKey: 'speed.ludicrous', tip: 'Ludicrous speed (32x) — sandbox only.\n32 ticks per second!' };
 
 	let speeds = $derived(isSandbox ? [...baseSpeedList, ludicrousSpeed] : baseSpeedList);
+
+	// Count votes per speed key for multiplayer badge display
+	let votesBySpeed = $derived.by(() => {
+		const counts: Record<string, number> = {};
+		for (const vote of $speedVotes) {
+			counts[vote.speed] = (counts[vote.speed] ?? 0) + 1;
+		}
+		return counts;
+	});
 </script>
 
 <div class="speed-controls" role="radiogroup" aria-label="Game speed">
@@ -28,11 +38,17 @@
 			role="radio"
 			aria-checked={currentSpeed === s.key}
 			aria-label={$tr(s.ariaKey)}
-			use:tooltip={s.tip}
+			use:tooltip={$isMultiplayer ? `${s.tip}\n(Vote for this speed)` : s.tip}
 		>
 			{$tr(s.labelKey)}
+			{#if $isMultiplayer && votesBySpeed[s.key]}
+				<span class="vote-badge">{votesBySpeed[s.key]}</span>
+			{/if}
 		</button>
 	{/each}
+	{#if $isMultiplayer}
+		<span class="vote-hint">(vote)</span>
+	{/if}
 </div>
 
 <style>
@@ -42,6 +58,7 @@
 		background: rgba(31, 41, 55, 0.8);
 		border-radius: 4px;
 		padding: 2px;
+		align-items: center;
 	}
 
 	button {
@@ -54,6 +71,7 @@
 		cursor: pointer;
 		border-radius: 3px;
 		transition: all 0.15s;
+		position: relative;
 	}
 
 	button:hover {
@@ -64,5 +82,28 @@
 	button.active {
 		background: rgba(16, 185, 129, 0.2);
 		color: #10b981;
+	}
+
+	.vote-badge {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 14px;
+		height: 14px;
+		font-size: 9px;
+		font-weight: 700;
+		color: #fff;
+		background: #3b82f6;
+		border-radius: 7px;
+		padding: 0 3px;
+		margin-left: 3px;
+		vertical-align: top;
+	}
+
+	.vote-hint {
+		font-size: 9px;
+		color: #6b7280;
+		margin-left: 4px;
+		white-space: nowrap;
 	}
 </style>

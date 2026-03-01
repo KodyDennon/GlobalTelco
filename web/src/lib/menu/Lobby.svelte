@@ -15,6 +15,8 @@
 	import WorldCreator from './lobby/WorldCreator.svelte';
 	import InviteJoin from './lobby/InviteJoin.svelte';
 	import RecentWorlds from './lobby/RecentWorlds.svelte';
+	import FriendsPanel from './lobby/FriendsPanel.svelte';
+	import InviteNotification from './lobby/InviteNotification.svelte';
 
 	let {
 		onBack,
@@ -36,7 +38,39 @@
 	let joiningWorldId = $state<string | null>(null);
 	let serverOnline = $state<boolean | null>(null);
 	let githubLoading = $state(false);
-	let activeTab = $state<'browse' | 'create' | 'recent'>('browse');
+	let activeTab = $state<'browse' | 'create' | 'recent' | 'invite' | 'friends'>('browse');
+	let confirmPassword = $state('');
+
+	// Validation helpers for register mode
+	let usernameError = $derived.by(() => {
+		if (authMode !== 'register' || !loginUsername) return '';
+		if (loginUsername.length < 3 || loginUsername.length > 32) return 'Must be 3-32 characters';
+		if (!/^[a-zA-Z0-9_]+$/.test(loginUsername)) return 'Only letters, numbers, and underscores';
+		return '';
+	});
+	let passwordError = $derived.by(() => {
+		if (authMode !== 'register' || !loginPassword) return '';
+		if (loginPassword.length < 8) return 'Must be at least 8 characters';
+		return '';
+	});
+	let emailError = $derived.by(() => {
+		if (authMode !== 'register' || !loginEmail) return '';
+		if (!loginEmail.includes('@') || !loginEmail.includes('.')) return 'Must be a valid email';
+		return '';
+	});
+	let confirmError = $derived.by(() => {
+		if (authMode !== 'register' || !confirmPassword) return '';
+		if (confirmPassword !== loginPassword) return 'Passwords do not match';
+		return '';
+	});
+	let registerValid = $derived(
+		authMode !== 'register' || (
+			loginUsername.length >= 3 && /^[a-zA-Z0-9_]+$/.test(loginUsername) &&
+			loginPassword.length >= 8 &&
+			loginEmail.includes('@') && loginEmail.includes('.') &&
+			confirmPassword === loginPassword
+		)
+	);
 
 	// Check server status on mount
 	$effect(() => {
@@ -141,6 +175,8 @@
 	}
 </script>
 
+<InviteNotification onJoin={handleJoin} />
+
 <div class="lobby">
 	<div class="header">
 		<button class="btn-back" onclick={onBack}>Back</button>
@@ -191,10 +227,16 @@
 					<div class="form-group">
 						<label for="login-username">Username</label>
 						<input id="login-username" type="text" autocomplete="username" bind:value={loginUsername} placeholder="Username" />
+						{#if usernameError}
+							<span class="field-hint">{usernameError}</span>
+						{/if}
 					</div>
 					<div class="form-group">
 						<label for="login-password">Password</label>
 						<input id="login-password" type="password" autocomplete={authMode === 'register' ? 'new-password' : 'current-password'} bind:value={loginPassword} placeholder="Password" />
+						{#if passwordError}
+							<span class="field-hint">{passwordError}</span>
+						{/if}
 					</div>
 				{/if}
 
@@ -202,6 +244,16 @@
 					<div class="form-group">
 						<label for="login-email">Email</label>
 						<input id="login-email" type="email" autocomplete="email" bind:value={loginEmail} placeholder="you@example.com" />
+						{#if emailError}
+							<span class="field-hint">{emailError}</span>
+						{/if}
+					</div>
+					<div class="form-group">
+						<label for="login-confirm-password">Confirm Password</label>
+						<input id="login-confirm-password" type="password" autocomplete="new-password" bind:value={confirmPassword} placeholder="Confirm password" />
+						{#if confirmError}
+							<span class="field-hint">{confirmError}</span>
+						{/if}
 					</div>
 				{/if}
 
@@ -209,7 +261,7 @@
 					<div class="error">{$authError}</div>
 				{/if}
 
-				<button class="btn-connect" type="submit" disabled={$connectionState === 'connecting'}>
+				<button class="btn-connect" type="submit" disabled={$connectionState === 'connecting' || !registerValid}>
 					{$connectionState === 'connecting' ? 'Connecting...' : 'Connect'}
 				</button>
 
@@ -230,6 +282,8 @@
 			<button class:active={activeTab === 'browse'} onclick={() => activeTab = 'browse'}>Browse</button>
 			<button class:active={activeTab === 'create'} onclick={() => activeTab = 'create'}>Create</button>
 			<button class:active={activeTab === 'recent'} onclick={() => activeTab = 'recent'}>Recent</button>
+			<button class:active={activeTab === 'invite'} onclick={() => activeTab = 'invite'}>Invite</button>
+			<button class:active={activeTab === 'friends'} onclick={() => activeTab = 'friends'}>Friends</button>
 		</div>
 
 		<div class="lobby-content">
@@ -246,6 +300,10 @@
 				<WorldCreator {templates} onCreated={handleCreated} />
 			{:else if activeTab === 'recent'}
 				<RecentWorlds onJoin={handleJoin} />
+			{:else if activeTab === 'invite'}
+				<InviteJoin onJoin={handleJoin} />
+			{:else if activeTab === 'friends'}
+				<FriendsPanel visible={true} />
 			{/if}
 		</div>
 
@@ -418,6 +476,13 @@
 		font-size: 14px;
 		font-family: system-ui, sans-serif;
 		box-sizing: border-box;
+	}
+
+	.field-hint {
+		display: block;
+		font-size: 12px;
+		color: #ef4444;
+		margin-top: 4px;
 	}
 
 	.error {

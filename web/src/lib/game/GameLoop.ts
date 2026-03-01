@@ -27,7 +27,7 @@ import {
 	openPanelGroup,
 	closePanelGroup,
 } from '$lib/stores/uiState';
-import { removeGhost } from '$lib/stores/multiplayerState';
+import { removeGhost, speedVotes } from '$lib/stores/multiplayerState';
 import type { OverlayType } from '$lib/stores/uiState';
 import { autoPauseOnCritical, showPerfMonitor, autoSaveInterval } from '$lib/stores/settings';
 import { writable } from 'svelte/store';
@@ -534,16 +534,31 @@ export async function initMultiplayer(saveData: string) {
 		}
 	};
 
+	// Listen for speed vote updates from the server
+	const handleSpeedVote = (e: Event) => {
+		const detail = (e as CustomEvent).detail;
+		if (detail?.votes && Array.isArray(detail.votes)) {
+			speedVotes.set(detail.votes.map((v: { username?: string; speed?: string }) => ({
+				player_id: '',
+				username: v.username ?? '',
+				speed: v.speed ?? 'Normal',
+				timestamp: Date.now()
+			})));
+		}
+	};
+
 	window.addEventListener('mp-corp-deltas', handleCorpDeltas);
 	window.addEventListener('mp-snapshot', handleSnapshotReload);
 	window.addEventListener('mp-command-broadcast', handleCommandBroadcast);
 	window.addEventListener('mp-command-ack', handleCommandAck);
+	window.addEventListener('mp-speed-vote', handleSpeedVote);
 
 	mpCleanupFns.push(
 		() => window.removeEventListener('mp-corp-deltas', handleCorpDeltas),
 		() => window.removeEventListener('mp-snapshot', handleSnapshotReload),
 		() => window.removeEventListener('mp-command-broadcast', handleCommandBroadcast),
 		() => window.removeEventListener('mp-command-ack', handleCommandAck),
+		() => window.removeEventListener('mp-speed-vote', handleSpeedVote),
 		() => { isMultiplayerMode = false; mpHighWaterTick = 0; },
 	);
 }

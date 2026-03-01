@@ -18,7 +18,7 @@
 		ftthBuilderActive,
 	} from '$lib/stores/uiState';
 	import type { PanelGroupType, OverlayType } from '$lib/stores/uiState';
-	import { isMultiplayer, connectionState, playerList } from '$lib/stores/multiplayerState';
+	import { isMultiplayer, connectionState, playerList, proxySummary } from '$lib/stores/multiplayerState';
 	import { tr } from '$lib/i18n/index';
 	import * as bridge from '$lib/wasm/bridge';
 	import SpeedControls from './SpeedControls.svelte';
@@ -160,10 +160,21 @@
 
 		<div class="hud-right" role="status">
 			{#if $isMultiplayer}
+				{#if $proxySummary}
+					<span class="ai-proxy-badge" use:tooltip={'Your corporation is being managed by AI proxy'}>AI PROXY</span>
+				{/if}
 				<span class="mp-status" class:connected={$connectionState === 'connected'} class:reconnecting={$connectionState === 'reconnecting'}>
 					{$connectionState === 'connected' ? $tr('game.online') : $connectionState === 'reconnecting' ? $tr('game.reconnecting') : $tr('game.offline')}
 				</span>
 				<span class="mp-players">{$tr('game.players', { count: $playerList.filter(p => p.status === 'Connected').length })}</span>
+				<button class="friends-btn" onclick={() => window.dispatchEvent(new CustomEvent('toggle-friends-panel'))} use:tooltip={'Toggle friends panel'} aria-label="Toggle friends panel">
+					<svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+						<circle cx="6" cy="5" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+						<path d="M1 14c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+						<circle cx="12" cy="5" r="2" stroke="currentColor" stroke-width="1.2"/>
+						<path d="M11 14c0-1.7.8-3.2 2-4.2" stroke="currentColor" stroke-width="1.2" fill="none"/>
+					</svg>
+				</button>
 			{/if}
 		</div>
 	</div>
@@ -728,6 +739,43 @@
 		border-color: rgba(16, 185, 129, 0.6);
 		color: #10b981;
 		box-shadow: 0 0 8px rgba(16, 185, 129, 0.15);
+	}
+
+	.ai-proxy-badge {
+		font-size: 9px;
+		font-weight: 800;
+		letter-spacing: 0.1em;
+		padding: 2px 8px;
+		border-radius: 4px;
+		background: rgba(245, 158, 11, 0.2);
+		color: #f59e0b;
+		border: 1px solid rgba(245, 158, 11, 0.3);
+		animation: proxy-pulse 2s ease-in-out infinite;
+	}
+
+	@keyframes proxy-pulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.6; }
+	}
+
+	.friends-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		background: rgba(31, 41, 55, 0.8);
+		border: 1px solid rgba(55, 65, 81, 0.5);
+		border-radius: 4px;
+		color: #9ca3af;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.friends-btn:hover {
+		background: rgba(55, 65, 81, 0.8);
+		color: #f3f4f6;
+		border-color: rgba(59, 130, 246, 0.5);
 	}
 
 </style>
