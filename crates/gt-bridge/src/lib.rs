@@ -3,6 +3,12 @@
 //! Both the WASM bridge (browser) and the Tauri bridge (desktop native)
 //! implement `BridgeQuery` so that the frontend can use the same API
 //! regardless of the runtime environment.
+//!
+//! The `queries` module contains shared pure-logic query functions that take
+//! `&GameWorld` and return JSON strings, eliminating duplicated serialization
+//! code between the two bridges.
+
+pub mod queries;
 
 use gt_common::types::EntityId;
 
