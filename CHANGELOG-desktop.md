@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.2.0 (2026-03-01)
+
+### Features
+
+- Implement Cloudflare R2 storage for snapshots and saves, and update deployment to use Cloudflare proxying. (80c3fb5)
+
+### Refactoring
+
+- Restructure modules into subdirectories, introduce a new query system, and add spectrum management types and commands. (06bbc65)
+
+### Other
+
+- **server:** v0.10.1 (1b2266f)
+- **engine:** v1.5.1 (7d5bf2c)
+- **web:** v1.5.0 (c6babaa)
+- **server:** v0.10.0 (d09cd1b)
+- **engine:** v1.5.0 (00e48c7)
+
+
 ## 2.1.0 (2026-03-01)
 
 ### Features
