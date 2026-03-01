@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.0 (2026-03-01)
+
+### Features
+
+- Implement Cloudflare R2 storage for snapshots and saves, and update deployment to use Cloudflare proxying. (80c3fb5)
+
+### Other
+
+- **engine:** v1.5.0 (00e48c7)
+- **desktop:** v2.1.0 (231facd)
+
+
 ## 0.9.0 (2026-03-01)
 
 ### Features
