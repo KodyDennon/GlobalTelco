@@ -1,4 +1,5 @@
 use crate::auth::AuthConfig;
+use crate::oauth::OAuthConfig;
 
 /// Server configuration, loaded from environment variables
 #[derive(Debug, Clone)]
@@ -12,11 +13,30 @@ pub struct ServerConfig {
     /// Directory containing satellite tile files in `{z}/{y}/{x}.jpg` format.
     /// When set, the server serves tiles at `GET /tiles/{z}/{y}/{x}`.
     pub tile_dir: Option<String>,
+    /// GitHub OAuth configuration (optional)
+    pub oauth: Option<OAuthConfig>,
+    /// Cloudflare Worker URL for sending password reset emails (optional)
+    pub cf_reset_worker_url: Option<String>,
 }
 
 impl ServerConfig {
     /// Load configuration from environment variables
     pub fn from_env() -> Self {
+        let oauth = match (
+            std::env::var("GITHUB_CLIENT_ID").ok().filter(|s| !s.is_empty()),
+            std::env::var("GITHUB_CLIENT_SECRET").ok().filter(|s| !s.is_empty()),
+        ) {
+            (Some(client_id), Some(client_secret)) => Some(OAuthConfig {
+                github_client_id: client_id,
+                github_client_secret: client_secret,
+                github_redirect_uri: env_or(
+                    "GITHUB_REDIRECT_URI",
+                    "http://localhost:5173/auth/github/callback",
+                ),
+            }),
+            _ => None,
+        };
+
         Self {
             host: env_or("GT_HOST", "0.0.0.0"),
             port: env_or("GT_PORT", "3001").parse().unwrap_or(3001),
@@ -36,6 +56,10 @@ impl ServerConfig {
             default_world_name: env_or("GT_DEFAULT_WORLD", "Default World"),
             default_max_players: env_or("GT_MAX_PLAYERS", "8").parse().unwrap_or(8),
             tile_dir: std::env::var("TILE_DIR").ok().filter(|s| !s.is_empty()),
+            oauth,
+            cf_reset_worker_url: std::env::var("CF_RESET_WORKER_URL")
+                .ok()
+                .filter(|s| !s.is_empty()),
         }
     }
 

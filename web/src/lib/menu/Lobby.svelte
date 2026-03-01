@@ -6,52 +6,48 @@
 		isAuthenticated,
 		serverInfo,
 		worldId,
-		type MultiplayerWorldInfo,
-	} from "$lib/stores/multiplayerState";
-	import * as wsClient from "$lib/multiplayer/WebSocketClient";
-	import { getGitHubAuthUrl } from "$lib/multiplayer/accountApi";
+		type MultiplayerWorldInfo
+	} from '$lib/stores/multiplayerState';
+	import * as wsClient from '$lib/multiplayer/WebSocketClient';
+	import { getGitHubAuthUrl } from '$lib/multiplayer/accountApi';
+	import { fetchCatalog, type WorldTemplate, type WorldListEntry } from '$lib/multiplayer/lobbyApi';
+	import WorldList from './lobby/WorldList.svelte';
+	import WorldCreator from './lobby/WorldCreator.svelte';
+	import InviteJoin from './lobby/InviteJoin.svelte';
+	import RecentWorlds from './lobby/RecentWorlds.svelte';
 
 	let {
 		onBack,
 		onJoin,
-		onForgotPassword,
+		onForgotPassword
 	}: {
 		onBack: () => void;
 		onJoin: (worldId: string) => void;
 		onForgotPassword: () => void;
 	} = $props();
 
-	let githubLoading = $state(false);
-
-	async function handleGitHubLogin() {
-		githubLoading = true;
-		try {
-			const url = await getGitHubAuthUrl();
-			window.location.href = url;
-		} catch {
-			authError.set("GitHub OAuth not available");
-			githubLoading = false;
-		}
-	}
-
 	let worlds = $state<MultiplayerWorldInfo[]>([]);
+	let templates = $state<WorldTemplate[]>([]);
 	let loadingWorlds = $state(false);
-	let loginUsername = $state("");
-	let loginPassword = $state("");
-	let loginEmail = $state("");
-	let authMode = $state<"login" | "register" | "guest">("guest");
+	let loginUsername = $state('');
+	let loginPassword = $state('');
+	let loginEmail = $state('');
+	let authMode = $state<'login' | 'register' | 'guest'>('guest');
 	let joiningWorldId = $state<string | null>(null);
 	let serverOnline = $state<boolean | null>(null);
+	let githubLoading = $state(false);
+	let activeTab = $state<'browse' | 'create' | 'recent'>('browse');
 
 	// Check server status on mount
 	$effect(() => {
 		checkServer();
 	});
 
-	// When authenticated, fetch worlds automatically
+	// When authenticated, fetch data
 	$effect(() => {
 		if ($isAuthenticated) {
 			loadWorlds();
+			loadCatalog();
 		}
 	});
 
@@ -59,7 +55,6 @@
 	$effect(() => {
 		const id = $worldId;
 		if (id && joiningWorldId) {
-			console.log('[WorldBrowser] WorldJoined received, navigating to game. worldId:', id);
 			joiningWorldId = null;
 			onJoin(id);
 		}
@@ -68,22 +63,16 @@
 	async function checkServer() {
 		const info = await wsClient.fetchServerInfo();
 		serverOnline = info !== null;
-
-		if (serverOnline) {
-			tryAutoConnect();
-		}
+		if (serverOnline) tryAutoConnect();
 	}
 
 	function tryAutoConnect() {
 		const storedToken =
-			typeof localStorage !== "undefined"
-				? localStorage.getItem("gt_access_token")
-				: null;
-
+			typeof localStorage !== 'undefined' ? localStorage.getItem('gt_access_token') : null;
 		if (storedToken) {
 			wsClient.connect();
 			const unsub = connectionState.subscribe((state) => {
-				if (state === "connected") {
+				if (state === 'connected') {
 					wsClient.loginWithToken(storedToken);
 					unsub();
 				}
@@ -97,22 +86,25 @@
 		loadingWorlds = false;
 	}
 
-	function connectAndAuth() {
-		authError.set("");
-		wsClient.connect();
+	async function loadCatalog() {
+		try {
+			templates = await fetchCatalog();
+		} catch {
+			// Catalog may not be available
+		}
+	}
 
+	function connectAndAuth() {
+		authError.set('');
+		wsClient.connect();
 		const unsub = connectionState.subscribe((state) => {
-			if (state === "connected") {
-				if (authMode === "guest") {
+			if (state === 'connected') {
+				if (authMode === 'guest') {
 					wsClient.loginAsGuest();
-				} else if (authMode === "login") {
+				} else if (authMode === 'login') {
 					wsClient.login(loginUsername, loginPassword);
 				} else {
-					wsClient.register(
-						loginUsername,
-						loginPassword,
-						loginEmail,
-					);
+					wsClient.register(loginUsername, loginPassword, loginEmail);
 				}
 				unsub();
 			}
@@ -124,16 +116,32 @@
 		wsClient.joinWorld(id);
 	}
 
+	function handleCreated(newWorldId: string) {
+		handleJoin(newWorldId);
+	}
+
 	function handleDisconnect() {
 		wsClient.disconnect();
 		isAuthenticated.set(false);
-		authError.set("");
+		authError.set('');
 		worlds = [];
+		templates = [];
 		joiningWorldId = null;
+	}
+
+	async function handleGitHubLogin() {
+		githubLoading = true;
+		try {
+			const url = await getGitHubAuthUrl();
+			window.location.href = url;
+		} catch {
+			authError.set('GitHub OAuth not available');
+			githubLoading = false;
+		}
 	}
 </script>
 
-<div class="world-browser">
+<div class="lobby">
 	<div class="header">
 		<button class="btn-back" onclick={onBack}>Back</button>
 		<h2>Multiplayer</h2>
@@ -144,10 +152,10 @@
 			{:else if !serverOnline}
 				<span class="status-dot offline"></span>
 				<span class="status-text">Server Offline</span>
-			{:else if $connectionState === "connected" && $isAuthenticated}
+			{:else if $connectionState === 'connected' && $isAuthenticated}
 				<span class="status-dot online"></span>
-				<span class="status-text">Connected</span>
-			{:else if $connectionState === "connecting" || $connectionState === "reconnecting"}
+				<span class="status-text">Connected as {$playerUsername}</span>
+			{:else if $connectionState === 'connecting' || $connectionState === 'reconnecting'}
 				<span class="status-dot checking"></span>
 				<span class="status-text">Connecting...</span>
 			{:else}
@@ -160,8 +168,8 @@
 	{#if $serverInfo}
 		<div class="server-bar">
 			Server: v{$serverInfo.version}
-			&middot; {$serverInfo.active_worlds} world{$serverInfo.active_worlds !== 1 ? "s" : ""}
-			&middot; {$serverInfo.connected_players} player{$serverInfo.connected_players !== 1 ? "s" : ""} online
+			&middot; {$serverInfo.active_worlds} world{$serverInfo.active_worlds !== 1 ? 's' : ''}
+			&middot; {$serverInfo.connected_players} player{$serverInfo.connected_players !== 1 ? 's' : ''} online
 		</div>
 	{/if}
 
@@ -173,54 +181,27 @@
 	{:else if !$isAuthenticated}
 		<div class="auth-section">
 			<div class="auth-tabs">
-				<button
-					class:active={authMode === "guest"}
-					onclick={() => (authMode = "guest")}>Guest</button
-				>
-				<button
-					class:active={authMode === "login"}
-					onclick={() => (authMode = "login")}>Login</button
-				>
-				<button
-					class:active={authMode === "register"}
-					onclick={() => (authMode = "register")}>Register</button
-				>
+				<button class:active={authMode === 'guest'} onclick={() => (authMode = 'guest')}>Guest</button>
+				<button class:active={authMode === 'login'} onclick={() => (authMode = 'login')}>Login</button>
+				<button class:active={authMode === 'register'} onclick={() => (authMode = 'register')}>Register</button>
 			</div>
 
 			<form onsubmit={(e) => { e.preventDefault(); connectAndAuth(); }}>
-				{#if authMode !== "guest"}
+				{#if authMode !== 'guest'}
 					<div class="form-group">
 						<label for="login-username">Username</label>
-						<input
-							id="login-username"
-							type="text"
-							autocomplete="username"
-							bind:value={loginUsername}
-							placeholder="Username"
-						/>
+						<input id="login-username" type="text" autocomplete="username" bind:value={loginUsername} placeholder="Username" />
 					</div>
 					<div class="form-group">
 						<label for="login-password">Password</label>
-						<input
-							id="login-password"
-							type="password"
-							autocomplete={authMode === "register" ? "new-password" : "current-password"}
-							bind:value={loginPassword}
-							placeholder="Password"
-						/>
+						<input id="login-password" type="password" autocomplete={authMode === 'register' ? 'new-password' : 'current-password'} bind:value={loginPassword} placeholder="Password" />
 					</div>
 				{/if}
 
-				{#if authMode === "register"}
+				{#if authMode === 'register'}
 					<div class="form-group">
 						<label for="login-email">Email</label>
-						<input
-							id="login-email"
-							type="email"
-							autocomplete="email"
-							bind:value={loginEmail}
-							placeholder="you@example.com"
-						/>
+						<input id="login-email" type="email" autocomplete="email" bind:value={loginEmail} placeholder="you@example.com" />
 					</div>
 				{/if}
 
@@ -228,78 +209,44 @@
 					<div class="error">{$authError}</div>
 				{/if}
 
-				<button
-					class="btn-connect"
-					type="submit"
-					disabled={$connectionState === "connecting"}
-				>
-					{#if $connectionState === "connecting"}
-						Connecting...
-					{:else}
-						Connect
-					{/if}
+				<button class="btn-connect" type="submit" disabled={$connectionState === 'connecting'}>
+					{$connectionState === 'connecting' ? 'Connecting...' : 'Connect'}
 				</button>
 
-				{#if authMode === "login"}
+				{#if authMode === 'login'}
 					<button class="btn-forgot" type="button" onclick={onForgotPassword}>
 						Forgot password?
 					</button>
 				{/if}
 			</form>
 
-			<div class="oauth-divider">
-				<span>or</span>
-			</div>
+			<div class="oauth-divider"><span>or</span></div>
 			<button class="btn-github" onclick={handleGitHubLogin} disabled={githubLoading}>
 				{githubLoading ? 'Redirecting...' : 'Login with GitHub'}
 			</button>
 		</div>
 	{:else}
-		<div class="world-list">
-			{#if loadingWorlds}
-				<div class="loading">Loading worlds...</div>
-			{:else if worlds.length === 0}
-				<div class="empty">No active worlds found</div>
-			{:else}
-				{#each worlds as world}
-					<div class="world-card">
-						<div class="world-info">
-							<h3>{world.name}</h3>
-							<div class="world-details">
-								<div class="player-bar">
-									<div
-										class="player-fill"
-										style="width: {(world.player_count / world.max_players) * 100}%"
-									></div>
-								</div>
-								<span>{world.player_count}/{world.max_players} players</span>
-								<span>&middot; Tick {world.tick}</span>
-								<span>&middot; {world.era}</span>
-							</div>
-							<div class="world-meta">
-								<span>Speed: {world.speed}</span>
-								<span>&middot; Map: {world.map_size}</span>
-							</div>
-						</div>
-						<button
-							class="btn-join"
-							onclick={() => handleJoin(world.id)}
-							disabled={world.player_count >= world.max_players || joiningWorldId === world.id}
-						>
-							{#if joiningWorldId === world.id}
-								Joining...
-							{:else if world.player_count >= world.max_players}
-								Full
-							{:else}
-								Join
-							{/if}
-						</button>
-					</div>
-				{/each}
+		<div class="lobby-tabs">
+			<button class:active={activeTab === 'browse'} onclick={() => activeTab = 'browse'}>Browse</button>
+			<button class:active={activeTab === 'create'} onclick={() => activeTab = 'create'}>Create</button>
+			<button class:active={activeTab === 'recent'} onclick={() => activeTab = 'recent'}>Recent</button>
+		</div>
+
+		<div class="lobby-content">
+			{#if activeTab === 'browse'}
+				{#if loadingWorlds}
+					<div class="loading">Loading worlds...</div>
+				{:else}
+					<WorldList worlds={worlds as unknown as WorldListEntry[]} onJoin={handleJoin} {joiningWorldId} />
+				{/if}
+				<button class="btn-refresh" onclick={loadWorlds} disabled={loadingWorlds}>
+					{loadingWorlds ? 'Refreshing...' : 'Refresh'}
+				</button>
+			{:else if activeTab === 'create'}
+				<WorldCreator {templates} onCreated={handleCreated} />
+			{:else if activeTab === 'recent'}
+				<RecentWorlds onJoin={handleJoin} />
 			{/if}
-			<button class="btn-refresh" onclick={loadWorlds} disabled={loadingWorlds}>
-				{loadingWorlds ? "Refreshing..." : "Refresh"}
-			</button>
 		</div>
 
 		<div class="footer">
@@ -310,17 +257,12 @@
 </div>
 
 <style>
-	.world-browser {
+	.lobby {
 		width: 100vw;
 		height: 100vh;
 		display: flex;
 		flex-direction: column;
-		background: linear-gradient(
-			135deg,
-			#0a0e17 0%,
-			#111827 50%,
-			#0a0e17 100%
-		);
+		background: linear-gradient(135deg, #0a0e17 0%, #111827 50%, #0a0e17 100%);
 		color: #f3f4f6;
 		font-family: system-ui, sans-serif;
 		padding: 40px;
@@ -426,32 +368,10 @@
 		background: rgba(59, 130, 246, 0.3);
 	}
 
+	/* Auth Section */
 	.auth-section {
 		max-width: 400px;
 		margin: 0 auto;
-	}
-
-	.form-group {
-		margin-bottom: 16px;
-	}
-
-	.form-group label {
-		display: block;
-		font-size: 13px;
-		color: #9ca3af;
-		margin-bottom: 4px;
-	}
-
-	.form-group input {
-		width: 100%;
-		background: rgba(17, 24, 39, 0.8);
-		border: 1px solid rgba(55, 65, 81, 0.5);
-		color: #f3f4f6;
-		padding: 10px 12px;
-		border-radius: 6px;
-		font-size: 14px;
-		font-family: system-ui, sans-serif;
-		box-sizing: border-box;
 	}
 
 	.auth-tabs {
@@ -477,6 +397,39 @@
 		color: #60a5fa;
 	}
 
+	.form-group {
+		margin-bottom: 16px;
+	}
+
+	.form-group label {
+		display: block;
+		font-size: 13px;
+		color: #9ca3af;
+		margin-bottom: 4px;
+	}
+
+	.form-group input {
+		width: 100%;
+		background: rgba(17, 24, 39, 0.8);
+		border: 1px solid rgba(55, 65, 81, 0.5);
+		color: #f3f4f6;
+		padding: 10px 12px;
+		border-radius: 6px;
+		font-size: 14px;
+		font-family: system-ui, sans-serif;
+		box-sizing: border-box;
+	}
+
+	.error {
+		color: #ef4444;
+		font-size: 13px;
+		margin-bottom: 12px;
+		padding: 8px 12px;
+		background: rgba(239, 68, 68, 0.1);
+		border: 1px solid rgba(239, 68, 68, 0.2);
+		border-radius: 6px;
+	}
+
 	.btn-connect {
 		width: 100%;
 		background: rgba(16, 185, 129, 0.2);
@@ -496,154 +449,6 @@
 	.btn-connect:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
-	}
-
-	.error {
-		color: #ef4444;
-		font-size: 13px;
-		margin-bottom: 12px;
-		padding: 8px 12px;
-		background: rgba(239, 68, 68, 0.1);
-		border: 1px solid rgba(239, 68, 68, 0.2);
-		border-radius: 6px;
-	}
-
-	.world-list {
-		max-width: 600px;
-		margin: 0 auto;
-		width: 100%;
-		flex: 1;
-		overflow-y: auto;
-	}
-
-	.world-card {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		background: rgba(31, 41, 55, 0.6);
-		border: 1px solid rgba(55, 65, 81, 0.3);
-		border-radius: 8px;
-		padding: 16px;
-		margin-bottom: 12px;
-	}
-
-	.world-info {
-		flex: 1;
-		min-width: 0;
-	}
-
-	.world-info h3 {
-		margin: 0 0 6px;
-		font-size: 16px;
-	}
-
-	.world-details {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 12px;
-		color: #9ca3af;
-		margin-bottom: 4px;
-	}
-
-	.player-bar {
-		width: 40px;
-		height: 6px;
-		background: rgba(55, 65, 81, 0.6);
-		border-radius: 3px;
-		overflow: hidden;
-	}
-
-	.player-fill {
-		height: 100%;
-		background: #10b981;
-		border-radius: 3px;
-		transition: width 0.3s;
-	}
-
-	.world-meta {
-		font-size: 11px;
-		color: #6b7280;
-	}
-
-	.btn-join {
-		background: rgba(59, 130, 246, 0.2);
-		border: 1px solid rgba(59, 130, 246, 0.3);
-		color: #60a5fa;
-		padding: 8px 20px;
-		border-radius: 6px;
-		cursor: pointer;
-		font-family: system-ui, sans-serif;
-		white-space: nowrap;
-		margin-left: 16px;
-	}
-
-	.btn-join:hover:not(:disabled) {
-		background: rgba(59, 130, 246, 0.3);
-	}
-
-	.btn-join:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
-	}
-
-	.btn-refresh {
-		width: 100%;
-		background: rgba(31, 41, 55, 0.6);
-		border: 1px solid rgba(55, 65, 81, 0.3);
-		color: #9ca3af;
-		padding: 10px;
-		border-radius: 6px;
-		cursor: pointer;
-		margin-top: 8px;
-		font-family: system-ui, sans-serif;
-	}
-
-	.btn-refresh:hover:not(:disabled) {
-		background: rgba(55, 65, 81, 0.6);
-	}
-
-	.btn-refresh:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.footer {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		max-width: 600px;
-		margin: 16px auto 0;
-		width: 100%;
-		padding-top: 16px;
-		border-top: 1px solid rgba(55, 65, 81, 0.3);
-	}
-
-	.logged-in {
-		font-size: 13px;
-		color: #9ca3af;
-	}
-
-	.btn-disconnect {
-		background: rgba(239, 68, 68, 0.15);
-		border: 1px solid rgba(239, 68, 68, 0.3);
-		color: #ef4444;
-		padding: 6px 16px;
-		border-radius: 6px;
-		cursor: pointer;
-		font-size: 13px;
-		font-family: system-ui, sans-serif;
-	}
-
-	.btn-disconnect:hover {
-		background: rgba(239, 68, 68, 0.25);
-	}
-
-	.loading,
-	.empty {
-		text-align: center;
-		color: #6b7280;
-		padding: 40px;
 	}
 
 	.btn-forgot {
@@ -697,5 +502,99 @@
 	.btn-github:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	/* Lobby Tabs & Content */
+	.lobby-tabs {
+		display: flex;
+		gap: 4px;
+		margin-bottom: 20px;
+		border-bottom: 1px solid rgba(55, 65, 81, 0.3);
+		padding-bottom: 0;
+	}
+
+	.lobby-tabs button {
+		background: none;
+		border: none;
+		border-bottom: 2px solid transparent;
+		color: #9ca3af;
+		padding: 10px 20px;
+		cursor: pointer;
+		font-size: 14px;
+		font-family: system-ui, sans-serif;
+		margin-bottom: -1px;
+	}
+
+	.lobby-tabs button:hover {
+		color: #d1d5db;
+	}
+
+	.lobby-tabs button.active {
+		color: #60a5fa;
+		border-bottom-color: #60a5fa;
+	}
+
+	.lobby-content {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
+	.loading {
+		text-align: center;
+		color: #6b7280;
+		padding: 40px;
+	}
+
+	.btn-refresh {
+		background: rgba(31, 41, 55, 0.6);
+		border: 1px solid rgba(55, 65, 81, 0.3);
+		color: #9ca3af;
+		padding: 10px;
+		border-radius: 6px;
+		cursor: pointer;
+		margin-top: 8px;
+		font-family: system-ui, sans-serif;
+		align-self: stretch;
+	}
+
+	.btn-refresh:hover:not(:disabled) {
+		background: rgba(55, 65, 81, 0.6);
+	}
+
+	.btn-refresh:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.footer {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding-top: 16px;
+		border-top: 1px solid rgba(55, 65, 81, 0.3);
+		margin-top: 16px;
+	}
+
+	.logged-in {
+		font-size: 13px;
+		color: #9ca3af;
+	}
+
+	.btn-disconnect {
+		background: rgba(239, 68, 68, 0.15);
+		border: 1px solid rgba(239, 68, 68, 0.3);
+		color: #ef4444;
+		padding: 6px 16px;
+		border-radius: 6px;
+		cursor: pointer;
+		font-size: 13px;
+		font-family: system-ui, sans-serif;
+	}
+
+	.btn-disconnect:hover {
+		background: rgba(239, 68, 68, 0.25);
 	}
 </style>

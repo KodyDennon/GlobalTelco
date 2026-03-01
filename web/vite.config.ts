@@ -35,6 +35,8 @@ export default defineConfig({
 					if (id.includes('@deck.gl')) return 'deckgl';
 					if (id.includes('maplibre-gl')) return 'maplibre';
 					if (id.includes('d3-') || id.includes('d3/')) return 'd3';
+					if (id.includes('@msgpack/msgpack')) return 'msgpack';
+					if (id.includes('fzstd')) return 'fzstd';
 				}
 			}
 		}

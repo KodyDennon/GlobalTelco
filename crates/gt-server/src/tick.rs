@@ -1,5 +1,9 @@
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::time::Instant;
 
+use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
 use tracing::{debug, warn};
 
@@ -59,6 +63,52 @@ fn build_corp_delta(w: &GameWorld, corp_id: EntityId) -> Option<CorpDelta> {
     })
 }
 
+/// Check if a CorpDelta has changed meaningfully from the previous one.
+/// Uses epsilon comparison for floating-point fields.
+fn delta_changed(prev: &CorpDelta, curr: &CorpDelta) -> bool {
+    const EPS: f64 = 0.01;
+
+    if prev.cash != curr.cash || prev.revenue != curr.revenue
+        || prev.cost != curr.cost || prev.debt != curr.debt
+        || prev.node_count != curr.node_count
+    {
+        return true;
+    }
+
+    fn f64_changed(a: Option<f64>, b: Option<f64>) -> bool {
+        match (a, b) {
+            (Some(x), Some(y)) => (x - y).abs() > EPS,
+            (None, None) => false,
+            _ => true,
+        }
+    }
+
+    f64_changed(prev.avg_utilization, curr.avg_utilization)
+        || f64_changed(prev.avg_health, curr.avg_health)
+        || f64_changed(prev.total_throughput, curr.total_throughput)
+}
+
+/// Compress a JSON string with zstd at compression level 3.
+/// Falls back to uncompressed on error.
+fn compress_snapshot(json: &str) -> Option<(Vec<u8>, u32)> {
+    let uncompressed_size = json.len() as u32;
+    match zstd::encode_all(json.as_bytes(), 3) {
+        Ok(compressed) => {
+            debug!(
+                "Snapshot compressed: {} -> {} bytes ({:.0}% reduction)",
+                uncompressed_size,
+                compressed.len(),
+                (1.0 - compressed.len() as f64 / uncompressed_size as f64) * 100.0
+            );
+            Some((compressed, uncompressed_size))
+        }
+        Err(e) => {
+            warn!("Snapshot compression failed: {e}");
+            None
+        }
+    }
+}
+
 /// Snapshot interval: persist world state to database every N ticks
 #[cfg(feature = "postgres")]
 const DB_SNAPSHOT_INTERVAL_TICKS: u64 = 100;
@@ -67,11 +117,18 @@ const DB_SNAPSHOT_INTERVAL_TICKS: u64 = 100;
 /// as a safety net. CommandBroadcast handles instant sync for commands.
 const CLIENT_SNAPSHOT_INTERVAL_TICKS: u64 = 30;
 
+/// Higher snapshot interval for worlds with many players (reduces bandwidth)
+const CLIENT_SNAPSHOT_INTERVAL_BUSY: u64 = 60;
+
+/// Player count threshold for using the busy snapshot interval
+const BUSY_WORLD_PLAYER_THRESHOLD: usize = 3;
+
 /// Start the tick loop for a specific world
 #[cfg(feature = "postgres")]
 pub fn spawn_world_tick_loop(world: Arc<WorldInstance>, db: SharedDb) {
     tokio::spawn(async move {
         let mut tick_interval = interval(Duration::from_millis(world.tick_rate_ms));
+        let prev_deltas: Mutex<HashMap<EntityId, CorpDelta>> = Mutex::new(HashMap::new());
 
         loop {
             tick_interval.tick().await;
@@ -84,6 +141,13 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>, db: SharedDb) {
                 continue;
             }
 
+            // Dynamic snapshot interval based on player count
+            let snapshot_interval = if player_count >= BUSY_WORLD_PLAYER_THRESHOLD {
+                CLIENT_SNAPSHOT_INTERVAL_BUSY
+            } else {
+                CLIENT_SNAPSHOT_INTERVAL_TICKS
+            };
+
             // Advance the simulation
             let (tick, events, corp_deltas, db_snapshot, client_snapshot) = {
                 let mut w = world.world.lock().await;
@@ -93,18 +157,39 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>, db: SharedDb) {
                     continue;
                 }
 
+                let tick_start = Instant::now();
                 w.tick();
+                let tick_elapsed_us = tick_start.elapsed().as_micros() as u64;
+
+                // Update tick profiling metrics
+                world.last_tick_duration_us.store(tick_elapsed_us, Ordering::Relaxed);
+                let prev_avg = world.avg_tick_duration_us.load(Ordering::Relaxed);
+                let new_avg = if prev_avg == 0 {
+                    tick_elapsed_us
+                } else {
+                    // Exponential moving average (alpha = 0.1)
+                    (prev_avg * 9 + tick_elapsed_us) / 10
+                };
+                world.avg_tick_duration_us.store(new_avg, Ordering::Relaxed);
 
                 let tick = w.current_tick();
                 let events: Vec<gt_common::events::GameEvent> =
                     w.event_queue.drain().into_iter().map(|(_, e)| e).collect();
 
-                // Collect corp deltas for ALL corporations (filtering happens per-player in ws.rs)
+                // Collect corp deltas, filtering out unchanged ones
                 let mut deltas = Vec::new();
+                let mut prev = prev_deltas.lock().await;
                 let corp_ids: Vec<EntityId> = w.corporations.keys().copied().collect();
                 for corp_id in corp_ids {
                     if let Some(delta) = build_corp_delta(&w, corp_id) {
-                        deltas.push(delta);
+                        let changed = match prev.get(&corp_id) {
+                            Some(prev_delta) => delta_changed(prev_delta, &delta),
+                            None => true, // New corp, always send
+                        };
+                        if changed {
+                            prev.insert(corp_id, delta.clone());
+                            deltas.push(delta);
+                        }
                     }
                 }
 
@@ -122,7 +207,7 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>, db: SharedDb) {
                 };
 
                 // Periodic JSON snapshot pushed to clients for WASM state sync
-                let client_snap = if tick % CLIENT_SNAPSHOT_INTERVAL_TICKS == 0 {
+                let client_snap = if tick % snapshot_interval == 0 {
                     match w.save_game() {
                         Ok(json) => Some(json),
                         Err(e) => {
@@ -158,12 +243,21 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>, db: SharedDb) {
                 events,
             });
 
-            // Push full world snapshot to clients periodically
+            // Push compressed world snapshot to clients periodically
             if let Some(state_json) = client_snapshot {
-                let _ = world.broadcast_tx.send(ServerMessage::Snapshot {
-                    tick,
-                    state_json,
-                });
+                if let Some((compressed_data, uncompressed_size)) = compress_snapshot(&state_json) {
+                    let _ = world.broadcast_tx.send(ServerMessage::CompressedSnapshot {
+                        tick,
+                        compressed_data,
+                        uncompressed_size,
+                    });
+                } else {
+                    // Fallback to uncompressed if compression fails
+                    let _ = world.broadcast_tx.send(ServerMessage::Snapshot {
+                        tick,
+                        state_json,
+                    });
+                }
             }
 
             debug!("World {} tick {}", world.id, tick);
@@ -176,6 +270,7 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>, db: SharedDb) {
 pub fn spawn_world_tick_loop(world: Arc<WorldInstance>) {
     tokio::spawn(async move {
         let mut tick_interval = interval(Duration::from_millis(world.tick_rate_ms));
+        let prev_deltas: Mutex<HashMap<EntityId, CorpDelta>> = Mutex::new(HashMap::new());
 
         loop {
             tick_interval.tick().await;
@@ -186,6 +281,13 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>) {
                 continue;
             }
 
+            // Dynamic snapshot interval based on player count
+            let snapshot_interval = if player_count >= BUSY_WORLD_PLAYER_THRESHOLD {
+                CLIENT_SNAPSHOT_INTERVAL_BUSY
+            } else {
+                CLIENT_SNAPSHOT_INTERVAL_TICKS
+            };
+
             let (tick, events, corp_deltas, client_snapshot) = {
                 let mut w = world.world.lock().await;
 
@@ -193,23 +295,43 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>) {
                     continue;
                 }
 
+                let tick_start = Instant::now();
                 w.tick();
+                let tick_elapsed_us = tick_start.elapsed().as_micros() as u64;
+
+                // Update tick profiling metrics
+                world.last_tick_duration_us.store(tick_elapsed_us, Ordering::Relaxed);
+                let prev_avg = world.avg_tick_duration_us.load(Ordering::Relaxed);
+                let new_avg = if prev_avg == 0 {
+                    tick_elapsed_us
+                } else {
+                    (prev_avg * 9 + tick_elapsed_us) / 10
+                };
+                world.avg_tick_duration_us.store(new_avg, Ordering::Relaxed);
 
                 let tick = w.current_tick();
                 let events: Vec<gt_common::events::GameEvent> =
                     w.event_queue.drain().into_iter().map(|(_, e)| e).collect();
 
-                // Collect corp deltas for ALL corporations (filtering happens per-player in ws.rs)
+                // Collect corp deltas, filtering out unchanged ones
                 let mut deltas = Vec::new();
+                let mut prev = prev_deltas.lock().await;
                 let corp_ids: Vec<EntityId> = w.corporations.keys().copied().collect();
                 for corp_id in corp_ids {
                     if let Some(delta) = build_corp_delta(&w, corp_id) {
-                        deltas.push(delta);
+                        let changed = match prev.get(&corp_id) {
+                            Some(prev_delta) => delta_changed(prev_delta, &delta),
+                            None => true,
+                        };
+                        if changed {
+                            prev.insert(corp_id, delta.clone());
+                            deltas.push(delta);
+                        }
                     }
                 }
 
                 // Periodic JSON snapshot pushed to clients for WASM state sync
-                let client_snap = if tick % CLIENT_SNAPSHOT_INTERVAL_TICKS == 0 {
+                let client_snap = if tick % snapshot_interval == 0 {
                     match w.save_game() {
                         Ok(json) => Some(json),
                         Err(e) => {
@@ -231,12 +353,20 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>) {
                 events,
             });
 
-            // Push full world snapshot to clients periodically
+            // Push compressed world snapshot to clients periodically
             if let Some(state_json) = client_snapshot {
-                let _ = world.broadcast_tx.send(ServerMessage::Snapshot {
-                    tick,
-                    state_json,
-                });
+                if let Some((compressed_data, uncompressed_size)) = compress_snapshot(&state_json) {
+                    let _ = world.broadcast_tx.send(ServerMessage::CompressedSnapshot {
+                        tick,
+                        compressed_data,
+                        uncompressed_size,
+                    });
+                } else {
+                    let _ = world.broadcast_tx.send(ServerMessage::Snapshot {
+                        tick,
+                        state_json,
+                    });
+                }
             }
 
             debug!("World {} tick {}", world.id, tick);

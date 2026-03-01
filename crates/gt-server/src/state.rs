@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use serde::Serialize;
@@ -12,6 +13,7 @@ use gt_simulation::world::GameWorld;
 
 use crate::auth::AuthConfig;
 use crate::db::Database;
+use crate::oauth::OAuthConfig;
 
 /// Shared database handle (wrapped in Arc for cheap cloning across tasks)
 pub type SharedDb = Option<Arc<Database>>;
@@ -38,6 +40,17 @@ pub struct AuditEntry {
     pub timestamp: u64,
 }
 
+/// Online presence for a connected player
+#[derive(Debug, Clone, Serialize)]
+pub struct OnlinePresence {
+    pub username: String,
+    pub display_name: Option<String>,
+    pub avatar_id: String,
+    pub world_id: Option<Uuid>,
+    pub world_name: Option<String>,
+    pub connected_at: u64, // unix timestamp (Instant is not Serialize)
+}
+
 /// A running game world instance
 #[allow(dead_code)]
 pub struct WorldInstance {
@@ -53,14 +66,22 @@ pub struct WorldInstance {
     pub creator_id: RwLock<Option<Uuid>>,
     /// Speed votes: player_id → requested speed string
     pub speed_votes: RwLock<HashMap<Uuid, String>>,
-    /// Banned players (by account ID)
+    /// Banned players (by account ID) — in-memory for backward compat
     pub banned_players: RwLock<std::collections::HashSet<Uuid>>,
+    /// Template that spawned this world (if any)
+    pub template_id: Option<Uuid>,
+    /// Invite code for joining
+    pub invite_code: Option<String>,
+    /// Tick profiling: last tick duration in microseconds
+    pub last_tick_duration_us: AtomicU64,
+    /// Tick profiling: rolling average tick duration in microseconds
+    pub avg_tick_duration_us: AtomicU64,
 }
 
 impl WorldInstance {
     pub fn new(id: Uuid, name: String, config: WorldConfig, max_players: u32) -> Self {
         let world = GameWorld::new(config.clone());
-        let (broadcast_tx, _) = broadcast::channel(256);
+        let (broadcast_tx, _) = broadcast::channel(128);
         Self {
             id,
             name,
@@ -73,7 +94,25 @@ impl WorldInstance {
             creator_id: RwLock::new(None),
             speed_votes: RwLock::new(HashMap::new()),
             banned_players: RwLock::new(std::collections::HashSet::new()),
+            template_id: None,
+            invite_code: None,
+            last_tick_duration_us: AtomicU64::new(0),
+            avg_tick_duration_us: AtomicU64::new(0),
         }
+    }
+
+    pub fn new_with_template(
+        id: Uuid,
+        name: String,
+        config: WorldConfig,
+        max_players: u32,
+        template_id: Option<Uuid>,
+        invite_code: Option<String>,
+    ) -> Self {
+        let mut instance = Self::new(id, name, config, max_players);
+        instance.template_id = template_id;
+        instance.invite_code = invite_code;
+        instance
     }
 
     pub async fn player_count(&self) -> usize {
@@ -91,6 +130,19 @@ impl WorldInstance {
     pub async fn remove_player(&self, player_id: &Uuid) -> Option<EntityId> {
         self.players.write().await.remove(player_id)
     }
+
+    /// Record tick duration and update rolling average
+    pub fn record_tick_duration(&self, duration_us: u64) {
+        self.last_tick_duration_us.store(duration_us, Ordering::Relaxed);
+        let prev = self.avg_tick_duration_us.load(Ordering::Relaxed);
+        // Exponential moving average (alpha = 0.1)
+        let new_avg = if prev == 0 {
+            duration_us
+        } else {
+            (prev * 9 + duration_us) / 10
+        };
+        self.avg_tick_duration_us.store(new_avg, Ordering::Relaxed);
+    }
 }
 
 /// In-memory account store (replace with PostgreSQL in production)
@@ -102,6 +154,10 @@ pub struct AccountRecord {
     pub email: Option<String>,
     pub password_hash: String,
     pub is_guest: bool,
+    pub display_name: Option<String>,
+    pub avatar_id: String,
+    pub auth_provider: String,
+    pub github_id: Option<i64>,
 }
 
 /// Global server state shared across all handlers
@@ -115,6 +171,12 @@ pub struct AppState {
     pub ip_connections: RwLock<HashMap<IpAddr, usize>>,
     pub db: SharedDb,
     pub started_at: Instant,
+    /// Online player presence: account_id -> presence info
+    pub online_players: RwLock<HashMap<Uuid, OnlinePresence>>,
+    /// OAuth configuration (optional)
+    pub oauth_config: Option<OAuthConfig>,
+    /// Cloudflare Worker URL for password reset emails
+    pub cf_reset_worker_url: Option<String>,
 }
 
 impl AppState {
@@ -128,7 +190,20 @@ impl AppState {
             ip_connections: RwLock::new(HashMap::new()),
             db: db.map(Arc::new),
             started_at: Instant::now(),
+            online_players: RwLock::new(HashMap::new()),
+            oauth_config: None,
+            cf_reset_worker_url: None,
         }
+    }
+
+    pub fn with_oauth(mut self, oauth: Option<OAuthConfig>) -> Self {
+        self.oauth_config = oauth;
+        self
+    }
+
+    pub fn with_cf_reset_url(mut self, url: Option<String>) -> Self {
+        self.cf_reset_worker_url = url;
+        self
     }
 
     /// Increment the connection count for an IP. Returns the new count.
@@ -154,6 +229,28 @@ impl AppState {
     pub async fn create_world(&self, name: String, config: WorldConfig, max_players: u32) -> Uuid {
         let id = Uuid::new_v4();
         let instance = Arc::new(WorldInstance::new(id, name, config, max_players));
+        self.worlds.write().await.insert(id, instance);
+        id
+    }
+
+    /// Create a new game world from a template
+    pub async fn create_world_from_template(
+        &self,
+        name: String,
+        config: WorldConfig,
+        max_players: u32,
+        template_id: Option<Uuid>,
+        invite_code: Option<String>,
+    ) -> Uuid {
+        let id = Uuid::new_v4();
+        let instance = Arc::new(WorldInstance::new_with_template(
+            id,
+            name,
+            config,
+            max_players,
+            template_id,
+            invite_code,
+        ));
         self.worlds.write().await.insert(id, instance);
         id
     }
@@ -209,6 +306,10 @@ impl AppState {
                 email,
                 password_hash,
                 is_guest: false,
+                display_name: None,
+                avatar_id: "tower_01".to_string(),
+                auth_provider: "local".to_string(),
+                github_id: None,
             };
             // Cache in memory too
             self.accounts.write().await.insert(username, record.clone());
@@ -226,6 +327,10 @@ impl AppState {
             email,
             password_hash,
             is_guest: false,
+            display_name: None,
+            avatar_id: "tower_01".to_string(),
+            auth_provider: "local".to_string(),
+            github_id: None,
         };
         accounts.insert(username, record.clone());
         Ok(record)
@@ -248,8 +353,47 @@ impl AppState {
                     email: row.email,
                     password_hash: row.password_hash,
                     is_guest: row.is_guest,
+                    display_name: row.display_name,
+                    avatar_id: row.avatar_id.unwrap_or_else(|| "tower_01".to_string()),
+                    auth_provider: row.auth_provider.unwrap_or_else(|| "local".to_string()),
+                    github_id: row.github_id,
                 };
                 // Cache it
+                self.accounts.write().await.insert(row.username, record.clone());
+                return Some(record);
+            }
+        }
+
+        None
+    }
+
+    /// Look up an account by GitHub ID
+    pub async fn get_account_by_github_id(&self, github_id: i64) -> Option<AccountRecord> {
+        // Check in-memory cache
+        {
+            let accounts = self.accounts.read().await;
+            for record in accounts.values() {
+                if record.github_id == Some(github_id) {
+                    return Some(record.clone());
+                }
+            }
+        }
+
+        // Try database
+        #[cfg(feature = "postgres")]
+        if let Some(db) = self.db.as_ref() {
+            if let Ok(Some(row)) = db.get_account_by_github_id(github_id).await {
+                let record = AccountRecord {
+                    id: row.id,
+                    username: row.username.clone(),
+                    email: row.email,
+                    password_hash: row.password_hash,
+                    is_guest: row.is_guest,
+                    display_name: row.display_name,
+                    avatar_id: row.avatar_id.unwrap_or_else(|| "tower_01".to_string()),
+                    auth_provider: row.auth_provider.unwrap_or_else(|| "local".to_string()),
+                    github_id: row.github_id,
+                };
                 self.accounts.write().await.insert(row.username, record.clone());
                 return Some(record);
             }
@@ -273,6 +417,10 @@ impl AppState {
                     email: None,
                     password_hash: String::new(),
                     is_guest: true,
+                    display_name: None,
+                    avatar_id: "tower_01".to_string(),
+                    auth_provider: "guest".to_string(),
+                    github_id: None,
                 };
                 self.accounts.write().await.insert(username, record.clone());
                 return record;
@@ -285,10 +433,17 @@ impl AppState {
             email: None,
             password_hash: String::new(),
             is_guest: true,
+            display_name: None,
+            avatar_id: "tower_01".to_string(),
+            auth_provider: "guest".to_string(),
+            github_id: None,
         };
         self.accounts.write().await.insert(username, record.clone());
         record
     }
+
+    /// Maximum in-memory audit log entries (overflow to DB if available)
+    const MAX_AUDIT_LOG_ENTRIES: usize = 1000;
 
     /// Log a player command to the audit log
     pub async fn log_command(&self, player_id: Uuid, command_type: String, tick: u64) {
@@ -302,7 +457,13 @@ impl AppState {
             command_type,
             timestamp,
         };
-        self.audit_log.write().await.push(entry);
+        let mut log = self.audit_log.write().await;
+        log.push(entry);
+        // Cap in-memory audit log to prevent unbounded growth
+        if log.len() > Self::MAX_AUDIT_LOG_ENTRIES {
+            let drain_count = log.len() - Self::MAX_AUDIT_LOG_ENTRIES;
+            log.drain(..drain_count);
+        }
     }
 
     /// Return a clone of the entire audit log
@@ -326,6 +487,22 @@ impl AppState {
         self.started_at.elapsed().as_secs()
     }
 
+    /// Estimate memory usage of server state in bytes.
+    pub async fn memory_usage_estimate(&self) -> u64 {
+        let mut bytes: u64 = 0;
+        // Accounts: ~256 bytes each
+        bytes += self.accounts.read().await.len() as u64 * 256;
+        // Players: ~128 bytes each
+        bytes += self.players.read().await.len() as u64 * 128;
+        // Audit log: ~128 bytes each
+        bytes += self.audit_log.read().await.len() as u64 * 128;
+        // Online presence: ~256 bytes each
+        bytes += self.online_players.read().await.len() as u64 * 256;
+        // IP connections: ~32 bytes each
+        bytes += self.ip_connections.read().await.len() as u64 * 32;
+        bytes
+    }
+
     /// Send a broadcast message to all players in a specific world.
     pub async fn broadcast_to_world(&self, world_id: &Uuid, msg: ServerMessage) -> bool {
         if let Some(world) = self.get_world(world_id).await {
@@ -335,4 +512,20 @@ impl AppState {
             false
         }
     }
+}
+
+/// Generate a random 8-character alphanumeric invite code
+pub fn generate_invite_code() -> String {
+    use rand::Rng;
+    let mut rng = rand::rng();
+    (0..8)
+        .map(|_| {
+            let idx: u8 = rng.random_range(0..36);
+            if idx < 10 {
+                (b'0' + idx) as char
+            } else {
+                (b'A' + idx - 10) as char
+            }
+        })
+        .collect()
 }

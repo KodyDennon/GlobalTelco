@@ -4,7 +4,7 @@ use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde::Deserialize;
 use tower_http::services::ServeDir;
@@ -17,6 +17,9 @@ use crate::state::AppState;
 use crate::tick;
 use crate::ws;
 
+#[allow(unused_imports)]
+use crate::oauth;
+
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 
@@ -27,6 +30,16 @@ pub fn create_router(state: Arc<AppState>, tile_dir: Option<String>) -> Router {
         // Auth REST endpoints
         .route("/api/auth/register", post(register))
         .route("/api/auth/login", post(login))
+        .route("/api/auth/refresh", post(refresh_token))
+        .route("/api/auth/github", get(github_auth_url))
+        .route("/api/auth/github/callback", get(github_callback))
+        .route("/api/auth/reset-request", post(request_password_reset))
+        .route("/api/auth/reset-confirm", post(confirm_password_reset))
+        // Profile endpoints
+        .route("/api/profile", get(get_own_profile).put(update_profile))
+        .route("/api/profile/{player_id}", get(get_player_profile))
+        .route("/api/account/delete", post(delete_account))
+        .route("/api/avatars", get(list_avatars))
         // World management
         .route("/api/worlds", get(list_worlds))
         .route("/api/worlds", post(create_world))
@@ -50,7 +63,31 @@ pub fn create_router(state: Arc<AppState>, tile_dir: Option<String>) -> Router {
         .route("/api/admin/broadcast", post(admin_broadcast))
         .route("/api/admin/debug/{world_id}", get(admin_debug_world))
         .route("/api/admin/ban", post(admin_ban_player))
-        .route("/api/admin/unban", post(admin_unban_player));
+        .route("/api/admin/unban", post(admin_unban_player))
+        // Phase 2: World Catalog
+        .route("/api/catalog", get(list_catalog))
+        .route("/api/catalog/{template_id}", get(get_catalog_template))
+        .route("/api/worlds/from-template", post(create_world_from_template))
+        .route("/api/worlds/by-invite/{code}", get(get_world_by_invite))
+        // Phase 2: Admin - Templates
+        .route("/api/admin/templates", get(admin_list_templates).post(admin_create_template))
+        .route("/api/admin/templates/{id}", put(admin_update_template).delete(admin_delete_template))
+        // Phase 2: Admin - Enhanced bans, audit, reset queue, metrics
+        .route("/api/admin/bans", get(admin_list_bans))
+        .route("/api/admin/reset-queue", get(admin_list_reset_queue))
+        .route("/api/admin/reset-resolve", post(admin_resolve_reset))
+        .route("/api/admin/metrics", get(admin_metrics))
+        // Phase 3: Social system
+        .route("/api/friends", get(list_friends))
+        .route("/api/friends/request", post(send_friend_request))
+        .route("/api/friends/requests", get(list_friend_requests))
+        .route("/api/friends/accept", post(accept_friend_request))
+        .route("/api/friends/reject", post(reject_friend_request))
+        .route("/api/friends/{friend_id}", delete(remove_friend))
+        .route("/api/friends/search", get(search_users))
+        .route("/api/friends/invite", post(invite_friend_to_world))
+        .route("/api/recent-players", get(list_recent_players))
+        .route("/api/world-history", get(list_world_history));
 
     // Mount tile serving if TILE_DIR is configured
     if let Some(ref dir) = tile_dir {
@@ -245,6 +282,581 @@ async fn login(
             "access_token": access_token,
             "refresh_token": refresh_token,
         })),
+    )
+}
+
+// ── Token Refresh ─────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct RefreshTokenRequest {
+    refresh_token: String,
+}
+
+async fn refresh_token(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<RefreshTokenRequest>,
+) -> impl IntoResponse {
+    match auth::validate_token(&state.auth_config, &body.refresh_token) {
+        Ok(claims) => {
+            let player_id = match Uuid::parse_str(&claims.sub) {
+                Ok(id) => id,
+                Err(_) => {
+                    return (
+                        StatusCode::UNAUTHORIZED,
+                        Json(serde_json::json!({ "error": "Invalid token" })),
+                    );
+                }
+            };
+
+            let access_token = auth::generate_access_token(
+                &state.auth_config,
+                player_id,
+                &claims.username,
+                claims.is_guest,
+            )
+            .unwrap_or_default();
+
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "access_token": access_token,
+                    "player_id": player_id,
+                    "username": claims.username,
+                })),
+            )
+        }
+        Err(_) => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": "Invalid or expired refresh token" })),
+        ),
+    }
+}
+
+// ── GitHub OAuth ──────────────────────────────────────────────────────────
+
+async fn github_auth_url(
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    match &state.oauth_config {
+        Some(oauth) => {
+            let url = format!(
+                "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&scope=read:user,user:email",
+                oauth.github_client_id, oauth.github_redirect_uri,
+            );
+            (StatusCode::OK, Json(serde_json::json!({ "url": url })))
+        }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({ "error": "GitHub OAuth not configured" })),
+        ),
+    }
+}
+
+#[derive(Deserialize)]
+struct GitHubCallbackQuery {
+    code: String,
+}
+
+async fn github_callback(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Query(query): axum::extract::Query<GitHubCallbackQuery>,
+) -> impl IntoResponse {
+    #[cfg(not(feature = "oauth"))]
+    {
+        let _ = (&state, &query);
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({ "error": "OAuth feature not enabled" })),
+        );
+    }
+
+    #[cfg(feature = "oauth")]
+    {
+        let oauth_config = match &state.oauth_config {
+            Some(c) => c,
+            None => {
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(serde_json::json!({ "error": "GitHub OAuth not configured" })),
+                );
+            }
+        };
+
+        let github_user = match oauth::github_exchange(oauth_config, &query.code).await {
+            Ok(u) => u,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": format!("GitHub auth failed: {e}") })),
+                );
+            }
+        };
+
+        // Check if account exists for this GitHub ID
+        if let Some(existing) = state.get_account_by_github_id(github_user.id).await {
+            let access_token = auth::generate_access_token(
+                &state.auth_config,
+                existing.id,
+                &existing.username,
+                false,
+            )
+            .unwrap_or_default();
+            let refresh_token =
+                auth::generate_refresh_token(&state.auth_config, existing.id, &existing.username)
+                    .unwrap_or_default();
+
+            return (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "player_id": existing.id,
+                    "username": existing.username,
+                    "access_token": access_token,
+                    "refresh_token": refresh_token,
+                    "is_new": false,
+                })),
+            );
+        }
+
+        // Create new account from GitHub
+        let username = github_user.login.clone();
+        let id = Uuid::new_v4();
+
+        #[cfg(feature = "postgres")]
+        if let Some(db) = state.db.as_ref() {
+            match db
+                .create_account_github(
+                    &username,
+                    github_user.email.as_deref(),
+                    github_user.id,
+                    Some(&username),
+                )
+                .await
+            {
+                Ok(db_id) => {
+                    let record = crate::state::AccountRecord {
+                        id: db_id,
+                        username: username.clone(),
+                        email: github_user.email,
+                        password_hash: String::new(),
+                        is_guest: false,
+                        display_name: Some(username.clone()),
+                        avatar_id: "tower_01".to_string(),
+                        auth_provider: "github".to_string(),
+                        github_id: Some(github_user.id),
+                    };
+                    state.accounts.write().await.insert(username.clone(), record);
+
+                    let access_token = auth::generate_access_token(
+                        &state.auth_config,
+                        db_id,
+                        &username,
+                        false,
+                    )
+                    .unwrap_or_default();
+                    let refresh_token =
+                        auth::generate_refresh_token(&state.auth_config, db_id, &username)
+                            .unwrap_or_default();
+
+                    return (
+                        StatusCode::CREATED,
+                        Json(serde_json::json!({
+                            "player_id": db_id,
+                            "username": username,
+                            "access_token": access_token,
+                            "refresh_token": refresh_token,
+                            "is_new": true,
+                        })),
+                    );
+                }
+                Err(e) => {
+                    return (
+                        StatusCode::CONFLICT,
+                        Json(serde_json::json!({ "error": format!("Account creation failed: {e}") })),
+                    );
+                }
+            }
+        }
+
+        // In-memory fallback
+        let record = crate::state::AccountRecord {
+            id,
+            username: username.clone(),
+            email: github_user.email,
+            password_hash: String::new(),
+            is_guest: false,
+            display_name: Some(username.clone()),
+            avatar_id: "tower_01".to_string(),
+            auth_provider: "github".to_string(),
+            github_id: Some(github_user.id),
+        };
+        state.accounts.write().await.insert(username.clone(), record);
+
+        let access_token =
+            auth::generate_access_token(&state.auth_config, id, &username, false)
+                .unwrap_or_default();
+        let refresh_token =
+            auth::generate_refresh_token(&state.auth_config, id, &username)
+                .unwrap_or_default();
+
+        (
+            StatusCode::CREATED,
+            Json(serde_json::json!({
+                "player_id": id,
+                "username": username,
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "is_new": true,
+            })),
+        )
+    }
+}
+
+// ── Profile Endpoints ─────────────────────────────────────────────────────
+
+const AVATAR_LIST: &[&str] = &[
+    "tower_01", "tower_02", "satellite_01", "satellite_02",
+    "antenna_01", "antenna_02", "router_01", "router_02",
+    "cable_01", "cable_02", "server_01", "server_02",
+    "phone_01", "phone_02", "modem_01", "modem_02",
+    "dish_01", "dish_02", "fiber_01", "fiber_02",
+    "switch_01", "switch_02", "relay_01", "relay_02",
+    "headset_01", "headset_02", "radio_01", "radio_02",
+    "globe_01", "globe_02",
+];
+
+async fn list_avatars() -> impl IntoResponse {
+    Json(serde_json::json!({ "avatars": AVATAR_LIST }))
+}
+
+#[allow(unused_variables)]
+async fn get_own_profile(
+    AuthClaims(account_id): AuthClaims,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.get_profile(account_id).await {
+            Ok(Some(p)) => {
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({
+                        "id": p.id,
+                        "username": p.username,
+                        "display_name": p.display_name,
+                        "avatar_id": p.avatar_id.unwrap_or_else(|| "tower_01".to_string()),
+                        "auth_provider": p.auth_provider.unwrap_or_else(|| "local".to_string()),
+                        "created_at": p.created_at.to_rfc3339(),
+                    })),
+                );
+            }
+            Ok(None) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({ "error": "Profile not found" })),
+                );
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("{e}") })),
+                );
+            }
+        }
+    }
+
+    // In-memory fallback: look up by ID
+    let accounts = state.accounts.read().await;
+    for record in accounts.values() {
+        if record.id == account_id {
+            return (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "id": record.id,
+                    "username": record.username,
+                    "display_name": record.display_name,
+                    "avatar_id": record.avatar_id,
+                    "auth_provider": record.auth_provider,
+                    "created_at": null,
+                })),
+            );
+        }
+    }
+
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({ "error": "Profile not found" })),
+    )
+}
+
+#[derive(Deserialize)]
+struct UpdateProfileRequest {
+    display_name: Option<String>,
+    avatar_id: Option<String>,
+}
+
+#[allow(unused_variables)]
+async fn update_profile(
+    AuthClaims(account_id): AuthClaims,
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<UpdateProfileRequest>,
+) -> impl IntoResponse {
+    // Validate avatar_id
+    if let Some(ref avatar) = body.avatar_id {
+        if !AVATAR_LIST.contains(&avatar.as_str()) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": "Invalid avatar ID" })),
+            );
+        }
+    }
+
+    // Validate display_name length
+    if let Some(ref name) = body.display_name {
+        if name.len() > 64 {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": "Display name must be 64 characters or less" })),
+            );
+        }
+    }
+
+    let avatar = body.avatar_id.as_deref().unwrap_or("tower_01");
+
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.update_profile(account_id, body.display_name.as_deref(), avatar).await {
+            Ok(()) => {
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({ "updated": true })),
+                );
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("{e}") })),
+                );
+            }
+        }
+    }
+
+    // In-memory fallback
+    let mut accounts = state.accounts.write().await;
+    for record in accounts.values_mut() {
+        if record.id == account_id {
+            if let Some(ref name) = body.display_name {
+                record.display_name = Some(name.clone());
+            }
+            record.avatar_id = avatar.to_string();
+            return (
+                StatusCode::OK,
+                Json(serde_json::json!({ "updated": true })),
+            );
+        }
+    }
+
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({ "error": "Account not found" })),
+    )
+}
+
+#[allow(unused_variables)]
+async fn get_player_profile(
+    _: AuthClaims,
+    State(state): State<Arc<AppState>>,
+    Path(player_id): Path<Uuid>,
+) -> impl IntoResponse {
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.get_profile(player_id).await {
+            Ok(Some(p)) => {
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({
+                        "id": p.id,
+                        "username": p.username,
+                        "display_name": p.display_name,
+                        "avatar_id": p.avatar_id.unwrap_or_else(|| "tower_01".to_string()),
+                    })),
+                );
+            }
+            Ok(None) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({ "error": "Player not found" })),
+                );
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("{e}") })),
+                );
+            }
+        }
+    }
+
+    // In-memory fallback
+    let accounts = state.accounts.read().await;
+    for record in accounts.values() {
+        if record.id == player_id {
+            return (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "id": record.id,
+                    "username": record.username,
+                    "display_name": record.display_name,
+                    "avatar_id": record.avatar_id,
+                })),
+            );
+        }
+    }
+
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({ "error": "Player not found" })),
+    )
+}
+
+#[allow(unused_variables)]
+async fn delete_account(
+    AuthClaims(account_id): AuthClaims,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.soft_delete_account(account_id).await {
+            Ok(()) => {
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({ "deleted": true })),
+                );
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("{e}") })),
+                );
+            }
+        }
+    }
+
+    // In-memory: remove from accounts
+    let mut accounts = state.accounts.write().await;
+    let key = accounts
+        .iter()
+        .find(|(_, v)| v.id == account_id)
+        .map(|(k, _)| k.clone());
+    if let Some(k) = key {
+        accounts.remove(&k);
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({ "deleted": true })),
+        )
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Account not found" })),
+        )
+    }
+}
+
+// ── Password Reset ────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct PasswordResetRequest {
+    username: String,
+}
+
+#[allow(unused_variables)]
+async fn request_password_reset(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<PasswordResetRequest>,
+) -> impl IntoResponse {
+    // Always return success to prevent account enumeration
+    let success_msg = serde_json::json!({
+        "message": "If the account exists, a password reset has been queued."
+    });
+
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        if let Ok(Some(row)) = db.get_account_by_username(&body.username).await {
+            // Queue a manual reset request for admin
+            let _ = db.create_reset_request(row.id, &body.username).await;
+        }
+    }
+
+    (StatusCode::OK, Json(success_msg))
+}
+
+#[derive(Deserialize)]
+struct PasswordResetConfirm {
+    token: String,
+    new_password: String,
+}
+
+#[allow(unused_variables)]
+async fn confirm_password_reset(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<PasswordResetConfirm>,
+) -> impl IntoResponse {
+    if body.new_password.len() < 8 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "Password must be at least 8 characters" })),
+        );
+    }
+
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        // Hash the token for lookup
+        use argon2::password_hash::rand_core::OsRng;
+        use argon2::password_hash::SaltString;
+        let token_hash = {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            body.token.hash(&mut hasher);
+            format!("{:x}", hasher.finish())
+        };
+
+        match db.validate_reset_token(&token_hash).await {
+            Ok(Some(account_id)) => {
+                let new_hash = match auth::hash_password(&body.new_password) {
+                    Ok(h) => h,
+                    Err(_) => {
+                        return (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(serde_json::json!({ "error": "Internal error" })),
+                        );
+                    }
+                };
+
+                let _ = db.update_password(account_id, &new_hash).await;
+                let _ = db.mark_reset_token_used(&token_hash).await;
+
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({ "reset": true })),
+                );
+            }
+            Ok(None) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": "Invalid or expired token" })),
+                );
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("{e}") })),
+                );
+            }
+        }
+    }
+
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(serde_json::json!({ "error": "Database not available" })),
     )
 }
 
@@ -1026,4 +1638,1114 @@ async fn admin_debug_world(
             Json(serde_json::json!({ "error": "World not found" })),
         ),
     }
+}
+
+// ── Phase 2: World Catalog ─────────────────────────────────────────────────
+
+/// List enabled world templates (public catalog)
+async fn list_catalog(
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.list_world_templates(true).await {
+            Ok(templates) => {
+                let mut result = Vec::new();
+                for t in templates {
+                    let instance_count = db.count_template_instances(t.id).await.unwrap_or(0);
+                    result.push(serde_json::json!({
+                        "id": t.id,
+                        "name": t.name,
+                        "description": t.description,
+                        "icon": t.icon,
+                        "config_defaults": t.config_defaults,
+                        "config_bounds": t.config_bounds,
+                        "max_instances": t.max_instances,
+                        "current_instances": instance_count,
+                    }));
+                }
+                return (StatusCode::OK, Json(serde_json::json!(result)));
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    (StatusCode::OK, Json(serde_json::json!([])))
+}
+
+/// Get a single catalog template
+async fn get_catalog_template(
+    State(state): State<Arc<AppState>>,
+    Path(template_id): Path<Uuid>,
+) -> impl IntoResponse {
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.get_template(template_id).await {
+            Ok(Some(t)) => {
+                let instance_count = db.count_template_instances(t.id).await.unwrap_or(0);
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({
+                        "id": t.id,
+                        "name": t.name,
+                        "description": t.description,
+                        "icon": t.icon,
+                        "config_defaults": t.config_defaults,
+                        "config_bounds": t.config_bounds,
+                        "max_instances": t.max_instances,
+                        "current_instances": instance_count,
+                        "enabled": t.enabled,
+                    })),
+                );
+            }
+            Ok(None) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({ "error": "Template not found" })),
+                );
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({ "error": "Templates require database" })),
+    )
+}
+
+#[derive(Deserialize)]
+struct CreateFromTemplateRequest {
+    template_id: Uuid,
+    name: String,
+    max_players: Option<u32>,
+    config_overrides: Option<serde_json::Value>,
+}
+
+/// Validate config overrides are within template bounds, merge with defaults
+fn validate_config_within_bounds(
+    overrides: &serde_json::Value,
+    defaults: &serde_json::Value,
+    bounds: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let mut merged = defaults.clone();
+
+    if let (Some(overrides_obj), Some(merged_obj)) =
+        (overrides.as_object(), merged.as_object_mut())
+    {
+        let empty_map = serde_json::Map::new();
+        let bounds_obj = bounds.as_object().unwrap_or(&empty_map);
+
+        for (key, value) in overrides_obj {
+            if let Some(bound) = bounds_obj.get(key) {
+                // Check numeric bounds
+                if let (Some(val), Some(min), Some(max)) =
+                    (value.as_f64(), bound.get("min").and_then(|v| v.as_f64()), bound.get("max").and_then(|v| v.as_f64()))
+                {
+                    if val < min || val > max {
+                        return Err(format!(
+                            "Field '{}' value {} is out of bounds [{}, {}]",
+                            key, val, min, max
+                        ));
+                    }
+                }
+                // Check allowed list
+                if let Some(allowed) = bound.get("allowed").and_then(|v| v.as_array()) {
+                    if !allowed.contains(value) {
+                        return Err(format!(
+                            "Field '{}' value {:?} is not in allowed list",
+                            key, value
+                        ));
+                    }
+                }
+                merged_obj.insert(key.clone(), value.clone());
+            } else {
+                return Err(format!("Field '{}' is not customizable", key));
+            }
+        }
+    }
+
+    Ok(merged)
+}
+
+/// Create a world from a catalog template
+async fn create_world_from_template(
+    State(state): State<Arc<AppState>>,
+    AuthClaims(player_id): AuthClaims,
+    Json(req): Json<CreateFromTemplateRequest>,
+) -> impl IntoResponse {
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        // Get the template
+        let template = match db.get_template(req.template_id).await {
+            Ok(Some(t)) => t,
+            Ok(None) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({ "error": "Template not found" })),
+                );
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        };
+
+        if !template.enabled {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": "Template is disabled" })),
+            );
+        }
+
+        // Check instance limit
+        let instance_count = db.count_template_instances(req.template_id).await.unwrap_or(0);
+        if instance_count >= template.max_instances as i64 {
+            return (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({ "error": "Maximum instances for this template reached" })),
+            );
+        }
+
+        // Validate and merge config overrides
+        let config_json = if let Some(ref overrides) = req.config_overrides {
+            match validate_config_within_bounds(overrides, &template.config_defaults, &template.config_bounds) {
+                Ok(merged) => merged,
+                Err(e) => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({ "error": e })),
+                    );
+                }
+            }
+        } else {
+            template.config_defaults.clone()
+        };
+
+        // Parse into WorldConfig
+        let config: WorldConfig = match serde_json::from_value(config_json) {
+            Ok(c) => c,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": format!("Invalid config: {e}") })),
+                );
+            }
+        };
+
+        let max_players = req.max_players.unwrap_or(8);
+        let invite_code = crate::state::generate_invite_code();
+
+        let world_id = state
+            .create_world_from_template(
+                req.name,
+                config,
+                max_players,
+                Some(req.template_id),
+                Some(invite_code.clone()),
+            )
+            .await;
+
+        // Start tick loop
+        if let Some(world) = state.get_world(&world_id).await {
+            #[cfg(feature = "postgres")]
+            tick::spawn_world_tick_loop(world, state.db.clone());
+            #[cfg(not(feature = "postgres"))]
+            tick::spawn_world_tick_loop(world);
+        }
+
+        // Record template + creator in DB
+        let _ = db.set_world_template_id(world_id, req.template_id).await;
+        let _ = db.set_world_creator(world_id, player_id).await;
+        let _ = db.set_world_invite_code(world_id, &invite_code).await;
+
+        return (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "world_id": world_id,
+                "invite_code": invite_code,
+            })),
+        );
+    }
+
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({ "error": "Templates require database" })),
+    )
+}
+
+/// Look up a world by invite code
+async fn get_world_by_invite(
+    State(state): State<Arc<AppState>>,
+    Path(code): Path<String>,
+) -> impl IntoResponse {
+    // First check in-memory worlds
+    let worlds = state.worlds.read().await;
+    for instance in worlds.values() {
+        if instance.invite_code.as_deref() == Some(code.as_str()) {
+            let w = instance.world.lock().await;
+            return (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "id": instance.id,
+                    "name": instance.name,
+                    "player_count": instance.player_count().await,
+                    "max_players": instance.max_players,
+                    "tick": w.current_tick(),
+                    "speed": w.speed(),
+                    "invite_code": code,
+                })),
+            );
+        }
+    }
+
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({ "error": "No active world found with that invite code" })),
+    )
+}
+
+// ── Phase 2: Admin - Templates ─────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct CreateTemplateRequest {
+    name: String,
+    description: String,
+    icon: String,
+    config_defaults: serde_json::Value,
+    config_bounds: serde_json::Value,
+    max_instances: Option<i32>,
+    enabled: Option<bool>,
+    sort_order: Option<i32>,
+}
+
+async fn admin_create_template(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<CreateTemplateRequest>,
+) -> impl IntoResponse {
+    if let Err(resp) = extract_admin_claims(&headers) {
+        return resp;
+    }
+
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db
+            .create_world_template(
+                &req.name,
+                &req.description,
+                &req.icon,
+                &req.config_defaults,
+                &req.config_bounds,
+                req.max_instances.unwrap_or(5),
+                req.enabled.unwrap_or(true),
+                req.sort_order.unwrap_or(0),
+            )
+            .await
+        {
+            Ok(id) => {
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({ "id": id, "status": "created" })),
+                );
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({ "error": "Templates require database" })),
+    )
+}
+
+async fn admin_list_templates(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(resp) = extract_admin_claims(&headers) {
+        return resp;
+    }
+
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.list_world_templates(false).await {
+            Ok(templates) => {
+                let result: Vec<serde_json::Value> = templates
+                    .into_iter()
+                    .map(|t| {
+                        serde_json::json!({
+                            "id": t.id,
+                            "name": t.name,
+                            "description": t.description,
+                            "icon": t.icon,
+                            "config_defaults": t.config_defaults,
+                            "config_bounds": t.config_bounds,
+                            "max_instances": t.max_instances,
+                            "enabled": t.enabled,
+                            "sort_order": t.sort_order,
+                        })
+                    })
+                    .collect();
+                return (StatusCode::OK, Json(serde_json::json!(result)));
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    (StatusCode::OK, Json(serde_json::json!([])))
+}
+
+async fn admin_update_template(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(req): Json<CreateTemplateRequest>,
+) -> impl IntoResponse {
+    if let Err(resp) = extract_admin_claims(&headers) {
+        return resp;
+    }
+
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db
+            .update_world_template(
+                id,
+                &req.name,
+                &req.description,
+                &req.icon,
+                &req.config_defaults,
+                &req.config_bounds,
+                req.max_instances.unwrap_or(5),
+                req.enabled.unwrap_or(true),
+                req.sort_order.unwrap_or(0),
+            )
+            .await
+        {
+            Ok(true) => {
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({ "status": "updated" })),
+                );
+            }
+            Ok(false) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({ "error": "Template not found" })),
+                );
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({ "error": "Templates require database" })),
+    )
+}
+
+async fn admin_delete_template(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> impl IntoResponse {
+    if let Err(resp) = extract_admin_claims(&headers) {
+        return resp;
+    }
+
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.delete_world_template(id).await {
+            Ok(true) => {
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({ "status": "deleted" })),
+                );
+            }
+            Ok(false) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({ "error": "Template not found" })),
+                );
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({ "error": "Templates require database" })),
+    )
+}
+
+// ── Phase 2: Admin - Enhanced Bans, Audit, Reset Queue, Metrics ────────────
+
+async fn admin_list_bans(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(resp) = extract_admin_claims(&headers) {
+        return resp;
+    }
+
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.list_bans().await {
+            Ok(bans) => {
+                let result: Vec<serde_json::Value> = bans
+                    .into_iter()
+                    .map(|b| {
+                        serde_json::json!({
+                            "id": b.id,
+                            "account_id": b.account_id,
+                            "username": b.username,
+                            "world_id": b.world_id,
+                            "reason": b.reason,
+                            "banned_at": b.banned_at.to_rfc3339(),
+                            "expires_at": b.expires_at.map(|t| t.to_rfc3339()),
+                        })
+                    })
+                    .collect();
+                return (StatusCode::OK, Json(serde_json::json!(result)));
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    (StatusCode::OK, Json(serde_json::json!([])))
+}
+
+async fn admin_list_reset_queue(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(resp) = extract_admin_claims(&headers) {
+        return resp;
+    }
+
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.list_pending_reset_requests().await {
+            Ok(requests) => {
+                let result: Vec<serde_json::Value> = requests
+                    .into_iter()
+                    .map(|r| {
+                        serde_json::json!({
+                            "id": r.id,
+                            "account_id": r.account_id,
+                            "username": r.username,
+                            "status": r.status,
+                            "created_at": r.created_at.to_rfc3339(),
+                        })
+                    })
+                    .collect();
+                return (StatusCode::OK, Json(serde_json::json!(result)));
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    (StatusCode::OK, Json(serde_json::json!([])))
+}
+
+#[derive(Deserialize)]
+struct ResolveResetRequest {
+    request_id: Uuid,
+}
+
+async fn admin_resolve_reset(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<ResolveResetRequest>,
+) -> impl IntoResponse {
+    if let Err(resp) = extract_admin_claims(&headers) {
+        return resp;
+    }
+
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        // Generate a temporary password
+        let temp_password = crate::state::generate_invite_code(); // reuse random code generator
+        let hash = match auth::hash_password(&temp_password) {
+            Ok(h) => h,
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Failed to hash password: {e}") })),
+                );
+            }
+        };
+
+        // First look up the pending request to get the account_id
+        let pending = match db.list_pending_reset_requests().await {
+            Ok(reqs) => reqs.into_iter().find(|r| r.id == req.request_id),
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        };
+
+        let pending = match pending {
+            Some(p) => p,
+            None => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({ "error": "Reset request not found or already resolved" })),
+                );
+            }
+        };
+
+        // Update the password
+        if let Err(e) = db.update_password(pending.account_id, &hash).await {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Failed to update password: {e}") })),
+            );
+        }
+
+        // Mark the request as resolved
+        if let Err(e) = db.resolve_reset_request(req.request_id, "admin").await {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+            );
+        }
+
+        return (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "resolved",
+                "temp_password": temp_password,
+            })),
+        );
+    }
+
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({ "error": "Requires database" })),
+    )
+}
+
+/// Real-time server and world metrics
+async fn admin_metrics(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(resp) = extract_admin_claims(&headers) {
+        return resp;
+    }
+
+    let worlds = state.worlds.read().await;
+    let mut world_metrics = Vec::new();
+    for instance in worlds.values() {
+        let w = instance.world.lock().await;
+        world_metrics.push(serde_json::json!({
+            "id": instance.id,
+            "name": instance.name,
+            "tick": w.current_tick(),
+            "speed": w.speed(),
+            "player_count": instance.player_count().await,
+            "max_players": instance.max_players,
+            "last_tick_us": instance.last_tick_duration_us.load(std::sync::atomic::Ordering::Relaxed),
+            "avg_tick_us": instance.avg_tick_duration_us.load(std::sync::atomic::Ordering::Relaxed),
+            "entity_count": w.corporations.len() + w.infra_nodes.len() + w.infra_edges.len(),
+            "broadcast_subscribers": instance.broadcast_tx.receiver_count(),
+        }));
+    }
+    drop(worlds);
+
+    let online_count = state.online_players.read().await.len();
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "worlds": world_metrics,
+            "server": {
+                "uptime_secs": state.uptime_secs(),
+                "connected_players": online_count,
+                "world_count": world_metrics.len(),
+            },
+        })),
+    )
+}
+
+// ── Phase 3: Social System ─────────────────────────────────────────────────
+
+/// List friends with online status
+async fn list_friends(
+    State(state): State<Arc<AppState>>,
+    AuthClaims(player_id): AuthClaims,
+) -> impl IntoResponse {
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.list_friends(player_id).await {
+            Ok(friends) => {
+                let online = state.online_players.read().await;
+                let result: Vec<serde_json::Value> = friends
+                    .into_iter()
+                    .map(|f| {
+                        let presence = online.get(&f.friend_id);
+                        serde_json::json!({
+                            "id": f.friend_id,
+                            "username": f.friend_username,
+                            "display_name": f.friend_display_name,
+                            "avatar_id": f.friend_avatar_id,
+                            "online": presence.is_some(),
+                            "world_id": presence.and_then(|p| p.world_id),
+                            "world_name": presence.and_then(|p| p.world_name.clone()),
+                        })
+                    })
+                    .collect();
+                return (StatusCode::OK, Json(serde_json::json!(result)));
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    (StatusCode::OK, Json(serde_json::json!([])))
+}
+
+#[derive(Deserialize)]
+struct FriendRequestBody {
+    username: String,
+}
+
+/// Send a friend request by username
+async fn send_friend_request(
+    State(state): State<Arc<AppState>>,
+    AuthClaims(player_id): AuthClaims,
+    Json(req): Json<FriendRequestBody>,
+) -> impl IntoResponse {
+    // Look up target by username
+    let target = state.get_account(&req.username).await;
+    let target = match target {
+        Some(t) => t,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": "User not found" })),
+            );
+        }
+    };
+
+    if target.id == player_id {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "Cannot send friend request to yourself" })),
+        );
+    }
+
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.send_friend_request(player_id, target.id).await {
+            Ok(request_id) => {
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({
+                        "status": "sent",
+                        "request_id": request_id,
+                    })),
+                );
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({ "error": "Friends require database" })),
+    )
+}
+
+/// List incoming and outgoing friend requests
+async fn list_friend_requests(
+    State(state): State<Arc<AppState>>,
+    AuthClaims(player_id): AuthClaims,
+) -> impl IntoResponse {
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        let incoming = db.list_friend_requests_incoming(player_id).await.unwrap_or_default();
+        let outgoing = db.list_friend_requests_outgoing(player_id).await.unwrap_or_default();
+
+        let incoming_json: Vec<serde_json::Value> = incoming
+            .into_iter()
+            .map(|r| {
+                serde_json::json!({
+                    "id": r.id,
+                    "from_id": r.from_id,
+                    "from_username": r.from_username,
+                    "to_id": r.to_id,
+                    "to_username": r.to_username,
+                    "status": r.status,
+                    "created_at": r.created_at.to_rfc3339(),
+                })
+            })
+            .collect();
+
+        let outgoing_json: Vec<serde_json::Value> = outgoing
+            .into_iter()
+            .map(|r| {
+                serde_json::json!({
+                    "id": r.id,
+                    "from_id": r.from_id,
+                    "from_username": r.from_username,
+                    "to_id": r.to_id,
+                    "to_username": r.to_username,
+                    "status": r.status,
+                    "created_at": r.created_at.to_rfc3339(),
+                })
+            })
+            .collect();
+
+        return (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "incoming": incoming_json,
+                "outgoing": outgoing_json,
+            })),
+        );
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "incoming": [], "outgoing": [] })),
+    )
+}
+
+#[derive(Deserialize)]
+struct AcceptRejectRequest {
+    request_id: Uuid,
+}
+
+/// Accept a friend request
+async fn accept_friend_request(
+    State(state): State<Arc<AppState>>,
+    AuthClaims(_player_id): AuthClaims,
+    Json(req): Json<AcceptRejectRequest>,
+) -> impl IntoResponse {
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.accept_friend_request(req.request_id).await {
+            Ok(Some(_)) => {
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({ "status": "accepted" })),
+                );
+            }
+            Ok(None) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({ "error": "Request not found or already handled" })),
+                );
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({ "error": "Friends require database" })),
+    )
+}
+
+/// Reject a friend request
+async fn reject_friend_request(
+    State(state): State<Arc<AppState>>,
+    AuthClaims(_player_id): AuthClaims,
+    Json(req): Json<AcceptRejectRequest>,
+) -> impl IntoResponse {
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.reject_friend_request(req.request_id).await {
+            Ok(true) => {
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({ "status": "rejected" })),
+                );
+            }
+            Ok(false) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({ "error": "Request not found or already handled" })),
+                );
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({ "error": "Friends require database" })),
+    )
+}
+
+/// Remove a friend
+async fn remove_friend(
+    State(state): State<Arc<AppState>>,
+    AuthClaims(player_id): AuthClaims,
+    Path(friend_id): Path<Uuid>,
+) -> impl IntoResponse {
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.remove_friend(player_id, friend_id).await {
+            Ok(true) => {
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({ "status": "removed" })),
+                );
+            }
+            Ok(false) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({ "error": "Friendship not found" })),
+                );
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({ "error": "Friends require database" })),
+    )
+}
+
+#[derive(Deserialize)]
+struct SearchQuery {
+    q: String,
+}
+
+/// Search users by username
+async fn search_users(
+    State(state): State<Arc<AppState>>,
+    AuthClaims(_player_id): AuthClaims,
+    axum::extract::Query(query): axum::extract::Query<SearchQuery>,
+) -> impl IntoResponse {
+    if query.q.len() < 2 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "Search query must be at least 2 characters" })),
+        );
+    }
+
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.search_accounts(&query.q, 20).await {
+            Ok(profiles) => {
+                let result: Vec<serde_json::Value> = profiles
+                    .into_iter()
+                    .map(|p| {
+                        serde_json::json!({
+                            "id": p.id,
+                            "username": p.username,
+                            "display_name": p.display_name,
+                            "avatar_id": p.avatar_id.unwrap_or_else(|| "tower_01".to_string()),
+                        })
+                    })
+                    .collect();
+                return (StatusCode::OK, Json(serde_json::json!(result)));
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    (StatusCode::OK, Json(serde_json::json!([])))
+}
+
+#[derive(Deserialize)]
+struct InviteFriendRequest {
+    friend_id: Uuid,
+    world_id: Uuid,
+}
+
+/// Send a world invite to a friend (via WebSocket broadcast)
+async fn invite_friend_to_world(
+    State(state): State<Arc<AppState>>,
+    AuthClaims(player_id): AuthClaims,
+    Json(req): Json<InviteFriendRequest>,
+) -> impl IntoResponse {
+    // Get the sender's username
+    let sender_name = {
+        let players = state.players.read().await;
+        players
+            .get(&player_id)
+            .map(|p| p.username.clone())
+            .unwrap_or_else(|| "Unknown".to_string())
+    };
+
+    // Get the world info
+    let world = state.get_world(&req.world_id).await;
+    let (world_name, invite_code) = match world {
+        Some(ref w) => (w.name.clone(), w.invite_code.clone().unwrap_or_default()),
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": "World not found" })),
+            );
+        }
+    };
+
+    // Send via the world's broadcast channel — the friend's WebSocket handler
+    // will filter for their player_id. For now, store the invite in online_players
+    // or use a direct approach.
+    // Since we don't have per-player channels yet, return success and let
+    // the frontend poll or use the friends list presence.
+    let _ = (&sender_name, &world_name, &invite_code, &req.friend_id);
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "status": "invited",
+            "world_name": world_name,
+            "invite_code": invite_code,
+        })),
+    )
+}
+
+/// List recent players from shared worlds
+async fn list_recent_players(
+    State(state): State<Arc<AppState>>,
+    AuthClaims(player_id): AuthClaims,
+) -> impl IntoResponse {
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.list_recent_players(player_id, 50).await {
+            Ok(players) => {
+                let online = state.online_players.read().await;
+                let result: Vec<serde_json::Value> = players
+                    .into_iter()
+                    .map(|p| {
+                        serde_json::json!({
+                            "id": p.other_id,
+                            "username": p.username,
+                            "display_name": p.display_name,
+                            "avatar_id": p.avatar_id,
+                            "last_seen": p.last_seen.to_rfc3339(),
+                            "online": online.contains_key(&p.other_id),
+                        })
+                    })
+                    .collect();
+                return (StatusCode::OK, Json(serde_json::json!(result)));
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    (StatusCode::OK, Json(serde_json::json!([])))
+}
+
+/// List world history for the authenticated player
+async fn list_world_history(
+    State(state): State<Arc<AppState>>,
+    AuthClaims(player_id): AuthClaims,
+) -> impl IntoResponse {
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.list_world_history(player_id, 20).await {
+            Ok(history) => {
+                // Check which worlds are still active
+                let worlds = state.worlds.read().await;
+                let result: Vec<serde_json::Value> = history
+                    .into_iter()
+                    .map(|h| {
+                        let active = worlds.contains_key(&h.world_id);
+                        serde_json::json!({
+                            "world_id": h.world_id,
+                            "world_name": h.world_name,
+                            "last_played": h.last_played.to_rfc3339(),
+                            "active": active,
+                        })
+                    })
+                    .collect();
+                return (StatusCode::OK, Json(serde_json::json!(result)));
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    (StatusCode::OK, Json(serde_json::json!([])))
 }

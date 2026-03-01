@@ -1,5 +1,6 @@
 import { browser } from '$app/environment';
 import { writable, derived, get } from 'svelte/store';
+import { resetAccountState } from '$lib/stores/accountState';
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -164,4 +165,5 @@ export function resetMultiplayerState() {
 	ghostEdges.set([]);
 	speedVotes.set([]);
 	speedVoteDeadline.set(null);
+	resetAccountState();
 }

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { tr } from '$lib/i18n/index';
+	import { isAuthenticated } from '$lib/stores/multiplayerState';
 
-	let { onNewGame, onLoadGame, onSettings, onMultiplayer, onCredits }: { onNewGame: () => void; onLoadGame: () => void; onSettings: () => void; onMultiplayer: () => void; onCredits: () => void } = $props();
+	let { onNewGame, onLoadGame, onSettings, onMultiplayer, onCredits, onProfile }: { onNewGame: () => void; onLoadGame: () => void; onSettings: () => void; onMultiplayer: () => void; onCredits: () => void; onProfile: () => void } = $props();
 
 	const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.3.1';
 </script>
@@ -16,6 +17,9 @@
 			<button class="menu-btn" onclick={onLoadGame} aria-label="Load a saved game">{$tr('menu.load_game')}</button>
 			<button class="menu-btn" onclick={onMultiplayer} aria-label="Join or host multiplayer">{$tr('menu.multiplayer')}</button>
 			<button class="menu-btn" onclick={onSettings} aria-label="Open settings">{$tr('menu.settings')}</button>
+			{#if $isAuthenticated}
+				<button class="menu-btn" onclick={onProfile} aria-label="View profile">Profile</button>
+			{/if}
 			<button class="menu-btn" onclick={onCredits} aria-label="View credits">{$tr('menu.credits')}</button>
 		</div>
 	</div>

@@ -5,12 +5,39 @@
 	import Settings from '$lib/menu/Settings.svelte';
 	import Credits from '$lib/menu/Credits.svelte';
 	import WorldBrowser from '$lib/menu/WorldBrowser.svelte';
+	import Lobby from '$lib/menu/Lobby.svelte';
+	import ProfilePage from '$lib/menu/ProfilePage.svelte';
+	import ForgotPassword from '$lib/menu/ForgotPassword.svelte';
 	import SplashScreen from '$lib/menu/SplashScreen.svelte';
 	import { goto } from '$app/navigation';
 	import { initGame, initMultiplayer, start, loadFromSave, setSpeed } from '$lib/game/GameLoop';
 	import { initWasm } from '$lib/wasm/bridge';
+	import { githubCallback } from '$lib/multiplayer/accountApi';
+	import { accessToken, refreshToken, playerId, playerUsername, isAuthenticated } from '$lib/stores/multiplayerState';
+	import { onMount } from 'svelte';
 
-	type Screen = 'splash' | 'main' | 'newGame' | 'loadGame' | 'settings' | 'multiplayer' | 'credits' | 'loading';
+	type Screen = 'splash' | 'main' | 'newGame' | 'loadGame' | 'settings' | 'multiplayer' | 'credits' | 'loading' | 'profile' | 'forgotPassword';
+
+	// Handle GitHub OAuth callback
+	onMount(() => {
+		const params = new URLSearchParams(window.location.search);
+		const code = params.get('code');
+		if (code) {
+			// Clean the URL
+			window.history.replaceState({}, '', window.location.pathname);
+			githubCallback(code).then((result) => {
+				accessToken.set(result.access_token);
+				refreshToken.set(result.refresh_token);
+				playerId.set(result.player_id);
+				playerUsername.set(result.username);
+				isAuthenticated.set(true);
+				screen = 'multiplayer';
+			}).catch((e) => {
+				console.error('GitHub OAuth failed:', e);
+				screen = 'main';
+			});
+		}
+	});
 	let screen: Screen = $state('splash');
 	let loadingTip = $state('');
 
@@ -85,7 +112,7 @@
 {:else if screen === 'splash'}
 	<SplashScreen onComplete={() => (screen = 'main')} />
 {:else if screen === 'main'}
-	<MainMenu onNewGame={() => (screen = 'newGame')} onLoadGame={() => (screen = 'loadGame')} onSettings={() => (screen = 'settings')} onMultiplayer={() => (screen = 'multiplayer')} onCredits={() => (screen = 'credits')} />
+	<MainMenu onNewGame={() => (screen = 'newGame')} onLoadGame={() => (screen = 'loadGame')} onSettings={() => (screen = 'settings')} onMultiplayer={() => (screen = 'multiplayer')} onCredits={() => (screen = 'credits')} onProfile={() => (screen = 'profile')} />
 {:else if screen === 'newGame'}
 	<NewGame onStart={handleStart} onBack={() => (screen = 'main')} />
 {:else if screen === 'loadGame'}
@@ -95,7 +122,11 @@
 {:else if screen === 'credits'}
 	<Credits onBack={() => (screen = 'main')} />
 {:else if screen === 'multiplayer'}
-	<WorldBrowser onBack={() => (screen = 'main')} onJoin={handleMultiplayerJoin} />
+	<Lobby onBack={() => (screen = 'main')} onJoin={handleMultiplayerJoin} onForgotPassword={() => (screen = 'forgotPassword')} />
+{:else if screen === 'profile'}
+	<ProfilePage onBack={() => (screen = 'main')} />
+{:else if screen === 'forgotPassword'}
+	<ForgotPassword onBack={() => (screen = 'multiplayer')} />
 {/if}
 
 <style>

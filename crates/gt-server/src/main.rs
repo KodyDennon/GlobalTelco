@@ -1,6 +1,7 @@
 mod auth;
 mod config;
 mod db;
+mod oauth;
 mod routes;
 mod state;
 mod tick;
@@ -71,7 +72,11 @@ async fn main() {
     let database: Option<db::Database> = None;
 
     // Create shared state
-    let state = Arc::new(AppState::new(config.auth.clone(), database));
+    let state = Arc::new(
+        AppState::new(config.auth.clone(), database)
+            .with_oauth(config.oauth.clone())
+            .with_cf_reset_url(config.cf_reset_worker_url.clone()),
+    );
 
     // Create a default world for local testing
     let default_world_id = state

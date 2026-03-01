@@ -1,4 +1,5 @@
 import { encode, decode } from '@msgpack/msgpack';
+import { decompress } from 'fzstd';
 import { get } from 'svelte/store';
 import {
 	connectionState,
@@ -199,6 +200,25 @@ function handleServerMessage(msg: ServerMessage) {
 				state_json: snapshot.state_json as string,
 			}
 		}));
+	} else if ('CompressedSnapshot' in msg) {
+		const snap = msg.CompressedSnapshot as Record<string, unknown>;
+		try {
+			const compressed = new Uint8Array(snap.compressed_data as ArrayBuffer | number[]);
+			const decompressed = decompress(compressed);
+			const stateJson = new TextDecoder().decode(decompressed);
+			console.log(
+				'[WS] CompressedSnapshot received, tick:', snap.tick,
+				'compressed:', compressed.length, '-> decompressed:', decompressed.length
+			);
+			window.dispatchEvent(new CustomEvent('mp-snapshot', {
+				detail: {
+					tick: snap.tick as number,
+					state_json: stateJson,
+				}
+			}));
+		} catch (e) {
+			console.error('[WS] Failed to decompress snapshot:', e);
+		}
 	} else if ('CommandAck' in msg) {
 		const ack = msg.CommandAck as Record<string, unknown>;
 		window.dispatchEvent(new CustomEvent('mp-command-ack', {
@@ -237,6 +257,35 @@ function handleServerMessage(msg: ServerMessage) {
 	} else if ('SaveData' in msg) {
 		const data = msg.SaveData as Record<string, unknown>;
 		window.dispatchEvent(new CustomEvent('cloud-save-data', { detail: data }));
+	} else if ('FriendRequestReceived' in msg) {
+		const req = msg.FriendRequestReceived as Record<string, unknown>;
+		window.dispatchEvent(new CustomEvent('mp-friend-request', {
+			detail: {
+				from_id: req.from_id as string,
+				from_username: req.from_username as string,
+			}
+		}));
+	} else if ('FriendPresenceUpdate' in msg) {
+		const presence = msg.FriendPresenceUpdate as Record<string, unknown>;
+		window.dispatchEvent(new CustomEvent('mp-friend-presence', {
+			detail: {
+				friend_id: presence.friend_id as string,
+				username: presence.username as string,
+				online: presence.online as boolean,
+				world_id: presence.world_id as string | null,
+				world_name: presence.world_name as string | null,
+			}
+		}));
+	} else if ('WorldInvite' in msg) {
+		const invite = msg.WorldInvite as Record<string, unknown>;
+		window.dispatchEvent(new CustomEvent('mp-world-invite', {
+			detail: {
+				from_username: invite.from_username as string,
+				world_id: invite.world_id as string,
+				world_name: invite.world_name as string,
+				invite_code: invite.invite_code as string,
+			}
+		}));
 	}
 }
 

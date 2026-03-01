@@ -229,3 +229,175 @@ export async function fetchAuditLog(key: string): Promise<AuditEntry[]> {
 	const data = await res.json();
 	return data.audit_log;
 }
+
+// ── Template Management (Phase 2+) ──────────────────────────────────────
+
+export interface WorldTemplate {
+	id: string;
+	name: string;
+	description: string;
+	icon: string;
+	config_defaults: Record<string, unknown>;
+	config_bounds: Record<string, unknown>;
+	max_instances: number;
+	enabled: boolean;
+	sort_order: number;
+}
+
+export interface CreateTemplateParams {
+	name: string;
+	description: string;
+	icon: string;
+	config_defaults: Record<string, unknown>;
+	config_bounds: Record<string, unknown>;
+	max_instances: number;
+	enabled: boolean;
+}
+
+export async function fetchTemplates(key: string): Promise<WorldTemplate[]> {
+	const res = await fetch(`${API_URL}/api/admin/templates`, {
+		headers: adminHeaders(key)
+	});
+	if (!res.ok) throw new Error(`Fetch templates failed: ${res.status}`);
+	return await res.json();
+}
+
+export async function createTemplate(key: string, template: CreateTemplateParams): Promise<void> {
+	const res = await fetch(`${API_URL}/api/admin/templates`, {
+		method: 'POST',
+		headers: adminHeaders(key),
+		body: JSON.stringify(template)
+	});
+	if (!res.ok) throw new Error(`Create template failed: ${res.status}`);
+}
+
+export async function updateTemplate(
+	key: string,
+	id: string,
+	updates: Partial<CreateTemplateParams>
+): Promise<void> {
+	const res = await fetch(`${API_URL}/api/admin/templates/${id}`, {
+		method: 'PUT',
+		headers: adminHeaders(key),
+		body: JSON.stringify(updates)
+	});
+	if (!res.ok) throw new Error(`Update template failed: ${res.status}`);
+}
+
+export async function deleteTemplate(key: string, id: string): Promise<void> {
+	const res = await fetch(`${API_URL}/api/admin/templates/${id}`, {
+		method: 'DELETE',
+		headers: adminHeaders(key)
+	});
+	if (!res.ok) throw new Error(`Delete template failed: ${res.status}`);
+}
+
+// ── Ban Management (Phase 2+) ───────────────────────────────────────────
+
+export interface Ban {
+	id: string;
+	account_id: string;
+	username: string;
+	world_id: string | null;
+	reason: string;
+	banned_at: string;
+	expires_at: string | null;
+}
+
+export async function fetchBans(key: string): Promise<Ban[]> {
+	const res = await fetch(`${API_URL}/api/admin/bans`, {
+		headers: adminHeaders(key)
+	});
+	if (!res.ok) throw new Error(`Fetch bans failed: ${res.status}`);
+	return await res.json();
+}
+
+export async function createBan(
+	key: string,
+	accountId: string,
+	reason: string,
+	worldId?: string,
+	expiresAt?: string
+): Promise<void> {
+	const body: Record<string, unknown> = { account_id: accountId, reason };
+	if (worldId) body.world_id = worldId;
+	if (expiresAt) body.expires_at = expiresAt;
+	const res = await fetch(`${API_URL}/api/admin/ban`, {
+		method: 'POST',
+		headers: adminHeaders(key),
+		body: JSON.stringify(body)
+	});
+	if (!res.ok) throw new Error(`Create ban failed: ${res.status}`);
+}
+
+export async function removeBan(key: string, accountId: string, worldId?: string): Promise<void> {
+	const body: Record<string, unknown> = { account_id: accountId };
+	if (worldId) body.world_id = worldId;
+	const res = await fetch(`${API_URL}/api/admin/unban`, {
+		method: 'POST',
+		headers: adminHeaders(key),
+		body: JSON.stringify(body)
+	});
+	if (!res.ok) throw new Error(`Remove ban failed: ${res.status}`);
+}
+
+// ── Password Reset Queue (Phase 2+) ────────────────────────────────────
+
+export interface ResetRequest {
+	id: string;
+	account_id: string;
+	username: string;
+	status: string;
+	created_at: string;
+}
+
+export async function fetchResetQueue(key: string): Promise<ResetRequest[]> {
+	const res = await fetch(`${API_URL}/api/admin/reset-queue`, {
+		headers: adminHeaders(key)
+	});
+	if (!res.ok) throw new Error(`Fetch reset queue failed: ${res.status}`);
+	return await res.json();
+}
+
+export async function resolveReset(
+	key: string,
+	requestId: string
+): Promise<{ temp_password: string }> {
+	const res = await fetch(`${API_URL}/api/admin/reset-resolve`, {
+		method: 'POST',
+		headers: adminHeaders(key),
+		body: JSON.stringify({ request_id: requestId })
+	});
+	if (!res.ok) throw new Error(`Resolve reset failed: ${res.status}`);
+	return await res.json();
+}
+
+// ── Server Metrics (Phase 2+) ──────────────────────────────────────────
+
+export interface ServerMetrics {
+	worlds: WorldMetrics[];
+	server: {
+		memory_mb: number;
+		connected_players: number;
+		uptime_secs: number;
+		ws_messages_per_sec: number;
+	};
+}
+
+export interface WorldMetrics {
+	id: string;
+	name: string;
+	avg_tick_us: number;
+	max_tick_us: number;
+	p99_tick_us: number;
+	entity_count: number;
+	last_system_times: Record<string, number>;
+}
+
+export async function fetchMetrics(key: string): Promise<ServerMetrics> {
+	const res = await fetch(`${API_URL}/api/admin/metrics`, {
+		headers: adminHeaders(key)
+	});
+	if (!res.ok) throw new Error(`Fetch metrics failed: ${res.status}`);
+	return await res.json();
+}

@@ -23,9 +23,11 @@ impl Database {
     }
 
     pub async fn run_migrations(&self) -> Result<(), sqlx::Error> {
-        // Run the SQL migration file
-        let migration = include_str!("../migrations/001_initial_schema.sql");
-        sqlx::raw_sql(migration).execute(&self.pool).await?;
+        // Run the SQL migration files
+        let migration1 = include_str!("../migrations/001_initial_schema.sql");
+        sqlx::raw_sql(migration1).execute(&self.pool).await?;
+        let migration2 = include_str!("../migrations/002_multiplayer_overhaul.sql");
+        sqlx::raw_sql(migration2).execute(&self.pool).await?;
         Ok(())
     }
 
@@ -39,15 +41,17 @@ impl Database {
         is_guest: bool,
     ) -> Result<Uuid, sqlx::Error> {
         let id = Uuid::new_v4();
+        let provider = if is_guest { "guest" } else { "local" };
         sqlx::query(
-            "INSERT INTO accounts (id, username, email, password_hash, is_guest)
-             VALUES ($1, $2, $3, $4, $5)",
+            "INSERT INTO accounts (id, username, email, password_hash, is_guest, auth_provider)
+             VALUES ($1, $2, $3, $4, $5, $6)",
         )
         .bind(id)
         .bind(username)
         .bind(email)
         .bind(password_hash)
         .bind(is_guest)
+        .bind(provider)
         .execute(&self.pool)
         .await?;
         Ok(id)
@@ -58,11 +62,112 @@ impl Database {
         username: &str,
     ) -> Result<Option<AccountRow>, sqlx::Error> {
         sqlx::query_as::<_, AccountRow>(
-            "SELECT id, username, email, password_hash, is_guest FROM accounts WHERE username = $1",
+            "SELECT id, username, email, password_hash, is_guest, display_name, avatar_id, auth_provider, github_id
+             FROM accounts WHERE username = $1 AND deleted_at IS NULL",
         )
         .bind(username)
         .fetch_optional(&self.pool)
         .await
+    }
+
+    pub async fn get_account_by_github_id(
+        &self,
+        github_id: i64,
+    ) -> Result<Option<AccountRow>, sqlx::Error> {
+        sqlx::query_as::<_, AccountRow>(
+            "SELECT id, username, email, password_hash, is_guest, display_name, avatar_id, auth_provider, github_id
+             FROM accounts WHERE github_id = $1 AND deleted_at IS NULL",
+        )
+        .bind(github_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn create_account_github(
+        &self,
+        username: &str,
+        email: Option<&str>,
+        github_id: i64,
+        display_name: Option<&str>,
+    ) -> Result<Uuid, sqlx::Error> {
+        let id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO accounts (id, username, email, password_hash, is_guest, github_id, auth_provider, display_name)
+             VALUES ($1, $2, $3, '', FALSE, $4, 'github', $5)",
+        )
+        .bind(id)
+        .bind(username)
+        .bind(email)
+        .bind(github_id)
+        .bind(display_name)
+        .execute(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
+    pub async fn link_github(
+        &self,
+        account_id: Uuid,
+        github_id: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE accounts SET github_id = $1 WHERE id = $2")
+            .bind(github_id)
+            .bind(account_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn update_profile(
+        &self,
+        account_id: Uuid,
+        display_name: Option<&str>,
+        avatar_id: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE accounts SET display_name = $1, avatar_id = $2, updated_at = NOW() WHERE id = $3",
+        )
+        .bind(display_name)
+        .bind(avatar_id)
+        .bind(account_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_profile(&self, account_id: Uuid) -> Result<Option<ProfileRow>, sqlx::Error> {
+        sqlx::query_as::<_, ProfileRow>(
+            "SELECT id, username, display_name, avatar_id, auth_provider, created_at
+             FROM accounts WHERE id = $1 AND deleted_at IS NULL",
+        )
+        .bind(account_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn search_accounts(
+        &self,
+        query: &str,
+        limit: i64,
+    ) -> Result<Vec<ProfileRow>, sqlx::Error> {
+        let pattern = format!("%{query}%");
+        sqlx::query_as::<_, ProfileRow>(
+            "SELECT id, username, display_name, avatar_id, auth_provider, created_at
+             FROM accounts WHERE username ILIKE $1 AND deleted_at IS NULL
+             ORDER BY username LIMIT $2",
+        )
+        .bind(pattern)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn soft_delete_account(&self, account_id: Uuid) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE accounts SET deleted_at = NOW() WHERE id = $1")
+            .bind(account_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     pub async fn update_last_login(&self, account_id: Uuid) -> Result<(), sqlx::Error> {
@@ -71,6 +176,634 @@ impl Database {
             .execute(&self.pool)
             .await?;
         Ok(())
+    }
+
+    pub async fn update_password(
+        &self,
+        account_id: Uuid,
+        new_hash: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE accounts SET password_hash = $1, updated_at = NOW() WHERE id = $2")
+            .bind(new_hash)
+            .bind(account_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    // ── Password Reset Tokens ───────────────────────────────────────────
+
+    pub async fn create_reset_token(
+        &self,
+        account_id: Uuid,
+        token_hash: &str,
+        expires_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO password_reset_tokens (account_id, token_hash, expires_at)
+             VALUES ($1, $2, $3)",
+        )
+        .bind(account_id)
+        .bind(token_hash)
+        .bind(expires_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn validate_reset_token(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<Uuid>, sqlx::Error> {
+        let row: Option<(Uuid,)> = sqlx::query_as(
+            "SELECT account_id FROM password_reset_tokens
+             WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()",
+        )
+        .bind(token_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|(id,)| id))
+    }
+
+    pub async fn mark_reset_token_used(&self, token_hash: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE password_reset_tokens SET used_at = NOW() WHERE token_hash = $1")
+            .bind(token_hash)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    // ── Password Reset Requests (Admin Queue) ───────────────────────────
+
+    pub async fn create_reset_request(
+        &self,
+        account_id: Uuid,
+        username: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO password_reset_requests (account_id, username)
+             VALUES ($1, $2)",
+        )
+        .bind(account_id)
+        .bind(username)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn list_pending_reset_requests(
+        &self,
+    ) -> Result<Vec<ResetRequestRow>, sqlx::Error> {
+        sqlx::query_as::<_, ResetRequestRow>(
+            "SELECT id, account_id, username, status, created_at
+             FROM password_reset_requests WHERE status = 'pending'
+             ORDER BY created_at ASC",
+        )
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn resolve_reset_request(
+        &self,
+        request_id: Uuid,
+        resolved_by: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE password_reset_requests SET status = 'resolved', resolved_by = $1, resolved_at = NOW()
+             WHERE id = $2",
+        )
+        .bind(resolved_by)
+        .bind(request_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    // ── World Templates ─────────────────────────────────────────────────
+
+    pub async fn create_world_template(
+        &self,
+        name: &str,
+        description: &str,
+        icon: &str,
+        config_defaults: &serde_json::Value,
+        config_bounds: &serde_json::Value,
+        max_instances: i32,
+        enabled: bool,
+        sort_order: i32,
+    ) -> Result<Uuid, sqlx::Error> {
+        let id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO world_templates (id, name, description, icon, config_defaults, config_bounds, max_instances, enabled, sort_order)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        )
+        .bind(id)
+        .bind(name)
+        .bind(description)
+        .bind(icon)
+        .bind(config_defaults)
+        .bind(config_bounds)
+        .bind(max_instances)
+        .bind(enabled)
+        .bind(sort_order)
+        .execute(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
+    pub async fn list_world_templates(
+        &self,
+        enabled_only: bool,
+    ) -> Result<Vec<WorldTemplateRow>, sqlx::Error> {
+        if enabled_only {
+            sqlx::query_as::<_, WorldTemplateRow>(
+                "SELECT id, name, description, icon, config_defaults, config_bounds, max_instances, enabled, sort_order
+                 FROM world_templates WHERE enabled = TRUE ORDER BY sort_order, name",
+            )
+            .fetch_all(&self.pool)
+            .await
+        } else {
+            sqlx::query_as::<_, WorldTemplateRow>(
+                "SELECT id, name, description, icon, config_defaults, config_bounds, max_instances, enabled, sort_order
+                 FROM world_templates ORDER BY sort_order, name",
+            )
+            .fetch_all(&self.pool)
+            .await
+        }
+    }
+
+    pub async fn get_template(
+        &self,
+        template_id: Uuid,
+    ) -> Result<Option<WorldTemplateRow>, sqlx::Error> {
+        sqlx::query_as::<_, WorldTemplateRow>(
+            "SELECT id, name, description, icon, config_defaults, config_bounds, max_instances, enabled, sort_order
+             FROM world_templates WHERE id = $1",
+        )
+        .bind(template_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn update_world_template(
+        &self,
+        id: Uuid,
+        name: &str,
+        description: &str,
+        icon: &str,
+        config_defaults: &serde_json::Value,
+        config_bounds: &serde_json::Value,
+        max_instances: i32,
+        enabled: bool,
+        sort_order: i32,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            "UPDATE world_templates SET name=$1, description=$2, icon=$3, config_defaults=$4, config_bounds=$5,
+             max_instances=$6, enabled=$7, sort_order=$8, updated_at=NOW() WHERE id=$9",
+        )
+        .bind(name)
+        .bind(description)
+        .bind(icon)
+        .bind(config_defaults)
+        .bind(config_bounds)
+        .bind(max_instances)
+        .bind(enabled)
+        .bind(sort_order)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn delete_world_template(&self, template_id: Uuid) -> Result<bool, sqlx::Error> {
+        let result =
+            sqlx::query("DELETE FROM world_templates WHERE id = $1")
+                .bind(template_id)
+                .execute(&self.pool)
+                .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn count_template_instances(&self, template_id: Uuid) -> Result<i64, sqlx::Error> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM game_worlds WHERE template_id = $1 AND status = 'active'",
+        )
+        .bind(template_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row.0)
+    }
+
+    pub async fn set_world_template_id(
+        &self,
+        world_id: Uuid,
+        template_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE game_worlds SET template_id = $1 WHERE id = $2")
+            .bind(template_id)
+            .bind(world_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn set_world_creator(
+        &self,
+        world_id: Uuid,
+        account_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE game_worlds SET created_by = $1 WHERE id = $2")
+            .bind(account_id)
+            .bind(world_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn set_world_invite_code(
+        &self,
+        world_id: Uuid,
+        code: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE game_worlds SET invite_code = $1 WHERE id = $2")
+            .bind(code)
+            .bind(world_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_world_by_invite_code(
+        &self,
+        code: &str,
+    ) -> Result<Option<WorldRow>, sqlx::Error> {
+        sqlx::query_as::<_, WorldRow>(
+            "SELECT id, name, config_json, current_tick, speed, max_players
+             FROM game_worlds WHERE invite_code = $1 AND status = 'active'",
+        )
+        .bind(code)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    // ── Friends System ──────────────────────────────────────────────────
+
+    pub async fn send_friend_request(
+        &self,
+        from_id: Uuid,
+        to_id: Uuid,
+    ) -> Result<Uuid, sqlx::Error> {
+        let id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO friend_requests (id, from_id, to_id) VALUES ($1, $2, $3)
+             ON CONFLICT (from_id, to_id) DO NOTHING",
+        )
+        .bind(id)
+        .bind(from_id)
+        .bind(to_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
+    pub async fn accept_friend_request(
+        &self,
+        request_id: Uuid,
+    ) -> Result<Option<(Uuid, Uuid)>, sqlx::Error> {
+        // Get the request
+        let row: Option<(Uuid, Uuid)> = sqlx::query_as(
+            "SELECT from_id, to_id FROM friend_requests WHERE id = $1 AND status = 'pending'",
+        )
+        .bind(request_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some((from_id, to_id)) = row {
+            // Update request status
+            sqlx::query("UPDATE friend_requests SET status = 'accepted' WHERE id = $1")
+                .bind(request_id)
+                .execute(&self.pool)
+                .await?;
+
+            // Create friendship (ordered: smaller UUID first)
+            let (a, b) = if from_id < to_id {
+                (from_id, to_id)
+            } else {
+                (to_id, from_id)
+            };
+            sqlx::query(
+                "INSERT INTO friendships (account_a, account_b, status)
+                 VALUES ($1, $2, 'accepted')
+                 ON CONFLICT (account_a, account_b) DO UPDATE SET status = 'accepted', updated_at = NOW()",
+            )
+            .bind(a)
+            .bind(b)
+            .execute(&self.pool)
+            .await?;
+
+            Ok(Some((from_id, to_id)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn reject_friend_request(&self, request_id: Uuid) -> Result<bool, sqlx::Error> {
+        let result =
+            sqlx::query("UPDATE friend_requests SET status = 'rejected' WHERE id = $1 AND status = 'pending'")
+                .bind(request_id)
+                .execute(&self.pool)
+                .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn remove_friend(
+        &self,
+        account_a: Uuid,
+        account_b: Uuid,
+    ) -> Result<bool, sqlx::Error> {
+        let (a, b) = if account_a < account_b {
+            (account_a, account_b)
+        } else {
+            (account_b, account_a)
+        };
+        let result =
+            sqlx::query("DELETE FROM friendships WHERE account_a = $1 AND account_b = $2")
+                .bind(a)
+                .bind(b)
+                .execute(&self.pool)
+                .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn list_friends(
+        &self,
+        account_id: Uuid,
+    ) -> Result<Vec<FriendshipRow>, sqlx::Error> {
+        sqlx::query_as::<_, FriendshipRow>(
+            "SELECT f.id,
+                    CASE WHEN f.account_a = $1 THEN f.account_b ELSE f.account_a END AS friend_id,
+                    a.username AS friend_username,
+                    a.display_name AS friend_display_name,
+                    COALESCE(a.avatar_id, 'tower_01') AS friend_avatar_id,
+                    f.status
+             FROM friendships f
+             JOIN accounts a ON a.id = CASE WHEN f.account_a = $1 THEN f.account_b ELSE f.account_a END
+             WHERE (f.account_a = $1 OR f.account_b = $1) AND f.status = 'accepted'
+             ORDER BY a.username",
+        )
+        .bind(account_id)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn list_friend_requests_incoming(
+        &self,
+        account_id: Uuid,
+    ) -> Result<Vec<FriendRequestRow>, sqlx::Error> {
+        sqlx::query_as::<_, FriendRequestRow>(
+            "SELECT fr.id, fr.from_id, a_from.username AS from_username, fr.to_id, a_to.username AS to_username, fr.status, fr.created_at
+             FROM friend_requests fr
+             JOIN accounts a_from ON a_from.id = fr.from_id
+             JOIN accounts a_to ON a_to.id = fr.to_id
+             WHERE fr.to_id = $1 AND fr.status = 'pending'
+             ORDER BY fr.created_at DESC",
+        )
+        .bind(account_id)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn list_friend_requests_outgoing(
+        &self,
+        account_id: Uuid,
+    ) -> Result<Vec<FriendRequestRow>, sqlx::Error> {
+        sqlx::query_as::<_, FriendRequestRow>(
+            "SELECT fr.id, fr.from_id, a_from.username AS from_username, fr.to_id, a_to.username AS to_username, fr.status, fr.created_at
+             FROM friend_requests fr
+             JOIN accounts a_from ON a_from.id = fr.from_id
+             JOIN accounts a_to ON a_to.id = fr.to_id
+             WHERE fr.from_id = $1 AND fr.status = 'pending'
+             ORDER BY fr.created_at DESC",
+        )
+        .bind(account_id)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    // ── Recent Players ──────────────────────────────────────────────────
+
+    pub async fn add_recent_player(
+        &self,
+        account_id: Uuid,
+        other_id: Uuid,
+        world_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO recent_players (account_id, other_id, world_id)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (account_id, other_id, world_id) DO UPDATE SET last_seen = NOW()",
+        )
+        .bind(account_id)
+        .bind(other_id)
+        .bind(world_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn list_recent_players(
+        &self,
+        account_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<RecentPlayerRow>, sqlx::Error> {
+        sqlx::query_as::<_, RecentPlayerRow>(
+            "SELECT rp.other_id, a.username, a.display_name, COALESCE(a.avatar_id, 'tower_01') AS avatar_id, rp.last_seen
+             FROM recent_players rp
+             JOIN accounts a ON a.id = rp.other_id
+             WHERE rp.account_id = $1
+             GROUP BY rp.other_id, a.username, a.display_name, a.avatar_id, rp.last_seen
+             ORDER BY rp.last_seen DESC LIMIT $2",
+        )
+        .bind(account_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    // ── Bans ────────────────────────────────────────────────────────────
+
+    pub async fn create_ban(
+        &self,
+        account_id: Uuid,
+        world_id: Option<Uuid>,
+        reason: &str,
+        expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO bans (account_id, world_id, reason, expires_at)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (account_id, world_id) DO UPDATE SET reason = EXCLUDED.reason, expires_at = EXCLUDED.expires_at, banned_at = NOW()",
+        )
+        .bind(account_id)
+        .bind(world_id)
+        .bind(reason)
+        .bind(expires_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn remove_ban(
+        &self,
+        account_id: Uuid,
+        world_id: Option<Uuid>,
+    ) -> Result<bool, sqlx::Error> {
+        let result = if let Some(wid) = world_id {
+            sqlx::query("DELETE FROM bans WHERE account_id = $1 AND world_id = $2")
+                .bind(account_id)
+                .bind(wid)
+                .execute(&self.pool)
+                .await?
+        } else {
+            sqlx::query("DELETE FROM bans WHERE account_id = $1 AND world_id IS NULL")
+                .bind(account_id)
+                .execute(&self.pool)
+                .await?
+        };
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn list_bans(&self) -> Result<Vec<BanRow>, sqlx::Error> {
+        sqlx::query_as::<_, BanRow>(
+            "SELECT b.id, b.account_id, a.username, b.world_id, b.reason, b.banned_at, b.expires_at
+             FROM bans b JOIN accounts a ON a.id = b.account_id
+             ORDER BY b.banned_at DESC",
+        )
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn is_banned(
+        &self,
+        account_id: Uuid,
+        world_id: Option<Uuid>,
+    ) -> Result<bool, sqlx::Error> {
+        // Check global bans + world-specific bans, respecting expiry
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM bans
+             WHERE account_id = $1
+             AND (world_id IS NULL OR world_id = $2)
+             AND (expires_at IS NULL OR expires_at > NOW())",
+        )
+        .bind(account_id)
+        .bind(world_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row.0 > 0)
+    }
+
+    // ── Audit Log ───────────────────────────────────────────────────────
+
+    pub async fn insert_audit_log(
+        &self,
+        actor: &str,
+        action: &str,
+        target: Option<&str>,
+        details: Option<&serde_json::Value>,
+        ip_address: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO audit_log (actor, action, target, details, ip_address)
+             VALUES ($1, $2, $3, $4, $5::inet)",
+        )
+        .bind(actor)
+        .bind(action)
+        .bind(target)
+        .bind(details)
+        .bind(ip_address)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn query_audit_log(
+        &self,
+        limit: i64,
+        offset: i64,
+        actor_filter: Option<&str>,
+    ) -> Result<(Vec<AuditLogRow>, i64), sqlx::Error> {
+        let total: (i64,) = if let Some(actor) = actor_filter {
+            sqlx::query_as("SELECT COUNT(*) FROM audit_log WHERE actor = $1")
+                .bind(actor)
+                .fetch_one(&self.pool)
+                .await?
+        } else {
+            sqlx::query_as("SELECT COUNT(*) FROM audit_log")
+                .fetch_one(&self.pool)
+                .await?
+        };
+
+        let rows = if let Some(actor) = actor_filter {
+            sqlx::query_as::<_, AuditLogRow>(
+                "SELECT id, actor, action, target, details, ip_address, created_at
+                 FROM audit_log WHERE actor = $1
+                 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+            )
+            .bind(actor)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query_as::<_, AuditLogRow>(
+                "SELECT id, actor, action, target, details, ip_address, created_at
+                 FROM audit_log
+                 ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+            )
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await?
+        };
+
+        Ok((rows, total.0))
+    }
+
+    // ── World History ───────────────────────────────────────────────────
+
+    pub async fn upsert_world_history(
+        &self,
+        account_id: Uuid,
+        world_id: Uuid,
+        world_name: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO world_history (account_id, world_id, world_name)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (account_id, world_id) DO UPDATE SET last_played = NOW(), world_name = EXCLUDED.world_name",
+        )
+        .bind(account_id)
+        .bind(world_id)
+        .bind(world_name)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn list_world_history(
+        &self,
+        account_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<WorldHistoryRow>, sqlx::Error> {
+        sqlx::query_as::<_, WorldHistoryRow>(
+            "SELECT world_id, world_name, last_played
+             FROM world_history WHERE account_id = $1
+             ORDER BY last_played DESC LIMIT $2",
+        )
+        .bind(account_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
     }
 
     // ── Worlds ────────────────────────────────────────────────────────────
@@ -350,7 +1083,8 @@ impl Database {
     }
 }
 
-// Row types for sqlx FromRow
+// ── Row types for sqlx FromRow ───────────────────────────────────────────
+
 #[cfg(feature = "postgres")]
 #[derive(sqlx::FromRow)]
 pub struct AccountRow {
@@ -359,6 +1093,110 @@ pub struct AccountRow {
     pub email: Option<String>,
     pub password_hash: String,
     pub is_guest: bool,
+    pub display_name: Option<String>,
+    pub avatar_id: Option<String>,
+    pub auth_provider: Option<String>,
+    pub github_id: Option<i64>,
+}
+
+#[cfg(feature = "postgres")]
+#[derive(sqlx::FromRow)]
+pub struct ProfileRow {
+    pub id: Uuid,
+    pub username: String,
+    pub display_name: Option<String>,
+    pub avatar_id: Option<String>,
+    pub auth_provider: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[cfg(feature = "postgres")]
+#[derive(sqlx::FromRow)]
+pub struct ResetRequestRow {
+    pub id: Uuid,
+    pub account_id: Uuid,
+    pub username: String,
+    pub status: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[cfg(feature = "postgres")]
+#[derive(sqlx::FromRow)]
+pub struct WorldTemplateRow {
+    pub id: Uuid,
+    pub name: String,
+    pub description: String,
+    pub icon: String,
+    pub config_defaults: serde_json::Value,
+    pub config_bounds: serde_json::Value,
+    pub max_instances: i32,
+    pub enabled: bool,
+    pub sort_order: i32,
+}
+
+#[cfg(feature = "postgres")]
+#[derive(sqlx::FromRow)]
+pub struct FriendshipRow {
+    pub id: Uuid,
+    pub friend_id: Uuid,
+    pub friend_username: String,
+    pub friend_display_name: Option<String>,
+    pub friend_avatar_id: String,
+    pub status: String,
+}
+
+#[cfg(feature = "postgres")]
+#[derive(sqlx::FromRow)]
+pub struct FriendRequestRow {
+    pub id: Uuid,
+    pub from_id: Uuid,
+    pub from_username: String,
+    pub to_id: Uuid,
+    pub to_username: String,
+    pub status: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[cfg(feature = "postgres")]
+#[derive(sqlx::FromRow)]
+pub struct RecentPlayerRow {
+    pub other_id: Uuid,
+    pub username: String,
+    pub display_name: Option<String>,
+    pub avatar_id: String,
+    pub last_seen: chrono::DateTime<chrono::Utc>,
+}
+
+#[cfg(feature = "postgres")]
+#[derive(sqlx::FromRow)]
+pub struct BanRow {
+    pub id: Uuid,
+    pub account_id: Uuid,
+    pub username: String,
+    pub world_id: Option<Uuid>,
+    pub reason: String,
+    pub banned_at: chrono::DateTime<chrono::Utc>,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[cfg(feature = "postgres")]
+#[derive(sqlx::FromRow)]
+pub struct AuditLogRow {
+    pub id: i64,
+    pub actor: String,
+    pub action: String,
+    pub target: Option<String>,
+    pub details: Option<serde_json::Value>,
+    pub ip_address: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[cfg(feature = "postgres")]
+#[derive(sqlx::FromRow)]
+pub struct WorldHistoryRow {
+    pub world_id: Uuid,
+    pub world_name: String,
+    pub last_played: chrono::DateTime<chrono::Utc>,
 }
 
 #[cfg(feature = "postgres")]

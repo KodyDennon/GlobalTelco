@@ -13,10 +13,23 @@
 		deleteWorld,
 		broadcastMessage,
 		fetchAuditLog,
+		fetchTemplates,
+		createTemplate,
+		deleteTemplate,
+		fetchBans,
+		createBan,
+		removeBan,
+		fetchResetQueue,
+		resolveReset,
+		fetchMetrics,
 		type ServerHealth,
 		type PlayerInfo,
 		type WorldInfo,
 		type AuditEntry,
+		type WorldTemplate,
+		type Ban,
+		type ResetRequest,
+		type ServerMetrics,
 	} from "$lib/admin/api";
 
 	// ── Auth state ────────────────────────────────────────────────────────
@@ -39,6 +52,44 @@
 	let auditLog = $state<AuditEntry[]>([]);
 	let auditError = $state("");
 	let auditLoading = $state(false);
+
+	// ── Templates state ──────────────────────────────────────────────────
+	let templates = $state<WorldTemplate[]>([]);
+	let templatesLoading = $state(false);
+	let templatesError = $state("");
+
+	// ── Bans state ───────────────────────────────────────────────────────
+	let bans = $state<Ban[]>([]);
+	let bansLoading = $state(false);
+	let bansError = $state("");
+
+	// ── Reset Queue state ────────────────────────────────────────────────
+	let resetQueue = $state<ResetRequest[]>([]);
+	let resetQueueLoading = $state(false);
+	let resetQueueError = $state("");
+	let tempPasswords = $state<Record<string, string>>({});
+
+	// ── Metrics state ────────────────────────────────────────────────────
+	let metrics = $state<ServerMetrics | null>(null);
+	let metricsLoading = $state(false);
+	let metricsError = $state("");
+
+	// ── New Template form ────────────────────────────────────────────────
+	let showNewTemplate = $state(false);
+	let newTemplateName = $state("");
+	let newTemplateDesc = $state("");
+	let newTemplateIcon = $state("globe");
+	let newTemplateMaxInstances = $state(5);
+	let newTemplateEnabled = $state(true);
+	let createTemplateLoading = $state(false);
+
+	// ── Ban form ─────────────────────────────────────────────────────────
+	let showBanForm = $state(false);
+	let banAccountId = $state("");
+	let banReason = $state("");
+	let banWorldId = $state("");
+	let banExpiresAt = $state("");
+	let createBanLoading = $state(false);
 
 	// ── Create World form ─────────────────────────────────────────────────
 	let showCreateWorld = $state(false);
@@ -100,6 +151,10 @@
 			loadPlayers(),
 			loadWorlds(),
 			loadAuditLog(),
+			loadTemplates(),
+			loadBans(),
+			loadResetQueue(),
+			loadMetrics(),
 		]);
 	}
 
@@ -149,6 +204,140 @@
 			auditLog = [];
 		} finally {
 			auditLoading = false;
+		}
+	}
+
+	async function loadTemplates() {
+		templatesError = "";
+		templatesLoading = true;
+		try {
+			templates = await fetchTemplates($adminKey);
+		} catch {
+			templatesError = "Failed to fetch templates";
+			templates = [];
+		} finally {
+			templatesLoading = false;
+		}
+	}
+
+	async function loadBans() {
+		bansError = "";
+		bansLoading = true;
+		try {
+			bans = await fetchBans($adminKey);
+		} catch {
+			bansError = "Failed to fetch bans";
+			bans = [];
+		} finally {
+			bansLoading = false;
+		}
+	}
+
+	async function loadResetQueue() {
+		resetQueueError = "";
+		resetQueueLoading = true;
+		try {
+			resetQueue = await fetchResetQueue($adminKey);
+		} catch {
+			resetQueueError = "Failed to fetch reset queue";
+			resetQueue = [];
+		} finally {
+			resetQueueLoading = false;
+		}
+	}
+
+	async function loadMetrics() {
+		metricsError = "";
+		metricsLoading = true;
+		try {
+			metrics = await fetchMetrics($adminKey);
+		} catch {
+			metricsError = "Failed to fetch metrics";
+			metrics = null;
+		} finally {
+			metricsLoading = false;
+		}
+	}
+
+	// ── New Actions ───────────────────────────────────────────────────
+
+	async function handleCreateTemplate() {
+		if (!newTemplateName.trim()) return;
+		createTemplateLoading = true;
+		try {
+			await createTemplate($adminKey, {
+				name: newTemplateName.trim(),
+				description: newTemplateDesc.trim(),
+				icon: newTemplateIcon,
+				config_defaults: {},
+				config_bounds: {},
+				max_instances: newTemplateMaxInstances,
+				enabled: newTemplateEnabled,
+			});
+			newTemplateName = "";
+			newTemplateDesc = "";
+			newTemplateIcon = "globe";
+			newTemplateMaxInstances = 5;
+			showNewTemplate = false;
+			await loadTemplates();
+		} catch {
+			templatesError = "Failed to create template";
+		} finally {
+			createTemplateLoading = false;
+		}
+	}
+
+	async function handleDeleteTemplate(id: string) {
+		if (!confirm("Delete this template?")) return;
+		try {
+			await deleteTemplate($adminKey, id);
+			await loadTemplates();
+		} catch {
+			templatesError = "Failed to delete template";
+		}
+	}
+
+	async function handleCreateBan() {
+		if (!banAccountId.trim() || !banReason.trim()) return;
+		createBanLoading = true;
+		try {
+			await createBan(
+				$adminKey,
+				banAccountId.trim(),
+				banReason.trim(),
+				banWorldId || undefined,
+				banExpiresAt || undefined,
+			);
+			banAccountId = "";
+			banReason = "";
+			banWorldId = "";
+			banExpiresAt = "";
+			showBanForm = false;
+			await loadBans();
+		} catch {
+			bansError = "Failed to create ban";
+		} finally {
+			createBanLoading = false;
+		}
+	}
+
+	async function handleRemoveBan(ban: Ban) {
+		if (!confirm(`Unban ${ban.username}?`)) return;
+		try {
+			await removeBan($adminKey, ban.account_id, ban.world_id || undefined);
+			await loadBans();
+		} catch {
+			bansError = "Failed to remove ban";
+		}
+	}
+
+	async function handleResolveReset(requestId: string) {
+		try {
+			const result = await resolveReset($adminKey, requestId);
+			tempPasswords = { ...tempPasswords, [requestId]: result.temp_password };
+			await loadResetQueue();
+		} catch {
+			resetQueueError = "Failed to resolve reset";
 		}
 	}
 
@@ -576,6 +765,220 @@
 							</div>
 						{/each}
 					</div>
+				{/if}
+			</section>
+
+			<!-- Templates Management -->
+			<section class="section">
+				<div class="section-header">
+					<h2 class="section-title">WORLD TEMPLATES</h2>
+					<div class="header-actions">
+						<button class="btn btn-small btn-success" onclick={() => (showNewTemplate = !showNewTemplate)}>
+							{showNewTemplate ? "Cancel" : "+ New Template"}
+						</button>
+						<button class="btn btn-small" onclick={loadTemplates} disabled={templatesLoading}>
+							{templatesLoading ? "..." : "Refresh"}
+						</button>
+					</div>
+				</div>
+
+				{#if showNewTemplate}
+					<div class="create-world-form">
+						<div class="form-row">
+							<label class="form-label">Template Name
+								<input type="text" class="input-field" placeholder="Template name..." bind:value={newTemplateName} />
+							</label>
+						</div>
+						<div class="form-row">
+							<label class="form-label">Description
+								<textarea class="input-field" placeholder="Description..." bind:value={newTemplateDesc} rows={2}></textarea>
+							</label>
+						</div>
+						<div class="form-row form-row-inline">
+							<label class="form-label">Icon
+								<input type="text" class="input-field" bind:value={newTemplateIcon} />
+							</label>
+							<label class="form-label">Max Instances
+								<input type="number" class="input-field" bind:value={newTemplateMaxInstances} min={1} max={50} />
+							</label>
+						</div>
+						<label class="form-label">
+							<input type="checkbox" bind:checked={newTemplateEnabled} /> Enabled
+						</label>
+						<button class="btn btn-primary" onclick={handleCreateTemplate} disabled={createTemplateLoading || !newTemplateName.trim()}>
+							{createTemplateLoading ? "Creating..." : "Create Template"}
+						</button>
+					</div>
+				{/if}
+
+				{#if templatesError}
+					<p class="error-text">{templatesError}</p>
+				{:else if templates.length === 0}
+					<p class="muted-text">No templates created yet</p>
+				{:else}
+					<div class="table-container">
+						{#each templates as template}
+							<div class="table-row">
+								<span class="template-icon-cell">{template.icon}</span>
+								<div class="flex-grow">
+									<span class="text-white">{template.name}</span>
+									{#if template.description}
+										<span class="muted-text text-sm"> - {template.description.slice(0, 60)}</span>
+									{/if}
+								</div>
+								<span class="badge" class:badge-green={template.enabled} class:badge-red={!template.enabled}>
+									{template.enabled ? "Enabled" : "Disabled"}
+								</span>
+								<span class="muted-text text-sm">Max: {template.max_instances}</span>
+								<button class="btn btn-small btn-danger" onclick={() => handleDeleteTemplate(template.id)}>Delete</button>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</section>
+
+			<!-- Ban Management -->
+			<section class="section">
+				<div class="section-header">
+					<h2 class="section-title">BANS ({bans.length})</h2>
+					<div class="header-actions">
+						<button class="btn btn-small btn-danger" onclick={() => (showBanForm = !showBanForm)}>
+							{showBanForm ? "Cancel" : "+ New Ban"}
+						</button>
+						<button class="btn btn-small" onclick={loadBans} disabled={bansLoading}>
+							{bansLoading ? "..." : "Refresh"}
+						</button>
+					</div>
+				</div>
+
+				{#if showBanForm}
+					<div class="create-world-form">
+						<div class="form-row">
+							<label class="form-label">Account ID
+								<input type="text" class="input-field" placeholder="UUID..." bind:value={banAccountId} />
+							</label>
+						</div>
+						<div class="form-row">
+							<label class="form-label">Reason
+								<input type="text" class="input-field" placeholder="Reason for ban..." bind:value={banReason} />
+							</label>
+						</div>
+						<div class="form-row form-row-inline">
+							<label class="form-label">World ID (optional)
+								<input type="text" class="input-field" placeholder="Global if empty" bind:value={banWorldId} />
+							</label>
+							<label class="form-label">Expires At (optional)
+								<input type="datetime-local" class="input-field" bind:value={banExpiresAt} />
+							</label>
+						</div>
+						<button class="btn btn-primary" onclick={handleCreateBan} disabled={createBanLoading || !banAccountId.trim() || !banReason.trim()}>
+							{createBanLoading ? "Banning..." : "Create Ban"}
+						</button>
+					</div>
+				{/if}
+
+				{#if bansError}
+					<p class="error-text">{bansError}</p>
+				{:else if bans.length === 0}
+					<p class="muted-text">No active bans</p>
+				{:else}
+					<div class="table-container">
+						{#each bans as ban}
+							<div class="table-row">
+								<span class="mono text-sm">{ban.username}</span>
+								<span class="muted-text text-sm">{ban.reason}</span>
+								<span class="badge" class:badge-red={!ban.world_id} class:badge-blue={!!ban.world_id}>
+									{ban.world_id ? "World" : "Global"}
+								</span>
+								{#if ban.expires_at}
+									<span class="muted-text text-sm">Expires: {new Date(ban.expires_at).toLocaleDateString()}</span>
+								{:else}
+									<span class="badge badge-red">Permanent</span>
+								{/if}
+								<button class="btn btn-small" onclick={() => handleRemoveBan(ban)}>Unban</button>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</section>
+
+			<!-- Password Reset Queue -->
+			<section class="section">
+				<div class="section-header">
+					<h2 class="section-title">RESET QUEUE ({resetQueue.length})</h2>
+					<button class="btn btn-small" onclick={loadResetQueue} disabled={resetQueueLoading}>
+						{resetQueueLoading ? "..." : "Refresh"}
+					</button>
+				</div>
+				{#if resetQueueError}
+					<p class="error-text">{resetQueueError}</p>
+				{:else if resetQueue.length === 0}
+					<p class="muted-text">No pending reset requests</p>
+				{:else}
+					<div class="table-container">
+						{#each resetQueue as request}
+							<div class="table-row">
+								<span class="text-white">{request.username}</span>
+								<span class="badge badge-amber">{request.status}</span>
+								<span class="muted-text text-sm">{new Date(request.created_at).toLocaleString()}</span>
+								{#if tempPasswords[request.id]}
+									<code class="temp-password">{tempPasswords[request.id]}</code>
+								{:else if request.status === 'pending'}
+									<button class="btn btn-small btn-success" onclick={() => handleResolveReset(request.id)}>
+										Generate Temp Password
+									</button>
+								{/if}
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</section>
+
+			<!-- Server Metrics -->
+			<section class="section">
+				<div class="section-header">
+					<h2 class="section-title">METRICS</h2>
+					<button class="btn btn-small" onclick={loadMetrics} disabled={metricsLoading}>
+						{metricsLoading ? "..." : "Refresh"}
+					</button>
+				</div>
+				{#if metricsError}
+					<p class="error-text">{metricsError}</p>
+				{:else if metrics}
+					<div class="stat-row">
+						<div class="stat-card">
+							<span class="stat-label">Memory</span>
+							<span class="stat-value mono">{metrics.server.memory_mb} MB</span>
+						</div>
+						<div class="stat-card">
+							<span class="stat-label">Players</span>
+							<span class="stat-value mono">{metrics.server.connected_players}</span>
+						</div>
+						<div class="stat-card">
+							<span class="stat-label">Uptime</span>
+							<span class="stat-value mono">{formatUptime(metrics.server.uptime_secs)}</span>
+						</div>
+						<div class="stat-card">
+							<span class="stat-label">WS msg/s</span>
+							<span class="stat-value mono">{metrics.server.ws_messages_per_sec}</span>
+						</div>
+					</div>
+					{#if metrics.worlds.length > 0}
+						<h3 class="subsection-title">Per-World Tick Metrics</h3>
+						<div class="table-container">
+							{#each metrics.worlds as world}
+								<div class="table-row">
+									<span class="text-white">{world.name}</span>
+									<span class="muted-text text-sm">avg: {world.avg_tick_us}us</span>
+									<span class="muted-text text-sm">max: {world.max_tick_us}us</span>
+									<span class="muted-text text-sm">p99: {world.p99_tick_us}us</span>
+									<span class="muted-text text-sm">{world.entity_count} entities</span>
+								</div>
+							{/each}
+						</div>
+					{/if}
+				{:else}
+					<p class="muted-text">Loading metrics...</p>
 				{/if}
 			</section>
 		</div>
@@ -1064,5 +1467,87 @@
 
 	.text-red {
 		color: #ef4444;
+	}
+
+	/* ── Phase 6 additions ──────────────────────────────────────────── */
+
+	.template-icon-cell {
+		font-size: 1.2rem;
+		width: 32px;
+		text-align: center;
+		flex-shrink: 0;
+	}
+
+	.flex-grow {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.text-white {
+		color: #f3f4f6;
+	}
+
+	.text-sm {
+		font-size: 0.8rem;
+	}
+
+	.badge-green {
+		background: rgba(16, 185, 129, 0.2);
+		border-color: rgba(16, 185, 129, 0.3);
+		color: #10b981;
+	}
+
+	.badge-red {
+		background: rgba(239, 68, 68, 0.2);
+		border-color: rgba(239, 68, 68, 0.3);
+		color: #ef4444;
+	}
+
+	.badge-amber {
+		background: rgba(245, 158, 11, 0.2);
+		border-color: rgba(245, 158, 11, 0.3);
+		color: #f59e0b;
+	}
+
+	.btn-danger {
+		background: rgba(127, 29, 29, 0.3) !important;
+		border-color: rgba(239, 68, 68, 0.3) !important;
+		color: #ef4444 !important;
+	}
+
+	.btn-danger:hover {
+		background: rgba(127, 29, 29, 0.5) !important;
+	}
+
+	.form-row-inline {
+		display: flex;
+		gap: 12px;
+	}
+
+	.form-row-inline .form-label {
+		flex: 1;
+	}
+
+	.temp-password {
+		background: rgba(16, 185, 129, 0.15);
+		border: 1px solid rgba(16, 185, 129, 0.3);
+		padding: 4px 10px;
+		border-radius: 4px;
+		font-size: 0.85rem;
+		color: #10b981;
+		font-family: monospace;
+	}
+
+	.subsection-title {
+		font-size: 0.85rem;
+		color: #9ca3af;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		margin: 16px 0 8px;
+	}
+
+	textarea.input-field {
+		resize: vertical;
+		min-height: 60px;
 	}
 </style>

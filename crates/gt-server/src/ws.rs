@@ -736,6 +736,9 @@ pub async fn handle_socket(socket: WebSocket, state: Arc<AppState>, ip: IpAddr) 
             }
         }
 
+        // Remove online presence and notify friends
+        unregister_presence(&state, p.id, &p.username).await;
+
         state.players.write().await.remove(&p.id);
     }
 
@@ -888,6 +891,29 @@ async fn handle_client_message(
                 status: PlayerConnectionStatus::Connected,
             });
 
+            // Update online presence with world info
+            {
+                let mut online = state.online_players.write().await;
+                if let Some(presence) = online.get_mut(&p.id) {
+                    presence.world_id = Some(world_id);
+                    presence.world_name = Some(world.name.clone());
+                }
+            }
+
+            // Record recent players (other players already in this world)
+            #[cfg(feature = "postgres")]
+            if let Some(db) = state.db.as_ref() {
+                let players_in_world = world.players.read().await;
+                for (&other_player_id, _) in players_in_world.iter() {
+                    if other_player_id != p.id {
+                        let _ = db.add_recent_player(p.id, other_player_id, world_id).await;
+                        let _ = db.add_recent_player(other_player_id, p.id, world_id).await;
+                    }
+                }
+                // Record world history
+                let _ = db.upsert_world_history(p.id, world_id, &world.name).await;
+            }
+
             let tick = world.world.lock().await.current_tick();
 
             if p.is_spectator {
@@ -975,6 +1001,12 @@ async fn handle_client_message(
                             username: p.username.clone(),
                             status: PlayerConnectionStatus::Disconnected,
                         });
+                    }
+                    // Update online presence to remove world info
+                    let mut online = state.online_players.write().await;
+                    if let Some(presence) = online.get_mut(&p.id) {
+                        presence.world_id = None;
+                        presence.world_name = None;
                     }
                 }
                 p.corp_id = None;
@@ -1477,6 +1509,58 @@ async fn handle_client_message(
                 message: "Database not available".to_string(),
             })
         }
+
+        ClientMessage::InviteFriend {
+            friend_id,
+            world_id,
+        } => {
+            let p = match player {
+                Some(p) => p,
+                None => {
+                    return Some(ServerMessage::Error {
+                        code: ErrorCode::NotAuthenticated,
+                        message: "Must authenticate first".to_string(),
+                    });
+                }
+            };
+
+            let world = match state.get_world(&world_id).await {
+                Some(w) => w,
+                None => {
+                    return Some(ServerMessage::Error {
+                        code: ErrorCode::WorldNotFound,
+                        message: "World not found".to_string(),
+                    });
+                }
+            };
+
+            let invite_code = world.invite_code.clone().unwrap_or_default();
+            let world_name = world.name.clone();
+            let from_username = p.username.clone();
+
+            // Check if the friend is online and send them the invite
+            let online = state.online_players.read().await;
+            if let Some(friend_presence) = online.get(&friend_id) {
+                if let Some(friend_world_id) = friend_presence.world_id {
+                    if let Some(friend_world) = state.worlds.read().await.get(&friend_world_id) {
+                        let _ = friend_world.broadcast_tx.send(ServerMessage::WorldInvite {
+                            from_username: from_username.clone(),
+                            world_id,
+                            world_name: world_name.clone(),
+                            invite_code: invite_code.clone(),
+                        });
+                    }
+                }
+            }
+
+            Some(ServerMessage::CommandAck {
+                success: true,
+                error: None,
+                seq: None,
+                entity_id: None,
+                effective_tick: None,
+            })
+        }
     }
 }
 
@@ -1558,6 +1642,9 @@ async fn handle_auth(
                 .insert(account.id, connected.clone());
             *player = Some(connected);
 
+            // Register online presence
+            register_presence(state, account.id, &account.username, &account.display_name, &account.avatar_id).await;
+
             if spectator {
                 info!("Spectator {} logged in", account.username);
             } else {
@@ -1624,6 +1711,9 @@ async fn handle_auth(
                         .insert(account.id, connected.clone());
                     *player = Some(connected);
 
+                    // Register online presence
+                    register_presence(state, account.id, &account.username, &account.display_name, &account.avatar_id).await;
+
                     info!("New account registered: {}", account.username);
 
                     ServerMessage::AuthResult(AuthResponse::Success {
@@ -1682,6 +1772,9 @@ async fn handle_auth(
                         .await
                         .insert(player_id, connected.clone());
                     *player = Some(connected);
+
+                    // Register online presence
+                    register_presence(state, player_id, &claims.username, &None, "tower_01").await;
 
                     info!("Player {} resumed session via token", claims.username);
 
@@ -1750,12 +1843,95 @@ async fn handle_auth(
                 .insert(account.id, connected.clone());
             *player = Some(connected);
 
+            // Register online presence
+            register_presence(state, account.id, &account.username, &None, "tower_01").await;
+
             info!("Guest player joined: {}", account.username);
 
             ServerMessage::AuthResult(AuthResponse::GuestSuccess {
                 player_id: account.id,
                 username: account.username,
             })
+        }
+    }
+}
+
+/// Register a player's online presence and notify friends
+async fn register_presence(
+    state: &Arc<AppState>,
+    player_id: Uuid,
+    username: &str,
+    display_name: &Option<String>,
+    avatar_id: &str,
+) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    state.online_players.write().await.insert(
+        player_id,
+        crate::state::OnlinePresence {
+            username: username.to_string(),
+            display_name: display_name.clone(),
+            avatar_id: avatar_id.to_string(),
+            world_id: None,
+            world_name: None,
+            connected_at: now,
+        },
+    );
+
+    // Notify friends that this player came online
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        if let Ok(friends) = db.list_friends(player_id).await {
+            let msg = ServerMessage::FriendPresenceUpdate {
+                friend_id: player_id,
+                username: username.to_string(),
+                online: true,
+                world_id: None,
+                world_name: None,
+            };
+            // Send to each online friend via their world's broadcast channel
+            let online = state.online_players.read().await;
+            for friend in &friends {
+                if let Some(presence) = online.get(&friend.friend_id) {
+                    if let Some(wid) = presence.world_id {
+                        if let Some(world) = state.worlds.read().await.get(&wid) {
+                            let _ = world.broadcast_tx.send(msg.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Remove a player's online presence and notify friends
+async fn unregister_presence(state: &Arc<AppState>, player_id: Uuid, username: &str) {
+    state.online_players.write().await.remove(&player_id);
+
+    // Notify friends that this player went offline
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        if let Ok(friends) = db.list_friends(player_id).await {
+            let msg = ServerMessage::FriendPresenceUpdate {
+                friend_id: player_id,
+                username: username.to_string(),
+                online: false,
+                world_id: None,
+                world_name: None,
+            };
+            let online = state.online_players.read().await;
+            for friend in &friends {
+                if let Some(presence) = online.get(&friend.friend_id) {
+                    if let Some(wid) = presence.world_id {
+                        if let Some(world) = state.worlds.read().await.get(&wid) {
+                            let _ = world.broadcast_tx.send(msg.clone());
+                        }
+                    }
+                }
+            }
         }
     }
 }

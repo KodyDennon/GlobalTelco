@@ -28,6 +28,35 @@ mod uuid_string {
     }
 }
 
+/// Serde helper: serialize/deserialize Option<Uuid> as an optional string.
+mod option_uuid_string {
+    use serde::{self, Deserialize, Deserializer, Serializer};
+    use uuid::Uuid;
+
+    pub fn serialize<S>(uuid: &Option<Uuid>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match uuid {
+            Some(u) => serializer.serialize_some(&u.to_string()),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Uuid>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: Option<String> = Option::deserialize(deserializer)?;
+        match s {
+            Some(s) => Uuid::parse_str(&s)
+                .map(Some)
+                .map_err(serde::de::Error::custom),
+            None => Ok(None),
+        }
+    }
+}
+
 // ── Client → Server Messages ──────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,6 +102,13 @@ pub enum ClientMessage {
     DownloadSave { slot: i32 },
     /// Delete a cloud save
     DeleteSave { slot: i32 },
+    /// Invite a friend to a world
+    InviteFriend {
+        #[serde(with = "uuid_string")]
+        friend_id: Uuid,
+        #[serde(with = "uuid_string")]
+        world_id: Uuid,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,6 +158,12 @@ pub enum ServerMessage {
     },
     /// Full state snapshot (on join or request)
     Snapshot { tick: Tick, state_json: String },
+    /// Compressed state snapshot (zstd-compressed JSON, periodic push)
+    CompressedSnapshot {
+        tick: Tick,
+        compressed_data: Vec<u8>,
+        uncompressed_size: u32,
+    },
     /// Command acknowledged (enriched with entity ID and tick)
     CommandAck {
         success: bool,
@@ -180,6 +222,30 @@ pub enum ServerMessage {
     ProxySummary {
         ticks_elapsed: u64,
         actions: Vec<ProxyAction>,
+    },
+    /// Friend request received (real-time notification via WebSocket)
+    FriendRequestReceived {
+        #[serde(with = "uuid_string")]
+        from_id: Uuid,
+        from_username: String,
+    },
+    /// Friend came online/went offline
+    FriendPresenceUpdate {
+        #[serde(with = "uuid_string")]
+        friend_id: Uuid,
+        username: String,
+        online: bool,
+        #[serde(with = "option_uuid_string")]
+        world_id: Option<Uuid>,
+        world_name: Option<String>,
+    },
+    /// World invite from a friend
+    WorldInvite {
+        from_username: String,
+        #[serde(with = "uuid_string")]
+        world_id: Uuid,
+        world_name: String,
+        invite_code: String,
     },
 }
 
