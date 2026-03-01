@@ -228,18 +228,20 @@ All located in `Docs/`:
 
 ## Hosting Architecture
 
-**Currently deployed (dev):**
+**Current deployment:**
 ```
-Players ──► Vercel (Svelte frontend CDN)
+Players ──► globaltelco.online (Vercel CDN, Cloudflare DNS)
+                │
+Players ──► server.globaltelco.online (Cloudflare proxy, SSL termination)
+                │
+                ▼ (HTTP, port 80)
+           Oracle Cloud Free Tier (nginx → Rust game server)
                 │
                 ▼
-           Fly.io (Rust game server)
-                │
-                ▼
-           PostgreSQL (world state, accounts, cloud saves)
+           Neon PostgreSQL (world state, accounts, cloud saves)
 ```
 
-**Production target:**
+**Production scale target:**
 ```
 Players ──► Cloudflare Workers (auth, matchmaking, APIs, CDN)
                 │
@@ -250,11 +252,11 @@ Players ──► Cloudflare Workers (auth, matchmaking, APIs, CDN)
            PostgreSQL (world state, accounts, cloud saves)
 ```
 
-- **Dev (current):** Fly.io (game server) + Vercel (frontend CDN) + PostgreSQL
+- **Current:** Oracle Cloud Free Tier (game server) + Vercel (frontend CDN) + Cloudflare (DNS + proxy) + Neon PostgreSQL
 - **Prod (target):** Hetzner Dedicated AX42 (Ryzen 7 7700, 64GB RAM, ~€57/month, runs 3-5 sim instances)
 - **Service layer (target):** Cloudflare Workers (free tier: 100k req/day, paid $5/month: 10M req)
-- **Frontend CDN:** Vercel (Svelte app) + Cloudflare (static assets)
-- **No AWS, no Azure, no Oracle, no Unreal Engine.**
+- **Frontend CDN:** Vercel (Svelte app) + Cloudflare (DNS)
+- **No AWS, no Azure, no Unreal Engine.**
 
 ## Tool Rules (Mandatory)
 

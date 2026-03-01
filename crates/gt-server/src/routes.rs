@@ -17,7 +17,6 @@ use crate::state::AppState;
 use crate::tick;
 use crate::ws;
 
-#[allow(unused_imports)]
 use crate::oauth;
 
 use axum::extract::FromRequestParts;
@@ -87,7 +86,11 @@ pub fn create_router(state: Arc<AppState>, tile_dir: Option<String>) -> Router {
         .route("/api/friends/search", get(search_users))
         .route("/api/friends/invite", post(invite_friend_to_world))
         .route("/api/recent-players", get(list_recent_players))
-        .route("/api/world-history", get(list_world_history));
+        .route("/api/world-history", get(list_world_history))
+        // Per-world leaderboard
+        .route("/api/worlds/{world_id}/leaderboard", get(get_world_leaderboard))
+        // Account linking
+        .route("/api/auth/link-github", post(link_github_account));
 
     // Mount tile serving if TILE_DIR is configured
     if let Some(ref dir) = tile_dir {
@@ -266,8 +269,14 @@ async fn login(
         }
     }
 
+    // Update last login timestamp in database
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        let _ = db.update_last_login(account.id).await;
+    }
+
     let access_token =
-        auth::generate_access_token(&state.auth_config, account.id, &account.username, false)
+        auth::generate_access_token(&state.auth_config, account.id, &account.username, account.is_guest)
             .unwrap_or_default();
 
     let refresh_token =
@@ -279,6 +288,8 @@ async fn login(
         Json(serde_json::json!({
             "player_id": account.id,
             "username": account.username,
+            "email": account.email,
+            "is_guest": account.is_guest,
             "access_token": access_token,
             "refresh_token": refresh_token,
         })),
@@ -419,6 +430,7 @@ async fn github_callback(
 
         // Create new account from GitHub
         let username = github_user.login.clone();
+        let avatar_url = github_user.avatar_url.clone();
         let id = Uuid::new_v4();
 
         #[cfg(feature = "postgres")]
@@ -462,6 +474,7 @@ async fn github_callback(
                         Json(serde_json::json!({
                             "player_id": db_id,
                             "username": username,
+                            "avatar_url": avatar_url,
                             "access_token": access_token,
                             "refresh_token": refresh_token,
                             "is_new": true,
@@ -503,6 +516,7 @@ async fn github_callback(
             Json(serde_json::json!({
                 "player_id": id,
                 "username": username,
+                "avatar_url": avatar_url,
                 "access_token": access_token,
                 "refresh_token": refresh_token,
                 "is_new": true,
@@ -528,7 +542,6 @@ async fn list_avatars() -> impl IntoResponse {
     Json(serde_json::json!({ "avatars": AVATAR_LIST }))
 }
 
-#[allow(unused_variables)]
 async fn get_own_profile(
     AuthClaims(account_id): AuthClaims,
     State(state): State<Arc<AppState>>,
@@ -594,7 +607,6 @@ struct UpdateProfileRequest {
     avatar_id: Option<String>,
 }
 
-#[allow(unused_variables)]
 async fn update_profile(
     AuthClaims(account_id): AuthClaims,
     State(state): State<Arc<AppState>>,
@@ -661,7 +673,6 @@ async fn update_profile(
     )
 }
 
-#[allow(unused_variables)]
 async fn get_player_profile(
     _: AuthClaims,
     State(state): State<Arc<AppState>>,
@@ -718,7 +729,6 @@ async fn get_player_profile(
     )
 }
 
-#[allow(unused_variables)]
 async fn delete_account(
     AuthClaims(account_id): AuthClaims,
     State(state): State<Arc<AppState>>,
@@ -768,7 +778,6 @@ struct PasswordResetRequest {
     username: String,
 }
 
-#[allow(unused_variables)]
 async fn request_password_reset(
     State(state): State<Arc<AppState>>,
     Json(body): Json<PasswordResetRequest>,
@@ -781,8 +790,41 @@ async fn request_password_reset(
     #[cfg(feature = "postgres")]
     if let Some(db) = state.db.as_ref() {
         if let Ok(Some(row)) = db.get_account_by_username(&body.username).await {
-            // Queue a manual reset request for admin
-            let _ = db.create_reset_request(row.id, &body.username).await;
+            // If CF Worker URL is configured and user has email, create a token and send email
+            if let (Some(ref cf_url), Some(ref email)) =
+                (&state.cf_reset_worker_url, &row.email)
+            {
+                // Generate a cryptographic token
+                let raw_token = crate::state::generate_invite_code()
+                    + &crate::state::generate_invite_code(); // 16 chars
+                let token_hash = {
+                    use sha2::{Sha256, Digest};
+                    let mut hasher = Sha256::new();
+                    hasher.update(raw_token.as_bytes());
+                    format!("{:x}", hasher.finalize())
+                };
+                let expires_at = chrono::Utc::now() + chrono::Duration::hours(1);
+                let _ = db.create_reset_token(row.id, &token_hash, expires_at).await;
+
+                // Send via CF Worker (fire and forget)
+                let cf_url = cf_url.clone();
+                let email = email.clone();
+                let token = raw_token;
+                tokio::spawn(async move {
+                    let client = reqwest::Client::new();
+                    let _ = client
+                        .post(&cf_url)
+                        .json(&serde_json::json!({
+                            "email": email,
+                            "token": token,
+                        }))
+                        .send()
+                        .await;
+                });
+            } else {
+                // Fallback: queue a manual reset request for admin
+                let _ = db.create_reset_request(row.id, &body.username).await;
+            }
         }
     }
 
@@ -795,7 +837,6 @@ struct PasswordResetConfirm {
     new_password: String,
 }
 
-#[allow(unused_variables)]
 async fn confirm_password_reset(
     State(state): State<Arc<AppState>>,
     Json(body): Json<PasswordResetConfirm>,
@@ -809,14 +850,12 @@ async fn confirm_password_reset(
 
     #[cfg(feature = "postgres")]
     if let Some(db) = state.db.as_ref() {
-        // Hash the token for lookup
-        use argon2::password_hash::rand_core::OsRng;
-        use argon2::password_hash::SaltString;
+        // Hash the token for lookup (SHA-256, matching create_reset_token)
         let token_hash = {
-            use std::hash::{Hash, Hasher};
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            body.token.hash(&mut hasher);
-            format!("{:x}", hasher.finish())
+            use sha2::{Sha256, Digest};
+            let mut hasher = Sha256::new();
+            hasher.update(body.token.as_bytes());
+            format!("{:x}", hasher.finalize())
         };
 
         match db.validate_reset_token(&token_hash).await {
@@ -893,7 +932,12 @@ async fn create_world(
     // Start the tick loop for this world
     if let Some(world) = state.get_world(&world_id).await {
         #[cfg(feature = "postgres")]
-        tick::spawn_world_tick_loop(world, state.db.clone());
+        tick::spawn_world_tick_loop(
+            world,
+            state.db.clone(),
+            #[cfg(feature = "r2")]
+            state.r2.clone(),
+        );
         #[cfg(not(feature = "postgres"))]
         tick::spawn_world_tick_loop(world);
     }
@@ -935,7 +979,6 @@ async fn get_world(
 // ── Cloud Saves ───────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
-#[allow(dead_code)]
 struct SaveUploadRequest {
     slot: i32,
     name: String,
@@ -945,24 +988,66 @@ struct SaveUploadRequest {
 }
 
 /// Maximum cloud save size in bytes (50 MB)
-#[allow(dead_code)]
 const MAX_SAVE_SIZE: usize = 50_000_000;
 
-#[allow(unused_variables)]
 async fn upload_save(
     AuthClaims(account_id): AuthClaims,
     State(state): State<Arc<AppState>>,
     Json(body): Json<SaveUploadRequest>,
 ) -> impl IntoResponse {
-    let _ = &body; // used below in postgres path
+    // Serialize config to bytes for save data
+    let save_data = serde_json::to_vec(&body.config_json).unwrap_or_default();
+    if save_data.len() > MAX_SAVE_SIZE {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": format!("Save exceeds maximum size of {} bytes", MAX_SAVE_SIZE) })),
+        );
+    }
     #[cfg(feature = "postgres")]
     if let Some(db) = state.db.as_ref() {
+        // Try R2 first
+        #[cfg(feature = "r2")]
+        if let Some(ref r2) = state.r2 {
+            let r2_key = crate::r2::R2Storage::save_key(account_id, body.slot);
+            let size_bytes = save_data.len() as i64;
+            match r2.put(&r2_key, &save_data).await {
+                Ok(()) => {
+                    match db.save_cloud_metadata(
+                        account_id, body.slot, &body.name, body.tick,
+                        &body.config_json, size_bytes, &r2_key,
+                    ).await {
+                        Ok(save_id) => {
+                            return (
+                                StatusCode::CREATED,
+                                Json(serde_json::json!({
+                                    "id": save_id,
+                                    "slot": body.slot,
+                                    "success": true,
+                                })),
+                            );
+                        }
+                        Err(e) => {
+                            return (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                Json(serde_json::json!({ "error": format!("Save metadata failed: {e}") })),
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("R2 upload failed, falling back to DB: {e}");
+                    // Fall through to DB blob path
+                }
+            }
+        }
+
+        // DB blob fallback
         match db
             .save_cloud(
                 account_id,
                 body.slot,
                 &body.name,
-                &[],
+                &save_data,
                 body.tick,
                 &body.config_json,
             )
@@ -993,7 +1078,6 @@ async fn upload_save(
     )
 }
 
-#[allow(unused_variables)]
 async fn list_saves(
     AuthClaims(account_id): AuthClaims,
     State(state): State<Arc<AppState>>,
@@ -1007,6 +1091,7 @@ async fn list_saves(
                     .iter()
                     .map(|s| {
                         serde_json::json!({
+                            "id": s.id,
                             "slot": s.slot,
                             "name": s.name,
                             "tick": s.tick,
@@ -1029,7 +1114,6 @@ async fn list_saves(
     (StatusCode::OK, Json(serde_json::json!({ "saves": [] })))
 }
 
-#[allow(unused_variables)]
 async fn download_save(
     AuthClaims(account_id): AuthClaims,
     State(state): State<Arc<AppState>>,
@@ -1038,6 +1122,27 @@ async fn download_save(
     let _ = (&state, slot);
     #[cfg(feature = "postgres")]
     if let Some(db) = state.db.as_ref() {
+        // Try R2 first if metadata has an r2_key
+        #[cfg(feature = "r2")]
+        if let Some(ref r2) = state.r2 {
+            if let Ok(Some(meta)) = db.load_cloud_metadata(account_id, slot).await {
+                if let Some(ref r2_key) = meta.r2_key {
+                    match r2.get(r2_key).await {
+                        Ok(Some(data)) => {
+                            return (StatusCode::OK, data).into_response();
+                        }
+                        Ok(None) => {
+                            tracing::warn!("R2 key '{}' not found, trying DB blob", r2_key);
+                        }
+                        Err(e) => {
+                            tracing::warn!("R2 GET failed: {e}, trying DB blob");
+                        }
+                    }
+                }
+            }
+        }
+
+        // DB blob fallback
         match db.load_cloud_save(account_id, slot).await {
             Ok(Some(data)) => {
                 return (StatusCode::OK, data).into_response();
@@ -1066,7 +1171,6 @@ async fn download_save(
         .into_response()
 }
 
-#[allow(unused_variables)]
 async fn delete_save(
     AuthClaims(account_id): AuthClaims,
     State(state): State<Arc<AppState>>,
@@ -1075,6 +1179,18 @@ async fn delete_save(
     let _ = (&state, slot);
     #[cfg(feature = "postgres")]
     if let Some(db) = state.db.as_ref() {
+        // Delete R2 object if it exists
+        #[cfg(feature = "r2")]
+        if let Some(ref r2) = state.r2 {
+            if let Ok(Some(meta)) = db.load_cloud_metadata(account_id, slot).await {
+                if let Some(ref r2_key) = meta.r2_key {
+                    if let Err(e) = r2.delete(r2_key).await {
+                        tracing::warn!("Failed to delete R2 object {r2_key}: {e}");
+                    }
+                }
+            }
+        }
+
         match db.delete_cloud_save(account_id, slot).await {
             Ok(true) => {
                 return (StatusCode::OK, Json(serde_json::json!({ "deleted": true })));
@@ -1206,6 +1322,12 @@ async fn admin_kick_player(
 
     let kicked = state.kick_player(&body.player_id).await;
     if kicked {
+        #[cfg(feature = "postgres")]
+        if let Some(db) = state.db.as_ref() {
+            let _ = db
+                .insert_audit_log("admin", "kick_player", Some(&body.player_id.to_string()), None, None)
+                .await;
+        }
         (
             StatusCode::OK,
             Json(serde_json::json!({ "kicked": true, "player_id": body.player_id })),
@@ -1261,6 +1383,37 @@ async fn admin_audit_log(
         return e;
     }
 
+    // Use DB-backed paginated audit log when available
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.query_audit_log(100, 0, None).await {
+            Ok((entries, total)) => {
+                let result: Vec<serde_json::Value> = entries
+                    .into_iter()
+                    .map(|e| {
+                        serde_json::json!({
+                            "id": e.id,
+                            "actor": e.actor,
+                            "action": e.action,
+                            "target": e.target,
+                            "details": e.details,
+                            "ip_address": e.ip_address,
+                            "created_at": e.created_at.to_rfc3339(),
+                        })
+                    })
+                    .collect();
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({ "audit_log": result, "total": total })),
+                );
+            }
+            Err(_) => {
+                // Fall through to in-memory log
+            }
+        }
+    }
+
+    // Fallback to in-memory audit log
     let log = state.get_audit_log().await;
     (StatusCode::OK, Json(serde_json::json!({ "audit_log": log })))
 }
@@ -1336,7 +1489,12 @@ async fn admin_create_world(
 
     if let Some(world) = state.get_world(&world_id).await {
         #[cfg(feature = "postgres")]
-        tick::spawn_world_tick_loop(world, state.db.clone());
+        tick::spawn_world_tick_loop(
+            world,
+            state.db.clone(),
+            #[cfg(feature = "r2")]
+            state.r2.clone(),
+        );
         #[cfg(not(feature = "postgres"))]
         tick::spawn_world_tick_loop(world);
     }
@@ -1375,6 +1533,18 @@ async fn admin_delete_world(
 
     let removed = state.remove_world(&world_id).await;
     if removed {
+        #[cfg(feature = "postgres")]
+        if let Some(db) = state.db.as_ref() {
+            let _ = db
+                .insert_audit_log(
+                    "admin",
+                    "delete_world",
+                    Some(&world_id.to_string()),
+                    Some(&serde_json::json!({ "kicked_players": kicked_players.len() })),
+                    None,
+                )
+                .await;
+        }
         (
             StatusCode::OK,
             Json(serde_json::json!({
@@ -1519,8 +1689,23 @@ async fn admin_ban_player(
         }
     };
 
-    // Add to ban list
+    // Add to in-memory ban list
     world.banned_players.write().await.insert(body.player_id);
+
+    // Persist ban to database and log the action
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        let _ = db.create_ban(body.player_id, Some(body.world_id), "Banned by admin", None).await;
+        let _ = db
+            .insert_audit_log(
+                "admin",
+                "ban_player",
+                Some(&body.player_id.to_string()),
+                Some(&serde_json::json!({ "world_id": body.world_id })),
+                None,
+            )
+            .await;
+    }
 
     // Also kick them if currently connected
     let kicked = state.kick_player(&body.player_id).await;
@@ -1557,6 +1742,21 @@ async fn admin_unban_player(
     };
 
     let was_banned = world.banned_players.write().await.remove(&body.player_id);
+
+    // Remove from database and log the action
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        let _ = db.remove_ban(body.player_id, Some(body.world_id)).await;
+        let _ = db
+            .insert_audit_log(
+                "admin",
+                "unban_player",
+                Some(&body.player_id.to_string()),
+                Some(&serde_json::json!({ "world_id": body.world_id })),
+                None,
+            )
+            .await;
+    }
 
     (
         StatusCode::OK,
@@ -1861,7 +2061,12 @@ async fn create_world_from_template(
         // Start tick loop
         if let Some(world) = state.get_world(&world_id).await {
             #[cfg(feature = "postgres")]
-            tick::spawn_world_tick_loop(world, state.db.clone());
+            tick::spawn_world_tick_loop(
+                world,
+                state.db.clone(),
+                #[cfg(feature = "r2")]
+                state.r2.clone(),
+            );
             #[cfg(not(feature = "postgres"))]
             tick::spawn_world_tick_loop(world);
         }
@@ -1891,7 +2096,7 @@ async fn get_world_by_invite(
     State(state): State<Arc<AppState>>,
     Path(code): Path<String>,
 ) -> impl IntoResponse {
-    // First check in-memory worlds
+    // First check in-memory active worlds
     let worlds = state.worlds.read().await;
     for instance in worlds.values() {
         if instance.invite_code.as_deref() == Some(code.as_str()) {
@@ -1906,6 +2111,27 @@ async fn get_world_by_invite(
                     "tick": w.current_tick(),
                     "speed": w.speed(),
                     "invite_code": code,
+                })),
+            );
+        }
+    }
+    drop(worlds);
+
+    // Fallback: check database for persisted worlds
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        if let Ok(Some(row)) = db.get_world_by_invite_code(&code).await {
+            return (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "id": row.id,
+                    "name": row.name,
+                    "player_count": 0,
+                    "max_players": row.max_players,
+                    "tick": row.current_tick,
+                    "speed": row.speed,
+                    "invite_code": code,
+                    "persisted": true,
                 })),
             );
         }
@@ -2290,15 +2516,23 @@ async fn admin_metrics(
             "speed": w.speed(),
             "player_count": instance.player_count().await,
             "max_players": instance.max_players,
+            "config": {
+                "starting_era": instance.config.starting_era,
+                "map_size": instance.config.map_size,
+                "ai_corporations": instance.config.ai_corporations,
+                "sandbox": instance.config.sandbox,
+            },
             "last_tick_us": instance.last_tick_duration_us.load(std::sync::atomic::Ordering::Relaxed),
             "avg_tick_us": instance.avg_tick_duration_us.load(std::sync::atomic::Ordering::Relaxed),
             "entity_count": w.corporations.len() + w.infra_nodes.len() + w.infra_edges.len(),
             "broadcast_subscribers": instance.broadcast_tx.receiver_count(),
         }));
     }
+    let world_count = world_metrics.len();
     drop(worlds);
 
     let online_count = state.online_players.read().await.len();
+    let memory_estimate_bytes = state.memory_usage_estimate().await;
 
     (
         StatusCode::OK,
@@ -2307,7 +2541,8 @@ async fn admin_metrics(
             "server": {
                 "uptime_secs": state.uptime_secs(),
                 "connected_players": online_count,
-                "world_count": world_metrics.len(),
+                "world_count": world_count,
+                "memory_estimate_bytes": memory_estimate_bytes,
             },
         })),
     )
@@ -2330,10 +2565,12 @@ async fn list_friends(
                     .map(|f| {
                         let presence = online.get(&f.friend_id);
                         serde_json::json!({
+                            "friendship_id": f.id,
                             "id": f.friend_id,
                             "username": f.friend_username,
                             "display_name": f.friend_display_name,
                             "avatar_id": f.friend_avatar_id,
+                            "status": f.status,
                             "online": presence.is_some(),
                             "world_id": presence.and_then(|p| p.world_id),
                             "world_name": presence.and_then(|p| p.world_name.clone()),
@@ -2659,12 +2896,28 @@ async fn invite_friend_to_world(
         }
     };
 
-    // Send via the world's broadcast channel — the friend's WebSocket handler
-    // will filter for their player_id. For now, store the invite in online_players
-    // or use a direct approach.
-    // Since we don't have per-player channels yet, return success and let
-    // the frontend poll or use the friends list presence.
-    let _ = (&sender_name, &world_name, &invite_code, &req.friend_id);
+    // Try to deliver the invite via the friend's current world broadcast channel.
+    // The WorldInvite message goes to all players in that world, but the frontend
+    // only acts on invites matching their player_id (included in from_username).
+    let friend_online = state.online_players.read().await.get(&req.friend_id).cloned();
+    let delivered = if let Some(presence) = friend_online {
+        if let Some(friend_world_id) = presence.world_id {
+            // Friend is in a world, send invite via that world's broadcast
+            state.broadcast_to_world(
+                &friend_world_id,
+                gt_common::protocol::ServerMessage::WorldInvite {
+                    from_username: sender_name.clone(),
+                    world_id: req.world_id,
+                    world_name: world_name.clone(),
+                    invite_code: invite_code.clone(),
+                },
+            ).await
+        } else {
+            false
+        }
+    } else {
+        false
+    };
 
     (
         StatusCode::OK,
@@ -2672,6 +2925,7 @@ async fn invite_friend_to_world(
             "status": "invited",
             "world_name": world_name,
             "invite_code": invite_code,
+            "delivered": delivered,
         })),
     )
 }
@@ -2748,4 +3002,122 @@ async fn list_world_history(
     }
 
     (StatusCode::OK, Json(serde_json::json!([])))
+}
+
+/// Get per-world leaderboard
+async fn get_world_leaderboard(
+    State(state): State<Arc<AppState>>,
+    Path(world_id): Path<Uuid>,
+) -> impl IntoResponse {
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.get_top_leaderboard(world_id, 50).await {
+            Ok(entries) => {
+                let result: Vec<serde_json::Value> = entries
+                    .into_iter()
+                    .map(|e| {
+                        serde_json::json!({
+                            "account_id": e.account_id,
+                            "corp_name": e.corp_name,
+                            "score": e.score,
+                            "net_worth": e.net_worth,
+                            "tick": e.tick,
+                        })
+                    })
+                    .collect();
+                return (StatusCode::OK, Json(serde_json::json!({ "leaderboard": result })));
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    let _ = (world_id, &state);
+    (StatusCode::OK, Json(serde_json::json!({ "leaderboard": [] })))
+}
+
+/// Link an existing local account to a GitHub account
+#[derive(Deserialize)]
+struct LinkGitHubRequest {
+    code: String,
+}
+
+async fn link_github_account(
+    State(state): State<Arc<AppState>>,
+    AuthClaims(player_id): AuthClaims,
+    Json(body): Json<LinkGitHubRequest>,
+) -> impl IntoResponse {
+    #[cfg(not(feature = "oauth"))]
+    {
+        let _ = (&state, &player_id, &body);
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({ "error": "OAuth feature not enabled" })),
+        );
+    }
+
+    #[cfg(feature = "oauth")]
+    {
+        let oauth_config = match &state.oauth_config {
+            Some(c) => c,
+            None => {
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(serde_json::json!({ "error": "GitHub OAuth not configured" })),
+                );
+            }
+        };
+
+        let github_user = match crate::oauth::github_exchange(oauth_config, &body.code).await {
+            Ok(u) => u,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": format!("GitHub auth failed: {e}") })),
+                );
+            }
+        };
+
+        // Check if this GitHub ID is already linked to another account
+        if state.get_account_by_github_id(github_user.id).await.is_some() {
+            return (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({ "error": "This GitHub account is already linked to another user" })),
+            );
+        }
+
+        // Link the GitHub ID to the authenticated user's account
+        #[cfg(feature = "postgres")]
+        if let Some(db) = state.db.as_ref() {
+            if let Err(e) = db.link_github(player_id, github_user.id).await {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Failed to link GitHub: {e}") })),
+                );
+            }
+        }
+
+        // Update in-memory cache
+        {
+            let mut accounts = state.accounts.write().await;
+            for record in accounts.values_mut() {
+                if record.id == player_id {
+                    record.github_id = Some(github_user.id);
+                    break;
+                }
+            }
+        }
+
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "linked": true,
+                "github_login": github_user.login,
+            })),
+        )
+    }
 }

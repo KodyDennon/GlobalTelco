@@ -746,7 +746,6 @@ pub async fn handle_socket(socket: WebSocket, state: Arc<AppState>, ip: IpAddr) 
     let _ = forward_sender.await;
 }
 
-#[allow(unused_variables)]
 async fn handle_client_message(
     msg: ClientMessage,
     state: &Arc<AppState>,
@@ -778,12 +777,23 @@ async fn handle_client_message(
                 }
             };
 
-            // Check if player is banned from this world
+            // Check if player is banned from this world (in-memory first, then DB)
             if world.banned_players.read().await.contains(&p.id) {
                 return Some(ServerMessage::Error {
                     code: ErrorCode::PermissionDenied,
                     message: "You are banned from this world".to_string(),
                 });
+            }
+            #[cfg(feature = "postgres")]
+            if let Some(db) = state.db.as_ref() {
+                if let Ok(true) = db.is_banned(p.id, Some(world_id)).await {
+                    // Also add to in-memory set for future fast checks
+                    world.banned_players.write().await.insert(p.id);
+                    return Some(ServerMessage::Error {
+                        code: ErrorCode::PermissionDenied,
+                        message: "You are banned from this world".to_string(),
+                    });
+                }
             }
 
             // Spectators don't count toward the player limit
@@ -912,6 +922,10 @@ async fn handle_client_message(
                 }
                 // Record world history
                 let _ = db.upsert_world_history(p.id, world_id, &world.name).await;
+                // Record player session
+                if !p.is_spectator {
+                    let _ = db.upsert_player_session(p.id, world_id, corp_id as i64, true).await;
+                }
             }
 
             let tick = world.world.lock().await.current_tick();

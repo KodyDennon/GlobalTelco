@@ -14,13 +14,14 @@ use gt_simulation::world::GameWorld;
 use crate::auth::AuthConfig;
 use crate::db::Database;
 use crate::oauth::OAuthConfig;
+#[cfg(feature = "r2")]
+use crate::r2::R2Storage;
 
 /// Shared database handle (wrapped in Arc for cheap cloning across tasks)
 pub type SharedDb = Option<Arc<Database>>;
 
 /// A player connected to the server
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct ConnectedPlayer {
     pub id: Uuid,
     pub username: String,
@@ -52,7 +53,6 @@ pub struct OnlinePresence {
 }
 
 /// A running game world instance
-#[allow(dead_code)]
 pub struct WorldInstance {
     pub id: Uuid,
     pub name: String,
@@ -147,7 +147,6 @@ impl WorldInstance {
 
 /// In-memory account store (replace with PostgreSQL in production)
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct AccountRecord {
     pub id: Uuid,
     pub username: String,
@@ -161,7 +160,6 @@ pub struct AccountRecord {
 }
 
 /// Global server state shared across all handlers
-#[allow(dead_code)]
 pub struct AppState {
     pub auth_config: AuthConfig,
     pub worlds: RwLock<HashMap<Uuid, Arc<WorldInstance>>>,
@@ -177,6 +175,9 @@ pub struct AppState {
     pub oauth_config: Option<OAuthConfig>,
     /// Cloudflare Worker URL for password reset emails
     pub cf_reset_worker_url: Option<String>,
+    /// Cloudflare R2 object storage (optional)
+    #[cfg(feature = "r2")]
+    pub r2: Option<Arc<R2Storage>>,
 }
 
 impl AppState {
@@ -193,6 +194,8 @@ impl AppState {
             online_players: RwLock::new(HashMap::new()),
             oauth_config: None,
             cf_reset_worker_url: None,
+            #[cfg(feature = "r2")]
+            r2: None,
         }
     }
 
@@ -203,6 +206,12 @@ impl AppState {
 
     pub fn with_cf_reset_url(mut self, url: Option<String>) -> Self {
         self.cf_reset_worker_url = url;
+        self
+    }
+
+    #[cfg(feature = "r2")]
+    pub fn with_r2(mut self, r2: Option<R2Storage>) -> Self {
+        self.r2 = r2.map(Arc::new);
         self
     }
 

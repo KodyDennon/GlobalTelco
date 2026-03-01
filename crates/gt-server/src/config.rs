@@ -17,6 +17,11 @@ pub struct ServerConfig {
     pub oauth: Option<OAuthConfig>,
     /// Cloudflare Worker URL for sending password reset emails (optional)
     pub cf_reset_worker_url: Option<String>,
+    /// Cloudflare R2 configuration (optional — falls back to DB blobs when absent)
+    pub r2_account_id: Option<String>,
+    pub r2_access_key_id: Option<String>,
+    pub r2_secret_access_key: Option<String>,
+    pub r2_bucket_name: Option<String>,
 }
 
 impl ServerConfig {
@@ -60,11 +65,23 @@ impl ServerConfig {
             cf_reset_worker_url: std::env::var("CF_RESET_WORKER_URL")
                 .ok()
                 .filter(|s| !s.is_empty()),
+            r2_account_id: std::env::var("R2_ACCOUNT_ID").ok().filter(|s| !s.is_empty()),
+            r2_access_key_id: std::env::var("R2_ACCESS_KEY_ID").ok().filter(|s| !s.is_empty()),
+            r2_secret_access_key: std::env::var("R2_SECRET_ACCESS_KEY").ok().filter(|s| !s.is_empty()),
+            r2_bucket_name: std::env::var("R2_BUCKET_NAME").ok().filter(|s| !s.is_empty()),
         }
     }
 
     pub fn bind_addr(&self) -> String {
         format!("{}:{}", self.host, self.port)
+    }
+
+    /// Returns true if all R2 configuration is present.
+    pub fn r2_enabled(&self) -> bool {
+        self.r2_account_id.is_some()
+            && self.r2_access_key_id.is_some()
+            && self.r2_secret_access_key.is_some()
+            && self.r2_bucket_name.is_some()
     }
 }
 

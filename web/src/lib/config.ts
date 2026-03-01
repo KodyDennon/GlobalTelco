@@ -1,7 +1,7 @@
 import { env } from '$env/dynamic/public';
 
-const PROD_API = 'https://globaltelco.gameservers.kodydennon.com';
-const PROD_WS = 'wss://globaltelco.gameservers.kodydennon.com/ws';
+const PROD_API = 'https://server.globaltelco.online';
+const PROD_WS = 'wss://server.globaltelco.online/ws';
 
 const isDev =
 	typeof window !== 'undefined' &&

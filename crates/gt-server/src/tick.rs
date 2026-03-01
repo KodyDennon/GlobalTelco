@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use tokio::sync::Mutex;
@@ -14,6 +13,8 @@ use gt_simulation::world::GameWorld;
 use crate::state::{AppState, WorldInstance};
 #[cfg(feature = "postgres")]
 use crate::state::SharedDb;
+#[cfg(feature = "r2")]
+use crate::r2::R2Storage;
 
 /// Build a full CorpDelta for a given corporation, including operational data.
 /// The per-player filtering in ws.rs will scrub fields based on intel level.
@@ -113,6 +114,10 @@ fn compress_snapshot(json: &str) -> Option<(Vec<u8>, u32)> {
 #[cfg(feature = "postgres")]
 const DB_SNAPSHOT_INTERVAL_TICKS: u64 = 100;
 
+/// Maximum snapshots to keep per world (older ones are pruned from R2 + DB)
+#[cfg(feature = "postgres")]
+const MAX_SNAPSHOTS_PER_WORLD: i64 = 5;
+
 /// Client snapshot interval: push full state to clients every N ticks
 /// as a safety net. CommandBroadcast handles instant sync for commands.
 const CLIENT_SNAPSHOT_INTERVAL_TICKS: u64 = 30;
@@ -125,7 +130,11 @@ const BUSY_WORLD_PLAYER_THRESHOLD: usize = 3;
 
 /// Start the tick loop for a specific world
 #[cfg(feature = "postgres")]
-pub fn spawn_world_tick_loop(world: Arc<WorldInstance>, db: SharedDb) {
+pub fn spawn_world_tick_loop(
+    world: Arc<WorldInstance>,
+    db: SharedDb,
+    #[cfg(feature = "r2")] r2: Option<Arc<R2Storage>>,
+) {
     tokio::spawn(async move {
         let mut tick_interval = interval(Duration::from_millis(world.tick_rate_ms));
         let prev_deltas: Mutex<HashMap<EntityId, CorpDelta>> = Mutex::new(HashMap::new());
@@ -149,7 +158,7 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>, db: SharedDb) {
             };
 
             // Advance the simulation
-            let (tick, events, corp_deltas, db_snapshot, client_snapshot) = {
+            let (tick, events, corp_deltas, db_snapshot, client_snapshot, speed_str, config_json) = {
                 let mut w = world.world.lock().await;
 
                 // Check if paused
@@ -161,16 +170,8 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>, db: SharedDb) {
                 w.tick();
                 let tick_elapsed_us = tick_start.elapsed().as_micros() as u64;
 
-                // Update tick profiling metrics
-                world.last_tick_duration_us.store(tick_elapsed_us, Ordering::Relaxed);
-                let prev_avg = world.avg_tick_duration_us.load(Ordering::Relaxed);
-                let new_avg = if prev_avg == 0 {
-                    tick_elapsed_us
-                } else {
-                    // Exponential moving average (alpha = 0.1)
-                    (prev_avg * 9 + tick_elapsed_us) / 10
-                };
-                world.avg_tick_duration_us.store(new_avg, Ordering::Relaxed);
+                // Update tick profiling metrics via the WorldInstance method
+                world.record_tick_duration(tick_elapsed_us);
 
                 let tick = w.current_tick();
                 let events: Vec<gt_common::events::GameEvent> =
@@ -219,21 +220,136 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>, db: SharedDb) {
                     None
                 };
 
-                (tick, events, deltas, db_snap, client_snap)
+                // Collect world metadata for periodic save
+                let speed_str = format!("{:?}", w.speed());
+                let config_json = serde_json::to_value(w.config()).unwrap_or_default();
+
+                (tick, events, deltas, db_snap, client_snap, speed_str, config_json)
             };
 
-            // Save snapshot to database
+            // Save snapshot to database (or R2 + metadata)
             if let (Some(db_ref), Some(data)) = (db.as_ref(), db_snapshot) {
                 let world_id = world.id;
+                let world_name = world.name.clone();
+                let max_players = world.max_players as i32;
                 let db = Arc::clone(db_ref);
+                let speed = speed_str.clone();
+                let config = config_json.clone();
+
+                // Clone R2 handle if available
+                #[cfg(feature = "r2")]
+                let r2_clone = r2.clone();
+
                 // Save in background to not block the tick loop
                 tokio::spawn(async move {
-                    if let Err(e) = db.save_snapshot(world_id, tick as i64, &data).await {
-                        warn!("Failed to save snapshot to database: {e}");
+                    let mut saved_to_r2 = false;
+
+                    // Try R2 first
+                    #[cfg(feature = "r2")]
+                    if let Some(ref r2_ref) = r2_clone {
+                        let r2_key = R2Storage::snapshot_key(world_id, tick);
+                        let size_bytes = data.len() as i64;
+                        match r2_ref.put(&r2_key, &data).await {
+                            Ok(()) => {
+                                if let Err(e) = db.save_snapshot_metadata(
+                                    world_id, tick as i64, &r2_key, size_bytes,
+                                ).await {
+                                    warn!("Failed to save snapshot metadata: {e}");
+                                } else {
+                                    debug!("Saved R2 snapshot for world {} at tick {} ({} bytes)", world_id, tick, size_bytes);
+                                    saved_to_r2 = true;
+                                }
+
+                                // Prune old snapshots
+                                match db.prune_old_snapshots(world_id, MAX_SNAPSHOTS_PER_WORLD).await {
+                                    Ok(old_keys) => {
+                                        for key in old_keys {
+                                            if let Err(e) = r2_ref.delete(&key).await {
+                                                warn!("Failed to delete old R2 snapshot {key}: {e}");
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        warn!("Failed to prune old snapshots: {e}");
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                warn!("R2 PUT failed, falling back to DB blob: {e}");
+                            }
+                        }
+                    }
+
+                    // Fall back to DB blob if R2 not used
+                    if !saved_to_r2 {
+                        if let Err(e) = db.save_snapshot(world_id, tick as i64, &data).await {
+                            warn!("Failed to save snapshot to database: {e}");
+                        }
+                    }
+
+                    // Persist world metadata regardless
+                    if let Err(e) = db.save_world(world_id, &world_name, &config, tick as i64, &speed, max_players).await {
+                        warn!("Failed to save world metadata: {e}");
                     } else {
                         debug!("Saved snapshot for world {} at tick {}", world_id, tick);
                     }
                 });
+            }
+
+            // Persist events to database in background (before broadcast consumes them)
+            if let Some(db_ref) = db.as_ref() {
+                if !events.is_empty() {
+                    let db = Arc::clone(db_ref);
+                    let world_id = world.id;
+                    let event_tuples: Vec<(i64, String, serde_json::Value)> = events
+                        .iter()
+                        .filter_map(|e| {
+                            let event_type = format!("{:?}", std::mem::discriminant(e));
+                            serde_json::to_value(e).ok().map(|v| (tick as i64, event_type, v))
+                        })
+                        .collect();
+                    tokio::spawn(async move {
+                        let refs: Vec<(i64, &str, &serde_json::Value)> = event_tuples
+                            .iter()
+                            .map(|(t, et, v)| (*t, et.as_str(), v))
+                            .collect();
+                        if let Err(e) = db.batch_insert_events(world_id, &refs).await {
+                            warn!("Failed to persist events: {e}");
+                        }
+                    });
+                }
+
+                // Update leaderboard periodically (every DB_SNAPSHOT_INTERVAL_TICKS)
+                if tick % DB_SNAPSHOT_INTERVAL_TICKS == 0 {
+                    let db = Arc::clone(db_ref);
+                    let world_id = world.id;
+                    let world_ref = Arc::clone(&world);
+                    tokio::spawn(async move {
+                        let players = world_ref.players.read().await;
+                        let w = world_ref.world.lock().await;
+                        for (&player_id, &corp_id) in players.iter() {
+                            if let Some(fin) = w.financials.get(&corp_id) {
+                                let corp_name = w
+                                    .corporations
+                                    .get(&corp_id)
+                                    .map(|c| c.name.clone())
+                                    .unwrap_or_else(|| format!("Corp_{}", corp_id));
+                                let net_worth = fin.cash + fin.revenue_per_tick * 100 - fin.debt;
+                                let score = net_worth as i64;
+                                let _ = db
+                                    .update_leaderboard(
+                                        player_id,
+                                        world_id,
+                                        &corp_name,
+                                        score,
+                                        net_worth as i64,
+                                        tick as i64,
+                                    )
+                                    .await;
+                            }
+                        }
+                    });
+                }
             }
 
             // Broadcast tick update to all connected clients (unconditionally)
@@ -299,15 +415,8 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>) {
                 w.tick();
                 let tick_elapsed_us = tick_start.elapsed().as_micros() as u64;
 
-                // Update tick profiling metrics
-                world.last_tick_duration_us.store(tick_elapsed_us, Ordering::Relaxed);
-                let prev_avg = world.avg_tick_duration_us.load(Ordering::Relaxed);
-                let new_avg = if prev_avg == 0 {
-                    tick_elapsed_us
-                } else {
-                    (prev_avg * 9 + tick_elapsed_us) / 10
-                };
-                world.avg_tick_duration_us.store(new_avg, Ordering::Relaxed);
+                // Update tick profiling metrics via the WorldInstance method
+                world.record_tick_duration(tick_elapsed_us);
 
                 let tick = w.current_tick();
                 let events: Vec<gt_common::events::GameEvent> =
@@ -375,12 +484,16 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>) {
 }
 
 /// Start tick loops for all existing worlds in the server state
-#[allow(dead_code)]
 pub async fn start_all_tick_loops(state: &Arc<AppState>) {
     let worlds = state.worlds.read().await;
     for (_, world) in worlds.iter() {
         #[cfg(feature = "postgres")]
-        spawn_world_tick_loop(Arc::clone(world), state.db.clone());
+        spawn_world_tick_loop(
+            Arc::clone(world),
+            state.db.clone(),
+            #[cfg(feature = "r2")]
+            state.r2.clone(),
+        );
         #[cfg(not(feature = "postgres"))]
         spawn_world_tick_loop(Arc::clone(world));
     }

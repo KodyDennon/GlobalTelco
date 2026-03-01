@@ -148,19 +148,13 @@ mv /tmp/gt-server.service /etc/systemd/system/globaltelco.service
 systemctl daemon-reload
 systemctl enable globaltelco
 
-# Store both nginx configs
-mv /tmp/globaltelco-nginx-pre-ssl.conf /etc/nginx/sites-available/globaltelco-pre-ssl
-mv /tmp/globaltelco-nginx.conf /etc/nginx/sites-available/globaltelco-ssl
+# Install nginx config (HTTP-only — Cloudflare handles SSL termination)
+mv /tmp/globaltelco-nginx-pre-ssl.conf /etc/nginx/sites-available/globaltelco-http
+mv /tmp/globaltelco-nginx.conf /etc/nginx/sites-available/globaltelco-ssl-origin
 
-# Choose nginx config based on whether SSL certs exist
-DOMAIN="globaltelco.gameservers.kodydennon.com"
-if [[ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
-    echo "SSL certs found — using HTTPS config"
-    ln -sf /etc/nginx/sites-available/globaltelco-ssl /etc/nginx/sites-enabled/globaltelco
-else
-    echo "No SSL certs yet — using HTTP-only config (run certbot after deploy)"
-    ln -sf /etc/nginx/sites-available/globaltelco-pre-ssl /etc/nginx/sites-enabled/globaltelco
-fi
+# Use HTTP-only config (Cloudflare proxy terminates TLS, connects to origin on port 80)
+echo "Using HTTP-only nginx config (Cloudflare handles SSL)"
+ln -sf /etc/nginx/sites-available/globaltelco-http /etc/nginx/sites-enabled/globaltelco
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 
@@ -194,7 +188,7 @@ echo "╔═══════════════════════�
 echo "║  Deploy complete!                                ║"
 echo "╚══════════════════════════════════════════════════╝"
 echo ""
-DOMAIN="globaltelco.gameservers.kodydennon.com"
+DOMAIN="server.globaltelco.online"
 echo "  Health (HTTP):  curl http://$DOMAIN/health"
 echo "  Health (HTTPS): curl https://$DOMAIN/health"
 echo "  WebSocket:      wss://$DOMAIN/ws"

@@ -2,32 +2,47 @@
 
 ## Current Deployment
 
-- **Domain:** `globaltelco.gameservers.kodydennon.com`
-- **IP:** `159.54.188.149`
+- **Frontend:** `https://globaltelco.online` (Vercel + Cloudflare DNS)
+- **Server:** `https://server.globaltelco.online` (Oracle Cloud + Cloudflare proxy)
+- **Origin IP:** `159.54.188.149`
 - **Instance:** VM.Standard.E2.1.Micro (AMD x86, 1 OCPU, 1GB RAM) — always free
-- **SSL:** Let's Encrypt (auto-renewing via certbot)
+- **SSL:** Cloudflare terminates TLS (free plan), origin serves HTTP only
+- **DNS:** Cloudflare (zone: `globaltelco.online`)
 - **Endpoints:**
-  - Health: `https://globaltelco.gameservers.kodydennon.com/health`
-  - API: `https://globaltelco.gameservers.kodydennon.com/api`
-  - WebSocket: `wss://globaltelco.gameservers.kodydennon.com/ws`
+  - Health: `https://server.globaltelco.online/health`
+  - API: `https://server.globaltelco.online/api`
+  - WebSocket: `wss://server.globaltelco.online/ws`
 - **SSH:** `ssh -i ~/.ssh/oracle_globaltelco ubuntu@159.54.188.149`
-- **Frontend:** `https://global-telco.vercel.app/`
 
 ## Architecture
 
 ```
-Browser (HTTPS) ──► Nginx (port 443, SSL termination)
-                        │
-                        ▼
-                    gt-server (port 3001, localhost only)
-                        │
-                        ▼
-                    Neon PostgreSQL (us-west-2)
+Browser (HTTPS/WSS) ──► Cloudflare (TLS termination, WebSocket proxy)
+                              │
+                              ▼ (HTTP, port 80)
+                         Nginx (reverse proxy)
+                              │
+                              ▼
+                         gt-server (port 3001, localhost)
+                              │
+                              ▼
+                         Neon PostgreSQL (us-west-2)
 ```
 
-- Nginx handles SSL termination, HTTP→HTTPS redirect, and WebSocket upgrade proxying
-- The Rust game server binds to `0.0.0.0:3001` (accessed only via nginx in production)
-- CORS is restricted to `https://global-telco.vercel.app`
+- Cloudflare handles TLS termination (SSL mode: Flexible) and WebSocket proxying
+- Nginx on origin listens on port 80, proxies to gt-server on port 3001
+- CORS is restricted to `https://globaltelco.online`
+- Cloudflare free plan: WebSocket support enabled, 100s idle timeout (game ticks every 1s, so no issue)
+
+## Cloudflare Configuration
+
+| Setting | Value |
+|---------|-------|
+| SSL mode | Flexible (Cloudflare → origin over HTTP) |
+| WebSockets | Enabled |
+| `globaltelco.online` | A record → `76.76.21.21` (Vercel), DNS-only |
+| `www.globaltelco.online` | CNAME → `cname.vercel-dns.com`, DNS-only |
+| `server.globaltelco.online` | A record → `159.54.188.149`, Proxied (orange cloud) |
 
 ## Step 1: Create a Compute Instance
 
@@ -56,23 +71,24 @@ Oracle blocks all inbound traffic by default. You need to open ports for the gam
 
 | Source CIDR  | Protocol | Dest Port | Description          |
 |-------------|----------|-----------|----------------------|
-| 0.0.0.0/0   | TCP      | 80        | HTTP (nginx → HTTPS redirect) |
-| 0.0.0.0/0   | TCP      | 443       | HTTPS (nginx SSL)    |
-| 0.0.0.0/0   | TCP      | 3001      | Game server (direct, optional) |
+| 0.0.0.0/0   | TCP      | 80        | HTTP (Cloudflare → nginx) |
+| 0.0.0.0/0   | TCP      | 3001      | Game server (direct, optional for debugging) |
 
-## Step 3: DNS Setup
+Note: Port 443 is not needed — Cloudflare terminates TLS and connects to origin on port 80.
 
-Point your domain to the instance IP:
+## Step 3: DNS Setup (Cloudflare)
 
-```
-globaltelco.gameservers.kodydennon.com  A  159.54.188.149
-```
+DNS records are managed in the Cloudflare dashboard (or via API). Required records:
 
-Verify DNS resolves before proceeding:
-```bash
-dig +short globaltelco.gameservers.kodydennon.com
-# Should return: 159.54.188.149
-```
+| Type | Name | Content | Proxy |
+|------|------|---------|-------|
+| A | `globaltelco.online` | `76.76.21.21` | DNS-only (gray) |
+| CNAME | `www` | `cname.vercel-dns.com` | DNS-only (gray) |
+| A | `server` | `159.54.188.149` | Proxied (orange) |
+
+Cloudflare zone settings:
+- SSL/TLS → **Flexible**
+- Network → WebSockets → **On**
 
 ## Step 4: Deploy
 
@@ -94,45 +110,26 @@ export ORACLE_IP=159.54.188.149
 
 The deploy script will:
 1. Create `globaltelco` service user
-2. Install nginx + certbot
-3. Cross-compile gt-server for x86_64 Linux (static musl via `cargo zigbuild`)
+2. Install nginx
+3. Cross-compile gt-server for x86_64 Linux (via `cargo zigbuild`)
 4. Upload binary, env, nginx config, systemd service
-5. Auto-detect SSL certs and use HTTPS config if available
+5. Use HTTP-only nginx config (Cloudflare handles SSL)
 
-## Step 5: SSL Setup (First Time Only)
-
-After the first deploy, obtain an SSL certificate:
+## Step 5: Verify
 
 ```bash
-ssh -i ~/.ssh/oracle_globaltelco ubuntu@159.54.188.149
-
-# Get SSL cert from Let's Encrypt
-sudo certbot certonly --webroot -w /var/www/certbot \
-  -d globaltelco.gameservers.kodydennon.com \
-  --non-interactive --agree-tos -m your@email.com
-
-# Switch nginx to SSL config
-sudo ln -sf /etc/nginx/sites-available/globaltelco-ssl /etc/nginx/sites-enabled/globaltelco
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-Certbot auto-renews via systemd timer. Verify:
-```bash
-sudo certbot renew --dry-run
-```
-
-## Step 6: Verify
-
-```bash
-# Health check (HTTPS)
-curl https://globaltelco.gameservers.kodydennon.com/health
+# Health check (HTTPS via Cloudflare)
+curl https://server.globaltelco.online/health
 
 # API info
-curl https://globaltelco.gameservers.kodydennon.com/api/info
+curl https://server.globaltelco.online/api/info
 
 # Check CORS headers
-curl -s -H "Origin: https://global-telco.vercel.app" \
-  -I https://globaltelco.gameservers.kodydennon.com/api/info | grep access-control
+curl -s -H "Origin: https://globaltelco.online" \
+  -I https://server.globaltelco.online/api/info | grep access-control
+
+# Verify Cloudflare is proxying (look for cf-ray header)
+curl -sI https://server.globaltelco.online/health | grep cf-ray
 
 # Server status
 ssh -i ~/.ssh/oracle_globaltelco ubuntu@159.54.188.149 "sudo systemctl status globaltelco"
@@ -142,12 +139,12 @@ ssh -i ~/.ssh/oracle_globaltelco ubuntu@159.54.188.149 "sudo systemctl status gl
 
 The frontend at `web/src/lib/config.ts` auto-detects environment:
 - **Local dev** (`localhost`): connects to `http://localhost:3001`
-- **Production** (any other host): connects to `https://globaltelco.gameservers.kodydennon.com`
+- **Production** (any other host): connects to `https://server.globaltelco.online`
 
-Override with Vercel env vars if needed:
+Vercel environment variables:
 ```
-PUBLIC_API_URL=https://globaltelco.gameservers.kodydennon.com
-PUBLIC_WS_URL=wss://globaltelco.gameservers.kodydennon.com/ws
+PUBLIC_API_URL=https://server.globaltelco.online
+PUBLIC_WS_URL=wss://server.globaltelco.online/ws
 ```
 
 ## Server Environment Variables
@@ -163,8 +160,8 @@ Stored at `/opt/globaltelco/.env` on the server. Source of truth: `.env` (projec
 | `GT_REFRESH_TOKEN_EXPIRY` | Refresh token TTL (seconds) | `2592000` |
 | `GT_DEFAULT_WORLD` | Default world name | `Global Telco World` |
 | `GT_MAX_PLAYERS` | Max players per world | `8` |
-| `CORS_ORIGIN` | Allowed CORS origin | `https://global-telco.vercel.app` |
-| `ADMIN_KEY` | Admin API key (`X-Admin-Key` header) | (generated) |
+| `CORS_ORIGIN` | Allowed CORS origin | `https://globaltelco.online` |
+| `ADMIN_KEY` | Admin API key (`X-Admin-Key` header) | (required) |
 | `DATABASE_URL` | Neon PostgreSQL connection string | (required) |
 | `RUST_LOG` | Log level filter | `gt_server=info,tower_http=info` |
 
@@ -174,7 +171,8 @@ All free, forever (not trial):
 - Compute: 1 AMD OCPU + 1GB RAM (Always Free Micro instance)
 - Storage: 200GB block volume
 - Network: 10TB/month outbound
-- SSL: Let's Encrypt (free)
+- SSL: Cloudflare (free plan)
+- DNS: Cloudflare (free plan)
 - Neon DB: Separate free tier (500MB storage, 100 hours compute)
 
 ## Troubleshooting
@@ -192,14 +190,8 @@ ssh -i ~/.ssh/oracle_globaltelco ubuntu@159.54.188.149 "sudo systemctl restart n
 # Check nginx config
 ssh -i ~/.ssh/oracle_globaltelco ubuntu@159.54.188.149 "sudo nginx -t"
 
-# Check SSL cert expiry
-ssh -i ~/.ssh/oracle_globaltelco ubuntu@159.54.188.149 "sudo certbot certificates"
-
-# Force SSL cert renewal
-ssh -i ~/.ssh/oracle_globaltelco ubuntu@159.54.188.149 "sudo certbot renew --force-renewal"
-
 # Check if ports are open (from local machine)
-curl -s https://globaltelco.gameservers.kodydennon.com/health
+curl -s https://server.globaltelco.online/health
 
 # Memory usage
 ssh -i ~/.ssh/oracle_globaltelco ubuntu@159.54.188.149 "free -h"

@@ -4,7 +4,7 @@
 
 Mix of city builder, tycoon/business sim, and grand strategy. Web-based with offline single-player and async persistent multiplayer.
 
-> **Live demo:** [global-telco.vercel.app](https://global-telco.vercel.app)
+> **Live demo:** [globaltelco.online](https://globaltelco.online)
 
 ![GlobalTelco Map View](screenshots/01-default-map.png)
 
@@ -66,7 +66,7 @@ Mix of city builder, tycoon/business sim, and grand strategy. Web-based with off
 | Server | Rust (Axum) with WebSocket |
 | Database | PostgreSQL (Neon) |
 | Build | Bun + wasm-pack + cargo-zigbuild |
-| Hosting | Oracle Cloud (game server) + Vercel (frontend CDN) |
+| Hosting | Oracle Cloud (game server) + Vercel (frontend CDN) + Cloudflare (DNS/proxy) |
 
 ---
 

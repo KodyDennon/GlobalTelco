@@ -141,7 +141,7 @@ func DefaultDeployConfig() DeployConfig {
 		Host:        "159.54.188.149",
 		SSHKey:      filepath.Join(home, ".ssh", "oracle_globaltelco"),
 		SSHUser:     "ubuntu",
-		Domain:      "globaltelco.gameservers.kodydennon.com",
+		Domain:      "server.globaltelco.online",
 		ServiceName: "globaltelco",
 		BinaryPath:  "/opt/globaltelco/gt-server",
 	}

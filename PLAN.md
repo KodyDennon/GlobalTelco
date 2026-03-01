@@ -88,7 +88,7 @@ The AUDIT.md identified 12 Critical, 26 Major, 25 Minor, and 15 Polish issues ac
 - **Files:** `.gitignore`, `.env.example`
 
 ### 1.2 Fix CORS
-- Environment-based CORS: restrict to `https://global-telco.vercel.app` in production, `Any` only in debug
+- Environment-based CORS: restrict to `https://globaltelco.online` in production, `Any` only in debug
 - **File:** `crates/gt-server/src/main.rs`
 
 ### 1.3 Fix admin authentication

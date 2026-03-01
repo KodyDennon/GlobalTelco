@@ -15,7 +15,6 @@ pub struct Database {
 }
 
 #[cfg(feature = "postgres")]
-#[allow(dead_code)]
 impl Database {
     pub async fn connect(url: &str) -> Result<Self, sqlx::Error> {
         let pool = PgPool::connect(url).await?;
@@ -28,6 +27,8 @@ impl Database {
         sqlx::raw_sql(migration1).execute(&self.pool).await?;
         let migration2 = include_str!("../migrations/002_multiplayer_overhaul.sql");
         sqlx::raw_sql(migration2).execute(&self.pool).await?;
+        let migration3 = include_str!("../migrations/003_r2_storage.sql");
+        sqlx::raw_sql(migration3).execute(&self.pool).await?;
         Ok(())
     }
 
@@ -877,6 +878,141 @@ impl Database {
         .await
     }
 
+    // ── Snapshot Metadata (R2-backed) ──────────────────────────────────────
+
+    /// Save snapshot metadata only (blob stored in R2).
+    pub async fn save_snapshot_metadata(
+        &self,
+        world_id: Uuid,
+        tick: i64,
+        r2_key: &str,
+        size_bytes: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO world_snapshots (world_id, tick, r2_key, size_bytes)
+             VALUES ($1, $2, $3, $4)",
+        )
+        .bind(world_id)
+        .bind(tick)
+        .bind(r2_key)
+        .bind(size_bytes)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Load the latest snapshot metadata (R2 key + tick) for a world.
+    pub async fn load_latest_snapshot_metadata(
+        &self,
+        world_id: Uuid,
+    ) -> Result<Option<SnapshotMetaRow>, sqlx::Error> {
+        sqlx::query_as::<_, SnapshotMetaRow>(
+            "SELECT tick, r2_key FROM world_snapshots
+             WHERE world_id = $1 AND r2_key IS NOT NULL
+             ORDER BY tick DESC LIMIT 1",
+        )
+        .bind(world_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    /// Prune old snapshots, keeping only the most recent `keep_count`.
+    /// Returns the R2 keys of pruned snapshots (for R2 deletion).
+    pub async fn prune_old_snapshots(
+        &self,
+        world_id: Uuid,
+        keep_count: i64,
+    ) -> Result<Vec<String>, sqlx::Error> {
+        // Get R2 keys of rows that will be deleted
+        let old_keys: Vec<(Option<String>,)> = sqlx::query_as(
+            "SELECT r2_key FROM world_snapshots
+             WHERE world_id = $1
+             ORDER BY tick DESC
+             OFFSET $2",
+        )
+        .bind(world_id)
+        .bind(keep_count)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let r2_keys: Vec<String> = old_keys
+            .into_iter()
+            .filter_map(|(k,)| k)
+            .collect();
+
+        // Delete the old rows
+        sqlx::query(
+            "DELETE FROM world_snapshots
+             WHERE world_id = $1
+             AND tick NOT IN (
+                 SELECT tick FROM world_snapshots
+                 WHERE world_id = $1
+                 ORDER BY tick DESC
+                 LIMIT $2
+             )",
+        )
+        .bind(world_id)
+        .bind(keep_count)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(r2_keys)
+    }
+
+    // ── Cloud Save Metadata (R2-backed) ─────────────────────────────────
+
+    /// Save cloud save metadata only (blob stored in R2).
+    pub async fn save_cloud_metadata(
+        &self,
+        account_id: Uuid,
+        slot: i32,
+        name: &str,
+        tick: i64,
+        config_json: &serde_json::Value,
+        size_bytes: i64,
+        r2_key: &str,
+    ) -> Result<Uuid, sqlx::Error> {
+        let id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO cloud_saves (id, account_id, slot, name, tick, config_json, size_bytes, r2_key)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT (account_id, slot) DO UPDATE SET
+                name = EXCLUDED.name,
+                tick = EXCLUDED.tick,
+                config_json = EXCLUDED.config_json,
+                size_bytes = EXCLUDED.size_bytes,
+                r2_key = EXCLUDED.r2_key,
+                save_data = NULL,
+                created_at = NOW()",
+        )
+        .bind(id)
+        .bind(account_id)
+        .bind(slot)
+        .bind(name)
+        .bind(tick)
+        .bind(config_json)
+        .bind(size_bytes)
+        .bind(r2_key)
+        .execute(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
+    /// Load cloud save metadata (r2_key) for a specific slot.
+    pub async fn load_cloud_metadata(
+        &self,
+        account_id: Uuid,
+        slot: i32,
+    ) -> Result<Option<CloudSaveMetaRow>, sqlx::Error> {
+        sqlx::query_as::<_, CloudSaveMetaRow>(
+            "SELECT r2_key FROM cloud_saves WHERE account_id = $1 AND slot = $2",
+        )
+        .bind(account_id)
+        .bind(slot)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
     // ── Cloud Saves ───────────────────────────────────────────────────────
 
     pub async fn save_cloud(
@@ -1201,7 +1337,6 @@ pub struct WorldHistoryRow {
 
 #[cfg(feature = "postgres")]
 #[derive(sqlx::FromRow)]
-#[allow(dead_code)]
 pub struct WorldRow {
     pub id: Uuid,
     pub name: String,
@@ -1213,7 +1348,6 @@ pub struct WorldRow {
 
 #[cfg(feature = "postgres")]
 #[derive(sqlx::FromRow)]
-#[allow(dead_code)]
 pub struct SnapshotRow {
     pub tick: i64,
     pub state_data: Vec<u8>,
@@ -1221,7 +1355,19 @@ pub struct SnapshotRow {
 
 #[cfg(feature = "postgres")]
 #[derive(sqlx::FromRow)]
-#[allow(dead_code)]
+pub struct SnapshotMetaRow {
+    pub tick: i64,
+    pub r2_key: String,
+}
+
+#[cfg(feature = "postgres")]
+#[derive(sqlx::FromRow)]
+pub struct CloudSaveMetaRow {
+    pub r2_key: Option<String>,
+}
+
+#[cfg(feature = "postgres")]
+#[derive(sqlx::FromRow)]
 pub struct CloudSaveRow {
     pub id: Uuid,
     pub slot: i32,
@@ -1233,7 +1379,6 @@ pub struct CloudSaveRow {
 
 #[cfg(feature = "postgres")]
 #[derive(sqlx::FromRow)]
-#[allow(dead_code)]
 pub struct LeaderboardRow {
     pub account_id: Uuid,
     pub corp_name: String,

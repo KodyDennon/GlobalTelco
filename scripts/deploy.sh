@@ -5,7 +5,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo "=== GlobalTelco Local Build & Verify ==="
 echo ""
-echo "Note: Fly.io and Vercel deploy automatically on push to main."
+echo "Note: Vercel deploys frontend automatically on push to main."
+echo "Game server: ORACLE_IP=159.54.188.149 ./deploy/deploy.sh"
 echo "This script builds everything locally to verify before pushing."
 echo ""
 
@@ -25,9 +26,9 @@ echo "[3/4] Building frontend..."
 cd "$ROOT/web" && bun install && bun run build
 cd "$ROOT"
 
-# 4. Docker image (optional, verifies Fly.io build will work)
-echo "[4/4] Building Docker image..."
-docker build -f crates/gt-server/Dockerfile -t globaltelco-server .
+# 4. Verify server binary (optional)
+echo "[4/4] Verifying gt-server binary..."
+ls -lh "$ROOT/target/release/gt-server" 2>/dev/null || echo "       (no release binary found, build with: cargo build --release --bin gt-server --features postgres)"
 
 echo ""
 echo "=== All builds passed ==="
