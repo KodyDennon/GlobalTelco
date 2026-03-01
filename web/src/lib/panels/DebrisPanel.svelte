@@ -1,10 +1,12 @@
 <script lang="ts">
 	import * as bridge from '$lib/wasm/bridge';
 	import type { OrbitalShellStatus } from '$lib/wasm/bridge';
+	import { worldInfo } from '$lib/stores/gameState';
 
 	let shells: OrbitalShellStatus[] = $state([]);
 
 	$effect(() => {
+		const _tick = $worldInfo.tick;
 		shells = bridge.getDebrisStatus();
 	});
 

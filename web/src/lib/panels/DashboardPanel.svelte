@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { playerCorp, formatMoney, allCorporations, worldInfo, policyState } from '$lib/stores/gameState';
-	import { showConfirm, companyTier, companyTierLabel } from '$lib/stores/uiState';
+	import { showConfirm, companyTier, companyTierLabel, openPanelGroup } from '$lib/stores/uiState';
 	import * as bridge from '$lib/wasm/bridge';
 	import { gameCommand } from '$lib/game/commandRouter';
 	import type { DebtInfo, InfraNode } from '$lib/wasm/types';
@@ -230,8 +230,8 @@
 		<div class="section">
 			<h3>{$tr('panels.quick_actions')}</h3>
 			<div class="quick-links">
-				<span class="quick-link" use:tooltip={() => 'Open Workforce panel to hire or fire employees'}>Manage Employees ({$playerCorp?.employee_count ?? 0})</span>
-				<span class="quick-link" use:tooltip={() => 'Open Infrastructure panel for build options'}>Build Infrastructure</span>
+				<button class="quick-link" onclick={() => openPanelGroup('operations', 'workforce')} use:tooltip={() => 'Open Workforce panel to hire or fire employees'}>Manage Employees ({$playerCorp?.employee_count ?? 0})</button>
+				<button class="quick-link" onclick={() => openPanelGroup('operations', 'infrastructure')} use:tooltip={() => 'Open Infrastructure panel for build options'}>Build Infrastructure</button>
 			</div>
 		</div>
 	{/if}

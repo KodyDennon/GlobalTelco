@@ -413,7 +413,17 @@
 		"partnership": "Partnership",
 		"partnership_desc": "Co-own infrastructure with another corporation.",
 		"storm_weatherer": "Storm Weatherer",
-		"storm_weatherer_desc": "Survive 3 natural disasters."
+		"storm_weatherer_desc": "Survive 3 natural disasters.",
+		"first_satellite": "Space Pioneer",
+		"first_satellite_desc": "Launch your first satellite into orbit.",
+		"constellation": "Constellation Operator",
+		"constellation_desc": "Have 50 operational satellites.",
+		"mega_constellation": "Mega Constellation",
+		"mega_constellation_desc": "Have 500 operational satellites.",
+		"global_sat_coverage": "Global From Above",
+		"global_sat_coverage_desc": "Achieve satellite coverage in all regions.",
+		"kessler_survivor": "Kessler Survivor",
+		"kessler_survivor_desc": "Operate satellites while a Kessler cascade is active."
 	},
 	"advisor": {
 		"negative_cash_title": "Negative Cash",

@@ -29,7 +29,7 @@ import {
 } from '$lib/stores/uiState';
 import { removeGhost } from '$lib/stores/multiplayerState';
 import type { OverlayType } from '$lib/stores/uiState';
-import { autoPauseOnCritical, showPerfMonitor } from '$lib/stores/settings';
+import { autoPauseOnCritical, showPerfMonitor, autoSaveInterval } from '$lib/stores/settings';
 import { writable } from 'svelte/store';
 
 let running = false;
@@ -38,7 +38,7 @@ let lastTickTime = 0;
 let tickAccumulator = 0;
 let currentSpeed = 1; // ticks per second
 let lastAutoSaveTick = 0;
-const AUTO_SAVE_INTERVAL = 50; // ticks between auto-saves
+// Auto-save interval read from settings store (default 50 ticks)
 let mpCleanupFns: Array<() => void> = [];
 let isMultiplayerMode = false; // true when game is server-driven
 let tickInFlight = false; // prevents overlapping async ticks (native sim)
@@ -195,7 +195,7 @@ function updateStores() {
 	}
 
 	// Auto-save check
-	if (info.tick > 0 && info.tick - lastAutoSaveTick >= AUTO_SAVE_INTERVAL) {
+	if (info.tick > 0 && info.tick - lastAutoSaveTick >= get(autoSaveInterval)) {
 		lastAutoSaveTick = info.tick;
 		performAutoSave(info.tick);
 	}

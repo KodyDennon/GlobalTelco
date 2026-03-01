@@ -192,7 +192,7 @@ function decommissionSelected(): void {
 	showConfirm(
 		`Decommission infrastructure #${entityId}? This cannot be undone.`,
 		() => {
-			gameCommand({ DecommissionNode: { node_id: entityId } });
+			gameCommand({ DecommissionNode: { entity: entityId } });
 			selectedEntityId.set(null);
 			selectedEntityType.set(null);
 		}

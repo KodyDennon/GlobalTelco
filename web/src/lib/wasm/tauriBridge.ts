@@ -349,7 +349,11 @@ export function getCachedCorporationsTyped(): CorporationsTyped { return cachedC
 export function getCachedSatelliteArrays(): SatelliteArrays | null { return cachedSatelliteArrays; }
 export function getCachedCorporationData(corpId: number): CorporationData {
 	if (corpId === cachedPlayerCorpId) return cachedPlayerCorpData;
-	return cachedPlayerCorpData;
+	// Non-player corp: trigger async fetch, return empty placeholder for now
+	invoke('sim_get_corporation_data', { id: corpId }).then((json) => {
+		cachedPlayerCorpData = JSON.parse(json as string);
+	}).catch(() => {});
+	return {} as CorporationData;
 }
 
 // Full refresh (every 5 ticks)

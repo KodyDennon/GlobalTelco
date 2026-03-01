@@ -26,7 +26,12 @@
 		'espionage_success': 'spy_master',
 		'lobbyist': 'political_player',
 		'co_owner': 'partnership',
-		'disaster_survivor': 'storm_weatherer'
+		'disaster_survivor': 'storm_weatherer',
+		'first_satellite': 'first_satellite',
+		'constellation': 'constellation',
+		'mega_constellation': 'mega_constellation',
+		'global_sat_coverage': 'global_sat_coverage',
+		'kessler_survivor': 'kessler_survivor'
 	};
 
 	const allAchievements = [
@@ -49,7 +54,12 @@
 		'espionage_success',
 		'lobbyist',
 		'co_owner',
-		'disaster_survivor'
+		'disaster_survivor',
+		'first_satellite',
+		'constellation',
+		'mega_constellation',
+		'global_sat_coverage',
+		'kessler_survivor'
 	];
 
 	function refresh() {

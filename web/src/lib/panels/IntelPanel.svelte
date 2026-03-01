@@ -10,6 +10,7 @@
 	let campaigns: LobbyingInfo[] = $state([]);
 
 	let espionageTarget = $state(0);
+	let espionageRegion = $state(0);
 	let sabotageTarget = $state(0);
 	let sabotageNode = $state(0);
 	let lobbyRegion = $state(0);
@@ -39,9 +40,10 @@
 	}
 
 	function launchEspionage() {
-		if (!espionageTarget) return;
-		gameCommand({ LaunchEspionage: { target: espionageTarget, region: regions[0]?.id || 0 } });
+		if (!espionageTarget || !espionageRegion) return;
+		gameCommand({ LaunchEspionage: { target: espionageTarget, region: espionageRegion } });
 		espionageTarget = 0;
+		espionageRegion = 0;
 		refresh();
 	}
 
@@ -106,7 +108,13 @@
 					<option value={corp.id}>{corp.name}</option>
 				{/each}
 			</select>
-			<button onclick={launchEspionage} disabled={!espionageTarget} aria-label={$tr('panels.launch')} use:tooltip={'Launch espionage mission\nReveals target\'s infrastructure, finances, and strategies\nRisk of detection depends on their security level'}>{$tr('panels.launch')}</button>
+			<select bind:value={espionageRegion} aria-label={$tr('panels.select_region')}>
+				<option value={0}>{$tr('panels.select_region')}</option>
+				{#each regions as region}
+					<option value={region.id}>{region.name}</option>
+				{/each}
+			</select>
+			<button onclick={launchEspionage} disabled={!espionageTarget || !espionageRegion} aria-label={$tr('panels.launch')} use:tooltip={'Launch espionage mission\nReveals target\'s infrastructure, finances, and strategies\nRisk of detection depends on their security level'}>{$tr('panels.launch')}</button>
 		</div>
 	</section>
 

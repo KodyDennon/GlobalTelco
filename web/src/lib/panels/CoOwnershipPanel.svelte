@@ -38,9 +38,9 @@
 		if (!corp || !selectedNode || !targetCorp) return;
 		gameCommand({
 			ProposeCoOwnership: {
-				entity: selectedNode,
+				node: selectedNode,
 				target_corp: targetCorp,
-				share_percent: sharePercent
+				share_pct: sharePercent / 100
 			}
 		});
 		// Add to outgoing proposals for UI feedback
@@ -73,20 +73,19 @@
 		if (!proposal) return;
 		gameCommand({
 			RespondCoOwnership: {
-				entity: proposal.nodeId,
-				from_corp: proposal.fromCorp,
+				proposal: proposal.id,
 				accept
 			}
 		});
 		proposals = proposals.filter((p) => p.id !== proposalId);
 	}
 
-	function proposeBuyout(nodeId: number) {
-		gameCommand({ ProposeBuyout: { entity: nodeId } });
+	function proposeBuyout(nodeId: number, targetCorpId: number, price: number) {
+		gameCommand({ ProposeBuyout: { node: nodeId, target_corp: targetCorpId, price } });
 	}
 
-	function voteUpgrade(nodeId: number) {
-		gameCommand({ VoteUpgrade: { entity: nodeId } });
+	function voteUpgrade(nodeId: number, approve: boolean) {
+		gameCommand({ VoteUpgrade: { node: nodeId, approve } });
 	}
 
 	let operationalNodes = $derived(infra.nodes.filter((n) => !n.under_construction));
@@ -237,14 +236,14 @@
 				<div class="node-actions">
 					<button
 						class="tiny-btn"
-						onclick={() => voteUpgrade(node.id)}
+						onclick={() => voteUpgrade(node.id, true)}
 						use:tooltip={() => `Vote to upgrade ${node.node_type}\nRequires co-owner agreement`}
 					>
 						Vote
 					</button>
 					<button
 						class="tiny-btn buyout"
-						onclick={() => proposeBuyout(node.id)}
+						onclick={() => proposeBuyout(node.id, 0, node.construction_cost)}
 						use:tooltip={() => `Propose buying out co-owners of ${node.node_type}`}
 					>
 						Buy

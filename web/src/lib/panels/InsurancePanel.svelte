@@ -23,10 +23,10 @@
 
 	function toggleInsurance(node: InfraNode) {
 		if (insuredNodes.has(node.id)) {
-			gameCommand({ CancelInsurance: { entity: node.id } });
+			gameCommand({ CancelInsurance: { node: node.id } });
 			insuredNodes = new Set([...insuredNodes].filter((id) => id !== node.id));
 		} else {
-			gameCommand({ PurchaseInsurance: { entity: node.id } });
+			gameCommand({ PurchaseInsurance: { node: node.id } });
 			insuredNodes = new Set([...insuredNodes, node.id]);
 		}
 	}
@@ -34,7 +34,7 @@
 	function insureAll() {
 		for (const node of operationalNodes) {
 			if (!insuredNodes.has(node.id)) {
-				gameCommand({ PurchaseInsurance: { entity: node.id } });
+				gameCommand({ PurchaseInsurance: { node: node.id } });
 			}
 		}
 		insuredNodes = new Set(operationalNodes.map((n) => n.id));
@@ -43,7 +43,7 @@
 	function cancelAll() {
 		for (const node of operationalNodes) {
 			if (insuredNodes.has(node.id)) {
-				gameCommand({ CancelInsurance: { entity: node.id } });
+				gameCommand({ CancelInsurance: { node: node.id } });
 			}
 		}
 		insuredNodes = new Set();

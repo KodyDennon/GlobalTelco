@@ -3,6 +3,7 @@
 	import { DISASTER_DISPLAY_DURATION } from './WeatherLayer';
 	import { worldInfo, playerCorpId, formatMoney } from '$lib/stores/gameState';
 	import * as bridge from '$lib/wasm/bridge';
+	import { gameCommand } from '$lib/game/commandRouter';
 	import { tooltip } from '$lib/ui/tooltip';
 	import { openPanelGroup } from '$lib/stores/uiState';
 
@@ -65,9 +66,7 @@
 		const corpId = $playerCorpId;
 		const damaged = bridge.getDamagedNodes(corpId);
 		for (const node of damaged) {
-			bridge.processCommand({
-				EmergencyRepair: { entity_id: node.id },
-			});
+			gameCommand({ EmergencyRepair: { entity: node.id } });
 		}
 	}
 
