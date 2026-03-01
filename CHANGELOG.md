@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.1 (2026-03-01)
+
+### Other
+
+- **desktop:** v2.0.0 (ce2569e)
+- **web:** v1.4.0 (60f18b1)
+- **server:** v0.8.0 (694df53)
+- Refactor game command parameters for consistency, remove the MapRenderer, and add new satellite-related achievements and configurable auto-save. (90d8eb8)
+
+
 ## 1.3.0 (2026-03-01)
 
 ### Features
