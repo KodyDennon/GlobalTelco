@@ -23,10 +23,11 @@
 	// Track pricing per region
 	let regionPricing: Map<number, { tier: PricingTier; pricePerUnit: number }> = $state(new Map());
 
-	// Load initial pricing from bridge
+	// Load pricing from bridge (every 5th tick — Phase 5 optimization)
 	$effect(() => {
 		const corp = $playerCorp;
-		const _tick = $worldInfo.tick;
+		const tick = $worldInfo.tick;
+		if (tick % 5 !== 0) return;
 		if (!corp) return;
 		const raw = bridge.getRegionPricing(corp.id);
 		if (raw.length > 0) {

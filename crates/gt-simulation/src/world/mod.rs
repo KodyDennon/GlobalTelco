@@ -181,6 +181,13 @@ pub struct GameWorld {
     #[serde(skip)]
     pub system_times: HashMap<String, u64>,
 
+    /// Dirty flags for conditional system skipping.
+    /// Each bit corresponds to one system — if clear, the system can be skipped.
+    /// Commands and events set the relevant bits. Reset after each tick.
+    #[serde(default)]
+    #[serde(skip)]
+    pub dirty_flags: u64,
+
     // Intel levels: (spy_corp, target_corp) → intel level (0..3)
     // 0 = infra positions only (default), 1 = basic financials (ranges),
     // 2 = detailed financials (exact), 3 = operational data (utilization, health, throughput)
@@ -291,6 +298,7 @@ impl GameWorld {
             region_pricing: HashMap::new(),
             maintenance_priorities: HashMap::new(),
             system_times: HashMap::new(),
+            dirty_flags: u64::MAX, // all dirty on first tick
             intel_levels: HashMap::new(),
             cell_to_parcel: HashMap::new(),
             cell_to_region: HashMap::new(),
@@ -403,6 +411,53 @@ impl GameWorld {
         command: Command,
     ) -> gt_common::protocol::CommandResult {
         use gt_common::protocol::CommandResult;
+
+        // Set dirty flags based on command category so conditional systems run.
+        use crate::systems::*;
+        match &command {
+            Command::BuildNode { .. } | Command::BuildEdge { .. } | Command::UpgradeNode { .. }
+            | Command::DecommissionNode { .. } | Command::UpdateEdgeWaypoints { .. } => {
+                mark_dirty(self, DIRTY_CONSTRUCTION);
+            }
+            Command::BidSpectrum { .. } | Command::AssignSpectrum { .. } | Command::UnassignSpectrum { .. } => {
+                mark_dirty(self, DIRTY_SPECTRUM);
+            }
+            Command::PlaceBid { .. } | Command::DeclareBankruptcy { .. }
+            | Command::RequestBailout { .. } | Command::AcceptBailout { .. } => {
+                mark_dirty(self, DIRTY_AUCTION);
+            }
+            Command::LaunchEspionage { .. } | Command::LaunchSabotage { .. }
+            | Command::UpgradeSecurity { .. } => {
+                mark_dirty(self, DIRTY_COVERT_OPS);
+            }
+            Command::StartLobbying { .. } | Command::CancelLobbying { .. } => {
+                mark_dirty(self, DIRTY_LOBBYING);
+            }
+            Command::ProposeAlliance { .. } | Command::AcceptAlliance { .. }
+            | Command::DissolveAlliance { .. } => {
+                mark_dirty(self, DIRTY_ALLIANCE);
+            }
+            Command::FileLawsuit { .. } | Command::SettleLawsuit { .. }
+            | Command::DefendLawsuit { .. } => {
+                mark_dirty(self, DIRTY_LEGAL);
+            }
+            Command::FilePatent { .. } | Command::RequestLicense { .. }
+            | Command::SetLicensePrice { .. } | Command::RevokeLicense { .. }
+            | Command::StartIndependentResearch { .. } => {
+                mark_dirty(self, DIRTY_PATENT);
+            }
+            Command::BidForGrant { .. } | Command::CompleteGrant { .. } => {
+                mark_dirty(self, DIRTY_GRANTS);
+            }
+            Command::BuildConstellation { .. } | Command::OrderSatellites { .. }
+            | Command::ScheduleLaunch { .. } | Command::ContractLaunch { .. } => {
+                mark_dirty(self, DIRTY_LAUNCH | DIRTY_MANUFACTURING);
+            }
+            Command::ServiceSatellite { .. } => {
+                mark_dirty(self, DIRTY_SERVICING);
+            }
+            _ => {} // Speed, pause, hire/fire, research, etc. — always-run systems handle these
+        }
 
         match command {
             Command::SetSpeed(speed) => {

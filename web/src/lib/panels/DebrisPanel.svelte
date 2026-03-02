@@ -6,7 +6,8 @@
 	let shells: OrbitalShellStatus[] = $state([]);
 
 	$effect(() => {
-		const _tick = $worldInfo.tick;
+		const tick = $worldInfo.tick;
+		if (tick % 5 !== 0) return;
 		shells = bridge.getDebrisStatus();
 	});
 

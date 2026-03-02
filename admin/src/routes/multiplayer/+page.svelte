@@ -30,7 +30,7 @@
 
 	const connColumns = [
 		{ key: 'username', label: 'Username', sortable: true },
-		{ key: 'world_name', label: 'World', sortable: true, format: (v: unknown) => v || 'Lobby' },
+		{ key: 'world_name', label: 'World', sortable: true, format: (v: unknown) => (v ? String(v) : 'Lobby') },
 		{ key: 'is_guest', label: 'Type', format: (v: unknown) => v ? 'Guest' : 'Registered' },
 		{ key: 'is_spectator', label: 'Spectator', format: (v: unknown) => v ? 'Yes' : 'No' },
 		{ key: 'connected_at', label: 'Connected', format: (v: unknown) => {

@@ -59,7 +59,6 @@ export function unbanPlayer(accountId: string, worldId?: string): Promise<{ unba
 		method: 'POST',
 		body: JSON.stringify({
 			account_id: accountId,
-			reason: '',
 			world_id: worldId || undefined
 		})
 	});

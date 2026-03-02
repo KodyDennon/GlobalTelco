@@ -10,6 +10,9 @@ node_modules/
 web/node_modules/
 web/.svelte-kit/
 web/build/
+admin/node_modules/
+admin/.svelte-kit/
+admin/build/
 *.tsbuildinfo
 
 # Tauri

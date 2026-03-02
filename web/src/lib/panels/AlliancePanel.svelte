@@ -16,10 +16,11 @@
 
 	let alliances: Alliance[] = $state([]);
 
-	// Load alliances from bridge on tick changes
+	// Load alliances from bridge (every 5th tick — Phase 5 optimization)
 	$effect(() => {
 		const corp = $playerCorp;
-		const _tick = $worldInfo.tick;
+		const tick = $worldInfo.tick;
+		if (tick % 5 !== 0) return;
 		if (!corp) return;
 		const raw = bridge.getAlliances(corp.id);
 		alliances = raw.map((a) => ({

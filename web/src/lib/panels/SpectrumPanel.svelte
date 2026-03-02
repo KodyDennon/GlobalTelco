@@ -20,9 +20,10 @@
 	let playerCash = $derived($playerCorp?.cash ?? 0);
 	let regions: Region[] = $derived($regionStore);
 
-	// Reactive: refresh data when tick changes
+	// Reactive: refresh data (every 5th tick — Phase 5 optimization)
 	$effect(() => {
-		const _tick = $worldInfo.tick;
+		const tick = $worldInfo.tick;
+		if (tick % 5 !== 0) return;
 		refresh();
 	});
 

@@ -16,9 +16,10 @@
 	// Infrastructure list for small-tier per-node view
 	let infraNodes: InfraNode[] = $state([]);
 
-	// Refresh debts and infra when corp changes or each tick
+	// Refresh debts and infra every 5th tick (not every tick — Phase 5 optimization)
 	$effect(() => {
-		const _tick = $worldInfo.tick;
+		const tick = $worldInfo.tick;
+		if (tick % 5 !== 0) return;
 		const corp = $playerCorp;
 		if (corp) {
 			debts = bridge.getDebtInstruments(corp.id);

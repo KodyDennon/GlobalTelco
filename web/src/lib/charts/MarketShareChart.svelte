@@ -8,21 +8,25 @@
 	const width = 360;
 	const height = 160;
 	const margin = { top: 8, right: 8, bottom: 8, left: 8 };
+	const innerW = width - margin.left - margin.right;
+	const innerH = height - margin.top - margin.bottom;
 
 	const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
+	let gRef: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
+
+	function ensureGroup() {
+		if (!svgElement) return false;
+		if (!gRef) {
+			const svg = d3.select(svgElement);
+			svg.selectAll('*').remove();
+			gRef = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+		}
+		return true;
+	}
+
 	function draw(corps: CorpSummary[]) {
-		if (!svgElement || corps.length === 0) return;
-
-		const svg = d3.select(svgElement);
-		svg.selectAll('*').remove();
-
-		const innerW = width - margin.left - margin.right;
-		const innerH = height - margin.top - margin.bottom;
-
-		const g = svg
-			.append('g')
-			.attr('transform', `translate(${margin.left},${margin.top})`);
+		if (!ensureGroup() || corps.length === 0 || !gRef) return;
 
 		// Sort by revenue descending
 		const sorted = [...corps].sort((a, b) => b.revenue - a.revenue);
@@ -31,27 +35,39 @@
 
 		const barHeight = Math.min(20, (innerH - (sorted.length - 1) * 2) / sorted.length);
 
-		sorted.forEach((corp, i) => {
-			const share = Math.max(0, corp.revenue) / totalRevenue;
-			const barW = share * innerW * 0.7;
+		// D3 data join — incremental update instead of nuke-and-rebuild
+		const bars = gRef.selectAll<SVGRectElement, CorpSummary>('.bar')
+			.data(sorted, (d) => String(d.id));
 
-			g.append('rect')
-				.attr('x', 0)
-				.attr('y', i * (barHeight + 2))
-				.attr('width', barW)
-				.attr('height', barHeight)
-				.attr('fill', COLORS[i % COLORS.length])
-				.attr('opacity', corp.is_player ? 1 : 0.6)
-				.attr('rx', 2);
+		bars.enter()
+			.append('rect')
+			.attr('class', 'bar')
+			.attr('rx', 2)
+			.merge(bars)
+			.attr('x', 0)
+			.attr('y', (_, i) => i * (barHeight + 2))
+			.attr('width', (d) => (Math.max(0, d.revenue) / totalRevenue) * innerW * 0.7)
+			.attr('height', barHeight)
+			.attr('fill', (_, i) => COLORS[i % COLORS.length])
+			.attr('opacity', (d) => d.is_player ? 1 : 0.6);
 
-			g.append('text')
-				.attr('x', barW + 6)
-				.attr('y', i * (barHeight + 2) + barHeight / 2 + 1)
-				.attr('fill', '#d1d5db')
-				.attr('font-size', '10px')
-				.attr('dominant-baseline', 'middle')
-				.text(`${corp.name} (${(share * 100).toFixed(0)}%)`);
-		});
+		bars.exit().remove();
+
+		const labels = gRef.selectAll<SVGTextElement, CorpSummary>('.label')
+			.data(sorted, (d) => String(d.id));
+
+		labels.enter()
+			.append('text')
+			.attr('class', 'label')
+			.attr('fill', '#d1d5db')
+			.attr('font-size', '10px')
+			.attr('dominant-baseline', 'middle')
+			.merge(labels)
+			.attr('x', (d) => (Math.max(0, d.revenue) / totalRevenue) * innerW * 0.7 + 6)
+			.attr('y', (_, i) => i * (barHeight + 2) + barHeight / 2 + 1)
+			.text((d) => `${d.name} (${((Math.max(0, d.revenue) / totalRevenue) * 100).toFixed(0)}%)`);
+
+		labels.exit().remove();
 	}
 
 	$effect(() => {

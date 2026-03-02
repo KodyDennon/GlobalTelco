@@ -10,6 +10,11 @@ use wasm_bindgen::prelude::*;
 #[global_allocator]
 static ALLOCATOR: talc::TalckWasm = unsafe { talc::TalckWasm::new_global() };
 
+// Re-export wasm-bindgen-rayon's init_thread_pool when threads feature is enabled.
+// JS side calls: `await initThreadPool(navigator.hardwareConcurrency);`
+#[cfg(feature = "threads")]
+pub use wasm_bindgen_rayon::init_thread_pool;
+
 #[wasm_bindgen(start)]
 pub fn init_panic_hook() {
     console_error_panic_hook::set_once();

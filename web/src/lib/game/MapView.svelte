@@ -261,15 +261,15 @@
 					renderer?.updateInfrastructure();
 				};
 				window.addEventListener('map-dirty', handleMapDirty);
-				// Fallback: update every 2 seconds as safety net
+				// Combined fallback interval: ghost preview every 500ms, infra+cities every 2s
+				let intervalTick = 0;
 				const interval = setInterval(() => {
-					renderer?.updateInfrastructure();
-					renderer?.updateCities();
-				}, 2000);
-
-				// Throttled ghost preview build options update (500ms interval)
-				const ghostInterval = setInterval(() => {
 					renderer?.updateGhostBuildOptions();
+					if (intervalTick % 4 === 0) {
+						renderer?.updateInfrastructure();
+						renderer?.updateCities();
+					}
+					intervalTick++;
 				}, 500);
 
 				window.addEventListener(
@@ -339,7 +339,6 @@
 
 				cleanup = () => {
 					clearInterval(interval);
-					clearInterval(ghostInterval);
 					overlaySub();
 					edgeSrcSub();
 					edgeTypeSub();

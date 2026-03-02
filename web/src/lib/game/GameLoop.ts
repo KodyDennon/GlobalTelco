@@ -1,4 +1,5 @@
 import * as bridge from '$lib/wasm/bridge';
+import * as workerBridge from '$lib/wasm/workerBridge';
 import { eventType, eventData } from '$lib/wasm/types';
 import type { GameEvent } from '$lib/wasm/types';
 import {
@@ -41,7 +42,9 @@ let lastAutoSaveTick = 0;
 // Auto-save interval read from settings store (default 50 ticks)
 let mpCleanupFns: Array<() => void> = [];
 let isMultiplayerMode = false; // true when game is server-driven
-let tickInFlight = false; // prevents overlapping async ticks (native sim)
+let tickInFlight = false; // prevents overlapping async ticks (native sim or worker)
+let useWorker = false; // true when sim runs in a Web Worker
+let workerTickStart = 0; // timestamp when worker tick was requested
 
 // High-water mark: the highest tick we've applied from the server.
 // Prevents stale snapshots from rolling back the displayed tick.
@@ -51,6 +54,39 @@ let mpSnapshotLoading = false;
 
 // Performance profiling stores
 export const simTickTime = writable<number>(0);
+
+// Compute Pressure API — adaptive quality (Phase 5.6)
+export type PressureState = 'nominal' | 'fair' | 'serious' | 'critical';
+export const cpuPressure = writable<PressureState>('nominal');
+let pressureObserver: any = null;
+
+function initPressureObserver() {
+	if (typeof (globalThis as any).PressureObserver === 'undefined') return;
+	try {
+		pressureObserver = new (globalThis as any).PressureObserver((records: any[]) => {
+			if (records.length > 0) {
+				cpuPressure.set(records[0].state as PressureState);
+			}
+		});
+		pressureObserver.observe('cpu', { sampleInterval: 2000 });
+	} catch { /* unsupported — no-op */ }
+}
+
+function teardownPressureObserver() {
+	if (pressureObserver) {
+		try { pressureObserver.disconnect(); } catch {}
+		pressureObserver = null;
+	}
+}
+
+/** Schedule a background task using Scheduler API if available, else setTimeout. */
+function scheduleBackground(fn: () => void) {
+	if (typeof (globalThis as any).scheduler?.postTask === 'function') {
+		(globalThis as any).scheduler.postTask(fn, { priority: 'background' });
+	} else {
+		setTimeout(fn, 0);
+	}
+}
 
 // Loading stage for LoadingScreen (0-3)
 export const loadingStage = writable<number>(0);
@@ -106,7 +142,16 @@ function loop(timestamp: number) {
 		tickAccumulator += delta;
 		const interval = getTickInterval();
 
-		if (bridge.isNativeSim()) {
+		if (useWorker) {
+			// Worker mode: non-blocking tick via Web Worker.
+			// Only request one tick at a time (worker processes asynchronously).
+			if (!tickInFlight && tickAccumulator >= interval) {
+				tickAccumulator -= interval;
+				tickInFlight = true;
+				workerTickStart = performance.now();
+				workerBridge.requestTick();
+			}
+		} else if (bridge.isNativeSim()) {
 			// Native sim: async tick via Tauri IPC. Only one in flight at a time.
 			if (!tickInFlight && tickAccumulator >= interval) {
 				tickAccumulator -= interval;
@@ -122,7 +167,7 @@ function loop(timestamp: number) {
 				});
 			}
 		} else {
-			// WASM: synchronous ticks
+			// WASM: synchronous ticks (fallback — main thread)
 			while (tickAccumulator >= interval) {
 				tickAccumulator -= interval;
 				const t0 = performance.now();
@@ -133,10 +178,110 @@ function loop(timestamp: number) {
 		}
 	}
 
-	if (!isMultiplayerMode) {
+	// In worker mode, store updates happen via the tick result handler.
+	// In direct mode, update stores synchronously each frame.
+	if (!isMultiplayerMode && !useWorker) {
 		updateStores();
 	}
 	animFrameId = requestAnimationFrame(loop);
+}
+
+/** Handle tick results from the Web Worker. Called asynchronously when worker completes a tick. */
+function handleWorkerTickResult(result: workerBridge.TickResult) {
+	tickInFlight = false;
+	const t1 = performance.now();
+	simTickTime.set(Math.round((t1 - workerTickStart) * 100) / 100);
+
+	try {
+		// Parse world info from worker result
+		const info = JSON.parse(result.info);
+		worldInfo.set(info);
+
+		// Update player corp from worker result
+		if (result.playerCorp) {
+			try {
+				const corpData = JSON.parse(result.playerCorp);
+				playerCorp.set(corpData);
+
+				// Record finance snapshot every 10 ticks
+				if (info.tick % 10 === 0) {
+					recordSnapshot(info.tick, corpData.revenue_per_tick, corpData.cost_per_tick, corpData.cash);
+				}
+
+				// Update ambient music intensity based on game state
+				if (corpData.cash !== undefined) {
+					const profitRatio = corpData.profit_per_tick / Math.max(1, corpData.revenue_per_tick || 1);
+					const cashHealth = Math.min(1, corpData.cash / 1_000_000);
+					const intensity = Math.max(0, Math.min(1, 0.5 - profitRatio * 0.3 - cashHealth * 0.2));
+					audioManager.setIntensity(intensity);
+				}
+			} catch { /* ignore corp parse errors */ }
+		}
+
+		// Record network snapshot every 10 ticks (same frequency as direct mode)
+		if (info.tick % 10 === 0) {
+			Promise.all([
+				workerBridge.query('get_traffic_flows'),
+				workerBridge.query('get_infrastructure_list', info.player_corp_id),
+			]).then(([trafficJson, infraJson]) => {
+				if (trafficJson && infraJson) {
+					try {
+						recordNetworkSnapshot(info.tick, JSON.parse(trafficJson), JSON.parse(infraJson));
+					} catch {}
+				}
+			}).catch(() => {});
+		}
+
+		// Update less frequently (every 5th tick) via async worker queries
+		if (info.tick % 5 === 0) {
+			workerBridge.query('get_regions').then(json => {
+				if (json) { try { regions.set(JSON.parse(json)); } catch {} }
+			}).catch(() => {});
+			workerBridge.query('get_cities').then(json => {
+				if (json) { try { cities.set(JSON.parse(json)); } catch {} }
+			}).catch(() => {});
+			workerBridge.query('get_all_corporations').then(json => {
+				if (json) { try { allCorporations.set(JSON.parse(json)); } catch {} }
+			}).catch(() => {});
+		}
+
+		// Process notifications from worker
+		if (result.notifications) {
+			try {
+				const notifs = JSON.parse(result.notifications);
+				if (Array.isArray(notifs) && notifs.length > 0) {
+					notifications.update((n) => [...notifs, ...n].slice(0, 50));
+					for (const notif of notifs) {
+						audioManager.playEventSound(notif.event);
+					}
+
+					// Auto-pause on critical events
+					if (get(autoPauseOnCritical) && currentSpeed > 0) {
+						for (const notif of notifs) {
+							const reason = checkCriticalEvent(notif.event);
+							if (reason) {
+								setSpeed(0);
+								autoPauseReason.set(reason);
+								break;
+							}
+						}
+					}
+				}
+			} catch { /* ignore notification parse errors */ }
+		}
+
+		// Auto-save check (scheduled as background priority)
+		if (info.tick > 0 && info.tick - lastAutoSaveTick >= get(autoSaveInterval)) {
+			lastAutoSaveTick = info.tick;
+			const saveTick = info.tick;
+			scheduleBackground(() => performAutoSaveWorker(saveTick));
+		}
+	} catch (e) {
+		console.error('[GameLoop] Error processing worker tick result:', e);
+	}
+
+	// Signal map for re-render with new data
+	window.dispatchEvent(new CustomEvent('map-dirty'));
 }
 
 function updateStores() {
@@ -194,10 +339,11 @@ function updateStores() {
 		}
 	}
 
-	// Auto-save check
+	// Auto-save check (scheduled as background priority)
 	if (info.tick > 0 && info.tick - lastAutoSaveTick >= get(autoSaveInterval)) {
 		lastAutoSaveTick = info.tick;
-		performAutoSave(info.tick);
+		const saveTick = info.tick;
+		scheduleBackground(() => performAutoSave(saveTick));
 	}
 }
 
@@ -242,6 +388,19 @@ async function performAutoSave(tick: number) {
 	}
 }
 
+/** Auto-save via worker — queries the worker for save data. */
+async function performAutoSaveWorker(tick: number) {
+	try {
+		const data = await workerBridge.query('save_game');
+		if (!data) return;
+		const corp = get(playerCorp);
+		const slot = getNextAutoSaveSlot();
+		await saveToSlot(slot, slot, data, tick, corp?.name ?? 'Unknown', 'Normal', 'Internet');
+	} catch (e) {
+		console.warn('[auto-save worker] Failed:', e);
+	}
+}
+
 export function start() {
 	if (running) return;
 	running = true;
@@ -250,6 +409,7 @@ export function start() {
 
 	animFrameId = requestAnimationFrame(loop);
 	setupKeyboardShortcuts();
+	initPressureObserver();
 }
 
 export function stop() {
@@ -259,10 +419,17 @@ export function stop() {
 		animFrameId = null;
 	}
 	teardownKeyboardShortcuts();
+	teardownPressureObserver();
 	audioManager.dispose();
 	// Clean up multiplayer event listeners
 	for (const fn of mpCleanupFns) fn();
 	mpCleanupFns = [];
+	// Terminate worker if active
+	if (useWorker) {
+		bridge.setCommandProxy(null);
+		workerBridge.terminate();
+		useWorker = false;
+	}
 }
 
 export function setSpeed(speed: number) {
@@ -338,6 +505,27 @@ export async function initGame(config?: Partial<import('$lib/wasm/types').WorldC
 	const startingEra = (config as Record<string, unknown> | undefined)?.starting_era as string | undefined;
 	audioManager.playMusic(configEraToAudioEra(startingEra));
 
+	// Read initial store values from main-thread WASM BEFORE handing off to worker.
+	updateStores();
+
+	// Try to offload simulation to a Web Worker (non-Tauri, browser only)
+	if (workerBridge.isSupported() && !bridge.isNativeSim()) {
+		try {
+			// Save initial state from main thread, then load into worker
+			const initialState = await bridge.saveGame();
+			await workerBridge.init();
+			await workerBridge.loadGame(initialState);
+			workerBridge.setTickResultHandler(handleWorkerTickResult);
+			// Route all commands through the worker (it owns the authoritative state)
+			bridge.setCommandProxy((json) => workerBridge.sendCommand(json));
+			useWorker = true;
+			console.log('[GameLoop] Sim offloaded to Web Worker');
+		} catch (e) {
+			console.warn('[GameLoop] Worker init failed, falling back to main thread:', e);
+			useWorker = false;
+		}
+	}
+
 	loadingStage.set(3);
 
 	// Yield so the loading screen renders "Preparing Map..."
@@ -347,7 +535,6 @@ export async function initGame(config?: Partial<import('$lib/wasm/types').WorldC
 	setSpeed(0);
 	showWelcome.set(true);
 	initialized.set(true);
-	updateStores();
 }
 
 export async function initMultiplayer(saveData: string) {
@@ -565,6 +752,22 @@ export async function initMultiplayer(saveData: string) {
 
 export async function quickSave(): Promise<void> {
 	if (!bridge.isInitialized()) return;
+	if (useWorker) {
+		const data = await workerBridge.query('save_game');
+		if (!data) return;
+		const info = get(worldInfo);
+		const corp = get(playerCorp);
+		await saveToSlot(
+			QUICK_SAVE_SLOT,
+			'Quick Save',
+			data,
+			info?.tick ?? 0,
+			corp?.name ?? 'Unknown',
+			'Normal',
+			'Internet'
+		);
+		return;
+	}
 	const data = await bridge.saveGame();
 	const info = bridge.getWorldInfo();
 	const corp = get(playerCorp);
@@ -582,17 +785,29 @@ export async function quickSave(): Promise<void> {
 export async function quickLoad(): Promise<boolean> {
 	const result = await loadFromSlot(QUICK_SAVE_SLOT);
 	if (!result) return false;
-	await bridge.loadGame(result.data);
+	if (useWorker) {
+		await workerBridge.loadGame(result.data);
+		// Worker owns state — request a tick to push fresh data via handleWorkerTickResult
+		workerBridge.requestTick();
+	} else {
+		await bridge.loadGame(result.data);
+		updateStores();
+	}
 	lastAutoSaveTick = 0;
-	updateStores();
 	return true;
 }
 
 export async function loadFromSave(data: string): Promise<void> {
-	await bridge.loadGame(data);
+	if (useWorker) {
+		await workerBridge.loadGame(data);
+		// Worker owns state — request a tick to push fresh data via handleWorkerTickResult
+		workerBridge.requestTick();
+	} else {
+		await bridge.loadGame(data);
+		updateStores();
+	}
 	lastAutoSaveTick = 0;
 	initialized.set(true);
-	updateStores();
 }
 
 function setupKeyboardShortcuts() {

@@ -12,6 +12,9 @@
 	let currentPage = $state(0);
 	let pageSize = 50;
 	let actorFilter = $state('');
+	let actionFilter = $state('all');
+	let dateFrom = $state('');
+	let dateTo = $state('');
 	let autoRefresh = $state(true);
 
 	const columns = [
@@ -20,14 +23,17 @@
 		{ key: 'action', label: 'Action', sortable: true },
 		{ key: 'target', label: 'Target', sortable: true, format: (v: unknown) => v ? String(v).slice(0, 16) + (String(v).length > 16 ? '...' : '') : '--' },
 		{ key: 'details', label: 'Details', format: (v: unknown) => v ? JSON.stringify(v).slice(0, 50) : '--' },
-		{ key: 'ip_address', label: 'IP', format: (v: unknown) => v || '--' },
+		{ key: 'ip_address', label: 'IP', format: (v: unknown) => (v ? String(v) : '--') },
 	];
 
 	const actionTypes = ['all', 'kick_player', 'ban_player', 'unban_player', 'create_world', 'delete_world', 'set_speed', 'broadcast', 'create_template', 'update_template', 'delete_template', 'resolve_reset'];
 
 	async function loadData() {
 		try {
-			const r = await fetchAuditLog(pageSize, currentPage * pageSize, actorFilter || undefined);
+			const action = actionFilter !== 'all' ? actionFilter : undefined;
+			const from = dateFrom || undefined;
+			const to = dateTo || undefined;
+			const r = await fetchAuditLog(pageSize, currentPage * pageSize, actorFilter || undefined, action, from, to);
 			entries = r.audit_log;
 			total = r.total;
 			loading = false;
@@ -75,6 +81,9 @@
 	$effect(() => {
 		// Re-load when filter or page changes
 		actorFilter;
+		actionFilter;
+		dateFrom;
+		dateTo;
 		currentPage;
 		loadData();
 	});
@@ -100,6 +109,22 @@
 		<div class="filter-group">
 			<label>Actor Filter</label>
 			<input type="text" bind:value={actorFilter} placeholder="Filter by actor..." class="filter-input" />
+		</div>
+		<div class="filter-group">
+			<label>Action Type</label>
+			<select bind:value={actionFilter} class="filter-input filter-select">
+				{#each actionTypes as t}
+					<option value={t}>{t === 'all' ? 'All Actions' : t.replace(/_/g, ' ')}</option>
+				{/each}
+			</select>
+		</div>
+		<div class="filter-group">
+			<label>From</label>
+			<input type="date" bind:value={dateFrom} class="filter-input filter-date" />
+		</div>
+		<div class="filter-group">
+			<label>To</label>
+			<input type="date" bind:value={dateTo} class="filter-input filter-date" />
 		</div>
 		<span class="total-count">{total} total entries</span>
 	</div>
@@ -132,6 +157,9 @@
 	.filter-group { display: flex; flex-direction: column; gap: 3px; }
 	.filter-group label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; font-weight: 600; }
 	.filter-input { padding: 5px 10px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); font-size: 13px; width: 200px; font-family: inherit; }
+	.filter-select { width: 180px; cursor: pointer; appearance: auto; }
+	.filter-date { width: 150px; }
+	.filter-date::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }
 	.total-count { font-size: 12px; color: var(--text-dim); margin-left: auto; }
 	.pagination { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; }
 	.pagination button { padding: 4px 12px; font-size: 12px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-secondary); cursor: pointer; }

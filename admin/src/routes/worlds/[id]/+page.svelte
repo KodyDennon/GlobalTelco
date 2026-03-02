@@ -12,7 +12,7 @@
 	import { startPolling, stopPolling } from '$lib/stores/polling.js';
 	import type { WorldDebug, ChatMessage, SpeedVotes } from '$lib/api/types.js';
 
-	const worldId = $derived(page.params.id);
+	const worldId = $derived(page.params.id!);
 	let world = $state<WorldDebug | null>(null);
 	let chat = $state<ChatMessage[]>([]);
 	let votes = $state<SpeedVotes | null>(null);

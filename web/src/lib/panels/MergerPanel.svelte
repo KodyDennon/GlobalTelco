@@ -14,9 +14,10 @@
 	let playerCash = $derived($playerCorp?.cash ?? 0);
 	let corporations = $derived($allCorporations);
 
-	// Reactive: refresh proposals when tick changes
+	// Reactive: refresh proposals (every 5th tick — Phase 5 optimization)
 	$effect(() => {
-		const _tick = $worldInfo.tick;
+		const tick = $worldInfo.tick;
+		if (tick % 5 !== 0) return;
 		proposals = bridge.getAcquisitionProposals();
 	});
 

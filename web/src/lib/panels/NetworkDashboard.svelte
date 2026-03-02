@@ -17,9 +17,10 @@
 	let contracts: ContractInfo[] = $state([]);
 	let allInfra: AllInfrastructure = $state({ nodes: [], edges: [] });
 
-	// Refresh data each tick
+	// Refresh data every 5th tick (Phase 5 optimization — heavy queries)
 	$effect(() => {
-		const _tick = $worldInfo.tick;
+		const tick = $worldInfo.tick;
+		if (tick % 5 !== 0) return;
 		const corp = $playerCorp;
 		if (corp) {
 			traffic = bridge.getTrafficFlows();
@@ -583,92 +584,93 @@
 			.slice(0, 8);
 	});
 
-	// Capacity sparkline chart (D3) - Gap #28
+	// Capacity sparkline chart (D3) - Gap #28 — incremental updates
 	let sparkSvg: SVGSVGElement = $state() as unknown as SVGSVGElement;
 	const spW = 460;
 	const spH = 80;
 	const spMargin = { top: 8, right: 16, bottom: 20, left: 52 };
 
-	function drawCapacitySparkline(data: NetworkSnapshot[], projection: CapacityProjection | null) {
-		if (!sparkSvg || data.length < 2) return;
+	let spG: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
+	let spGridRef: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
+	let spXAxisRef: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
+	let spYAxisRef: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
+	let spLinePath: d3.Selection<SVGPathElement, unknown, null, undefined> | null = null;
+	let spProjLine: d3.Selection<SVGLineElement, unknown, null, undefined> | null = null;
+	let spProjZone: d3.Selection<SVGRectElement, unknown, null, undefined> | null = null;
+	let spLastDataLen = 0;
+
+	function initSparkline() {
+		if (!sparkSvg) return;
 		const svg = d3.select(sparkSvg);
 		svg.selectAll('*').remove();
+		const innerW = spW - spMargin.left - spMargin.right;
+		const innerH = spH - spMargin.top - spMargin.bottom;
+		spG = svg.append('g').attr('transform', `translate(${spMargin.left},${spMargin.top})`);
+		spGridRef = spG.append('g').attr('class', 'grid');
+		spProjZone = spG.append('rect').attr('class', 'proj-zone').attr('fill', 'rgba(245, 158, 11, 0.05)').attr('y', 0).attr('height', innerH).style('display', 'none');
+		spLinePath = spG.append('path').attr('fill', 'none').attr('stroke', '#10b981').attr('stroke-width', 1.5);
+		spProjLine = spG.append('line').attr('class', 'proj-line').attr('stroke-width', 1.5).attr('stroke-dasharray', '4,3').style('display', 'none');
+		spYAxisRef = spG.append('g').attr('class', 'y-axis');
+		spXAxisRef = spG.append('g').attr('class', 'x-axis').attr('transform', `translate(0,${innerH})`);
+	}
+
+	function drawCapacitySparkline(data: NetworkSnapshot[], projection: CapacityProjection | null) {
+		if (!sparkSvg || data.length < 2) return;
+		if (!spG) initSparkline();
+		if (!spG || !spLinePath || !spProjLine || !spProjZone || !spGridRef || !spXAxisRef || !spYAxisRef) return;
+
+		if (data.length === spLastDataLen) return;
+		spLastDataLen = data.length;
 
 		const innerW = spW - spMargin.left - spMargin.right;
 		const innerH = spH - spMargin.top - spMargin.bottom;
-		const g = svg.append('g').attr('transform', `translate(${spMargin.left},${spMargin.top})`);
 
 		const lastTick = data[data.length - 1].tick;
 		const firstTick = data[0].tick;
 
-		// Extend x domain 50 ticks into the future for projection
-		const xScale = d3.scaleLinear()
-			.domain([firstTick, lastTick + 50])
-			.range([0, innerW]);
-
+		const xScale = d3.scaleLinear().domain([firstTick, lastTick + 50]).range([0, innerW]);
 		const allVals = data.map(d => d.served);
 		const projVal = projection ? projection.projectedThroughput : 0;
 		const yMax = Math.max(d3.max(allVals) ?? 1, projVal) * 1.1;
-		const yScale = d3.scaleLinear()
-			.domain([0, yMax])
-			.range([innerH, 0])
-			.nice();
+		const yScale = d3.scaleLinear().domain([0, yMax]).range([innerH, 0]).nice();
 
-		// Gridlines
-		g.append('g')
-			.call(d3.axisLeft(yScale).ticks(3).tickSize(-innerW).tickFormat(() => ''))
-			.selectAll('line').attr('stroke', 'rgba(55, 65, 81, 0.2)');
-		g.selectAll('.domain').remove();
+		// Update grid
+		spGridRef.call(d3.axisLeft(yScale).ticks(3).tickSize(-innerW).tickFormat(() => '') as any);
+		spGridRef.selectAll('line').attr('stroke', 'rgba(55, 65, 81, 0.2)');
+		spGridRef.selectAll('.domain').remove();
 
-		// Historical line (green)
-		const line = d3.line<NetworkSnapshot>()
-			.x(d => xScale(d.tick))
-			.y(d => yScale(d.served))
-			.curve(d3.curveMonotoneX);
-		g.append('path').datum(data)
-			.attr('fill', 'none')
-			.attr('stroke', '#10b981')
-			.attr('stroke-width', 1.5)
-			.attr('d', line);
+		// Update historical line
+		const line = d3.line<NetworkSnapshot>().x(d => xScale(d.tick)).y(d => yScale(d.served)).curve(d3.curveMonotoneX);
+		spLinePath.datum(data).attr('d', line);
 
-		// Projection line (dashed amber/red)
+		// Update projection
 		if (projection && data.length > 0) {
 			const lastPoint = data[data.length - 1];
 			const projColor = projection.exceedsCapacity ? '#ef4444' : '#f59e0b';
-			g.append('line')
-				.attr('x1', xScale(lastPoint.tick))
-				.attr('y1', yScale(lastPoint.served))
-				.attr('x2', xScale(lastPoint.tick + 50))
-				.attr('y2', yScale(projection.projectedThroughput))
-				.attr('stroke', projColor)
-				.attr('stroke-width', 1.5)
-				.attr('stroke-dasharray', '4,3');
-
-			// Future zone marker
-			g.append('rect')
+			spProjLine.style('display', null)
+				.attr('x1', xScale(lastPoint.tick)).attr('y1', yScale(lastPoint.served))
+				.attr('x2', xScale(lastPoint.tick + 50)).attr('y2', yScale(projection.projectedThroughput))
+				.attr('stroke', projColor);
+			spProjZone.style('display', null)
 				.attr('x', xScale(lastPoint.tick))
-				.attr('y', 0)
-				.attr('width', innerW - xScale(lastPoint.tick))
-				.attr('height', innerH)
-				.attr('fill', 'rgba(245, 158, 11, 0.05)');
+				.attr('width', innerW - xScale(lastPoint.tick));
+		} else {
+			spProjLine.style('display', 'none');
+			spProjZone.style('display', 'none');
 		}
 
-		// X axis
-		g.append('g')
-			.attr('transform', `translate(0,${innerH})`)
-			.call(d3.axisBottom(xScale).ticks(5).tickFormat(d => `${d}`))
-			.selectAll('text').attr('fill', '#6b7280').attr('font-size', '8px');
-		g.selectAll('.tick line').attr('stroke', '#374151');
+		// Update axes
+		spXAxisRef.call(d3.axisBottom(xScale).ticks(5).tickFormat(d => `${d}`) as any);
+		spXAxisRef.selectAll('text').attr('fill', '#6b7280').attr('font-size', '8px');
+		spXAxisRef.selectAll('.tick line').attr('stroke', '#374151');
 
-		// Y axis
-		g.append('g')
-			.call(d3.axisLeft(yScale).ticks(3).tickFormat(d => {
-				const n = d as number;
-				if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(0)}M`;
-				if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
-				return `${n}`;
-			}))
-			.selectAll('text').attr('fill', '#6b7280').attr('font-size', '8px');
+		spYAxisRef.call(d3.axisLeft(yScale).ticks(3).tickFormat(d => {
+			const n = d as number;
+			if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(0)}M`;
+			if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+			return `${n}`;
+		}) as any);
+		spYAxisRef.selectAll('text').attr('fill', '#6b7280').attr('font-size', '8px');
 	}
 
 	$effect(() => {
@@ -801,124 +803,128 @@
 		return formatMoney(Math.round(n));
 	}
 
-	// -- Traffic Overview Chart (D3) --
+	// -- Traffic Overview Chart (D3) — incremental updates --
 	let trafficSvg: SVGSVGElement;
 	const tW = 460;
 	const tH = 160;
 	const tMargin = { top: 24, right: 16, bottom: 24, left: 52 };
 
-	function drawTrafficChart(data: NetworkSnapshot[]) {
-		if (!trafficSvg || data.length < 2) return;
+	let tcG: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
+	let tcGridRef: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
+	let tcXAxisRef: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
+	let tcYAxisRef: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
+	let tcDemandPath: d3.Selection<SVGPathElement, unknown, null, undefined> | null = null;
+	let tcServedPath: d3.Selection<SVGPathElement, unknown, null, undefined> | null = null;
+	let tcDropGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
+	let tcLastDataLen = 0;
+
+	function initTrafficChart() {
+		if (!trafficSvg) return;
 		const svg = d3.select(trafficSvg);
 		svg.selectAll('*').remove();
+		const innerW = tW - tMargin.left - tMargin.right;
+		const innerH = tH - tMargin.top - tMargin.bottom;
+		tcG = svg.append('g').attr('transform', `translate(${tMargin.left},${tMargin.top})`);
+		tcGridRef = tcG.append('g').attr('class', 'grid');
+		tcXAxisRef = tcG.append('g').attr('class', 'x-axis').attr('transform', `translate(0,${innerH})`);
+		tcYAxisRef = tcG.append('g').attr('class', 'y-axis');
+		tcDemandPath = tcG.append('path').attr('fill', 'none').attr('stroke', '#3b82f6').attr('stroke-width', 1.5).attr('stroke-dasharray', '4,3');
+		tcServedPath = tcG.append('path').attr('fill', 'none').attr('stroke', '#10b981').attr('stroke-width', 2);
+		tcDropGroup = tcG.append('g').attr('class', 'drops');
+
+		// Static legend
+		const legend = svg.append('g').attr('transform', `translate(${tMargin.left + 4}, 8)`);
+		legend.append('line').attr('x1', 0).attr('y1', 5).attr('x2', 14).attr('y2', 5).attr('stroke', '#10b981').attr('stroke-width', 2);
+		legend.append('text').attr('x', 18).attr('y', 8).attr('fill', '#9ca3af').attr('font-size', '9px').text('Served');
+		legend.append('line').attr('x1', 60).attr('y1', 5).attr('x2', 74).attr('y2', 5).attr('stroke', '#3b82f6').attr('stroke-width', 1.5).attr('stroke-dasharray', '4,3');
+		legend.append('text').attr('x', 78).attr('y', 8).attr('fill', '#9ca3af').attr('font-size', '9px').text('Demand');
+		legend.append('circle').attr('cx', 130).attr('cy', 5).attr('r', 3).attr('fill', '#ef4444');
+		legend.append('text').attr('x', 137).attr('y', 8).attr('fill', '#9ca3af').attr('font-size', '9px').text('Dropped');
+	}
+
+	function drawTrafficChart(data: NetworkSnapshot[]) {
+		if (!trafficSvg || data.length < 2) return;
+		if (!tcG) initTrafficChart();
+		if (!tcG || !tcDemandPath || !tcServedPath || !tcDropGroup || !tcGridRef || !tcXAxisRef || !tcYAxisRef) return;
+
+		if (data.length === tcLastDataLen) return;
+		tcLastDataLen = data.length;
 
 		const innerW = tW - tMargin.left - tMargin.right;
 		const innerH = tH - tMargin.top - tMargin.bottom;
 
-		const g = svg.append('g').attr('transform', `translate(${tMargin.left},${tMargin.top})`);
-
-		const xScale = d3.scaleLinear()
-			.domain(d3.extent(data, d => d.tick) as [number, number])
-			.range([0, innerW]);
-
+		const xScale = d3.scaleLinear().domain(d3.extent(data, d => d.tick) as [number, number]).range([0, innerW]);
 		const allVals = data.flatMap(d => [d.served, d.demand, d.dropped]);
 		const yMax = d3.max(allVals) ?? 1;
-		const yScale = d3.scaleLinear()
-			.domain([0, yMax * 1.1])
-			.range([innerH, 0])
-			.nice();
+		const yScale = d3.scaleLinear().domain([0, yMax * 1.1]).range([innerH, 0]).nice();
 
-		// Gridlines
-		g.append('g')
-			.call(d3.axisLeft(yScale).ticks(4).tickSize(-innerW).tickFormat(() => ''))
-			.selectAll('line').attr('stroke', 'rgba(55, 65, 81, 0.3)');
-		g.selectAll('.domain').remove();
+		// Update grid
+		tcGridRef.call(d3.axisLeft(yScale).ticks(4).tickSize(-innerW).tickFormat(() => '') as any);
+		tcGridRef.selectAll('line').attr('stroke', 'rgba(55, 65, 81, 0.3)');
+		tcGridRef.selectAll('.domain').remove();
 
-		// X axis
-		g.append('g')
-			.attr('transform', `translate(0,${innerH})`)
-			.call(d3.axisBottom(xScale).ticks(6).tickFormat(d => `${d}`))
-			.selectAll('text').attr('fill', '#6b7280').attr('font-size', '9px');
-		g.selectAll('.tick line').attr('stroke', '#374151');
+		// Update axes
+		tcXAxisRef.call(d3.axisBottom(xScale).ticks(6).tickFormat(d => `${d}`) as any);
+		tcXAxisRef.selectAll('text').attr('fill', '#6b7280').attr('font-size', '9px');
+		tcXAxisRef.selectAll('.tick line').attr('stroke', '#374151');
 
-		// Y axis
-		g.append('g')
-			.call(d3.axisLeft(yScale).ticks(4).tickFormat(d => {
-				const n = d as number;
-				if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(0)}M`;
-				if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
-				return `${n}`;
-			}))
-			.selectAll('text').attr('fill', '#6b7280').attr('font-size', '9px');
+		tcYAxisRef.call(d3.axisLeft(yScale).ticks(4).tickFormat(d => {
+			const n = d as number;
+			if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(0)}M`;
+			if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+			return `${n}`;
+		}) as any);
+		tcYAxisRef.selectAll('text').attr('fill', '#6b7280').attr('font-size', '9px');
 
-		// Demand line (blue dashed)
-		const demandLine = d3.line<NetworkSnapshot>()
-			.x(d => xScale(d.tick))
-			.y(d => yScale(d.demand))
-			.curve(d3.curveMonotoneX);
-		g.append('path').datum(data)
-			.attr('fill', 'none')
-			.attr('stroke', '#3b82f6')
-			.attr('stroke-width', 1.5)
-			.attr('stroke-dasharray', '4,3')
-			.attr('d', demandLine);
+		// Update line paths (no DOM creation — just update 'd')
+		const demandLine = d3.line<NetworkSnapshot>().x(d => xScale(d.tick)).y(d => yScale(d.demand)).curve(d3.curveMonotoneX);
+		const servedLine = d3.line<NetworkSnapshot>().x(d => xScale(d.tick)).y(d => yScale(d.served)).curve(d3.curveMonotoneX);
+		tcDemandPath.datum(data).attr('d', demandLine);
+		tcServedPath.datum(data).attr('d', servedLine);
 
-		// Served line (green solid)
-		const servedLine = d3.line<NetworkSnapshot>()
-			.x(d => xScale(d.tick))
-			.y(d => yScale(d.served))
-			.curve(d3.curveMonotoneX);
-		g.append('path').datum(data)
-			.attr('fill', 'none')
-			.attr('stroke', '#10b981')
-			.attr('stroke-width', 2)
-			.attr('d', servedLine);
-
-		// Dropped dots (red)
+		// Update dropped dots (data join)
 		const droppedData = data.filter(d => d.dropped > 0);
-		g.selectAll('.drop-dot')
-			.data(droppedData)
-			.join('circle')
-			.attr('cx', d => xScale(d.tick))
-			.attr('cy', d => yScale(d.dropped))
-			.attr('r', 3)
-			.attr('fill', '#ef4444')
-			.attr('opacity', 0.8);
-
-		// Legend
-		const legend = svg.append('g').attr('transform', `translate(${tMargin.left + 4}, 8)`);
-		// Served
-		legend.append('line').attr('x1', 0).attr('y1', 5).attr('x2', 14).attr('y2', 5)
-			.attr('stroke', '#10b981').attr('stroke-width', 2);
-		legend.append('text').attr('x', 18).attr('y', 8).attr('fill', '#9ca3af')
-			.attr('font-size', '9px').text('Served');
-		// Demand
-		legend.append('line').attr('x1', 60).attr('y1', 5).attr('x2', 74).attr('y2', 5)
-			.attr('stroke', '#3b82f6').attr('stroke-width', 1.5).attr('stroke-dasharray', '4,3');
-		legend.append('text').attr('x', 78).attr('y', 8).attr('fill', '#9ca3af')
-			.attr('font-size', '9px').text('Demand');
-		// Dropped
-		legend.append('circle').attr('cx', 130).attr('cy', 5).attr('r', 3).attr('fill', '#ef4444');
-		legend.append('text').attr('x', 137).attr('y', 8).attr('fill', '#9ca3af')
-			.attr('font-size', '9px').text('Dropped');
+		const dots = tcDropGroup.selectAll<SVGCircleElement, NetworkSnapshot>('.drop-dot')
+			.data(droppedData, d => d.tick);
+		dots.enter().append('circle').attr('class', 'drop-dot').attr('r', 3).attr('fill', '#ef4444').attr('opacity', 0.8)
+			.merge(dots)
+			.attr('cx', d => xScale(d.tick)).attr('cy', d => yScale(d.dropped));
+		dots.exit().remove();
 	}
 
 	$effect(() => {
 		drawTrafficChart($chartHistory);
 	});
 
-	// -- Node Utilization Distribution Chart (D3) --
+	// -- Node Utilization Distribution Chart (D3) — incremental updates --
 	let distSvg: SVGSVGElement;
 	const dW = 460;
 	const dH = 120;
 	const dMargin = { top: 8, right: 16, bottom: 24, left: 40 };
+	const distLabels = ['0-20%', '20-40%', '40-60%', '60-80%', '80-100%'];
+	const distColors = ['#10b981', '#10b981', '#f59e0b', '#f59e0b', '#ef4444'];
+
+	let distG: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
+	let distXAxisRef: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
+	let distYAxisRef: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
+
+	function initDistChart() {
+		if (!distSvg) return;
+		const svg = d3.select(distSvg);
+		svg.selectAll('*').remove();
+		const innerW = dW - dMargin.left - dMargin.right;
+		const innerH = dH - dMargin.top - dMargin.bottom;
+		distG = svg.append('g').attr('transform', `translate(${dMargin.left},${dMargin.top})`);
+		distXAxisRef = distG.append('g').attr('class', 'x-axis').attr('transform', `translate(0,${innerH})`);
+		distYAxisRef = distG.append('g').attr('class', 'y-axis');
+	}
 
 	function drawDistribution(nodes: InfraNode[]) {
 		if (!distSvg || nodes.length === 0) return;
-		const svg = d3.select(distSvg);
-		svg.selectAll('*').remove();
+		if (!distG) initDistChart();
+		if (!distG || !distXAxisRef || !distYAxisRef) return;
 
-		const bins = [0, 0, 0, 0, 0]; // 0-20, 20-40, 40-60, 60-80, 80-100
+		const bins = [0, 0, 0, 0, 0];
 		for (const node of nodes) {
 			const pct = node.utilization * 100;
 			if (pct < 20) bins[0]++;
@@ -930,101 +936,92 @@
 
 		const innerW = dW - dMargin.left - dMargin.right;
 		const innerH = dH - dMargin.top - dMargin.bottom;
-		const g = svg.append('g').attr('transform', `translate(${dMargin.left},${dMargin.top})`);
 
-		const labels = ['0-20%', '20-40%', '40-60%', '60-80%', '80-100%'];
-		const colors = ['#10b981', '#10b981', '#f59e0b', '#f59e0b', '#ef4444'];
-
-		const xScale = d3.scaleBand()
-			.domain(labels)
-			.range([0, innerW])
-			.padding(0.25);
-
+		const xScale = d3.scaleBand().domain(distLabels).range([0, innerW]).padding(0.25);
 		const yMax = d3.max(bins) ?? 1;
-		const yScale = d3.scaleLinear()
-			.domain([0, yMax])
-			.range([innerH, 0])
-			.nice();
+		const yScale = d3.scaleLinear().domain([0, yMax]).range([innerH, 0]).nice();
 
-		// Bars
-		g.selectAll('.bar')
+		// Data join for bars
+		distG.selectAll<SVGRectElement, number>('.bar')
 			.data(bins)
 			.join('rect')
-			.attr('x', (_d, i) => xScale(labels[i])!)
+			.attr('class', 'bar')
+			.attr('x', (_d, i) => xScale(distLabels[i])!)
 			.attr('y', d => yScale(d))
 			.attr('width', xScale.bandwidth())
 			.attr('height', d => innerH - yScale(d))
-			.attr('fill', (_d, i) => colors[i])
+			.attr('fill', (_d, i) => distColors[i])
 			.attr('opacity', 0.75)
 			.attr('rx', 2);
 
-		// Count labels above bars
-		g.selectAll('.bar-label')
+		// Data join for count labels
+		distG.selectAll<SVGTextElement, number>('.bar-label')
 			.data(bins)
 			.join('text')
-			.attr('x', (_d, i) => xScale(labels[i])! + xScale.bandwidth() / 2)
+			.attr('class', 'bar-label')
+			.attr('x', (_d, i) => xScale(distLabels[i])! + xScale.bandwidth() / 2)
 			.attr('y', d => yScale(d) - 4)
 			.attr('text-anchor', 'middle')
 			.attr('fill', '#9ca3af')
 			.attr('font-size', '9px')
 			.text(d => d > 0 ? d : '');
 
-		// X axis
-		g.append('g')
-			.attr('transform', `translate(0,${innerH})`)
-			.call(d3.axisBottom(xScale).tickSize(0))
-			.selectAll('text').attr('fill', '#6b7280').attr('font-size', '9px');
-		g.selectAll('.domain').attr('stroke', '#374151');
+		// Update axes
+		distXAxisRef.call(d3.axisBottom(xScale).tickSize(0) as any);
+		distXAxisRef.selectAll('text').attr('fill', '#6b7280').attr('font-size', '9px');
+		distXAxisRef.selectAll('.domain').attr('stroke', '#374151');
 
-		// Y axis
-		g.append('g')
-			.call(d3.axisLeft(yScale).ticks(3).tickFormat(d => `${d}`))
-			.selectAll('text').attr('fill', '#6b7280').attr('font-size', '9px');
-		g.selectAll('.tick line').attr('stroke', '#374151');
+		distYAxisRef.call(d3.axisLeft(yScale).ticks(3).tickFormat(d => `${d}`) as any);
+		distYAxisRef.selectAll('text').attr('fill', '#6b7280').attr('font-size', '9px');
+		distYAxisRef.selectAll('.tick line').attr('stroke', '#374151');
 	}
 
 	$effect(() => {
 		drawDistribution(infra.nodes.filter(n => !n.under_construction));
 	});
 
-	// -- Infrastructure Summary Chart (D3) --
+	// -- Infrastructure Summary Chart (D3) — incremental updates --
 	let infraSvg: SVGSVGElement;
 	const iW = 460;
 	const iH = 100;
 	const iMargin = { top: 8, right: 16, bottom: 24, left: 60 };
 
-	function drawInfraSummary(nodes: InfraNode[], edges: InfraEdge[]) {
+	let isG: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
+	let isYAxisRef: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
+
+	function initInfraSummary() {
 		if (!infraSvg) return;
 		const svg = d3.select(infraSvg);
 		svg.selectAll('*').remove();
+		isG = svg.append('g').attr('transform', `translate(${iMargin.left},${iMargin.top})`);
+		isYAxisRef = isG.append('g').attr('class', 'y-axis');
+	}
 
-		// Count nodes by type
+	function drawInfraSummary(nodes: InfraNode[], _edges: InfraEdge[]) {
+		if (!infraSvg) return;
+		if (!isG) initInfraSummary();
+		if (!isG || !isYAxisRef) return;
+
 		const nodeCounts: Record<string, number> = {};
 		for (const n of nodes) {
 			nodeCounts[n.node_type] = (nodeCounts[n.node_type] ?? 0) + 1;
 		}
-
 		const entries = Object.entries(nodeCounts).sort((a, b) => b[1] - a[1]).slice(0, 6);
 		if (entries.length === 0) return;
 
 		const innerW = iW - iMargin.left - iMargin.right;
 		const innerH = iH - iMargin.top - iMargin.bottom;
-		const g = svg.append('g').attr('transform', `translate(${iMargin.left},${iMargin.top})`);
 
-		const yScale = d3.scaleBand()
-			.domain(entries.map(e => e[0]))
-			.range([0, innerH])
-			.padding(0.2);
-
+		const yScale = d3.scaleBand().domain(entries.map(e => e[0])).range([0, innerH]).padding(0.2);
 		const xMax = d3.max(entries, e => e[1]) ?? 1;
-		const xScale = d3.scaleLinear()
-			.domain([0, xMax])
-			.range([0, innerW])
-			.nice();
+		const xScale = d3.scaleLinear().domain([0, xMax]).range([0, innerW]).nice();
 
-		g.selectAll('.bar')
-			.data(entries)
+		// Data join for bars
+		type Entry = [string, number];
+		isG.selectAll<SVGRectElement, Entry>('.bar')
+			.data(entries, d => d[0])
 			.join('rect')
+			.attr('class', 'bar')
 			.attr('x', 0)
 			.attr('y', d => yScale(d[0])!)
 			.attr('width', d => xScale(d[1]))
@@ -1033,9 +1030,11 @@
 			.attr('opacity', 0.7)
 			.attr('rx', 2);
 
-		g.selectAll('.count-label')
-			.data(entries)
+		// Data join for count labels
+		isG.selectAll<SVGTextElement, Entry>('.count-label')
+			.data(entries, d => d[0])
 			.join('text')
+			.attr('class', 'count-label')
 			.attr('x', d => xScale(d[1]) + 4)
 			.attr('y', d => yScale(d[0])! + yScale.bandwidth() / 2 + 1)
 			.attr('dominant-baseline', 'middle')
@@ -1044,11 +1043,10 @@
 			.attr('font-family', 'var(--font-mono)')
 			.text(d => d[1]);
 
-		// Y axis labels (node type names)
-		g.append('g')
-			.call(d3.axisLeft(yScale).tickSize(0))
-			.selectAll('text').attr('fill', '#d1d5db').attr('font-size', '9px');
-		g.selectAll('.domain').attr('stroke', '#374151');
+		// Update Y axis
+		isYAxisRef.call(d3.axisLeft(yScale).tickSize(0) as any);
+		isYAxisRef.selectAll('text').attr('fill', '#d1d5db').attr('font-size', '9px');
+		isYAxisRef.selectAll('.domain').attr('stroke', '#374151');
 	}
 
 	$effect(() => {

@@ -23,9 +23,10 @@
 	let corporations = $derived($allCorporations);
 	let regions = $derived($regionStore);
 
-	// Reactive: refresh covert ops data when tick changes
+	// Reactive: refresh covert ops data (every 5th tick — Phase 5 optimization)
 	$effect(() => {
-		const _tick = $worldInfo.tick; // subscribe to tick changes
+		const tick = $worldInfo.tick;
+		if (tick % 5 !== 0) return;
 		if (playerId > 0) {
 			ops = bridge.getCovertOps(playerId);
 			campaigns = bridge.getLobbyingCampaigns(playerId);

@@ -12,7 +12,11 @@ impl GameWorld {
 
     /// Deserialize a game world from a JSON string.
     pub fn load_game(data: &str) -> Result<Self, String> {
-        serde_json::from_str(data).map_err(|e| format!("Load failed: {}", e))
+        let mut world: Self = serde_json::from_str(data).map_err(|e| format!("Load failed: {}", e))?;
+        // dirty_flags is #[serde(skip)] so it defaults to 0 after deser.
+        // Set all bits so every conditional system runs on the first tick after load.
+        world.dirty_flags = u64::MAX;
+        Ok(world)
     }
 
     /// Serialize to binary format (bincode + zstd compression).
@@ -64,8 +68,12 @@ impl GameWorld {
         };
         let decompressed =
             zstd::decode_all(payload).map_err(|e| format!("Zstd decompress failed: {}", e))?;
-        bincode::deserialize(&decompressed)
-            .map_err(|e| format!("Bincode deserialize failed: {}", e))
+        let mut world: Self = bincode::deserialize(&decompressed)
+            .map_err(|e| format!("Bincode deserialize failed: {}", e))?;
+        // dirty_flags is #[serde(skip)] so defaults to 0 after deser.
+        // Set all bits so every conditional system runs on the first tick after load.
+        world.dirty_flags = u64::MAX;
+        Ok(world)
     }
 
     /// Apply a batch of delta operations to the world state.

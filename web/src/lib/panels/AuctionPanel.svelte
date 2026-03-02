@@ -11,9 +11,10 @@
 
 	let playerCash = $derived($playerCorp?.cash ?? 0);
 
-	// Reactive: refresh auctions when tick changes
+	// Reactive: refresh auctions (every 5th tick — Phase 5 optimization)
 	$effect(() => {
-		const _tick = $worldInfo.tick;
+		const tick = $worldInfo.tick;
+		if (tick % 5 !== 0) return;
 		auctions = bridge.getAuctions();
 	});
 

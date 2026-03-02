@@ -13,7 +13,8 @@
 
 	$effect(() => {
 		const corp = $playerCorp;
-		const _tick = $worldInfo.tick;
+		const tick = $worldInfo.tick;
+		if (tick % 5 !== 0) return;
 		if (!corp) return;
 		infra = bridge.getInfrastructureList(corp.id);
 		// Initialize insured set from node.insured field on first load

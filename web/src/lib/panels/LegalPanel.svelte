@@ -25,10 +25,11 @@
 
 	let lawsuits: Lawsuit[] = $state([]);
 
-	// Load lawsuits from bridge on tick changes
+	// Load lawsuits from bridge (every 5th tick — Phase 5 optimization)
 	$effect(() => {
 		const corp = $playerCorp;
-		const _tick = $worldInfo.tick;
+		const tick = $worldInfo.tick;
+		if (tick % 5 !== 0) return;
 		if (!corp) return;
 		const raw = bridge.getLawsuits(corp.id);
 		lawsuits = raw.map((l) => ({

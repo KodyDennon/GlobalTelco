@@ -133,3 +133,65 @@ body {
 		--blue: #93c5fd;
 	}
 }
+
+/* Mobile / small screen responsive */
+@media (max-width: 768px) {
+	:root {
+		--sidebar-width: var(--sidebar-collapsed);
+	}
+
+	/* Sidebar auto-collapse to icons only */
+	.sidebar .nav-label,
+	.sidebar .brand,
+	.sidebar .refresh-status,
+	.sidebar .stale-indicator {
+		display: none;
+	}
+
+	/* Content area takes full width */
+	.app-content {
+		padding: 12px;
+	}
+
+	/* Tables get horizontal scroll */
+	table,
+	.data-table-wrapper,
+	[class*="table"] {
+		display: block;
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	/* Stat card grids: 1-2 columns */
+	.stat-grid,
+	.stats-grid,
+	.overview-grid,
+	.card-grid {
+		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)) !important;
+	}
+
+	/* Form grids stack vertically */
+	.form-grid,
+	.form-row,
+	.filters {
+		flex-direction: column;
+		align-items: stretch;
+	}
+	.filters .filter-group {
+		width: 100%;
+	}
+	.filters .filter-group input,
+	.filters .filter-group select {
+		width: 100%;
+	}
+
+	/* Page headers stack on small screens */
+	.page-header {
+		flex-direction: column;
+		gap: 8px;
+		align-items: flex-start;
+	}
+	.header-actions {
+		flex-wrap: wrap;
+	}
+}

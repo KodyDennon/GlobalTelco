@@ -6,6 +6,13 @@ edition.workspace = true
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = []
+# Enable WASM threads via wasm-bindgen-rayon. Requires nightly Rust,
+# RUSTFLAGS="-C target-feature=+atomics,+bulk-memory,+mutable-globals,+simd128",
+# and COOP/COEP headers on the hosting page.
+threads = ["rayon", "wasm-bindgen-rayon"]
+
 [dependencies]
 gt-common = { path = "../gt-common" }
 gt-bridge = { path = "../gt-bridge" }
@@ -18,3 +25,5 @@ js-sys = "0.3"
 console_error_panic_hook = "0.1"
 getrandom = { version = "0.2", features = ["js"] }
 talc = { version = "4", default-features = false, features = ["lock_api"] }
+rayon = { version = "1", optional = true }
+wasm-bindgen-rayon = { version = "1", optional = true }

@@ -2,26 +2,44 @@
 
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
-const CACHE_NAME = 'globaltelco-v1';
+const CACHE_NAME = 'globaltelco-v2';
+const WASM_CACHE = 'globaltelco-wasm-v1';
 const STATIC_ASSETS = [
 	'/',
 	'/manifest.json'
 ];
 
-// Cache-first strategy for static assets and WASM
+// Cache-first strategy for static assets and WASM.
+// Pre-cache WASM binary on install for V8's compiled code caching
+// (near-instant startup from 3rd+ visit).
 sw.addEventListener('install', (event) => {
 	event.waitUntil(
-		caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+		Promise.all([
+			caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+				.catch(() => { /* offline install — static assets will be cached on first load */ }),
+			// Pre-fetch WASM binary into a dedicated cache for streaming compilation
+			caches.open(WASM_CACHE).then(async (cache) => {
+				const wasmReq = new Request('/wasm/pkg/gt_wasm_bg.wasm');
+				const existing = await cache.match(wasmReq);
+				if (!existing) {
+					try {
+						const resp = await fetch(wasmReq);
+						if (resp.ok) await cache.put(wasmReq, resp);
+					} catch { /* offline install — WASM will be cached on first load */ }
+				}
+			}),
+		])
 	);
 	sw.skipWaiting();
 });
 
 sw.addEventListener('activate', (event) => {
+	const KEEP = new Set([CACHE_NAME, WASM_CACHE]);
 	event.waitUntil(
 		caches.keys().then((names) =>
 			Promise.all(
 				names
-					.filter((name) => name !== CACHE_NAME)
+					.filter((name) => !KEEP.has(name))
 					.map((name) => caches.delete(name))
 			)
 		)
@@ -32,9 +50,26 @@ sw.addEventListener('activate', (event) => {
 sw.addEventListener('fetch', (event) => {
 	const url = new URL(event.request.url);
 
-	// Cache-first for WASM and static assets
+	// WASM files: serve from dedicated WASM cache (enables V8 compiled code caching)
+	if (url.pathname.endsWith('.wasm')) {
+		event.respondWith(
+			caches.open(WASM_CACHE).then((cache) =>
+				cache.match(event.request).then((cached) => {
+					if (cached) return cached;
+					return fetch(event.request).then((response) => {
+						if (response.ok) {
+							cache.put(event.request, response.clone());
+						}
+						return response;
+					});
+				})
+			)
+		);
+		return;
+	}
+
+	// Cache-first for static assets
 	if (
-		url.pathname.endsWith('.wasm') ||
 		url.pathname.endsWith('.js') ||
 		url.pathname.endsWith('.css') ||
 		url.pathname.endsWith('.png') ||

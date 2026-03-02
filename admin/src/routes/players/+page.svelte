@@ -39,8 +39,8 @@
 
 	const accountColumns = [
 		{ key: 'username', label: 'Username', sortable: true },
-		{ key: 'email', label: 'Email', sortable: true, format: (v: unknown) => v || '--' },
-		{ key: 'auth_provider', label: 'Provider', sortable: true, format: (v: unknown) => v || 'local' },
+		{ key: 'email', label: 'Email', sortable: true, format: (v: unknown) => (v ? String(v) : '--') },
+		{ key: 'auth_provider', label: 'Provider', sortable: true, format: (v: unknown) => (v ? String(v) : 'local') },
 		{ key: 'created_at', label: 'Created', sortable: true, format: (v: unknown) => v ? new Date(v as string).toLocaleDateString() : '--' },
 		{ key: 'last_login', label: 'Last Login', sortable: true, format: (v: unknown) => v ? new Date(v as string).toLocaleDateString() : 'Never' },
 	];

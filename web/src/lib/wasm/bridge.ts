@@ -61,6 +61,14 @@ export function isNativeSim(): boolean {
 	return useNativeSim;
 }
 
+// Command proxy for Web Worker mode — routes commands through the worker
+let _commandProxy: ((json: string) => Promise<string>) | null = null;
+
+/** Set a proxy function that routes processCommand calls through the worker. */
+export function setCommandProxy(proxy: ((json: string) => Promise<string>) | null): void {
+	_commandProxy = proxy;
+}
+
 type ErrorHandler = (error: string, context: string) => void;
 let errorHandler: ErrorHandler | null = null;
 
@@ -133,26 +141,39 @@ export function currentTick(): number {
 	}
 }
 
+/** Parse command result JSON for failure notifications. */
+function parseCommandResult(result: string | null | undefined): boolean {
+	if (!result || result.length === 0) return false;
+	try {
+		const notifs = JSON.parse(result);
+		if (Array.isArray(notifs) && notifs.length > 0) {
+			onCommandNotifications(notifs);
+			return notifs.some((n: any) => {
+				const evt = n.event;
+				if (!evt || typeof evt !== 'object') return false;
+				return 'InsufficientFunds' in evt || 'CommandFailed' in evt || 'InvalidPlacement' in evt;
+			});
+		}
+	} catch { /* ignore */ }
+	return false;
+}
+
 /** Returns true if a failure event (InsufficientFunds, etc.) was in the result. */
 export async function processCommand(command: object): Promise<boolean> {
+	// Worker proxy mode: route command through Web Worker
+	if (_commandProxy) {
+		try {
+			const result = await _commandProxy(JSON.stringify(command));
+			return parseCommandResult(result);
+		} catch (e) {
+			onBridgeError(e, 'processCommand');
+			return true;
+		}
+	}
 	if (useNativeSim) {
 		try {
 			const result = await tauriBridge.processCommand(JSON.stringify(command));
-			if (result && result.length > 0) {
-				try {
-					const notifs = JSON.parse(result);
-					if (Array.isArray(notifs) && notifs.length > 0) {
-						onCommandNotifications(notifs);
-						const hasFailure = notifs.some((n: any) => {
-							const evt = n.event;
-							if (!evt || typeof evt !== 'object') return false;
-							return 'InsufficientFunds' in evt || 'CommandFailed' in evt || 'InvalidPlacement' in evt;
-						});
-						return hasFailure;
-					}
-				} catch { /* ignore */ }
-			}
-			return false;
+			return parseCommandResult(result);
 		} catch (e) {
 			onBridgeError(e, 'processCommand');
 			return true;
@@ -160,23 +181,7 @@ export async function processCommand(command: object): Promise<boolean> {
 	}
 	try {
 		const result = bridge?.process_command(JSON.stringify(command));
-		if (result && result.length > 0) {
-			try {
-				const notifs = JSON.parse(result);
-				if (Array.isArray(notifs) && notifs.length > 0) {
-					onCommandNotifications(notifs);
-					const hasFailure = notifs.some((n: any) => {
-						const evt = n.event;
-						if (!evt || typeof evt !== 'object') return false;
-						return 'InsufficientFunds' in evt || 'CommandFailed' in evt || 'InvalidPlacement' in evt;
-					});
-					return hasFailure;
-				}
-			} catch {
-				// Not valid JSON, ignore
-			}
-		}
-		return false;
+		return parseCommandResult(result);
 	} catch (e) {
 		onBridgeError(e, 'processCommand');
 		return true;

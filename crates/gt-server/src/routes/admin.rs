@@ -122,6 +122,8 @@ pub(crate) struct AuditLogQuery {
     limit: Option<i64>,
     #[serde(default)]
     offset: Option<i64>,
+    #[serde(default)]
+    actor: Option<String>,
 }
 
 fn default_audit_limit() -> Option<i64> {
@@ -143,7 +145,7 @@ pub(crate) async fn admin_audit_log(
     // Use DB-backed paginated audit log when available
     #[cfg(feature = "postgres")]
     if let Some(db) = state.db.as_ref() {
-        match db.query_audit_log(limit, offset, None).await {
+        match db.query_audit_log(limit, offset, params.actor.as_deref()).await {
             Ok((entries, total)) => {
                 let result: Vec<serde_json::Value> = entries
                     .into_iter()
@@ -1584,7 +1586,7 @@ pub(crate) async fn admin_world_votes(
         StatusCode::OK,
         Json(serde_json::json!({
             "world_id": world_id,
-            "speed_votes": votes,
+            "votes": votes,
             "current_speed": current_speed,
             "creator_id": *creator_id,
         })),
@@ -1632,6 +1634,7 @@ pub(crate) async fn admin_server_config(
             "env_vars": env_vars,
             "database": {
                 "connected": has_postgres,
+                "pool_size": state.db.as_ref().map(|db| db.pool_size()).unwrap_or(0),
             },
             "features": {
                 "postgres": has_postgres,

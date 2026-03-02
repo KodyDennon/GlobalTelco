@@ -20,10 +20,11 @@
 	let marketCap = $derived(sharePrice * totalShares);
 	let netProfit = $derived(($playerCorp?.revenue_per_tick ?? 0) - ($playerCorp?.cost_per_tick ?? 0));
 
-	// Load stock market data from bridge
+	// Load stock market data from bridge (every 5th tick — Phase 5 optimization)
 	$effect(() => {
 		const corp = $playerCorp;
-		const _tick = $worldInfo.tick;
+		const tick = $worldInfo.tick;
+		if (tick % 5 !== 0) return;
 		if (!corp) return;
 		const sm = bridge.getStockMarket(corp.id);
 		isPublic = sm.public;

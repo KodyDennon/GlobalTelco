@@ -38,6 +38,10 @@ impl Database {
         Ok(Self { pool })
     }
 
+    pub fn pool_size(&self) -> u32 {
+        self.pool.size()
+    }
+
     pub async fn run_migrations(&self) -> Result<(), sqlx::Error> {
         // Run the SQL migration files
         let migration1 = include_str!("../../migrations/001_initial_schema.sql");

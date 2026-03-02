@@ -10,7 +10,7 @@ const config = {
 			pages: 'build',
 			assets: 'build',
 			precompress: false,
-			strict: true
+			strict: false
 		})
 	}
 };

@@ -178,7 +178,7 @@
 					<input type="number" bind:value={newMaxPlayers} min="1" max="100" />
 				</div>
 			</div>
-			<ConfigEditor label="World Config" value={newConfig} onchange={(v) => (newConfig = v as WorldConfig)} />
+			<ConfigEditor label="World Config" value={newConfig as unknown as Record<string, unknown>} onchange={(v) => (newConfig = v as unknown as WorldConfig)} />
 			<button class="btn-primary" onclick={handleCreate} disabled={creating}>
 				{creating ? 'Creating...' : 'Create World'}
 			</button>
