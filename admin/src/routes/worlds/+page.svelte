@@ -48,7 +48,7 @@
 	async function loadData() {
 		try {
 			const [w, t] = await Promise.all([fetchWorlds(), fetchTemplates().catch(() => [])]);
-			worlds = w.worlds as unknown as Record<string, unknown>[];
+			worlds = w as unknown as Record<string, unknown>[];
 			templates = t;
 			loading = false;
 		} catch {

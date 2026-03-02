@@ -1,7 +1,7 @@
 import { adminFetch } from './client.js';
 import type { WorldConfig, WorldDebug, WorldTemplate } from './types.js';
 
-export function fetchWorlds(): Promise<{ worlds: Array<{ id: string; name: string; player_count: number; max_players: number; tick: number; speed: string; era: string; map_size: string }> }> {
+export function fetchWorlds(): Promise<Array<{ id: string; name: string; player_count: number; max_players: number; tick: number; speed: string; era: string; map_size: string }>> {
 	return adminFetch('/api/worlds');
 }
 
