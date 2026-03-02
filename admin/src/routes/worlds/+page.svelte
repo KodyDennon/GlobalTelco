@@ -307,4 +307,14 @@
 	.tpl-meta { font-size: 11px; color: var(--text-dim); }
 	.empty-text { font-size: 13px; color: var(--text-dim); font-style: italic; }
 	h3 { font-size: 14px; font-weight: 600; }
+	@media (max-width: 768px) {
+		.template-row {
+			flex-wrap: wrap;
+		}
+		.page-header {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 8px;
+		}
+	}
 </style>

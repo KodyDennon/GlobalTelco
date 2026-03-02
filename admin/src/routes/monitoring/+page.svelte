@@ -163,4 +163,21 @@
 	.sys-bar-wrap { flex: 1; height: 8px; background: var(--bg-panel); border-radius: 4px; overflow: hidden; }
 	.sys-bar { height: 100%; border-radius: 4px; transition: width 0.3s; }
 	.sys-val { font-size: 11px; font-family: var(--font-mono); min-width: 60px; text-align: right; }
+	@media (max-width: 768px) {
+		.world-metric-header {
+			flex-wrap: wrap;
+			gap: 8px;
+		}
+		.wm-stats {
+			flex-wrap: wrap;
+			gap: 8px;
+		}
+		.wm-name {
+			min-width: auto;
+			width: 100%;
+		}
+		.sys-name {
+			min-width: 80px;
+		}
+	}
 </style>

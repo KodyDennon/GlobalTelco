@@ -4,7 +4,9 @@
 	import { preferences } from '../stores/preferences.js';
 	import { pollingEnabled, lastRefresh } from '../stores/polling.js';
 
-	let collapsed = $derived($preferences.sidebarCollapsed);
+	let { mobile = false, onnavclick }: { mobile?: boolean; onnavclick?: () => void } = $props();
+
+	let collapsed = $derived(mobile ? false : $preferences.sidebarCollapsed);
 
 	function toggleCollapse() {
 		$preferences = { ...$preferences, sidebarCollapsed: !$preferences.sidebarCollapsed };
@@ -53,6 +55,7 @@
 				class="nav-item"
 				class:active={isActive(item.href)}
 				title={collapsed ? item.label : undefined}
+				onclick={() => onnavclick?.()}
 			>
 				<span class="nav-icon">{item.icon}</span>
 				{#if !collapsed}

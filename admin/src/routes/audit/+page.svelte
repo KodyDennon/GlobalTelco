@@ -165,4 +165,21 @@
 	.pagination button { padding: 4px 12px; font-size: 12px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-secondary); cursor: pointer; }
 	.pagination button:disabled { opacity: 0.4; cursor: default; }
 	.pagination span { font-size: 12px; color: var(--text-dim); }
+	@media (max-width: 768px) {
+		.header-actions {
+			flex-wrap: wrap;
+		}
+		.filters {
+			flex-direction: column;
+			align-items: stretch;
+		}
+		.filter-input,
+		.filter-select,
+		.filter-date {
+			width: 100% !important;
+		}
+		.total-count {
+			margin-left: 0;
+		}
+	}
 </style>

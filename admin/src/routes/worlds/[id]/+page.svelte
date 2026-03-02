@@ -215,4 +215,31 @@
 	.chat-time { font-size: 11px; color: var(--text-faint); font-family: var(--font-mono); }
 	.vote-row { display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-md); margin-bottom: 4px; }
 	.vote-player { font-size: 12px; font-family: var(--font-mono); color: var(--text-muted); flex: 1; }
+	@media (max-width: 768px) {
+		.tabs {
+			overflow-x: auto;
+			flex-wrap: nowrap;
+			scrollbar-width: none;
+		}
+		.tabs::-webkit-scrollbar { display: none; }
+		.world-header {
+			flex-wrap: wrap;
+			gap: 8px;
+		}
+		.header-meta {
+			flex-wrap: wrap;
+		}
+		.player-row {
+			flex-wrap: wrap;
+		}
+		.chat-user {
+			min-width: auto;
+		}
+		.entity-grid {
+			grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+		}
+		.vote-row {
+			flex-wrap: wrap;
+		}
+	}
 </style>

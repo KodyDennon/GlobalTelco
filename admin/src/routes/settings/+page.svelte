@@ -342,4 +342,28 @@
 	.interval-btn { padding: 4px 12px; font-size: 12px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-muted); cursor: pointer; }
 	.interval-btn:hover { background: var(--bg-hover); }
 	.interval-btn.active { background: var(--blue); color: white; border-color: var(--blue); }
+	@media (max-width: 768px) {
+		.tabs {
+			overflow-x: auto;
+			flex-wrap: nowrap;
+			scrollbar-width: none;
+		}
+		.tabs::-webkit-scrollbar { display: none; }
+		.broadcast-section {
+			max-width: 100%;
+		}
+		.target-row {
+			flex-wrap: wrap;
+		}
+		.prefs-form {
+			max-width: 100%;
+		}
+		.env-row {
+			flex-wrap: wrap;
+			gap: 4px;
+		}
+		.interval-options {
+			flex-wrap: wrap;
+		}
+	}
 </style>

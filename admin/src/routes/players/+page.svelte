@@ -198,5 +198,13 @@
 	.form-field label { font-size: 11px; color: var(--text-dim); font-weight: 600; }
 	.form-field input { padding: 6px 10px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); font-size: 13px; font-family: inherit; }
 	.account-search { margin-bottom: 12px; }
-	.search-input { width: 300px; padding: 6px 12px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-size: 13px; font-family: inherit; }
+	.search-input { width: min(300px, 100%); padding: 6px 12px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-size: 13px; font-family: inherit; }
+	@media (max-width: 768px) {
+		.tabs {
+			overflow-x: auto;
+			flex-wrap: nowrap;
+			scrollbar-width: none;
+		}
+		.tabs::-webkit-scrollbar { display: none; }
+	}
 </style>

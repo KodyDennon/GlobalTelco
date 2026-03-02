@@ -1,5 +1,6 @@
 <script lang="ts">
 	import '../app.css';
+	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { adminAuthed, adminKey } from '$lib/stores/auth.js';
 	import { validateAdminKey } from '$lib/api/client.js';
@@ -8,6 +9,26 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 
 	let { children } = $props();
+
+	// Mobile responsive state
+	let isMobile = $state(false);
+	let mobileNavOpen = $state(false);
+	let mql: MediaQueryList | undefined;
+
+	function handleMqlChange(e: MediaQueryListEvent | MediaQueryList) {
+		isMobile = e.matches;
+		if (!e.matches) mobileNavOpen = false;
+	}
+
+	onMount(() => {
+		mql = window.matchMedia('(max-width: 768px)');
+		handleMqlChange(mql);
+		mql.addEventListener('change', handleMqlChange);
+	});
+
+	onDestroy(() => {
+		mql?.removeEventListener('change', handleMqlChange);
+	});
 
 	let keyInput = $state('');
 	let authError = $state('');
@@ -148,8 +169,25 @@
 
 {#if $adminAuthed}
 	<div class="app-layout">
-		<Sidebar />
-		<main class="app-content">
+		{#if isMobile}
+			<div class="mobile-header">
+				<button class="hamburger-btn" onclick={() => (mobileNavOpen = !mobileNavOpen)} aria-label="Toggle navigation">
+					<span class="hamburger-icon">{mobileNavOpen ? '\u2715' : '\u2630'}</span>
+				</button>
+				<span class="mobile-title">GlobalTelco Admin</span>
+			</div>
+			{#if mobileNavOpen}
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<div class="mobile-backdrop" onclick={() => (mobileNavOpen = false)}></div>
+				<div class="sidebar-overlay">
+					<Sidebar mobile onnavclick={() => (mobileNavOpen = false)} />
+				</div>
+			{/if}
+		{:else}
+			<Sidebar />
+		{/if}
+		<main class="app-content" class:mobile-content={isMobile}>
 			{@render children()}
 		</main>
 	</div>
@@ -242,7 +280,7 @@
 		border: 1px solid var(--border);
 		border-radius: var(--radius-xl);
 		padding: 40px;
-		width: 380px;
+		width: min(380px, 90vw);
 		text-align: center;
 	}
 	.login-title {
@@ -371,5 +409,62 @@
 		text-align: center;
 		color: var(--text-dim);
 		font-size: 13px;
+	}
+
+	/* Mobile header bar */
+	.mobile-header {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 48px;
+		background: var(--bg-panel);
+		border-bottom: 1px solid var(--border);
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 0 12px;
+		z-index: 101;
+	}
+	.hamburger-btn {
+		background: none;
+		border: none;
+		color: var(--text-primary);
+		font-size: 20px;
+		cursor: pointer;
+		padding: 4px 8px;
+		line-height: 1;
+	}
+	.hamburger-icon {
+		display: block;
+	}
+	.mobile-title {
+		font-size: 15px;
+		font-weight: 700;
+		color: var(--blue);
+	}
+
+	/* Mobile backdrop */
+	.mobile-backdrop {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 99;
+	}
+
+	/* Sidebar overlay drawer */
+	.sidebar-overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		bottom: 0;
+		z-index: 100;
+		width: var(--sidebar-width);
+		max-width: 80vw;
+	}
+
+	/* Content offset for mobile header */
+	.mobile-content {
+		padding-top: 60px !important;
 	}
 </style>

@@ -207,4 +207,21 @@
 	.vote-item { display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: var(--bg-surface); border-radius: var(--radius-sm); }
 	.vote-pid { font-size: 12px; font-family: var(--font-mono); color: var(--text-muted); }
 	.speed-btns { display: flex; gap: 4px; }
+	@media (max-width: 768px) {
+		.tabs {
+			overflow-x: auto;
+			flex-wrap: nowrap;
+			scrollbar-width: none;
+		}
+		.tabs::-webkit-scrollbar { display: none; }
+		.speed-btns {
+			flex-wrap: wrap;
+		}
+		.vote-item {
+			flex-wrap: wrap;
+		}
+		.control-form {
+			max-width: 100%;
+		}
+	}
 </style>

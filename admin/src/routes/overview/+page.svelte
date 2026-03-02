@@ -211,7 +211,7 @@
 		display: flex;
 		gap: 8px;
 		flex: 1;
-		min-width: 300px;
+		min-width: 200px;
 	}
 	.broadcast-input {
 		flex: 1;
@@ -265,7 +265,7 @@
 	}
 	.worlds-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
 		gap: 10px;
 	}
 	.world-card {
@@ -291,5 +291,18 @@
 		align-items: center;
 		font-size: 12px;
 		color: var(--text-dim);
+	}
+	@media (max-width: 768px) {
+		.broadcast-inline {
+			min-width: 0;
+			flex-basis: 100%;
+		}
+		.activity-item {
+			flex-wrap: wrap;
+			gap: 4px;
+		}
+		.activity-info {
+			flex-wrap: wrap;
+		}
 	}
 </style>
