@@ -43,7 +43,7 @@
 	let page = $state(0);
 
 	const filtered = $derived.by(() => {
-		let result = data;
+		let result = data ?? [];
 		if (search) {
 			const q = search.toLowerCase();
 			result = result.filter((row) =>
@@ -64,9 +64,9 @@
 		return result;
 	});
 
-	const totalPages = $derived(paginated ? Math.max(1, Math.ceil(filtered.length / pageSize)) : 1);
+	const totalPages = $derived(paginated ? Math.max(1, Math.ceil((filtered?.length ?? 0) / pageSize)) : 1);
 	const paged = $derived(
-		paginated ? filtered.slice(page * pageSize, (page + 1) * pageSize) : filtered
+		paginated && filtered ? filtered.slice(page * pageSize, (page + 1) * pageSize) : (filtered ?? [])
 	);
 
 	function toggleSort(key: string) {
