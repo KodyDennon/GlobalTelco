@@ -19,7 +19,7 @@ pub fn query_world_info(world: &GameWorld) -> String {
         "corporation_count": world.corporations.len(),
         "infra_node_count": world.infra_nodes.len(),
         "infra_edge_count": world.infra_edges.len(),
-        "player_corp_id": world.player_corp_id(),
+        "player_corp_id": world.player_corp_id().unwrap_or(0),
         "cell_spacing_km": world.cell_spacing_km,
         "sandbox": world.config().sandbox,
     });
@@ -36,10 +36,12 @@ pub fn query_corporation_data(world: &GameWorld, corp_id: EntityId) -> String {
         .map(|n| n.len())
         .unwrap_or(0);
 
+    let is_player = world.player_corp_id() == Some(corp_id);
+
     let data = serde_json::json!({
         "id": corp_id,
         "name": corp.map(|c| c.name.as_str()).unwrap_or("Unknown"),
-        "is_player": corp.map(|c| c.is_player).unwrap_or(false),
+        "is_player": is_player,
         "credit_rating": corp.map(|c| c.credit_rating),
         "cash": fin.map(|f| f.cash).unwrap_or(0),
         "revenue_per_tick": fin.map(|f| f.revenue_per_tick).unwrap_or(0),
@@ -123,15 +125,17 @@ pub fn query_cities(world: &GameWorld) -> String {
 }
 
 pub fn query_all_corporations(world: &GameWorld) -> String {
+    let player_id = world.player_corp_id();
     let corps: Vec<serde_json::Value> = world
         .corporations
         .iter()
         .map(|(&id, corp)| {
             let fin = world.financials.get(&id);
+            let is_player = player_id == Some(id);
             serde_json::json!({
                 "id": id,
                 "name": corp.name,
-                "is_player": corp.is_player,
+                "is_player": is_player,
                 "credit_rating": corp.credit_rating,
                 "cash": fin.map(|f| f.cash).unwrap_or(0),
                 "revenue": fin.map(|f| f.revenue_per_tick).unwrap_or(0),

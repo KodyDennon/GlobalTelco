@@ -127,7 +127,7 @@ function handleServerMessage(msg: ServerMessage) {
 		const joined = msg.WorldJoined as Record<string, unknown>;
 		console.log('[WS] WorldJoined received:', joined);
 		worldId.set(joined.world_id as string);
-		corpId.set(joined.corp_id as number);
+		corpId.set(Number(joined.corp_id));
 		latestSnapshot.set(null); // Clear any previous snapshot
 		// Auto-request full world snapshot so client can populate WASM
 		requestSnapshot(joined.world_id as string);

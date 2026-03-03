@@ -593,17 +593,21 @@ export async function initMultiplayer(saveData: string) {
 		// Tick is already set by WebSocketClient's TickUpdate handler.
 		// We only apply corp financial deltas here — no redundant worldInfo update.
 		const info = bridge.getWorldInfo();
+		const myCorpId = info.player_corp_id || get(corpId);
 
 		for (const delta of deltas) {
-			const corpId = delta.corp_id as number;
-			if (corpId === info.player_corp_id) {
+			const cId = delta.corp_id as number;
+			if (cId === myCorpId) {
 				playerCorp.update((corp) => {
 					if (!corp) return corp;
+					const rev = delta.revenue ?? corp.revenue_per_tick;
+					const cost = delta.cost ?? corp.cost_per_tick;
 					return {
 						...corp,
 						cash: delta.cash ?? corp.cash,
-						revenue_per_tick: delta.revenue ?? corp.revenue_per_tick,
-						cost_per_tick: delta.cost ?? corp.cost_per_tick,
+						revenue_per_tick: rev,
+						cost_per_tick: cost,
+						profit_per_tick: rev - cost,
 						debt: delta.debt ?? corp.debt,
 						infrastructure_count: delta.node_count ?? corp.infrastructure_count,
 					};
@@ -611,7 +615,7 @@ export async function initMultiplayer(saveData: string) {
 			}
 			allCorporations.update((corps) =>
 				corps.map((c) => {
-					if (c.id !== corpId) return c;
+					if (c.id !== cId) return c;
 					return {
 						...c,
 						cash: delta.cash ?? c.cash,
@@ -687,6 +691,9 @@ export async function initMultiplayer(saveData: string) {
 		try {
 			const batchResult = bridge.applyBatch(ops);
 			if (batchResult instanceof Promise) batchResult.catch((err: unknown) => console.error('[MP] Failed to apply batch:', err));
+			
+			// Refresh stores to pick up changes (financials, ownership, etc.)
+			updateStores();
 		} catch (err) {
 			console.error('[MP] Failed to apply command broadcast:', err);
 		}
