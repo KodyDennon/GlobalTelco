@@ -147,7 +147,7 @@ impl WorldInstance {
     }
 
     /// Record tick duration and update rolling average, tick_history, max, and p99
-    pub fn record_tick_duration(&self, duration_us: u64) {
+    pub async fn record_tick_duration(&self, duration_us: u64) {
         self.last_tick_duration_us.store(duration_us, Ordering::Relaxed);
         let prev = self.avg_tick_duration_us.load(Ordering::Relaxed);
         // Exponential moving average (alpha = 0.1)
@@ -160,7 +160,7 @@ impl WorldInstance {
 
         // Update tick_history (cap 60) and recompute max
         {
-            let mut history = self.tick_history.blocking_write();
+            let mut history = self.tick_history.write().await;
             history.push_back(duration_us);
             if history.len() > 60 {
                 history.pop_front();
@@ -171,7 +171,7 @@ impl WorldInstance {
 
         // Update tick_samples (cap 100) and recompute p99
         {
-            let mut samples = self.tick_samples.blocking_lock();
+            let mut samples = self.tick_samples.lock().await;
             samples.push_back(duration_us);
             if samples.len() > 100 {
                 samples.pop_front();

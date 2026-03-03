@@ -47,6 +47,7 @@ desktop/src-tauri/target/
 
 # Logs
 *.log
+logs/
 
 # Test coverage
 coverage/

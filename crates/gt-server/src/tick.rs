@@ -170,8 +170,8 @@ pub fn spawn_world_tick_loop(
                 w.tick();
                 let tick_elapsed_us = tick_start.elapsed().as_micros() as u64;
 
-                // Update tick profiling metrics via the WorldInstance method
-                world.record_tick_duration(tick_elapsed_us);
+                // Update tick_profiling metrics via the WorldInstance method
+                world.record_tick_duration(tick_elapsed_us).await;
 
                 let tick = w.current_tick();
                 let events: Vec<gt_common::events::GameEvent> =
@@ -415,8 +415,8 @@ pub fn spawn_world_tick_loop(world: Arc<WorldInstance>) {
                 w.tick();
                 let tick_elapsed_us = tick_start.elapsed().as_micros() as u64;
 
-                // Update tick profiling metrics via the WorldInstance method
-                world.record_tick_duration(tick_elapsed_us);
+                // Update tick_profiling metrics via the WorldInstance method
+                world.record_tick_duration(tick_elapsed_us).await;
 
                 let tick = w.current_tick();
                 let events: Vec<gt_common::events::GameEvent> =

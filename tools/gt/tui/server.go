@@ -292,7 +292,8 @@ func (m ServerModel) View(width, height int) string {
 		if m.downloading {
 			sections = append(sections, Indent(m.spinner.View()+" Downloading logs...", 2))
 		} else if m.downloadPath != "" {
-			sections = append(sections, Indent(StyleSuccess.Render("Logs saved: "+filepath.Base(m.downloadPath)), 2))
+			sections = append(sections, Indent(StyleSuccess.Render("Logs saved to logs/ directory"), 2))
+			sections = append(sections, Indent(StyleDim.Render(filepath.Base(m.downloadPath)), 2))
 		} else if m.downloadErr != nil {
 			sections = append(sections, Indent(StyleError.Render("Download failed: "+m.downloadErr.Error()), 2))
 		}
