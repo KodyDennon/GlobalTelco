@@ -306,7 +306,15 @@ impl AppState {
     /// Create a new game world and start its tick loop
     pub async fn create_world(&self, name: String, config: WorldConfig, max_players: u32) -> Uuid {
         let id = Uuid::new_v4();
-        let instance = Arc::new(WorldInstance::new(id, name, config, max_players));
+        let instance = Arc::new(WorldInstance::new(id, name.clone(), config.clone(), max_players));
+
+        // Persist to database if available
+        #[cfg(feature = "postgres")]
+        if let Some(db) = self.db.as_ref() {
+            let config_json = serde_json::to_value(&config).unwrap_or_default();
+            let _ = db.save_world(id, &name, &config_json, 0, "Paused", max_players as i32).await;
+        }
+
         self.worlds.write().await.insert(id, instance);
         id
     }
@@ -323,12 +331,20 @@ impl AppState {
         let id = Uuid::new_v4();
         let instance = Arc::new(WorldInstance::new_with_template(
             id,
-            name,
-            config,
+            name.clone(),
+            config.clone(),
             max_players,
             template_id,
             invite_code,
         ));
+
+        // Persist to database if available
+        #[cfg(feature = "postgres")]
+        if let Some(db) = self.db.as_ref() {
+            let config_json = serde_json::to_value(&config).unwrap_or_default();
+            let _ = db.save_world(id, &name, &config_json, 0, "Paused", max_players as i32).await;
+        }
+
         self.worlds.write().await.insert(id, instance);
         id
     }

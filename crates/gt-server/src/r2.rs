@@ -9,6 +9,8 @@ use s3::bucket::Bucket;
 use s3::creds::Credentials;
 #[cfg(feature = "r2")]
 use s3::Region;
+#[cfg(feature = "r2")]
+use tracing::warn;
 
 #[cfg(feature = "r2")]
 use uuid::Uuid;
@@ -43,24 +45,30 @@ impl R2Storage {
             None,
             None,
         )?;
-        let bucket = Bucket::new(bucket_name, region, credentials)?
-            .with_path_style();
+        // R2 works best with virtual-host style access (bucket.account_id.r2.cloudflarestorage.com)
+        // or the custom endpoint without forcing path style.
+        let bucket = Bucket::new(bucket_name, region, credentials)?;
 
         Ok(Self { bucket })
     }
 
     /// Upload an object to R2.
     pub async fn put(&self, key: &str, data: &[u8]) -> Result<(), String> {
-        let response = self
-            .bucket
-            .put_object(key, data)
-            .await
-            .map_err(|e| format!("R2 PUT failed: {e}"))?;
-        let code = response.status_code();
-        if code == 200 {
-            Ok(())
-        } else {
-            Err(format!("R2 PUT returned status {code}"))
+        match self.bucket.put_object(key, data).await {
+            Ok(response) => {
+                let code = response.status_code();
+                if code == 200 {
+                    Ok(())
+                } else {
+                    let error_text = String::from_utf8_lossy(response.as_slice());
+                    warn!("R2 PUT returned {code}: {error_text}");
+                    Err(format!("R2 PUT returned status {code}"))
+                }
+            }
+            Err(e) => {
+                warn!("R2 PUT transport error: {e}");
+                Err(format!("R2 PUT failed: {e}"))
+            }
         }
     }
 
@@ -78,6 +86,8 @@ impl R2Storage {
                 } else if code == 404 {
                     Ok(None)
                 } else {
+                    let error_text = String::from_utf8_lossy(resp.as_slice());
+                    warn!("R2 GET returned {code}: {error_text}");
                     Err(format!("R2 GET returned status {code}"))
                 }
             }
@@ -86,6 +96,7 @@ impl R2Storage {
                 if msg.contains("404") || msg.contains("NoSuchKey") {
                     Ok(None)
                 } else {
+                    warn!("R2 GET transport error: {e}");
                     Err(format!("R2 GET failed: {e}"))
                 }
             }
@@ -103,6 +114,7 @@ impl R2Storage {
         if code == 200 || code == 204 || code == 404 {
             Ok(())
         } else {
+            warn!("R2 DELETE returned {code}");
             Err(format!("R2 DELETE returned status {code}"))
         }
     }
