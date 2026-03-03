@@ -100,6 +100,20 @@ cd desktop && cargo tauri dev
 # Production build
 cd desktop && cargo tauri build
 
+# --- Admin panel ---
+
+# Install dependencies
+cd admin && bun install
+
+# Dev server
+cd admin && bun run dev
+
+# Build
+cd admin && bun run build
+
+# Deploy to Cloudflare Pages
+cd admin && npx wrangler pages deploy build --project-name=globaltelco-admin
+
 # --- Full build pipeline ---
 
 # Build WASM, then build frontend
@@ -242,6 +256,8 @@ Players ──► server.globaltelco.online (Cloudflare proxy, SSL termination)
                 │
                 ▼
            Neon PostgreSQL (world state, accounts, cloud saves)
+
+Admins  ──► admin.globaltelco.online (Cloudflare Pages, static SvelteKit)
 ```
 
 **Production scale target:**
@@ -255,7 +271,8 @@ Players ──► Cloudflare Workers (auth, matchmaking, APIs, CDN)
            PostgreSQL (world state, accounts, cloud saves)
 ```
 
-- **Current:** Oracle Cloud Free Tier (game server) + Vercel (frontend CDN) + Cloudflare (DNS + proxy) + Neon PostgreSQL
+- **Current:** Oracle Cloud Free Tier (game server) + Vercel (frontend CDN) + Cloudflare (DNS + proxy + Pages) + Neon PostgreSQL
+- **Admin panel:** Cloudflare Pages (`admin.globaltelco.online`) — static SvelteKit app, deploy via `cd admin && npx wrangler pages deploy build --project-name=globaltelco-admin`
 - **Prod (target):** Hetzner Dedicated AX42 (Ryzen 7 7700, 64GB RAM, ~€57/month, runs 3-5 sim instances)
 - **Service layer (target):** Cloudflare Workers (free tier: 100k req/day, paid $5/month: 10M req)
 - **Frontend CDN:** Vercel (Svelte app) + Cloudflare (DNS)
