@@ -131,6 +131,10 @@
 			});
 			console.log('[MP] Snapshot received, tick:', snapshot.tick, 'size:', snapshot.state_json.length);
 			await initMultiplayer(snapshot.state_json);
+			
+			// Free up memory - we don't need the JSON snapshot in JS heap anymore
+			latestSnapshot.set(null);
+			
 			console.log('[MP] Game initialized, starting loop...');
 			start();
 			goto('/game');
