@@ -264,7 +264,7 @@
 
 			<!-- Presets -->
 			<div class="form-field">
-				<label>Map Preset</label>
+				<span class="field-label">Map Preset</span>
 				<div class="preset-row">
 					{#each Object.entries(PRESETS) as [key, def]}
 						<button
@@ -312,6 +312,7 @@
 				<input id="cw-disaster" type="range" min="1" max="10" bind:value={disasterSeverity} />
 			</div>
 
+
 			<div class="form-field">
 				<label class="checkbox-label">
 					<input type="checkbox" bind:checked={sandbox} /> Sandbox Mode
@@ -338,24 +339,24 @@
 						<div class="real-earth-notice">Using real-world geography — terrain sliders locked.</div>
 					{/if}
 					<div class="form-field">
-						<label>Continents: {continentCount}</label>
-						<input type="range" min="1" max="8" bind:value={continentCount} disabled={useRealEarth} />
+						<label for="cw-continents">Continents: {continentCount}</label>
+						<input id="cw-continents" type="range" min="1" max="8" bind:value={continentCount} disabled={useRealEarth} />
 					</div>
 					<div class="form-field">
-						<label>Ocean: {oceanPct}%</label>
-						<input type="range" min="30" max="90" bind:value={oceanPct} disabled={useRealEarth} />
+						<label for="cw-ocean">Ocean: {oceanPct}%</label>
+						<input id="cw-ocean" type="range" min="30" max="90" bind:value={oceanPct} disabled={useRealEarth} />
 					</div>
 					<div class="form-field">
-						<label>Roughness: {roughness}%</label>
-						<input type="range" min="0" max="100" bind:value={roughness} disabled={useRealEarth} />
+						<label for="cw-roughness">Roughness: {roughness}%</label>
+						<input id="cw-roughness" type="range" min="0" max="100" bind:value={roughness} disabled={useRealEarth} />
 					</div>
 					<div class="form-field">
-						<label>Climate: {climate}%</label>
-						<input type="range" min="0" max="100" bind:value={climate} disabled={useRealEarth} />
+						<label for="cw-climate">Climate: {climate}%</label>
+						<input id="cw-climate" type="range" min="0" max="100" bind:value={climate} disabled={useRealEarth} />
 					</div>
 					<div class="form-field">
-						<label>City Density: {density}%</label>
-						<input type="range" min="0" max="100" bind:value={density} disabled={useRealEarth} />
+						<label for="cw-density">City Density: {density}%</label>
+						<input id="cw-density" type="range" min="0" max="100" bind:value={density} disabled={useRealEarth} />
 					</div>
 				</div>
 			{/if}
