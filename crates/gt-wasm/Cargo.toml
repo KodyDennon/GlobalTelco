@@ -27,3 +27,6 @@ getrandom = { version = "0.2", features = ["js"] }
 talc = { version = "4", default-features = false, features = ["lock_api"] }
 rayon = { version = "1", optional = true }
 wasm-bindgen-rayon = { version = "1", optional = true }
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-O4", "--enable-simd", "--enable-bulk-memory", "--enable-mutable-globals"]

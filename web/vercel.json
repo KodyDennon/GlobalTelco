@@ -1,6 +1,6 @@
 {
   "installCommand": "sh scripts/vercel-install.sh",
-  "buildCommand": "export PATH=\"/rust/bin:$PATH\" && export RUSTFLAGS=\"-C target-feature=+simd128\" && cd .. && wasm-pack build crates/gt-wasm --target web --release --out-dir ../../web/src/lib/wasm/pkg && cd web && bun run build",
+  "buildCommand": "export PATH=\"/rust/bin:$PATH\" && export RUSTFLAGS=\"-C target-feature=+simd128\" && cd .. && wasm-pack build crates/gt-wasm --target web --release --out-dir web/src/lib/wasm/pkg && cd web && bun run build",
   "outputDirectory": "build",
   "cleanUrls": true,
   "rewrites": [
