@@ -88,3 +88,22 @@ export function updateTemplate(id: string, template: Omit<WorldTemplate, 'id'>):
 export function deleteTemplate(id: string): Promise<{ status: string }> {
 	return adminFetch(`/api/admin/templates/${id}`, { method: 'DELETE' });
 }
+
+// ── Server Limits ────────────────────────────────────────────────────
+
+export interface ServerLimits {
+	max_active_worlds: number;
+	max_worlds_per_player: number;
+	active_world_count: number;
+}
+
+export function fetchServerLimits(): Promise<ServerLimits> {
+	return adminFetch('/api/admin/limits');
+}
+
+export function setServerLimits(limits: { max_active_worlds?: number; max_worlds_per_player?: number }): Promise<{ max_active_worlds: number; max_worlds_per_player: number }> {
+	return adminFetch('/api/admin/limits', {
+		method: 'POST',
+		body: JSON.stringify(limits)
+	});
+}

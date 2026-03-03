@@ -9,6 +9,9 @@ export default defineConfig({
 	define: {
 		__APP_VERSION__: JSON.stringify(version),
 	},
+	worker: {
+		format: 'es',
+	},
 	plugins: [
 		// Stub Node.js built-ins that @loaders.gl/worker-utils imports.
 		// Must run before Vite's built-in __vite-browser-external resolver.

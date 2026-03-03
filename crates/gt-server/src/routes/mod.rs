@@ -84,6 +84,8 @@ pub fn create_router(state: Arc<AppState>, tile_dir: Option<String>) -> Router {
         // Phase 2: Admin - Templates
         .route("/api/admin/templates", get(admin_list_templates).post(admin_create_template))
         .route("/api/admin/templates/{id}", put(admin_update_template).delete(admin_delete_template))
+        // Admin - Server limits
+        .route("/api/admin/limits", get(admin_get_limits).post(admin_set_limits))
         // Phase 2: Admin - Enhanced bans, audit, reset queue, metrics
         .route("/api/admin/bans", get(admin_list_bans))
         .route("/api/admin/reset-queue", get(admin_list_reset_queue))

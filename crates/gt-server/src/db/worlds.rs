@@ -215,6 +215,17 @@ impl Database {
         .await
     }
 
+    /// Count how many active worlds a player has created.
+    pub async fn count_worlds_by_creator(&self, account_id: Uuid) -> Result<i64, sqlx::Error> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM game_worlds WHERE created_by = $1 AND status = 'active'",
+        )
+        .bind(account_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row.0)
+    }
+
     // ── World History ───────────────────────────────────────────────────
 
     pub async fn upsert_world_history(

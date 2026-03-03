@@ -4,15 +4,23 @@
 	import DataTable from '$lib/components/DataTable.svelte';
 	import Badge from '$lib/components/Badge.svelte';
 	import ConfigEditor from '$lib/components/ConfigEditor.svelte';
+	import WorldConfigForm from '$lib/components/WorldConfigForm.svelte';
 	import { toast } from '$lib/components/Toast.svelte';
 	import { confirm } from '$lib/components/ConfirmDialog.svelte';
-	import { fetchWorlds, createWorld, deleteWorld, setWorldSpeed, pauseWorld, fetchTemplates, createTemplate, updateTemplate, deleteTemplate } from '$lib/api/worlds.js';
+	import { fetchWorlds, createWorld, deleteWorld, setWorldSpeed, pauseWorld, fetchTemplates, createTemplate, updateTemplate, deleteTemplate, fetchServerLimits, setServerLimits } from '$lib/api/worlds.js';
 	import { startPolling, stopPolling } from '$lib/stores/polling.js';
 	import type { WorldConfig, WorldTemplate } from '$lib/api/types.js';
+	import type { ServerLimits } from '$lib/api/worlds.js';
 
 	let worlds = $state<Record<string, unknown>[]>([]);
 	let templates = $state<WorldTemplate[]>([]);
 	let loading = $state(true);
+
+	// Server limits
+	let limits = $state<ServerLimits | null>(null);
+	let limitsMaxWorlds = $state(10);
+	let limitsMaxPerPlayer = $state(2);
+	let savingLimits = $state(false);
 
 	// Create world form
 	let showCreate = $state(false);
@@ -47,9 +55,18 @@
 
 	async function loadData() {
 		try {
-			const [w, t] = await Promise.all([fetchWorlds(), fetchTemplates().catch(() => [])]);
+			const [w, t, l] = await Promise.all([
+				fetchWorlds(),
+				fetchTemplates().catch(() => []),
+				fetchServerLimits().catch(() => null),
+			]);
 			worlds = w as unknown as Record<string, unknown>[];
 			templates = t;
+			if (l) {
+				limits = l;
+				limitsMaxWorlds = l.max_active_worlds;
+				limitsMaxPerPlayer = l.max_worlds_per_player;
+			}
 			loading = false;
 		} catch {
 			if (loading) loading = false;
@@ -60,7 +77,7 @@
 		if (!newName.trim()) { toast('Name required', 'warning'); return; }
 		creating = true;
 		try {
-			const res = await createWorld(newName, newConfig, newMaxPlayers);
+			await createWorld(newName, newConfig, newMaxPlayers);
 			toast(`World "${newName}" created`, 'success');
 			newName = '';
 			newConfig = {};
@@ -102,6 +119,19 @@
 			await loadData();
 		} catch (e) {
 			toast(`Failed: ${e}`, 'error');
+		}
+	}
+
+	async function handleSaveLimits() {
+		savingLimits = true;
+		try {
+			await setServerLimits({ max_active_worlds: limitsMaxWorlds, max_worlds_per_player: limitsMaxPerPlayer });
+			toast('Server limits updated', 'success');
+			await loadData();
+		} catch (e) {
+			toast(`Failed: ${e}`, 'error');
+		} finally {
+			savingLimits = false;
 		}
 	}
 
@@ -166,6 +196,34 @@
 		</button>
 	</div>
 
+	<!-- Server Limits -->
+	{#if limits}
+		<div class="limits-section">
+			<div class="limits-header">
+				<h2 class="section-title">Server Limits</h2>
+				<span class="limits-usage">{limits.active_world_count} / {limits.max_active_worlds} active worlds</span>
+			</div>
+			<div class="limits-bar">
+				<div class="limits-fill" style="width: {Math.min(100, (limits.active_world_count / limits.max_active_worlds) * 100)}%"></div>
+			</div>
+			<div class="limits-grid">
+				<div class="form-field">
+					<label>Max Active Worlds</label>
+					<input type="number" bind:value={limitsMaxWorlds} min="1" max="100" />
+				</div>
+				<div class="form-field">
+					<label>Max Worlds Per Player</label>
+					<input type="number" bind:value={limitsMaxPerPlayer} min="1" max="50" />
+				</div>
+				<div class="form-field" style="align-self: end;">
+					<button class="btn-primary" onclick={handleSaveLimits} disabled={savingLimits}>
+						{savingLimits ? 'Saving...' : 'Save Limits'}
+					</button>
+				</div>
+			</div>
+		</div>
+	{/if}
+
 	{#if showCreate}
 		<div class="create-form">
 			<div class="form-grid">
@@ -178,7 +236,7 @@
 					<input type="number" bind:value={newMaxPlayers} min="1" max="100" />
 				</div>
 			</div>
-			<ConfigEditor label="World Config" value={newConfig as unknown as Record<string, unknown>} onchange={(v) => (newConfig = v as unknown as WorldConfig)} />
+			<WorldConfigForm bind:value={newConfig} onchange={(c) => (newConfig = c)} />
 			<button class="btn-primary" onclick={handleCreate} disabled={creating}>
 				{creating ? 'Creating...' : 'Create World'}
 			</button>
@@ -265,6 +323,22 @@
 	.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 	.section-title { font-size: 14px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 	.section-actions { display: flex; gap: 8px; }
+
+	/* Server Limits */
+	.limits-section {
+		background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-lg);
+		padding: 16px; margin-bottom: 16px;
+	}
+	.limits-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+	.limits-usage { font-size: 13px; color: var(--text-muted); font-family: monospace; }
+	.limits-bar {
+		height: 6px; background: var(--bg-surface); border-radius: 3px; margin-bottom: 12px; overflow: hidden;
+	}
+	.limits-fill {
+		height: 100%; background: var(--blue); border-radius: 3px; transition: width 0.3s;
+	}
+	.limits-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }
+
 	.create-form, .template-form {
 		background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-lg);
 		padding: 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 12px;
@@ -308,13 +382,8 @@
 	.empty-text { font-size: 13px; color: var(--text-dim); font-style: italic; }
 	h3 { font-size: 14px; font-weight: 600; }
 	@media (max-width: 768px) {
-		.template-row {
-			flex-wrap: wrap;
-		}
-		.page-header {
-			flex-direction: column;
-			align-items: flex-start;
-			gap: 8px;
-		}
+		.template-row { flex-wrap: wrap; }
+		.page-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+		.limits-grid { grid-template-columns: 1fr; }
 	}
 </style>

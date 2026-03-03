@@ -227,6 +227,10 @@ pub struct AppState {
     pub ws_snapshot_time: Mutex<Instant>,
     /// Counter for in-memory audit entry IDs
     pub id_counter: AtomicU64,
+    /// Maximum number of active worlds allowed on this server
+    pub max_active_worlds: AtomicU64,
+    /// Maximum number of worlds a single player can create
+    pub max_worlds_per_player: AtomicU64,
 }
 
 impl AppState {
@@ -249,6 +253,18 @@ impl AppState {
             ws_count_snapshot: AtomicU64::new(0),
             ws_snapshot_time: Mutex::new(Instant::now()),
             id_counter: AtomicU64::new(1),
+            max_active_worlds: AtomicU64::new(
+                std::env::var("MAX_ACTIVE_WORLDS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(10),
+            ),
+            max_worlds_per_player: AtomicU64::new(
+                std::env::var("MAX_WORLDS_PER_PLAYER")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(2),
+            ),
         }
     }
 
@@ -557,6 +573,11 @@ impl AppState {
     /// Returns true if the player was found and removed.
     pub async fn kick_player(&self, player_id: &Uuid) -> bool {
         self.players.write().await.remove(player_id).is_some()
+    }
+
+    /// Return the number of active worlds.
+    pub async fn active_world_count(&self) -> usize {
+        self.worlds.read().await.len()
     }
 
     /// Remove a world instance. Returns true if the world existed.

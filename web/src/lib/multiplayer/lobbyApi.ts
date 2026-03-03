@@ -79,6 +79,39 @@ export async function createWorldFromTemplate(
 	return await res.json();
 }
 
+export interface WorldConfig {
+	seed?: number;
+	starting_era?: string;
+	difficulty?: string;
+	map_size?: string;
+	ai_corporations?: number;
+	use_real_earth?: boolean;
+	continent_count?: number;
+	ocean_percentage?: number;
+	terrain_roughness?: number;
+	climate_variation?: number;
+	city_density?: number;
+	disaster_frequency?: number;
+	sandbox?: boolean;
+}
+
+export async function createWorldDirect(
+	name: string,
+	maxPlayers: number,
+	config: WorldConfig
+): Promise<{ world_id: string; invite_code?: string }> {
+	const res = await fetch(`${API_URL}/api/worlds`, {
+		method: 'POST',
+		headers: authHeaders(),
+		body: JSON.stringify({ name, max_players: maxPlayers, config })
+	});
+	if (!res.ok) {
+		const err = await res.json().catch(() => ({ error: 'Failed to create world' }));
+		throw new Error(err.error || `Failed to create world: ${res.status}`);
+	}
+	return await res.json();
+}
+
 export async function lookupInviteCode(code: string): Promise<WorldListEntry | null> {
 	const res = await fetch(`${API_URL}/api/worlds/by-invite/${encodeURIComponent(code)}`, {
 		headers: authHeaders()

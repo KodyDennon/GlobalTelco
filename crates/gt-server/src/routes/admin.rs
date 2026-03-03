@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -7,17 +8,14 @@ use axum::Json;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use gt_common::types::{GameSpeed, WorldConfig};
+use gt_common::types::{EntityId, GameSpeed, WorldConfig};
 
 use crate::auth;
 use crate::state::AppState;
 use crate::tick;
 
 use super::extract_admin_claims;
-use super::worlds::default_max_players;
-
-// Import EntityId for assign endpoint
-use gt_common::types::EntityId;
+use super::worlds::{default_max_players, normalize_config};
 
 // ── Admin Endpoints ───────────────────────────────────────────────────────
 
@@ -245,7 +243,7 @@ pub(crate) async fn admin_create_world(
         return e;
     }
 
-    let config = body.config.unwrap_or_default();
+    let config = normalize_config(body.config.unwrap_or_default());
     let world_id = state
         .create_world(body.name.clone(), config, body.max_players)
         .await;
@@ -280,6 +278,58 @@ pub(crate) async fn admin_create_world(
         Json(serde_json::json!({
             "world_id": world_id,
             "name": body.name,
+        })),
+    )
+}
+
+// ── Server Limits ──────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub(crate) struct SetLimitsRequest {
+    max_active_worlds: Option<u64>,
+    max_worlds_per_player: Option<u64>,
+}
+
+pub(crate) async fn admin_get_limits(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    if let Err(e) = extract_admin_claims(&headers) {
+        return e;
+    }
+
+    let active = state.active_world_count().await;
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "max_active_worlds": state.max_active_worlds.load(Ordering::Relaxed),
+            "max_worlds_per_player": state.max_worlds_per_player.load(Ordering::Relaxed),
+            "active_world_count": active,
+        })),
+    )
+}
+
+pub(crate) async fn admin_set_limits(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<SetLimitsRequest>,
+) -> impl IntoResponse {
+    if let Err(e) = extract_admin_claims(&headers) {
+        return e;
+    }
+
+    if let Some(v) = body.max_active_worlds {
+        state.max_active_worlds.store(v, Ordering::Relaxed);
+    }
+    if let Some(v) = body.max_worlds_per_player {
+        state.max_worlds_per_player.store(v, Ordering::Relaxed);
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "max_active_worlds": state.max_active_worlds.load(Ordering::Relaxed),
+            "max_worlds_per_player": state.max_worlds_per_player.load(Ordering::Relaxed),
         })),
     )
 }

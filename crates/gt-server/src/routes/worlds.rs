@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Path, State};
@@ -15,6 +16,25 @@ use crate::tick;
 use crate::ws;
 
 use super::AuthClaims;
+
+/// Normalize a WorldConfig: enforce real-earth constraints and clamp values.
+pub(crate) fn normalize_config(mut config: WorldConfig) -> WorldConfig {
+    if config.use_real_earth {
+        config.continent_count = 6;
+        config.ocean_percentage = 0.71;
+        config.terrain_roughness = 0.5;
+        config.climate_variation = 0.5;
+        config.city_density = 0.5;
+    }
+    // Clamp values to valid ranges
+    config.continent_count = config.continent_count.clamp(1, 8);
+    config.ocean_percentage = config.ocean_percentage.clamp(0.3, 0.9);
+    config.terrain_roughness = config.terrain_roughness.clamp(0.0, 1.0);
+    config.climate_variation = config.climate_variation.clamp(0.0, 1.0);
+    config.city_density = config.city_density.clamp(0.0, 1.0);
+    config.disaster_frequency = config.disaster_frequency.clamp(0.1, 3.0);
+    config
+}
 
 // ── World Endpoints ────────────────────────────────────────────────────────
 
@@ -37,13 +57,43 @@ pub(super) fn default_max_players() -> u32 {
 }
 
 pub(crate) async fn create_world(
-    _: AuthClaims,
+    AuthClaims(player_id): AuthClaims,
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateWorldRequest>,
 ) -> impl IntoResponse {
-    let config = body.config.unwrap_or_default();
+    // Check server-wide world limit
+    let max_worlds = state.max_active_worlds.load(Ordering::Relaxed) as usize;
+    if state.active_world_count().await >= max_worlds {
+        return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": format!("Server limit reached ({max_worlds} active worlds)") })),
+        );
+    }
+
+    // Check per-player world limit
+    let max_per_player = state.max_worlds_per_player.load(Ordering::Relaxed) as i64;
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        if let Ok(count) = db.count_worlds_by_creator(player_id).await {
+            if count >= max_per_player {
+                return (
+                    StatusCode::CONFLICT,
+                    Json(serde_json::json!({ "error": format!("You can create at most {max_per_player} worlds") })),
+                );
+            }
+        }
+    }
+
+    let config = normalize_config(body.config.unwrap_or_default());
+    let invite_code = crate::state::generate_invite_code();
     let world_id = state
-        .create_world(body.name.clone(), config, body.max_players)
+        .create_world_from_template(
+            body.name.clone(),
+            config,
+            body.max_players,
+            None,
+            Some(invite_code.clone()),
+        )
         .await;
 
     // Start the tick loop for this world
@@ -59,11 +109,19 @@ pub(crate) async fn create_world(
         tick::spawn_world_tick_loop(world);
     }
 
+    // Record creator and invite code in DB
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        let _ = db.set_world_creator(world_id, player_id).await;
+        let _ = db.set_world_invite_code(world_id, &invite_code).await;
+    }
+
     (
         StatusCode::CREATED,
         Json(serde_json::json!({
             "world_id": world_id,
             "name": body.name,
+            "invite_code": invite_code,
         })),
     )
 }
@@ -248,6 +306,29 @@ pub(crate) async fn create_world_from_template(
     AuthClaims(player_id): AuthClaims,
     Json(req): Json<CreateFromTemplateRequest>,
 ) -> impl IntoResponse {
+    // Check server-wide world limit
+    let max_worlds = state.max_active_worlds.load(Ordering::Relaxed) as usize;
+    if state.active_world_count().await >= max_worlds {
+        return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": format!("Server limit reached ({max_worlds} active worlds)") })),
+        );
+    }
+
+    // Check per-player world limit
+    let max_per_player = state.max_worlds_per_player.load(Ordering::Relaxed) as i64;
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        if let Ok(count) = db.count_worlds_by_creator(player_id).await {
+            if count >= max_per_player {
+                return (
+                    StatusCode::CONFLICT,
+                    Json(serde_json::json!({ "error": format!("You can create at most {max_per_player} worlds") })),
+                );
+            }
+        }
+    }
+
     #[cfg(feature = "postgres")]
     if let Some(db) = state.db.as_ref() {
         // Get the template
@@ -298,9 +379,9 @@ pub(crate) async fn create_world_from_template(
             template.config_defaults.clone()
         };
 
-        // Parse into WorldConfig
+        // Parse into WorldConfig and normalize
         let config: WorldConfig = match serde_json::from_value(config_json) {
-            Ok(c) => c,
+            Ok(c) => normalize_config(c),
             Err(e) => {
                 return (
                     StatusCode::BAD_REQUEST,

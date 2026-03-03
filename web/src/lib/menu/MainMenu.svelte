@@ -26,6 +26,7 @@
 
 	<div class="menu-footer" role="contentinfo">
 		<span>{$tr('menu.version', { version })}</span>
+		<a class="github-link" href="https://github.com/KodyDennon/GlobalTelco" target="_blank" rel="noopener noreferrer" aria-label="View source on GitHub">GitHub</a>
 	</div>
 </div>
 
@@ -110,5 +111,18 @@
 		bottom: 24px;
 		color: #4b5563;
 		font-size: 12px;
+		display: flex;
+		gap: 12px;
+		align-items: center;
+	}
+
+	.github-link {
+		color: #4b5563;
+		text-decoration: none;
+		transition: color 0.2s;
+	}
+
+	.github-link:hover {
+		color: #9ca3af;
 	}
 </style>
