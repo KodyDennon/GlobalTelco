@@ -29,4 +29,4 @@ rayon = { version = "1", optional = true }
 wasm-bindgen-rayon = { version = "1", optional = true }
 
 [package.metadata.wasm-pack.profile.release]
-wasm-opt = ["-O4", "--enable-simd", "--enable-bulk-memory", "--enable-mutable-globals"]
+wasm-opt = ["-O4", "--enable-simd", "--enable-bulk-memory", "--enable-mutable-globals", "--enable-nontrapping-float-to-int", "--enable-sign-ext"]
