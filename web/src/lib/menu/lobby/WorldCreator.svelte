@@ -661,10 +661,4 @@
 		cursor: not-allowed;
 	}
 
-	.empty {
-		text-align: center;
-		color: #6b7280;
-		padding: 40px;
-		grid-column: 1 / -1;
-	}
 </style>

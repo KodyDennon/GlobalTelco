@@ -312,6 +312,18 @@ export function getPlayerCorpId(): number {
 	}
 }
 
+export function setPlayerCorpId(id: number): void {
+	if (useNativeSim) {
+		// Tauri bridge doesn't need this as it's set on the server/sim thread
+		return;
+	}
+	try {
+		bridge?.set_player_corp_id(BigInt(id));
+	} catch (e) {
+		onBridgeError(e, 'setPlayerCorpId');
+	}
+}
+
 export function getAllCorporations(): CorpSummary[] {
 	if (useNativeSim) return tauriBridge.getCachedAllCorporations();
 	try {

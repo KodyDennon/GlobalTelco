@@ -88,4 +88,8 @@ impl WasmBridge {
         self.world.apply_delta(&ops);
         Ok(())
     }
+
+    pub fn set_player_corp_id(&mut self, id: u64) {
+        self.world.set_player_corp_id(id);
+    }
 }

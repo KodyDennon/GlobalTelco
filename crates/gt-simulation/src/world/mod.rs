@@ -332,6 +332,14 @@ impl GameWorld {
         id
     }
 
+    pub fn set_player_corp_id(&mut self, id: EntityId) {
+        if id == 0 {
+            self.player_corp_id = None;
+        } else {
+            self.player_corp_id = Some(id);
+        }
+    }
+
     /// Create a new player corporation with all required components.
     /// Used by the multiplayer server when a new player joins a world.
     /// Returns the new corporation's EntityId.

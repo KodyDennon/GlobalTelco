@@ -28,7 +28,7 @@ import {
 	openPanelGroup,
 	closePanelGroup,
 } from '$lib/stores/uiState';
-import { removeGhost, speedVotes } from '$lib/stores/multiplayerState';
+import { removeGhost, speedVotes, corpId } from '$lib/stores/multiplayerState';
 import type { OverlayType } from '$lib/stores/uiState';
 import { autoPauseOnCritical, showPerfMonitor, autoSaveInterval } from '$lib/stores/settings';
 import { writable } from 'svelte/store';
@@ -570,6 +570,13 @@ export async function initMultiplayer(saveData: string) {
 	mpHighWaterTick = 0;
 	mpSnapshotLoading = false;
 	initialized.set(true);
+
+	// Ensure WASM knows which corp we are in this world
+	const id = get(corpId);
+	if (id !== null) {
+		bridge.setPlayerCorpId(id);
+	}
+
 	updateStores();
 
 	// Listen for corp delta updates from WebSocket TickUpdate messages.
@@ -641,6 +648,12 @@ export async function initMultiplayer(saveData: string) {
 			const loadResult = bridge.loadGame(state_json);
 			if (loadResult instanceof Promise) await loadResult;
 			mpHighWaterTick = tick;
+
+			// Re-apply our player corp ID as the snapshot might have a different one (or 0)
+			const id = get(corpId);
+			if (id !== null) {
+				bridge.setPlayerCorpId(id);
+			}
 
 			// Refresh stores from WASM, but force the tick to our high-water mark
 			// to prevent any drift from the WASM internal tick counter.

@@ -199,12 +199,6 @@
 		flex: 1;
 	}
 
-	.corp-nodes {
-		font-size: 11px;
-		color: #6b7280;
-		font-family: 'SF Mono', 'Fira Code', monospace;
-	}
-
 	.contract-badge {
 		padding: 4px 14px;
 		font-size: 11px;
