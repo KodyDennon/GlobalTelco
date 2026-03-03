@@ -4,12 +4,38 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"gt/config"
 )
+
+// ... (ServerStatus and other existing functions)
+
+// SaveServerLogs fetches logs and saves them to the logs/ directory.
+func SaveServerLogs(root string, cfg config.DeployConfig, lines int) (string, error) {
+	logs, err := ServerLogs(cfg, lines)
+	if err != nil {
+		return "", err
+	}
+
+	logsDir := filepath.Join(root, "logs")
+	if err := os.MkdirAll(logsDir, 0755); err != nil {
+		return "", err
+	}
+
+	filename := fmt.Sprintf("server_%s.log", time.Now().Format("2006-01-02_150405"))
+	path := filepath.Join(logsDir, filename)
+
+	if err := os.WriteFile(path, []byte(logs), 0644); err != nil {
+		return "", err
+	}
+
+	return path, nil
+}
 
 // ServerStatus represents live game server state.
 type ServerStatus struct {

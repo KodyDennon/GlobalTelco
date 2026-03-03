@@ -19,28 +19,29 @@ type DeployDoneMsg struct {
 
 // DeployModel handles the deploy view.
 type DeployModel struct {
-	root      string
-	config    config.DeployConfig
-	deploying bool
-	done      bool
-	err       error
-	output    []string
-	skipBuild bool
-	cursor    int
-	spinner   spinner.Model
+	root        string
+	config      config.DeployConfig
+	componentID string // "server" or "admin"
+	deploying   bool
+	done        bool
+	err         error
+	output      []string
+	skipBuild   bool
+	cursor      int
+	spinner     spinner.Model
 }
 
-// NewDeploy creates a new deploy model.
 func NewDeploy() DeployModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = StyleSpinner
-	return DeployModel{spinner: s}
+	return DeployModel{spinner: s, componentID: "server"}
 }
 
 func (d DeployModel) Start(root string) DeployModel {
 	d.root = root
 	d.config = config.DefaultDeployConfig()
+	d.componentID = "server"
 	d.deploying = false
 	d.done = false
 	d.err = nil
@@ -77,17 +78,27 @@ func (d DeployModel) Update(msg tea.Msg) (DeployModel, tea.Cmd) {
 				d.cursor--
 			}
 		case "down", "j":
-			if d.cursor < 1 {
+			if d.cursor < 2 {
 				d.cursor++
 			}
-		case " ":
+		case "left", "h":
 			if d.cursor == 0 {
+				d.componentID = "server"
+			}
+		case "right", "l":
+			if d.cursor == 0 {
+				d.componentID = "admin"
+			}
+		case " ":
+			if d.cursor == 1 {
 				d.skipBuild = !d.skipBuild
 			}
 		case "enter":
-			d.deploying = true
-			d.output = nil
-			return d, tea.Batch(d.spinner.Tick, d.executeDeploy())
+			if d.cursor == 2 {
+				d.deploying = true
+				d.output = nil
+				return d, tea.Batch(d.spinner.Tick, d.executeDeploy())
+			}
 		}
 	}
 
@@ -118,10 +129,17 @@ func (d DeployModel) View(width, height int) string {
 
 func (d DeployModel) viewTarget(panelWidth int) string {
 	var lines []string
-	lines = append(lines, RenderLabelValue("Host", StyleBright.Render(d.config.Host)))
-	lines = append(lines, RenderLabelValue("Domain", StyleBright.Render(d.config.Domain)))
-	lines = append(lines, RenderLabelValue("Service", StyleBright.Render(d.config.ServiceName)))
-	lines = append(lines, RenderLabelValue("Binary", StyleDim.Render(d.config.BinaryPath)))
+	if d.componentID == "server" {
+		lines = append(lines, RenderLabelValue("Component", StyleBright.Render("Game Server (Oracle)")))
+		lines = append(lines, RenderLabelValue("Host", StyleBright.Render(d.config.Host)))
+		lines = append(lines, RenderLabelValue("Domain", StyleBright.Render(d.config.Domain)))
+		lines = append(lines, RenderLabelValue("Service", StyleBright.Render(d.config.ServiceName)))
+	} else {
+		lines = append(lines, RenderLabelValue("Component", StyleBright.Render("Admin Panel (Cloudflare)")))
+		lines = append(lines, RenderLabelValue("Platform", StyleBright.Render("Cloudflare Pages")))
+		lines = append(lines, RenderLabelValue("Domain", StyleBright.Render("admin.globaltelco.online")))
+		lines = append(lines, RenderLabelValue("Project", StyleBright.Render("globaltelco-admin")))
+	}
 
 	content := strings.Join(lines, "\n")
 	return Indent(RenderCard("Deploy Target", ColorServer, content, panelWidth, false), 2)
@@ -130,20 +148,37 @@ func (d DeployModel) viewTarget(panelWidth int) string {
 func (d DeployModel) viewOptions(panelWidth int) string {
 	var lines []string
 
+	// Component selection
+	prefixComp := "  "
+	if d.cursor == 0 {
+		prefixComp = StyleAccent.Render("> ")
+	}
+	serverChoice := " Server "
+	adminChoice := " Admin "
+	if d.componentID == "server" {
+		serverChoice = StyleSelected.Render("[Server]")
+		adminChoice = StyleUnselected.Render(" Admin ")
+	} else {
+		serverChoice = StyleUnselected.Render(" Server ")
+		adminChoice = StyleSelected.Render("[Admin]")
+	}
+	lines = append(lines, fmt.Sprintf("%sComponent:  %s  %s", prefixComp, serverChoice, adminChoice))
+	lines = append(lines, "")
+
 	// Skip build toggle
 	skipCheck := "[ ]"
 	if d.skipBuild {
 		skipCheck = StyleProfit.Render("[x]")
 	}
 	prefix0 := "  "
-	if d.cursor == 0 {
+	if d.cursor == 1 {
 		prefix0 = StyleAccent.Render("> ")
 	}
-	lines = append(lines, fmt.Sprintf("%s%s Skip build (upload existing binary)", prefix0, skipCheck))
+	lines = append(lines, fmt.Sprintf("%s%s Skip build", prefix0, skipCheck))
 
 	// Deploy button
 	prefix1 := "  "
-	if d.cursor == 1 {
+	if d.cursor == 2 {
 		prefix1 = StyleAccent.Render("> ")
 	}
 	lines = append(lines, "")
@@ -151,10 +186,18 @@ func (d DeployModel) viewOptions(panelWidth int) string {
 
 	// Pipeline info
 	lines = append(lines, "")
-	if d.skipBuild {
-		lines = append(lines, StyleDim.Render("Pipeline: Upload -> Install -> Health check"))
+	if d.componentID == "server" {
+		if d.skipBuild {
+			lines = append(lines, StyleDim.Render("Pipeline: Upload -> Install -> Health check"))
+		} else {
+			lines = append(lines, StyleDim.Render("Pipeline: Cross-compile -> Upload -> Install -> Health check"))
+		}
 	} else {
-		lines = append(lines, StyleDim.Render("Pipeline: Cross-compile -> Upload -> Install -> Health check"))
+		if d.skipBuild {
+			lines = append(lines, StyleDim.Render("Pipeline: CF Deploy -> Health check"))
+		} else {
+			lines = append(lines, StyleDim.Render("Pipeline: Build -> CF Deploy -> Health check"))
+		}
 	}
 
 	content := strings.Join(lines, "\n")
@@ -163,7 +206,11 @@ func (d DeployModel) viewOptions(panelWidth int) string {
 
 func (d DeployModel) viewDeploying(panelWidth, maxHeight int) string {
 	var lines []string
-	lines = append(lines, d.spinner.View()+" "+StyleDim.Render("Deploying to "+d.config.Host+"..."))
+	target := d.config.Host
+	if d.componentID == "admin" {
+		target = "Cloudflare"
+	}
+	lines = append(lines, d.spinner.View()+" "+StyleDim.Render("Deploying to "+target+"..."))
 	lines = append(lines, "")
 
 	maxLines := maxHeight - 8
@@ -222,14 +269,16 @@ func styledDeployOutput(output []string, maxLines int) []string {
 func (d DeployModel) executeDeploy() tea.Cmd {
 	root := d.root
 	cfg := d.config
+	compID := d.componentID
 	skipBuild := d.skipBuild
 
 	return func() tea.Msg {
 		var output []string
 		err := core.ExecuteDeploy(core.DeployOpts{
-			Root:      root,
-			Config:    cfg,
-			SkipBuild: skipBuild,
+			Root:        root,
+			Config:      cfg,
+			ComponentID: compID,
+			SkipBuild:   skipBuild,
 			OnStep: func(step core.DeployStep, msg string) {
 				output = append(output, fmt.Sprintf("[%s] %s", step, msg))
 			},

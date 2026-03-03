@@ -65,14 +65,29 @@ var serverStatusCmd = &cobra.Command{
 }
 
 var serverLogsLines int
+var serverLogsDownload bool
 
 var serverLogsCmd = &cobra.Command{
 	Use:   "logs",
-	Short: "View server logs via SSH",
+	Short: "View or download server logs via SSH",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		root, err := config.FindProjectRoot()
+		if err != nil {
+			return err
+		}
 		cfg := config.DefaultDeployConfig()
-		fmt.Fprintf(os.Stderr, "Fetching %d lines from %s...\n\n", serverLogsLines, cfg.Host)
 
+		if serverLogsDownload {
+			fmt.Fprintf(os.Stderr, "Downloading %d lines to logs/...\n", serverLogsLines)
+			path, err := core.SaveServerLogs(root, cfg, serverLogsLines)
+			if err != nil {
+				return fmt.Errorf("failed to download logs: %w", err)
+			}
+			fmt.Printf("Logs saved to: %s\n", path)
+			return nil
+		}
+
+		fmt.Fprintf(os.Stderr, "Fetching %d lines from %s...\n\n", serverLogsLines, cfg.Host)
 		logs, err := core.ServerLogs(cfg, serverLogsLines)
 		if err != nil {
 			return fmt.Errorf("failed to fetch logs: %w", err)
@@ -128,6 +143,7 @@ var serverRestartCmd = &cobra.Command{
 
 func init() {
 	serverLogsCmd.Flags().IntVarP(&serverLogsLines, "lines", "n", 50, "Number of log lines to fetch")
+	serverLogsCmd.Flags().BoolVarP(&serverLogsDownload, "download", "d", false, "Download logs to a local file in logs/ dir")
 
 	serverCmd.AddCommand(serverStatusCmd)
 	serverCmd.AddCommand(serverLogsCmd)

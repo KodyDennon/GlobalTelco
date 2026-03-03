@@ -111,6 +111,18 @@ func Components() []Component {
 				"desktop/",
 			},
 		},
+		{
+			Name:      "Admin",
+			ID:        "admin",
+			TagPrefix: "admin-v",
+			Color:     "#FF4500",
+			Files: []VersionFile{
+				{RelPath: "admin/package.json", FileType: PackageJSON},
+			},
+			DirtyPaths: []string{
+				"admin/",
+			},
+		},
 	}
 }
 

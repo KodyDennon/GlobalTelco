@@ -45,6 +45,11 @@ func GetBuildSteps(root, componentID string) []BuildStep {
 			{Name: "Svelte check", Command: "bun", Args: []string{"run", "check"}, Dir: root + "/web"},
 			{Name: "Bun build", Command: "bun", Args: []string{"run", "build"}, Dir: root + "/web"},
 		}
+	case "admin":
+		return []BuildStep{
+			{Name: "Bun install", Command: "bun", Args: []string{"install"}, Dir: root + "/admin"},
+			{Name: "Bun build", Command: "bun", Args: []string{"run", "build"}, Dir: root + "/admin"},
+		}
 	case "desktop":
 		return []BuildStep{
 			{Name: "Cargo check (desktop)", Command: "cargo", Args: []string{"check"}, Dir: root + "/desktop/src-tauri"},

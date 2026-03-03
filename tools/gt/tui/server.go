@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -22,6 +23,12 @@ type ServerLogMsg struct {
 // ServerRestartMsg indicates restart completed.
 type ServerRestartMsg struct {
 	Err error
+}
+
+// ServerDownloadMsg indicates logs were downloaded.
+type ServerDownloadMsg struct {
+	Path string
+	Err  error
 }
 
 // ServerTab represents active tab in server view.
@@ -44,19 +51,24 @@ type ServerModel struct {
 	restarting     bool
 	restartErr     error
 	restartDone    bool
+	downloading    bool
+	downloadPath   string
+	downloadErr    error
 	confirmRestart bool
 	spinner        spinner.Model
 	logScroll      int
+	root           string
 }
 
 // NewServer creates a new server model.
-func NewServer() ServerModel {
+func NewServer(root string) ServerModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = StyleSpinner
 	return ServerModel{
 		config:  config.DefaultDeployConfig(),
 		spinner: s,
+		root:    root,
 	}
 }
 
@@ -70,6 +82,9 @@ func (m ServerModel) Start() ServerModel {
 	m.restarting = false
 	m.restartErr = nil
 	m.restartDone = false
+	m.downloading = false
+	m.downloadPath = ""
+	m.downloadErr = nil
 	m.confirmRestart = false
 	m.logScroll = 0
 	// Don't reset statusFetched — App may have already fetched it
@@ -124,6 +139,12 @@ func (m ServerModel) Update(msg tea.Msg) (ServerModel, tea.Cmd) {
 			return ServerStatusMsg{Status: core.FetchServerInfo(cfg)}
 		}
 
+	case ServerDownloadMsg:
+		m.downloading = false
+		m.downloadPath = msg.Path
+		m.downloadErr = msg.Err
+		return m, nil
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
@@ -168,6 +189,22 @@ func (m ServerModel) handleKey(msg tea.KeyMsg) (ServerModel, tea.Cmd) {
 		m.tab = ServerTabLogs
 		m.logsFetched = false
 		return m, m.fetchLogs()
+
+	case "d":
+		if !m.downloading {
+			m.downloading = true
+			m.downloadPath = ""
+			m.downloadErr = nil
+			cfg := m.config
+			root := m.root
+			return m, tea.Batch(
+				m.spinner.Tick,
+				func() tea.Msg {
+					path, err := core.SaveServerLogs(root, cfg, 500) // Download 500 lines
+					return ServerDownloadMsg{Path: path, Err: err}
+				},
+			)
+		}
 
 	case "r":
 		if !m.restarting {
@@ -249,6 +286,15 @@ func (m ServerModel) View(width, height int) string {
 			} else {
 				sections = append(sections, Indent(StyleSuccess.Render("Server restarted successfully"), 2))
 			}
+		}
+
+		// Download status
+		if m.downloading {
+			sections = append(sections, Indent(m.spinner.View()+" Downloading logs...", 2))
+		} else if m.downloadPath != "" {
+			sections = append(sections, Indent(StyleSuccess.Render("Logs saved: "+filepath.Base(m.downloadPath)), 2))
+		} else if m.downloadErr != nil {
+			sections = append(sections, Indent(StyleError.Render("Download failed: "+m.downloadErr.Error()), 2))
 		}
 
 	case ServerTabLogs:

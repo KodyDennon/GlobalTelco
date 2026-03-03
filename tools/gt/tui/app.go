@@ -69,7 +69,7 @@ func NewApp(root string) App {
 		deploy:    NewDeploy(),
 		history:   NewHistory(),
 		validate:  NewValidate(),
-		server:    NewServer(),
+		server:    NewServer(root),
 	}
 }
 
@@ -310,6 +310,7 @@ func (a App) footerKeys() []KeyBind {
 		return []KeyBind{
 			{Key: "tab", Desc: "switch tab"},
 			{Key: "l", Desc: "fetch logs"},
+			{Key: "d", Desc: "download logs"},
 			{Key: "r", Desc: "restart"},
 			{Key: "R", Desc: "refresh"},
 			{Key: "esc", Desc: "back"},

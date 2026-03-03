@@ -12,27 +12,46 @@ import (
 var deploySkipBuild bool
 
 var deployCmd = &cobra.Command{
-	Use:   "deploy",
-	Short: "Deploy server to Oracle Cloud",
-	Long: `Cross-compile, upload, and deploy gt-server to Oracle Cloud instance.
+	Use:   "deploy [component]",
+	Short: "Deploy server (Oracle) or admin (Cloudflare)",
+	Long: `Deploy a component. Defaults to server.
+Components:
+  server - Cross-compile, upload, and deploy to Oracle Cloud
+  admin  - Build and deploy to Cloudflare Pages
 
 Examples:
   gt deploy
+  gt deploy admin
   gt deploy --skip-build`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		root, err := config.FindProjectRoot()
 		if err != nil {
 			return err
 		}
 
+		compID := "server"
+		if len(args) > 0 {
+			compID = args[0]
+		}
+
+		if compID != "server" && compID != "admin" {
+			return fmt.Errorf("invalid component for deploy: %s (use 'server' or 'admin')", compID)
+		}
+
 		cfg := config.DefaultDeployConfig()
 
-		fmt.Printf("\n  Deploying to %s (%s)\n\n", cfg.Domain, cfg.Host)
+		if compID == "server" {
+			fmt.Printf("\n  Deploying server to %s (%s)\n\n", cfg.Domain, cfg.Host)
+		} else {
+			fmt.Printf("\n  Deploying admin panel to Cloudflare Pages\n\n")
+		}
 
 		err = core.ExecuteDeploy(core.DeployOpts{
-			Root:      root,
-			Config:    cfg,
-			SkipBuild: deploySkipBuild,
+			Root:        root,
+			Config:      cfg,
+			ComponentID: compID,
+			SkipBuild:   deploySkipBuild,
 			OnStep: func(step core.DeployStep, msg string) {
 				fmt.Printf("  [%s] %s\n", step, msg)
 			},
