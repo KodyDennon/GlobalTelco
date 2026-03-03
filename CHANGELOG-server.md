@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.12.0 (2026-03-03)
+
+### Features
+
+- update tick duration method to be asynchronous and improve log saving message (c57886b)
+- update dependencies in Cargo.lock and add plain package (c3ea46c)
+
+### Other
+
+- **engine:** v1.7.0 (37d02e1)
+- Merge branch 'main' of https://github.com/KodyDennon/GlobalTelco (5ee5346)
+- **admin:** v1.0.1 (3cc7e02)
+- Add funding information to FUNDING.yml (18097e6)
+- **web:** v1.6.0 (2d17435)
+- **desktop:** v2.3.0 (5a0cd0b)
+
+
 ## 0.11.0 (2026-03-02)
 
 ### Features
