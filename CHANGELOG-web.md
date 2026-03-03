@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.8.1 (2026-03-03)
+
+### Bug Fixes
+
+- handle optional player corporation ID and improve financial delta updates in multiplayer (6f5501f)
+
+### Chores
+
+- update package versions to 1.8.0 in Cargo.lock (e6c51f5)
+
+### Other
+
+- **engine:** v1.8.1 (d25e355)
+
+
 ## 1.8.0 (2026-03-03)
 
 ### Features
