@@ -13,7 +13,8 @@
 	import { initGame, initMultiplayer, start, loadFromSave, setSpeed } from '$lib/game/GameLoop';
 	import { initWasm } from '$lib/wasm/bridge';
 	import { githubCallback } from '$lib/multiplayer/accountApi';
-	import { accessToken, refreshToken, playerId, playerUsername, isAuthenticated, connectionState } from '$lib/stores/multiplayerState';
+	import { accessToken, refreshToken, playerId, playerUsername, isAuthenticated, connectionState, latestSnapshot } from '$lib/stores/multiplayerState';
+	import { get } from 'svelte/store';
 	import { onMount } from 'svelte';
 
 	type Screen = 'splash' | 'main' | 'newGame' | 'loadGame' | 'settings' | 'multiplayer' | 'credits' | 'loading' | 'profile' | 'forgotPassword';
@@ -78,6 +79,14 @@
 			console.log('[MP] Joining world, waiting for snapshot...', _worldId);
 			// Wait for full world snapshot from server (auto-requested on WorldJoined)
 			const snapshot = await new Promise<{ tick: number; state_json: string }>((resolve, reject) => {
+				// 1. Check if snapshot is ALREADY here (race condition fix)
+				const existing = get(latestSnapshot);
+				if (existing) {
+					console.log('[MP] Snapshot already available via store');
+					resolve(existing);
+					return;
+				}
+
 				let unsubscribe = () => {};
 
 				const timeout = setTimeout(() => {
@@ -102,6 +111,23 @@
 						reject(new Error('Connection lost while joining'));
 					}
 				});
+				
+				// Also subscribe to store changes in case the event was missed but store updated
+				const storeUnsub = latestSnapshot.subscribe(snap => {
+					if (snap) {
+						clearTimeout(timeout);
+						window.removeEventListener('mp-snapshot', handler);
+						unsubscribe();
+						resolve(snap);
+					}
+				});
+				
+				// Combine unsubscribes
+				const prevUnsub = unsubscribe;
+				unsubscribe = () => {
+					prevUnsub();
+					storeUnsub();
+				};
 			});
 			console.log('[MP] Snapshot received, tick:', snapshot.tick, 'size:', snapshot.state_json.length);
 			await initMultiplayer(snapshot.state_json);

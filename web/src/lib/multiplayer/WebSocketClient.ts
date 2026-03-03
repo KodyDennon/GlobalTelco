@@ -15,6 +15,7 @@ import {
 	addChatMessage,
 	updatePlayerStatus,
 	proxySummary,
+	latestSnapshot,
 	type MultiplayerWorldInfo,
 	type ServerInfo
 } from '$lib/stores/multiplayerState';
@@ -127,6 +128,7 @@ function handleServerMessage(msg: ServerMessage) {
 		console.log('[WS] WorldJoined received:', joined);
 		worldId.set(joined.world_id as string);
 		corpId.set(joined.corp_id as number);
+		latestSnapshot.set(null); // Clear any previous snapshot
 		// Auto-request full world snapshot so client can populate WASM
 		requestSnapshot(joined.world_id as string);
 	} else if ('TickUpdate' in msg) {
@@ -194,12 +196,12 @@ function handleServerMessage(msg: ServerMessage) {
 	} else if ('Snapshot' in msg) {
 		const snapshot = msg.Snapshot as Record<string, unknown>;
 		console.log('[WS] Snapshot received, tick:', snapshot.tick);
-		window.dispatchEvent(new CustomEvent('mp-snapshot', {
-			detail: {
-				tick: snapshot.tick as number,
-				state_json: snapshot.state_json as string,
-			}
-		}));
+		const snapData = {
+			tick: snapshot.tick as number,
+			state_json: snapshot.state_json as string,
+		};
+		latestSnapshot.set(snapData);
+		window.dispatchEvent(new CustomEvent('mp-snapshot', { detail: snapData }));
 	} else if ('CompressedSnapshot' in msg) {
 		const snap = msg.CompressedSnapshot as Record<string, unknown>;
 		try {
@@ -210,12 +212,12 @@ function handleServerMessage(msg: ServerMessage) {
 				'[WS] CompressedSnapshot received, tick:', snap.tick,
 				'compressed:', compressed.length, '-> decompressed:', decompressed.length
 			);
-			window.dispatchEvent(new CustomEvent('mp-snapshot', {
-				detail: {
-					tick: snap.tick as number,
-					state_json: stateJson,
-				}
-			}));
+			const snapData = {
+				tick: snap.tick as number,
+				state_json: stateJson,
+			};
+			latestSnapshot.set(snapData);
+			window.dispatchEvent(new CustomEvent('mp-snapshot', { detail: snapData }));
 		} catch (e) {
 			console.error('[WS] Failed to decompress snapshot:', e);
 		}

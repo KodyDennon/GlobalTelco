@@ -147,6 +147,8 @@ export interface SpeedVote {
 export const speedVotes = writable<SpeedVote[]>([]);
 export const speedVoteDeadline = writable<number | null>(null);
 
+export const latestSnapshot = writable<{ tick: number; state_json: string } | null>(null);
+
 export function resetMultiplayerState() {
 	connectionState.set('disconnected');
 	worldId.set(null);
@@ -165,5 +167,6 @@ export function resetMultiplayerState() {
 	ghostEdges.set([]);
 	speedVotes.set([]);
 	speedVoteDeadline.set(null);
+	latestSnapshot.set(null);
 	resetAccountState();
 }
