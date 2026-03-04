@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.9.1 (2026-03-03)
+
+### Chores
+
+- update gt-server version to 0.13.0 in Cargo.lock (366e337)
+
+### Other
+
+- **web:** v1.8.2 (a97c3c9)
+
+
 ## 1.9.0 (2026-03-03)
 
 ### Features
