@@ -74,7 +74,7 @@ function initPressureObserver() {
 
 function teardownPressureObserver() {
 	if (pressureObserver) {
-		try { pressureObserver.disconnect(); } catch {}
+		try { pressureObserver.disconnect(); } catch { }
 		pressureObserver = null;
 	}
 }
@@ -192,6 +192,9 @@ function handleWorkerTickResult(result: workerBridge.TickResult) {
 	const t1 = performance.now();
 	simTickTime.set(Math.round((t1 - workerTickStart) * 100) / 100);
 
+	// Sync worker's latest state with the bridge for UI consumers (prevents staleness)
+	bridge.setLatestTickResult(result);
+
 	try {
 		// Parse world info from worker result
 		const info = JSON.parse(result.info);
@@ -220,29 +223,31 @@ function handleWorkerTickResult(result: workerBridge.TickResult) {
 
 		// Record network snapshot every 10 ticks (same frequency as direct mode)
 		if (info.tick % 10 === 0) {
+			const trafficPromise = workerBridge.query('get_traffic_flows');
+			const infraPromise = workerBridge.query('get_infrastructure_list', BigInt(info.player_corp_id));
 			Promise.all([
-				workerBridge.query('get_traffic_flows'),
-				workerBridge.query('get_infrastructure_list', info.player_corp_id),
+				trafficPromise,
+				infraPromise,
 			]).then(([trafficJson, infraJson]) => {
 				if (trafficJson && infraJson) {
 					try {
 						recordNetworkSnapshot(info.tick, JSON.parse(trafficJson), JSON.parse(infraJson));
-					} catch {}
+					} catch { }
 				}
-			}).catch(() => {});
+			}).catch(() => { });
 		}
 
 		// Update less frequently (every 5th tick) via async worker queries
 		if (info.tick % 5 === 0) {
 			workerBridge.query('get_regions').then(json => {
-				if (json) { try { regions.set(JSON.parse(json)); } catch {} }
-			}).catch(() => {});
+				if (json) { try { regions.set(JSON.parse(json)); } catch { } }
+			}).catch(() => { });
 			workerBridge.query('get_cities').then(json => {
-				if (json) { try { cities.set(JSON.parse(json)); } catch {} }
-			}).catch(() => {});
+				if (json) { try { cities.set(JSON.parse(json)); } catch { } }
+			}).catch(() => { });
 			workerBridge.query('get_all_corporations').then(json => {
-				if (json) { try { allCorporations.set(JSON.parse(json)); } catch {} }
-			}).catch(() => {});
+				if (json) { try { allCorporations.set(JSON.parse(json)); } catch { } }
+			}).catch(() => { });
 		}
 
 		// Process notifications from worker
@@ -260,7 +265,6 @@ function handleWorkerTickResult(result: workerBridge.TickResult) {
 						for (const notif of notifs) {
 							const reason = checkCriticalEvent(notif.event);
 							if (reason) {
-								setSpeed(0);
 								autoPauseReason.set(reason);
 								break;
 							}
@@ -691,7 +695,7 @@ export async function initMultiplayer(saveData: string) {
 		try {
 			const batchResult = bridge.applyBatch(ops);
 			if (batchResult instanceof Promise) batchResult.catch((err: unknown) => console.error('[MP] Failed to apply batch:', err));
-			
+
 			// Refresh stores to pick up changes (financials, ownership, etc.)
 			updateStores();
 		} catch (err) {

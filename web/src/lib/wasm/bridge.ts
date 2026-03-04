@@ -63,6 +63,12 @@ export function isNativeSim(): boolean {
 
 // Command proxy for Web Worker mode — routes commands through the worker
 let _commandProxy: ((json: string) => Promise<string>) | null = null;
+let _latestTickResult: any = null;
+
+/** Update the latest tick result from the worker. */
+export function setLatestTickResult(result: any): void {
+	_latestTickResult = result;
+}
 
 /** Set a proxy function that routes processCommand calls through the worker. */
 export function setCommandProxy(proxy: ((json: string) => Promise<string>) | null): void {
@@ -235,6 +241,8 @@ export function getCorporationData(corpId: number): CorporationData {
 		return {} as CorporationData;
 	}
 }
+
+
 
 export function getRegions(): Region[] {
 	if (useNativeSim) return tauriBridge.getCachedRegions();
@@ -575,6 +583,9 @@ const EMPTY_U32 = new Uint32Array(0);
 const EMPTY_U8 = new Uint8Array(0);
 
 export function getInfraNodesTyped(): InfraNodesTyped {
+	if (_latestTickResult?.infraNodes) {
+		return _latestTickResult.infraNodes;
+	}
 	if (useNativeSim) return tauriBridge.getCachedInfraNodesTyped();
 	try {
 		if (bridge && typeof bridge.get_infra_nodes_typed === 'function') {
@@ -599,6 +610,9 @@ export function getInfraNodesTyped(): InfraNodesTyped {
 }
 
 export function getInfraEdgesTyped(): InfraEdgesTyped {
+	if (_latestTickResult?.infraEdges) {
+		return _latestTickResult.infraEdges;
+	}
 	if (useNativeSim) return tauriBridge.getCachedInfraEdgesTyped();
 	try {
 		if (bridge && typeof bridge.get_infra_edges_typed === 'function') {
@@ -621,6 +635,9 @@ export function getInfraEdgesTyped(): InfraEdgesTyped {
 }
 
 export function getCorporationsTyped(): CorporationsTyped {
+	if (_latestTickResult?.corporations) {
+		return _latestTickResult.corporations;
+	}
 	if (useNativeSim) return tauriBridge.getCachedCorporationsTyped();
 	try {
 		if (bridge && typeof bridge.get_corporations_typed === 'function') {

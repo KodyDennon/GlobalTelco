@@ -35,9 +35,9 @@ pub mod terminal_distribution;
 pub mod utilization;
 pub mod weather;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 use std::collections::HashMap;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
 
 use crate::world::GameWorld;
@@ -207,95 +207,93 @@ pub fn run_all_systems(world: &mut GameWorld) {
 
 /// Timed variant of run_all_systems — wraps each system call with profiling
 /// and stores results in world.system_times (microseconds per system).
+#[cfg(target_family = "wasm")]
 pub fn run_all_systems_timed(world: &mut GameWorld) {
-    #[cfg(target_arch = "wasm32")]
-    {
-        run_all_systems(world);
+    run_all_systems(world);
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub fn run_all_systems_timed(world: &mut GameWorld) {
+    let mut times = HashMap::new();
+
+    macro_rules! timed {
+        ($name:expr, $call:expr) => {{
+            let start = Instant::now();
+            $call;
+            times.insert($name.to_string(), start.elapsed().as_micros() as u64);
+        }};
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let mut times = HashMap::new();
-
-        macro_rules! timed {
-            ($name:expr, $call:expr) => {{
+    macro_rules! timed_if {
+        ($name:expr, $cond:expr, $call:expr) => {{
+            if $cond {
                 let start = Instant::now();
                 $call;
                 times.insert($name.to_string(), start.elapsed().as_micros() as u64);
-            }};
-        }
-
-        macro_rules! timed_if {
-            ($name:expr, $cond:expr, $call:expr) => {{
-                if $cond {
-                    let start = Instant::now();
-                    $call;
-                    times.insert($name.to_string(), start.elapsed().as_micros() as u64);
-                } else {
-                    times.insert($name.to_string(), 0);
-                }
-            }};
-        }
-
-        // Always-run systems
-        timed!("construction", construction::run(world));
-        timed!("orbital", orbital::run(world));
-        timed!("satellite_network", satellite_network::run(world));
-        timed!("maintenance", maintenance::run(world));
-        timed!("population", population::run(world));
-        timed!("coverage", coverage::run(world));
-        timed!("demand", demand::run(world));
-        timed!("routing", routing::run(world));
-        timed!("utilization", utilization::run(world));
-
-        // Conditionally-run systems
-        timed_if!("spectrum", should_run_spectrum(world), spectrum::run(world));
-        timed!("ftth", ftth::run(world));
-        timed_if!(
-            "manufacturing",
-            should_run_manufacturing(world),
-            manufacturing::run(world)
-        );
-        timed_if!("launch", should_run_launch(world), launch::run(world));
-        timed!("terminal_distribution", terminal_distribution::run(world));
-        timed!("satellite_revenue", satellite_revenue::run(world));
-        timed!("revenue", revenue::run(world));
-        timed!("cost", cost::run(world));
-        timed!("finance", finance::run(world));
-        timed!("contract", contract::run(world));
-        timed!("ai", ai::run(world));
-        timed!("weather", weather::run(world));
-        timed!("disaster", disaster::run(world));
-        timed_if!("debris", should_run_debris(world), debris::run(world));
-        timed_if!(
-            "servicing",
-            should_run_servicing(world),
-            servicing::run(world)
-        );
-        timed!("regulation", regulation::run(world));
-        timed!("research", research::run(world));
-        timed_if!("patent", should_run_patent(world), patent::run(world));
-        timed!("market", market::run(world));
-        timed_if!("auction", should_run_auction(world), auction::run(world));
-        timed_if!(
-            "covert_ops",
-            should_run_covert_ops(world),
-            covert_ops::run(world)
-        );
-        timed_if!("lobbying", should_run_lobbying(world), lobbying::run(world));
-        timed_if!("alliance", should_run_alliance(world), alliance::run(world));
-        timed_if!("legal", should_run_legal(world), legal::run(world));
-        timed!("grants", grants::run(world));
-        timed!("achievement", achievement::run(world));
-        timed!("stock_market", stock_market::run(world));
-        timed!(
-            "resolve_spectrum_auctions",
-            world.resolve_spectrum_auctions()
-        );
-
-        world.system_times = times;
-
-        // Reset dirty flags for next tick
-        world.dirty_flags = 0;
+            } else {
+                times.insert($name.to_string(), 0);
+            }
+        }};
     }
+
+    // Always-run systems
+    timed!("construction", construction::run(world));
+    timed!("orbital", orbital::run(world));
+    timed!("satellite_network", satellite_network::run(world));
+    timed!("maintenance", maintenance::run(world));
+    timed!("population", population::run(world));
+    timed!("coverage", coverage::run(world));
+    timed!("demand", demand::run(world));
+    timed!("routing", routing::run(world));
+    timed!("utilization", utilization::run(world));
+
+    // Conditionally-run systems
+    timed_if!("spectrum", should_run_spectrum(world), spectrum::run(world));
+    timed!("ftth", ftth::run(world));
+    timed_if!(
+        "manufacturing",
+        should_run_manufacturing(world),
+        manufacturing::run(world)
+    );
+    timed_if!("launch", should_run_launch(world), launch::run(world));
+    timed!("terminal_distribution", terminal_distribution::run(world));
+    timed!("satellite_revenue", satellite_revenue::run(world));
+    timed!("revenue", revenue::run(world));
+    timed!("cost", cost::run(world));
+    timed!("finance", finance::run(world));
+    timed!("contract", contract::run(world));
+    timed!("ai", ai::run(world));
+    timed!("weather", weather::run(world));
+    timed!("disaster", disaster::run(world));
+    timed_if!("debris", should_run_debris(world), debris::run(world));
+    timed_if!(
+        "servicing",
+        should_run_servicing(world),
+        servicing::run(world)
+    );
+    timed!("regulation", regulation::run(world));
+    timed!("research", research::run(world));
+    timed_if!("patent", should_run_patent(world), patent::run(world));
+    timed!("market", market::run(world));
+    timed_if!("auction", should_run_auction(world), auction::run(world));
+    timed_if!(
+        "covert_ops",
+        should_run_covert_ops(world),
+        covert_ops::run(world)
+    );
+    timed_if!("lobbying", should_run_lobbying(world), lobbying::run(world));
+    timed_if!("alliance", should_run_alliance(world), alliance::run(world));
+    timed_if!("legal", should_run_legal(world), legal::run(world));
+    timed!("grants", grants::run(world));
+    timed!("achievement", achievement::run(world));
+    timed!("stock_market", stock_market::run(world));
+    timed!(
+        "resolve_spectrum_auctions",
+        world.resolve_spectrum_auctions()
+    );
+
+    world.system_times = times;
+
+    // Reset dirty flags for next tick
+    world.dirty_flags = 0;
 }
