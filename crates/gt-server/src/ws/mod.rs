@@ -26,7 +26,7 @@ use rate_limit::RateLimiter;
 /// Maximum connections per IP address
 const MAX_CONNECTIONS_PER_IP: usize = 10;
 /// Time allowed for authentication after WebSocket upgrade
-const AUTH_TIMEOUT_SECS: u64 = 10;
+const AUTH_TIMEOUT_SECS: u64 = 30;
 /// Maximum chat message length in bytes
 pub(crate) const MAX_CHAT_LENGTH: usize = 500;
 /// Maximum cloud save size in bytes (50 MB)

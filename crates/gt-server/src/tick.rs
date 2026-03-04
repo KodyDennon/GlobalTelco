@@ -304,7 +304,22 @@ pub fn spawn_world_tick_loop(
                     let event_tuples: Vec<(i64, String, serde_json::Value)> = events
                         .iter()
                         .filter_map(|e| {
-                            let event_type = format!("{:?}", std::mem::discriminant(e));
+                            // Extract a readable variant name for the event type
+                            let event_type = match e {
+                                gt_common::events::GameEvent::ConstructionStarted { .. } => "ConstructionStarted",
+                                gt_common::events::GameEvent::ConstructionCompleted { .. } => "ConstructionCompleted",
+                                gt_common::events::GameEvent::NodeBuilt { .. } => "NodeBuilt",
+                                gt_common::events::GameEvent::NodeDestroyed { .. } => "NodeDestroyed",
+                                gt_common::events::GameEvent::RevenueEarned { .. } => "RevenueEarned",
+                                gt_common::events::GameEvent::CostIncurred { .. } => "CostIncurred",
+                                gt_common::events::GameEvent::BankruptcyDeclared { .. } => "BankruptcyDeclared",
+                                gt_common::events::GameEvent::ResearchStarted { .. } => "ResearchStarted",
+                                gt_common::events::GameEvent::ResearchCompleted { .. } => "ResearchCompleted",
+                                gt_common::events::GameEvent::DisasterStruck { .. } => "DisasterStruck",
+                                gt_common::events::GameEvent::RepairCompleted { .. } => "RepairCompleted",
+                                gt_common::events::GameEvent::CorporationFounded { .. } => "CorporationFounded",
+                                _ => "Other",
+                            }.to_string();
                             serde_json::to_value(e).ok().map(|v| (tick as i64, event_type, v))
                         })
                         .collect();

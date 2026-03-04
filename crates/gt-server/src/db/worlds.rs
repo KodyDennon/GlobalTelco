@@ -422,18 +422,25 @@ impl Database {
         world_id: Uuid,
         events: &[(i64, &str, &serde_json::Value)],
     ) -> Result<(), sqlx::Error> {
-        for (tick, event_type, event_data) in events {
-            sqlx::query(
-                "INSERT INTO event_log (world_id, tick, event_type, event_data)
-                 VALUES ($1, $2, $3, $4)",
-            )
-            .bind(world_id)
-            .bind(tick)
-            .bind(event_type)
-            .bind(event_data)
-            .execute(&self.pool)
-            .await?;
+        if events.is_empty() {
+            return Ok(());
         }
+
+        // Optimized batch insert for PostgreSQL
+        let mut query_builder: sqlx::QueryBuilder<sqlx::Postgres> = sqlx::QueryBuilder::new(
+            "INSERT INTO event_log (world_id, tick, event_type, event_data) "
+        );
+
+        query_builder.push_values(events, |mut b, (tick, event_type, event_data)| {
+            b.push_bind(world_id)
+             .push_bind(*tick)
+             .push_bind(*event_type)
+             .push_bind(*event_data);
+        });
+
+        let query = query_builder.build();
+        query.execute(&self.pool).await?;
+        
         Ok(())
     }
 }

@@ -312,7 +312,9 @@ impl AppState {
         #[cfg(feature = "postgres")]
         if let Some(db) = self.db.as_ref() {
             let config_json = serde_json::to_value(&config).unwrap_or_default();
-            let _ = db.save_world(id, &name, &config_json, 0, "Paused", max_players as i32).await;
+            if let Err(e) = db.save_world(id, &name, &config_json, 0, "Paused", max_players as i32).await {
+                tracing::error!("Failed to persist new world '{}' to database: {}", name, e);
+            }
         }
 
         self.worlds.write().await.insert(id, instance);
@@ -342,7 +344,9 @@ impl AppState {
         #[cfg(feature = "postgres")]
         if let Some(db) = self.db.as_ref() {
             let config_json = serde_json::to_value(&config).unwrap_or_default();
-            let _ = db.save_world(id, &name, &config_json, 0, "Paused", max_players as i32).await;
+            if let Err(e) = db.save_world(id, &name, &config_json, 0, "Paused", max_players as i32).await {
+                tracing::error!("Failed to persist new template world '{}' to database: {}", name, e);
+            }
         }
 
         self.worlds.write().await.insert(id, instance);

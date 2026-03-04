@@ -45,9 +45,9 @@ impl R2Storage {
             None,
             None,
         )?;
-        // R2 works best with virtual-host style access (bucket.account_id.r2.cloudflarestorage.com)
-        // or the custom endpoint without forcing path style.
-        let bucket = Bucket::new(bucket_name, region, credentials)?;
+        
+        // R2 supports both, but path-style is often more consistent with custom endpoints
+        let bucket = Bucket::new(bucket_name, region, credentials)?.with_path_style();
 
         Ok(Self { bucket })
     }
@@ -57,16 +57,16 @@ impl R2Storage {
         match self.bucket.put_object(key, data).await {
             Ok(response) => {
                 let code = response.status_code();
-                if code == 200 {
+                if code == 200 || code == 201 {
                     Ok(())
                 } else {
                     let error_text = String::from_utf8_lossy(response.as_slice());
-                    warn!("R2 PUT returned {code}: {error_text}");
-                    Err(format!("R2 PUT returned status {code}"))
+                    warn!("R2 PUT returned {code} for key '{key}': {error_text}");
+                    Err(format!("R2 PUT returned status {code}: {error_text}"))
                 }
             }
             Err(e) => {
-                warn!("R2 PUT transport error: {e}");
+                warn!("R2 PUT transport error for key '{key}': {e}");
                 Err(format!("R2 PUT failed: {e}"))
             }
         }
