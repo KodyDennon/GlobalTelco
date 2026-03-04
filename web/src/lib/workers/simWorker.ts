@@ -44,7 +44,15 @@ self.onmessage = async (e: MessageEvent) => {
 
 				bridge.tick();
 
-				// Collect typed arrays for hot-path rendering
+				// Collect notifications first since it requires a mutable borrow (&mut self)
+				// Fetching this after read-only queries can cause "recursive use of object" panics
+				// if string references from earlier queries haven't been fully GC'd by the JS engine.
+				let notificationsJson: string | null = null;
+				try {
+					notificationsJson = bridge.get_notifications();
+				} catch { /* ignore */ }
+
+				// Collect typed arrays for hot-path rendering (read-only)
 				const nodesArr = bridge.get_infra_nodes_typed();
 				const edgesArr = bridge.get_infra_edges_typed();
 				const corpsArr = bridge.get_corporations_typed();
@@ -81,17 +89,13 @@ self.onmessage = async (e: MessageEvent) => {
 
 				const tick = bridge.current_tick();
 
-				// Collect player corp data and notifications for main thread
+				// Collect player corp data for main thread
 				let playerCorpJson: string | null = null;
-				let notificationsJson: string | null = null;
 				try {
 					const info = JSON.parse(infoJson);
 					if (info.player_corp_id > 0) {
 						playerCorpJson = bridge.get_corporation_data(BigInt(info.player_corp_id));
 					}
-				} catch { /* ignore */ }
-				try {
-					notificationsJson = bridge.get_notifications();
 				} catch { /* ignore */ }
 
 				self.postMessage({

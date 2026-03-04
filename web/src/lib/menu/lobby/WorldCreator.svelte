@@ -1,32 +1,40 @@
 <script lang="ts">
-	import type { WorldTemplate, WorldConfig } from '$lib/multiplayer/lobbyApi';
-	import { createWorldFromTemplate, createWorldDirect } from '$lib/multiplayer/lobbyApi';
+	import type { WorldTemplate, WorldConfig } from "$lib/multiplayer/lobbyApi";
+	import {
+		createWorldFromTemplate,
+		createWorldDirect,
+	} from "$lib/multiplayer/lobbyApi";
 
 	let {
 		templates,
-		onCreated
+		onCreated,
 	}: {
 		templates: WorldTemplate[];
 		onCreated: (worldId: string) => void;
 	} = $props();
 
-	type Mode = 'grid' | 'template' | 'custom';
-	type WorldPreset = 'real_earth' | 'pangaea' | 'archipelago' | 'continents' | 'random';
+	type Mode = "grid" | "template" | "custom";
+	type WorldPreset =
+		| "real_earth"
+		| "pangaea"
+		| "archipelago"
+		| "continents"
+		| "random";
 
-	let mode = $state<Mode>('grid');
+	let mode = $state<Mode>("grid");
 	let selectedTemplate = $state<WorldTemplate | null>(null);
-	let worldName = $state('');
+	let worldName = $state("");
 	let maxPlayers = $state(8);
 	let overrides = $state<Record<string, unknown>>({});
 	let creating = $state(false);
-	let error = $state('');
+	let error = $state("");
 
 	// Custom world config
-	let preset = $state<WorldPreset>('continents');
+	let preset = $state<WorldPreset>("continents");
 	let seed = $state(Math.floor(Math.random() * 999999));
-	let era = $state('Internet');
-	let difficulty = $state('Normal');
-	let mapSize = $state('Medium');
+	let era = $state("Internet");
+	let difficulty = $state("Normal");
+	let mapSize = $state("Medium");
 	let aiCorps = $state(4);
 	let useRealEarth = $state(false);
 	let continentCount = $state(4);
@@ -38,58 +46,120 @@
 	let sandbox = $state(false);
 	let showAdvanced = $state(false);
 
-	const ERAS = ['Telegraph', 'Telephone', 'EarlyDigital', 'Internet', 'Modern', 'NearFuture'];
-	const DIFFICULTIES = ['Easy', 'Normal', 'Hard', 'Expert'];
-	const MAP_SIZES = ['Tiny', 'Small', 'Medium', 'Large', 'Huge'];
-	const DIFFICULTY_DISASTER: Record<string, number> = { Easy: 3, Normal: 5, Hard: 7, Expert: 9 };
+	const ERAS = [
+		"Telegraph",
+		"Telephone",
+		"EarlyDigital",
+		"Internet",
+		"Modern",
+		"NearFuture",
+	];
+	const DIFFICULTIES = ["Easy", "Normal", "Hard", "Expert"];
+	const MAP_SIZES = ["Tiny", "Small", "Medium", "Large", "Huge"];
+	const DIFFICULTY_DISASTER: Record<string, number> = {
+		Easy: 3,
+		Normal: 5,
+		Hard: 7,
+		Expert: 9,
+	};
 
-	const PRESETS: Record<WorldPreset, { label: string; continents: number; ocean: number; roughness: number; climate: number; density: number }> = {
-		real_earth: { label: 'Real Earth', continents: 6, ocean: 71, roughness: 50, climate: 50, density: 50 },
-		pangaea: { label: 'Pangaea', continents: 1, ocean: 40, roughness: 60, climate: 40, density: 40 },
-		archipelago: { label: 'Archipelago', continents: 8, ocean: 80, roughness: 70, climate: 60, density: 30 },
-		continents: { label: 'Continents', continents: 4, ocean: 65, roughness: 50, climate: 50, density: 50 },
-		random: { label: 'Random', continents: 4, ocean: 65, roughness: 50, climate: 50, density: 50 }
+	const PRESETS: Record<
+		WorldPreset,
+		{
+			label: string;
+			continents: number;
+			ocean: number;
+			roughness: number;
+			climate: number;
+			density: number;
+		}
+	> = {
+		real_earth: {
+			label: "Real Earth",
+			continents: 6,
+			ocean: 71,
+			roughness: 50,
+			climate: 50,
+			density: 50,
+		},
+		pangaea: {
+			label: "Pangaea",
+			continents: 1,
+			ocean: 40,
+			roughness: 60,
+			climate: 40,
+			density: 40,
+		},
+		archipelago: {
+			label: "Archipelago",
+			continents: 8,
+			ocean: 80,
+			roughness: 70,
+			climate: 60,
+			density: 30,
+		},
+		continents: {
+			label: "Continents",
+			continents: 4,
+			ocean: 65,
+			roughness: 50,
+			climate: 50,
+			density: 50,
+		},
+		random: {
+			label: "Random",
+			continents: 4,
+			ocean: 65,
+			roughness: 50,
+			climate: 50,
+			density: 50,
+		},
 	};
 
 	let disasterFrequency = $derived(
-		+(0.1 * Math.pow(10, (disasterSeverity - 1) / 9 * Math.log10(30))).toFixed(2)
+		+(
+			0.1 * Math.pow(10, ((disasterSeverity - 1) / 9) * Math.log10(30))
+		).toFixed(2),
 	);
 
 	function selectTemplate(t: WorldTemplate) {
 		selectedTemplate = t;
-		mode = 'template';
-		worldName = '';
+		mode = "template";
+		worldName = "";
 		overrides = {};
-		error = '';
+		error = "";
 		const defaults = t.config_defaults as Record<string, unknown>;
 		for (const key of Object.keys(t.config_bounds)) {
 			if (key in defaults) {
 				overrides[key] = defaults[key];
 			}
 		}
-		const bounds = t.config_bounds as Record<string, { min?: number; max?: number }>;
+		const bounds = t.config_bounds as Record<
+			string,
+			{ min?: number; max?: number }
+		>;
 		if (bounds.max_players) {
 			maxPlayers = (defaults.max_players as number) || 8;
 		}
 	}
 
 	function selectCustom() {
-		mode = 'custom';
-		worldName = '';
-		error = '';
-		applyPreset('continents');
+		mode = "custom";
+		worldName = "";
+		error = "";
+		applyPreset("continents");
 	}
 
 	function backToGrid() {
-		mode = 'grid';
+		mode = "grid";
 		selectedTemplate = null;
-		error = '';
+		error = "";
 	}
 
 	function applyPreset(p: WorldPreset) {
 		preset = p;
-		useRealEarth = p === 'real_earth';
-		if (p === 'random') {
+		useRealEarth = p === "real_earth";
+		if (p === "random") {
 			continentCount = Math.floor(Math.random() * 8) + 1;
 			oceanPct = Math.floor(Math.random() * 61) + 30;
 			roughness = Math.floor(Math.random() * 101);
@@ -113,17 +183,17 @@
 	async function handleCreateFromTemplate() {
 		if (!selectedTemplate || !worldName.trim()) return;
 		creating = true;
-		error = '';
+		error = "";
 		try {
 			const result = await createWorldFromTemplate(
 				selectedTemplate.id,
 				worldName.trim(),
 				maxPlayers,
-				overrides
+				overrides,
 			);
 			onCreated(result.world_id);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to create world';
+			error = e instanceof Error ? e.message : "Failed to create world";
 		} finally {
 			creating = false;
 		}
@@ -132,7 +202,7 @@
 	async function handleCreateCustom() {
 		if (!worldName.trim()) return;
 		creating = true;
-		error = '';
+		error = "";
 		try {
 			const config: WorldConfig = {
 				seed,
@@ -147,12 +217,16 @@
 				climate_variation: climate / 100,
 				city_density: density / 100,
 				disaster_frequency: disasterFrequency,
-				sandbox
+				sandbox,
 			};
-			const result = await createWorldDirect(worldName.trim(), maxPlayers, config);
+			const result = await createWorldDirect(
+				worldName.trim(),
+				maxPlayers,
+				config,
+			);
 			onCreated(result.world_id);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to create world';
+			error = e instanceof Error ? e.message : "Failed to create world";
 		} finally {
 			creating = false;
 		}
@@ -160,13 +234,14 @@
 </script>
 
 <div class="creator-container">
-	{#if mode === 'grid'}
+	{#if mode === "grid"}
 		<div class="template-grid">
 			{#each templates as template}
 				<button
 					class="template-card"
 					onclick={() => selectTemplate(template)}
-					disabled={template.current_instances >= template.max_instances}
+					disabled={template.current_instances >=
+						template.max_instances}
 				>
 					<div class="template-icon">{template.icon}</div>
 					<div class="template-name">{template.name}</div>
@@ -181,11 +256,12 @@
 			<button class="template-card custom-card" onclick={selectCustom}>
 				<div class="template-icon">+</div>
 				<div class="template-name">Custom World</div>
-				<div class="template-desc">Create a world with your own settings</div>
+				<div class="template-desc">
+					Create a world with your own settings
+				</div>
 			</button>
 		</div>
-
-	{:else if mode === 'template' && selectedTemplate}
+	{:else if mode === "template" && selectedTemplate}
 		<div class="customize-form">
 			<button class="btn-back-template" onclick={backToGrid}>
 				Back to Templates
@@ -206,9 +282,13 @@
 			</div>
 
 			{#each Object.entries(selectedTemplate.config_bounds) as [key, rawBounds]}
-				{@const bounds = rawBounds as { min?: number; max?: number; allowed?: string[] }}
+				{@const bounds = rawBounds as {
+					min?: number;
+					max?: number;
+					allowed?: string[];
+				}}
 				<div class="form-field">
-					<label for="config-{key}">{key.replace(/_/g, ' ')}</label>
+					<label for="config-{key}">{key.replace(/_/g, " ")}</label>
 					{#if bounds.allowed}
 						<select id="config-{key}" bind:value={overrides[key]}>
 							{#each bounds.allowed as opt}
@@ -222,10 +302,15 @@
 								type="range"
 								min={bounds.min}
 								max={bounds.max}
-								step={Number.isInteger(bounds.min) && Number.isInteger(bounds.max) ? 1 : 0.1}
+								step={Number.isInteger(bounds.min) &&
+								Number.isInteger(bounds.max)
+									? 1
+									: 0.1}
 								bind:value={overrides[key]}
 							/>
-							<span class="slider-value">{overrides[key] ?? bounds.min}</span>
+							<span class="slider-value"
+								>{overrides[key] ?? bounds.min}</span
+							>
 						</div>
 					{/if}
 				</div>
@@ -240,11 +325,10 @@
 				onclick={handleCreateFromTemplate}
 				disabled={creating || !worldName.trim()}
 			>
-				{creating ? 'Creating...' : 'Create World'}
+				{creating ? "Creating..." : "Create World"}
 			</button>
 		</div>
-
-	{:else if mode === 'custom'}
+	{:else if mode === "custom"}
 		<div class="customize-form">
 			<button class="btn-back-template" onclick={backToGrid}>
 				Back
@@ -254,12 +338,24 @@
 
 			<div class="form-field">
 				<label for="cw-name">World Name</label>
-				<input id="cw-name" type="text" bind:value={worldName} placeholder="Enter world name..." maxlength={128} />
+				<input
+					id="cw-name"
+					type="text"
+					bind:value={worldName}
+					placeholder="Enter world name..."
+					maxlength={128}
+				/>
 			</div>
 
 			<div class="form-field">
 				<label for="cw-max">Max Players</label>
-				<input id="cw-max" type="number" bind:value={maxPlayers} min="1" max="100" />
+				<input
+					id="cw-max"
+					type="number"
+					bind:value={maxPlayers}
+					min="1"
+					max="100"
+				/>
 			</div>
 
 			<!-- Presets -->
@@ -289,7 +385,8 @@
 				<div class="form-field half">
 					<label for="cw-diff">Difficulty</label>
 					<select id="cw-diff" bind:value={difficulty}>
-						{#each DIFFICULTIES as d}<option value={d}>{d}</option>{/each}
+						{#each DIFFICULTIES as d}<option value={d}>{d}</option
+							>{/each}
 					</select>
 				</div>
 			</div>
@@ -297,21 +394,39 @@
 			<div class="form-row">
 				<div class="form-field half">
 					<label for="cw-size">Map Size</label>
-					<select id="cw-size" bind:value={mapSize}>
-						{#each MAP_SIZES as m}<option value={m}>{m}</option>{/each}
+					<select
+						id="cw-size"
+						bind:value={mapSize}
+						disabled={useRealEarth}
+					>
+						{#each MAP_SIZES as m}<option value={m}>{m}</option
+							>{/each}
 					</select>
 				</div>
 				<div class="form-field half">
 					<label for="cw-ai">AI Corporations: {aiCorps}</label>
-					<input id="cw-ai" type="range" min="0" max="20" bind:value={aiCorps} />
+					<input
+						id="cw-ai"
+						type="range"
+						min="0"
+						max="20"
+						bind:value={aiCorps}
+					/>
 				</div>
 			</div>
 
 			<div class="form-field">
-				<label for="cw-disaster">Disaster Severity: {disasterSeverity}</label>
-				<input id="cw-disaster" type="range" min="1" max="10" bind:value={disasterSeverity} />
+				<label for="cw-disaster"
+					>Disaster Severity: {disasterSeverity}</label
+				>
+				<input
+					id="cw-disaster"
+					type="range"
+					min="1"
+					max="10"
+					bind:value={disasterSeverity}
+				/>
 			</div>
-
 
 			<div class="form-field">
 				<label class="checkbox-label">
@@ -323,40 +438,93 @@
 			<div class="form-field">
 				<label for="cw-seed">Seed</label>
 				<div class="seed-row">
-					<input id="cw-seed" type="number" bind:value={seed} min="0" />
-					<button class="preset-btn" onclick={() => (seed = Math.floor(Math.random() * 999999))}>Dice</button>
+					<input
+						id="cw-seed"
+						type="number"
+						bind:value={seed}
+						min="0"
+					/>
+					<button
+						class="preset-btn"
+						onclick={() =>
+							(seed = Math.floor(Math.random() * 999999))}
+						>Dice</button
+					>
 				</div>
 			</div>
 
 			<!-- Advanced terrain sliders -->
-			<button class="btn-toggle-advanced" onclick={() => (showAdvanced = !showAdvanced)}>
-				{showAdvanced ? 'Hide Advanced' : 'Show Advanced Terrain'}
+			<button
+				class="btn-toggle-advanced"
+				onclick={() => (showAdvanced = !showAdvanced)}
+			>
+				{showAdvanced ? "Hide Advanced" : "Show Advanced Terrain"}
 			</button>
 
 			{#if showAdvanced}
 				<div class="advanced-section">
 					{#if useRealEarth}
-						<div class="real-earth-notice">Using real-world geography — terrain sliders locked.</div>
+						<div class="real-earth-notice">
+							Using real-world geography — terrain sliders locked.
+						</div>
 					{/if}
 					<div class="form-field">
-						<label for="cw-continents">Continents: {continentCount}</label>
-						<input id="cw-continents" type="range" min="1" max="8" bind:value={continentCount} disabled={useRealEarth} />
+						<label for="cw-continents"
+							>Continents: {continentCount}</label
+						>
+						<input
+							id="cw-continents"
+							type="range"
+							min="1"
+							max="8"
+							bind:value={continentCount}
+							disabled={useRealEarth}
+						/>
 					</div>
 					<div class="form-field">
 						<label for="cw-ocean">Ocean: {oceanPct}%</label>
-						<input id="cw-ocean" type="range" min="30" max="90" bind:value={oceanPct} disabled={useRealEarth} />
+						<input
+							id="cw-ocean"
+							type="range"
+							min="30"
+							max="90"
+							bind:value={oceanPct}
+							disabled={useRealEarth}
+						/>
 					</div>
 					<div class="form-field">
-						<label for="cw-roughness">Roughness: {roughness}%</label>
-						<input id="cw-roughness" type="range" min="0" max="100" bind:value={roughness} disabled={useRealEarth} />
+						<label for="cw-roughness">Roughness: {roughness}%</label
+						>
+						<input
+							id="cw-roughness"
+							type="range"
+							min="0"
+							max="100"
+							bind:value={roughness}
+							disabled={useRealEarth}
+						/>
 					</div>
 					<div class="form-field">
 						<label for="cw-climate">Climate: {climate}%</label>
-						<input id="cw-climate" type="range" min="0" max="100" bind:value={climate} disabled={useRealEarth} />
+						<input
+							id="cw-climate"
+							type="range"
+							min="0"
+							max="100"
+							bind:value={climate}
+							disabled={useRealEarth}
+						/>
 					</div>
 					<div class="form-field">
 						<label for="cw-density">City Density: {density}%</label>
-						<input id="cw-density" type="range" min="0" max="100" bind:value={density} disabled={useRealEarth} />
+						<input
+							id="cw-density"
+							type="range"
+							min="0"
+							max="100"
+							bind:value={density}
+							disabled={useRealEarth}
+						/>
 					</div>
 				</div>
 			{/if}
@@ -370,7 +538,7 @@
 				onclick={handleCreateCustom}
 				disabled={creating || !worldName.trim()}
 			>
-				{creating ? 'Creating...' : 'Create World'}
+				{creating ? "Creating..." : "Create World"}
 			</button>
 		</div>
 	{/if}
@@ -484,8 +652,8 @@
 		margin-bottom: 4px;
 	}
 
-	.form-field input[type='text'],
-	.form-field input[type='number'] {
+	.form-field input[type="text"],
+	.form-field input[type="number"] {
 		width: 100%;
 		padding: 8px 12px;
 		background: rgba(31, 41, 55, 0.8);
@@ -497,8 +665,8 @@
 		box-sizing: border-box;
 	}
 
-	.form-field input[type='text']:focus,
-	.form-field input[type='number']:focus {
+	.form-field input[type="text"]:focus,
+	.form-field input[type="number"]:focus {
 		outline: none;
 		border-color: #10b981;
 	}
@@ -514,12 +682,12 @@
 		font-family: system-ui, sans-serif;
 	}
 
-	.form-field input[type='range'] {
+	.form-field input[type="range"] {
 		width: 100%;
 		accent-color: #10b981;
 	}
 
-	.form-field input[type='range']:disabled {
+	.form-field input[type="range"]:disabled {
 		opacity: 0.4;
 	}
 
@@ -538,7 +706,7 @@
 		gap: 12px;
 	}
 
-	.slider-row input[type='range'] {
+	.slider-row input[type="range"] {
 		flex: 1;
 		accent-color: #10b981;
 	}
@@ -660,5 +828,4 @@
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
-
 </style>
