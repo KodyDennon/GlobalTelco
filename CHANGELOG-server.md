@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.13.0 (2026-03-03)
+
+### Features
+
+- Improve WorldCreator UI with input constraints, slider value display, and disabled template cards for full instances. (8e4f52c)
+- enhance R2 storage client with improved error handling and logging (724a538)
+
+### Chores
+
+- update package versions to 1.8.1 in Cargo.lock (00fc4c8)
+
+
 ## 0.12.1 (2026-03-03)
 
 ### Features
