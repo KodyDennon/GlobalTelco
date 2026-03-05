@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.9.2 (2026-03-04)
+
+### Features
+
+- Enhance infrastructure rendering and revenue calculation by addressing race conditions, improving data fetching, and ensuring immediate updates for player corporations (935d1fc)
+- Refactor Rust WASM conditional compilation and introduce latest tick result synchronization to the web bridge for UI consumers, alongside a type fix for player corporation ID. (49d950a)
+
+### Chores
+
+- update package versions to 1.9.1 and optimize database event logging (73c4e04)
+
+### Other
+
+- **web:** v1.8.3 (2c45e84)
+
+
 ## 1.9.1 (2026-03-03)
 
 ### Chores
