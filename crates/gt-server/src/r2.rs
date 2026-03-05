@@ -61,8 +61,12 @@ impl R2Storage {
                     Ok(())
                 } else {
                     let error_text = String::from_utf8_lossy(response.as_slice());
-                    warn!("R2 PUT returned {code} for key '{key}': {error_text}");
-                    Err(format!("R2 PUT returned status {code}: {error_text}"))
+                    if code == 403 {
+                        warn!(\"R2 PUT returned 403 Forbidden for key '{key}'. Please check if your R2 API token has 'Edit' permissions for the bucket '{bucket_name}'.\");
+                    } else {
+                        warn!(\"R2 PUT returned {code} for key '{key}': {error_text}\");
+                    }
+                    Err(format!(\"R2 PUT returned status {code}: {error_text}\"))
                 }
             }
             Err(e) => {

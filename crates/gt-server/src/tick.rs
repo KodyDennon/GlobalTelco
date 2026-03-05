@@ -118,6 +118,10 @@ const DB_SNAPSHOT_INTERVAL_TICKS: u64 = 100;
 #[cfg(feature = "postgres")]
 const MAX_SNAPSHOTS_PER_WORLD: i64 = 5;
 
+/// Number of ticks to keep in the event log (pruned periodically)
+#[cfg(feature = "postgres")]
+const EVENT_RETENTION_TICKS: i64 = 10000;
+
 /// Client snapshot interval: push full state to clients every N ticks
 /// as a safety net. CommandBroadcast handles instant sync for commands.
 const CLIENT_SNAPSHOT_INTERVAL_TICKS: u64 = 30;
@@ -329,9 +333,18 @@ pub fn spawn_world_tick_loop(
                             .map(|(t, et, v)| (*t, et.as_str(), v))
                             .collect();
                         if let Err(e) = db.batch_insert_events(world_id, &refs).await {
-                            warn!("Failed to persist events: {e}");
+                            warn!(\"Failed to persist events: {e}\");
                         }
-                    });
+
+                        // Periodic database maintenance: prune old events
+                        if tick % DB_SNAPSHOT_INTERVAL_TICKS == 0 {
+                            match db.prune_old_events(world_id, EVENT_RETENTION_TICKS).await {
+                                Ok(count) => if count > 0 { debug!(\"Pruned {} old events for world {}\", count, world_id); },
+                                Err(e) => warn!(\"Failed to prune old events: {e}\"),
+                            }
+                        }
+                        });
+
                 }
 
                 // Update leaderboard periodically (every DB_SNAPSHOT_INTERVAL_TICKS)

@@ -443,4 +443,25 @@ impl Database {
         
         Ok(())
     }
+
+    /// Prune old events for a world, keeping only the most recent `keep_ticks`.
+    pub async fn prune_old_events(
+        &self,
+        world_id: Uuid,
+        keep_ticks: i64,
+    ) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query(
+            \"DELETE FROM event_log
+             WHERE world_id = $1
+             AND tick < (
+                 SELECT MAX(tick) - $2 FROM event_log WHERE world_id = $1
+             )\",
+        )
+        .bind(world_id)
+        .bind(keep_ticks)
+        .execute(&self.pool)
+        .await?;
+        
+        Ok(result.rows_affected())
+    }
 }
