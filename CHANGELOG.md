@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.9.4 (2026-03-04)
+
+### Bug Fixes
+
+- correct string formatting in SQL queries and logging messages (4e46312)
+- update PostgreSQL reference and bump package versions to 1.9.3 and 0.13.2 (effa553)
+
+### Other
+
+- **server:** v0.13.3 (e50793b)
+- **web:** v1.8.5 (84fc21c)
+- **server:** v0.13.2 (d5fb3b3)
+
+
 ## 1.9.3 (2026-03-04)
 
 ### Features
