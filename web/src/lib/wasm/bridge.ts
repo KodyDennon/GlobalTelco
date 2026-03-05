@@ -34,6 +34,7 @@ import type {
 } from './types';
 
 import * as tauriBridge from './tauriBridge';
+import * as workerBridge from './workerBridge';
 
 let wasmModule: any = null;
 let bridge: any = null;
@@ -360,6 +361,9 @@ export function getAllCorporations(): CorpSummary[] {
 }
 
 export function getCellCoverage(): CellCoverage[] {
+	if (_latestTickResult?.cellCoverage) {
+		try { return JSON.parse(_latestTickResult.cellCoverage); } catch { }
+	}
 	if (useNativeSim) return tauriBridge.getCachedCellCoverage();
 	try {
 		const json = bridge?.get_cell_coverage() ?? '[]';
@@ -384,15 +388,38 @@ export function getAllInfrastructure(): AllInfrastructure {
 	}
 }
 
-export function getGridCells(): GridCell[] {
-	if (useNativeSim) return tauriBridge.getCachedGridCells();
+let _cachedGridCells: GridCell[] | null = null;
+
+export async function fetchGridCells(): Promise<GridCell[]> {
+	if (_cachedGridCells) return _cachedGridCells;
+	if (useNativeSim) {
+		_cachedGridCells = tauriBridge.getCachedGridCells();
+		return _cachedGridCells;
+	}
+	if (_commandProxy) { // Worker mode
+		try {
+			const json = await workerBridge.query('get_grid_cells');
+			const data = JSON.parse(json);
+			if (data.length > 0) _cachedGridCells = data;
+			return data;
+		} catch (e) {
+			onBridgeError(e, 'fetchGridCells');
+			return [];
+		}
+	}
 	try {
 		const json = bridge?.get_grid_cells() ?? '[]';
-		return JSON.parse(json);
+		const data = JSON.parse(json);
+		if (data.length > 0) _cachedGridCells = data;
+		return data;
 	} catch (e) {
 		onBridgeError(e, 'getGridCells');
 		return [];
 	}
+}
+
+export function getGridCells(): GridCell[] {
+	return _cachedGridCells || [];
 }
 
 export function getContracts(corpId: number): ContractInfo[] {
@@ -555,6 +582,9 @@ export function getVictoryState(): VictoryInfo {
 }
 
 export function getTrafficFlows(): TrafficFlows {
+	if (_latestTickResult?.trafficFlows) {
+		try { return JSON.parse(_latestTickResult.trafficFlows); } catch { }
+	}
 	if (useNativeSim) return tauriBridge.getCachedTrafficFlows();
 	try {
 		const json = bridge?.get_traffic_flows() ?? '{"edge_flows":[],"node_flows":[],"total_served":0,"total_dropped":0,"total_demand":0,"player_served":0,"player_dropped":0,"top_congested":[]}';
@@ -680,6 +710,9 @@ export function getCorporationsTyped(): CorporationsTyped {
 // ── Phase 8: Spectrum & Frequency Management ──────────────────────────
 
 export function getSpectrumLicenses(): SpectrumLicense[] {
+	if (_latestTickResult?.spectrumLicenses) {
+		try { return JSON.parse(_latestTickResult.spectrumLicenses); } catch { }
+	}
 	if (useNativeSim) return tauriBridge.getCachedSpectrumLicenses();
 	try {
 		const json = bridge?.get_spectrum_licenses() ?? '[]';

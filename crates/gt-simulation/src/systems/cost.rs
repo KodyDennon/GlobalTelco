@@ -3,39 +3,74 @@ use crate::world::GameWorld;
 
 pub fn run(world: &mut GameWorld) {
     let tick = world.current_tick();
+    
+    // 1. Calculate and distribute all infrastructure-related costs (maintenance + insurance)
+    // We use a temporary map to accumulate costs per corporation to avoid multiple borrows.
+    let mut corp_costs: std::collections::HashMap<u64, i64> = std::collections::HashMap::new();
+
+    // Infrastructure Node Maintenance & Insurance
+    for (&node_id, node) in &world.infra_nodes {
+        let maintenance = node.maintenance_cost;
+        let insurance = if node.insured {
+            calculate_node_insurance_premium(world, node_id, node, tick)
+        } else {
+            0
+        };
+        let total_node_cost = maintenance + insurance;
+
+        if total_node_cost > 0 {
+            if let Some(ownership) = world.ownerships.get(&node_id) {
+                // Primary owner's share (100% - sum of co-owner shares)
+                let co_owner_total_share: f64 = ownership.co_owners.iter().map(|(_, s)| *s).sum();
+                let primary_share = (1.0 - co_owner_total_share).max(0.0);
+                
+                let primary_cost = (total_node_cost as f64 * primary_share) as i64;
+                *corp_costs.entry(ownership.owner).or_insert(0) += primary_cost;
+
+                for &(co_owner_id, share_pct) in &ownership.co_owners {
+                    let co_owner_cost = (total_node_cost as f64 * share_pct) as i64;
+                    *corp_costs.entry(co_owner_id).or_insert(0) += co_owner_cost;
+                }
+            }
+        }
+    }
+
+    // Infrastructure Edge Maintenance & Insurance
+    // (Insurance history is per-corp, so we need a pre-scan or use existing logic)
+    let recent_damage_map = build_recent_damage_map(world, tick);
+
+    for (&edge_id, edge) in &world.infra_edges {
+        // Skip dynamic satellite edges (they don't have maintenance)
+        if matches!(edge.edge_type, gt_common::types::EdgeType::IntraplaneISL | gt_common::types::EdgeType::CrossplaneISL | gt_common::types::EdgeType::SatelliteDownlink) {
+            continue;
+        }
+
+        let maintenance = edge.maintenance_cost;
+        let insurance = calculate_edge_insurance_premium(world, edge, &recent_damage_map, tick);
+        let total_edge_cost = maintenance + insurance;
+
+        if total_edge_cost > 0 {
+            if let Some(ownership) = world.ownerships.get(&edge_id) {
+                let co_owner_total_share: f64 = ownership.co_owners.iter().map(|(_, s)| *s).sum();
+                let primary_share = (1.0 - co_owner_total_share).max(0.0);
+                
+                let primary_cost = (total_edge_cost as f64 * primary_share) as i64;
+                *corp_costs.entry(ownership.owner).or_insert(0) += primary_cost;
+
+                for &(co_owner_id, share_pct) in &ownership.co_owners {
+                    let co_owner_cost = (total_edge_cost as f64 * share_pct) as i64;
+                    *corp_costs.entry(co_owner_id).or_insert(0) += co_owner_cost;
+                }
+            }
+        }
+    }
+
+    // 2. Add other fixed costs per corporation (salaries, debt, contracts)
     let mut corp_ids: Vec<u64> = world.corporations.keys().copied().collect();
     corp_ids.sort_unstable();
 
     for &corp_id in &corp_ids {
-        let mut total_cost: i64 = 0;
-
-        // Infrastructure maintenance costs
-        let corp_nodes = world
-            .corp_infra_nodes
-            .get(&corp_id)
-            .cloned()
-            .unwrap_or_default();
-
-        for &node_id in &corp_nodes {
-            if let Some(node) = world.infra_nodes.get(&node_id) {
-                total_cost += node.maintenance_cost;
-            }
-        }
-
-        // Edge maintenance costs
-        let edge_costs: i64 = world
-            .infra_edges
-            .values()
-            .filter(|e| e.owner == corp_id)
-            .map(|e| e.maintenance_cost)
-            .sum();
-        total_cost += edge_costs;
-
-        // ── Insurance premiums (Gap #18) ─────────────────────────────────────
-        // Only charged for insured infrastructure nodes.
-        // Premium = asset_value × 0.002 × deployment_risk × regional_disaster_risk × damage_history
-        let insurance_premium = calculate_insurance_premiums(world, corp_id, tick);
-        total_cost += insurance_premium;
+        let mut total_cost = corp_costs.get(&corp_id).copied().unwrap_or(0);
 
         // Workforce salary costs
         if let Some(wf) = world.workforces.get(&corp_id) {
@@ -85,24 +120,29 @@ pub fn run(world: &mut GameWorld) {
     }
 }
 
-/// Calculate insurance premiums for all insured infrastructure owned by `corp_id`.
-///
-/// Formula per insured node:
-///   base_premium = construction_cost × 0.002
-///   × regional_disaster_risk (from region.disaster_risk)
-///   × damage_history_modifier (1.3 if any corp edge was damaged in last 100 ticks)
-///
-/// For insured edges (edges connected to insured source/target nodes):
-///   base_premium = construction_cost × 0.002
-///   × deployment_risk (Aerial 1.5, Underground 1.0, Submarine 3.0)
-///   × regional_disaster_risk
-///   × damage_history_modifier
-fn calculate_insurance_premiums(world: &GameWorld, corp_id: u64, current_tick: u64) -> i64 {
-    // Check if any corp edge was damaged in the last 100 ticks (damage history modifier)
+fn build_recent_damage_map(world: &GameWorld, current_tick: u64) -> std::collections::HashMap<u64, bool> {
+    let mut map = std::collections::HashMap::new();
+    for (&corp_id, _) in &world.corporations {
+        let damaged = world
+            .infra_edges
+            .values()
+            .filter(|e| e.owner == corp_id)
+            .any(|e| {
+                e.last_damage_tick
+                    .map(|t| current_tick.saturating_sub(t) <= 100)
+                    .unwrap_or(false)
+            });
+        map.insert(corp_id, damaged);
+    }
+    map
+}
+
+fn calculate_node_insurance_premium(world: &GameWorld, _node_id: u64, node: &crate::components::InfraNode, current_tick: u64) -> i64 {
+    // Check recent damage for the owner
     let any_recent_damage = world
         .infra_edges
         .values()
-        .filter(|e| e.owner == corp_id)
+        .filter(|e| e.owner == node.owner)
         .any(|e| {
             e.last_damage_tick
                 .map(|t| current_tick.saturating_sub(t) <= 100)
@@ -110,92 +150,65 @@ fn calculate_insurance_premiums(world: &GameWorld, corp_id: u64, current_tick: u
         });
     let damage_history_modifier = if any_recent_damage { 1.3 } else { 1.0 };
 
-    let mut total_premium: f64 = 0.0;
+    let base = node.construction_cost as f64 * 0.002;
 
-    // Insured nodes
-    let corp_nodes = world
-        .corp_infra_nodes
-        .get(&corp_id)
-        .cloned()
-        .unwrap_or_default();
+    // Regional disaster risk
+    let region_risk = world
+        .cell_to_region
+        .get(&node.cell_index)
+        .and_then(|&region_id| world.regions.get(&region_id))
+        .map(|r| r.disaster_risk)
+        .unwrap_or(1.0);
 
-    for &node_id in &corp_nodes {
-        if let Some(node) = world.infra_nodes.get(&node_id) {
-            if !node.insured {
-                continue;
-            }
+    (base * region_risk * damage_history_modifier) as i64
+}
 
-            let base = node.construction_cost as f64 * 0.002;
+fn calculate_edge_insurance_premium(
+    world: &GameWorld, 
+    edge: &crate::components::infra_edge::InfraEdge,
+    recent_damage_map: &std::collections::HashMap<u64, bool>,
+    _current_tick: u64
+) -> i64 {
+    let src_insured = world.infra_nodes.get(&edge.source).map(|n| n.insured).unwrap_or(false);
+    let dst_insured = world.infra_nodes.get(&edge.target).map(|n| n.insured).unwrap_or(false);
 
-            // Regional disaster risk
-            let region_risk = world
-                .cell_to_region
-                .get(&node.cell_index)
-                .and_then(|&region_id| world.regions.get(&region_id))
-                .map(|r| r.disaster_risk)
-                .unwrap_or(1.0);
-
-            total_premium += base * region_risk * damage_history_modifier;
-        }
+    if !src_insured && !dst_insured {
+        return 0;
     }
 
-    // Insured edges: an edge is insured if it is owned by this corp
-    // and either its source or target node is insured.
-    for edge in world.infra_edges.values() {
-        if edge.owner != corp_id {
-            continue;
+    let damage_history_modifier = if recent_damage_map.get(&edge.owner).copied().unwrap_or(false) { 1.3 } else { 1.0 };
+    let base = edge.construction_cost as f64 * 0.002;
+
+    // Deployment risk multiplier
+    let is_submarine = matches!(
+        edge.edge_type,
+        gt_common::types::EdgeType::Submarine
+            | gt_common::types::EdgeType::SubseaTelegraphCable
+            | gt_common::types::EdgeType::SubseaFiberCable
+    );
+    let deployment_risk = if is_submarine {
+        3.0
+    } else {
+        match edge.deployment {
+            DeploymentMethod::Aerial => 1.5,
+            DeploymentMethod::Underground => 1.0,
         }
+    };
 
-        let src_insured = world
-            .infra_nodes
-            .get(&edge.source)
-            .map(|n| n.insured)
-            .unwrap_or(false);
-        let dst_insured = world
-            .infra_nodes
-            .get(&edge.target)
-            .map(|n| n.insured)
-            .unwrap_or(false);
+    // Regional disaster risk
+    let region_risk = world
+        .infra_nodes
+        .get(&edge.source)
+        .and_then(|n| world.cell_to_region.get(&n.cell_index))
+        .or_else(|| {
+            world
+                .infra_nodes
+                .get(&edge.target)
+                .and_then(|n| world.cell_to_region.get(&n.cell_index))
+        })
+        .and_then(|&region_id| world.regions.get(&region_id))
+        .map(|r| r.disaster_risk)
+        .unwrap_or(1.0);
 
-        if !src_insured && !dst_insured {
-            continue;
-        }
-
-        let base = edge.construction_cost as f64 * 0.002;
-
-        // Deployment risk multiplier
-        let is_submarine = matches!(
-            edge.edge_type,
-            gt_common::types::EdgeType::Submarine
-                | gt_common::types::EdgeType::SubseaTelegraphCable
-                | gt_common::types::EdgeType::SubseaFiberCable
-        );
-        let deployment_risk = if is_submarine {
-            3.0
-        } else {
-            match edge.deployment {
-                DeploymentMethod::Aerial => 1.5,
-                DeploymentMethod::Underground => 1.0,
-            }
-        };
-
-        // Regional disaster risk (use source node's region, fall back to target)
-        let region_risk = world
-            .infra_nodes
-            .get(&edge.source)
-            .and_then(|n| world.cell_to_region.get(&n.cell_index))
-            .or_else(|| {
-                world
-                    .infra_nodes
-                    .get(&edge.target)
-                    .and_then(|n| world.cell_to_region.get(&n.cell_index))
-            })
-            .and_then(|&region_id| world.regions.get(&region_id))
-            .map(|r| r.disaster_risk)
-            .unwrap_or(1.0);
-
-        total_premium += base * deployment_risk * region_risk * damage_history_modifier;
-    }
-
-    total_premium as i64
+    (base * deployment_risk * region_risk * damage_history_modifier) as i64
 }

@@ -5,9 +5,9 @@ use gt_common::types::EntityId;
 pub fn run(world: &mut GameWorld) {
     let tick = world.current_tick();
 
-    // Intel Decay: Reduce all intel levels periodically
-    // (spy_corp, target_corp) → intel level (0..3)
-    if tick.is_multiple_of(1000) {
+    // Intel Decay: Reduce all intel levels periodically (matches Doc 3, Section 5)
+    // Full (3) -> Basic (1) after 50 ticks, Basic (1) -> None (0) after 50 ticks
+    if tick.is_multiple_of(50) {
         let mut keys_to_decay = Vec::new();
         for (key, &level) in &world.intel_levels {
             if level > 0 {
@@ -16,7 +16,13 @@ pub fn run(world: &mut GameWorld) {
         }
         for key in keys_to_decay {
             if let Some(level) = world.intel_levels.get_mut(&key) {
-                *level -= 1;
+                // If Full (3) or High (2), drop to Basic (1)
+                // If Basic (1), drop to None (0)
+                if *level > 1 {
+                    *level = 1;
+                } else {
+                    *level = 0;
+                }
             }
         }
     }

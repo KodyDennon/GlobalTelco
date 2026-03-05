@@ -58,6 +58,16 @@ pub enum TransitPermission {
     Blocked,
 }
 
+/// Attribution of a specific traffic flow to corporations based on network contribution.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PathAttribution {
+    pub source_city: EntityId,
+    pub dest_city: EntityId,
+    pub traffic: f64,
+    /// corp_id -> number of nodes contributed to this path
+    pub corp_hops: std::collections::HashMap<EntityId, u32>,
+}
+
 /// Aggregated traffic flow data stored on GameWorld.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TrafficMatrix {
@@ -84,4 +94,7 @@ pub struct TrafficMatrix {
     /// Per-contract traffic flow (contract_id → traffic units routed through it)
     #[serde(default)]
     pub contract_traffic: std::collections::HashMap<EntityId, f64>,
+    /// Detailed path attribution for alliance revenue sharing
+    #[serde(default)]
+    pub path_attribution: Vec<PathAttribution>,
 }

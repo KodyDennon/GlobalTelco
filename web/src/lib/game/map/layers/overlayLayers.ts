@@ -260,6 +260,70 @@ export function createOverlayLayers(opts: {
         }
     }
 
+    // ── Congestion heatmap overlay ───────────────────────────────────────────
+    if (activeOverlay === 'congestion') {
+        if (bridge.isInitialized()) {
+            const allInfra = bridge.getAllInfrastructure();
+            const congestionPoints = allInfra.nodes
+                .filter(n => n.utilization > 0.1)
+                .map(n => ({
+                    position: [n.x, n.y],
+                    utilization: n.utilization,
+                    color: [
+                        Math.floor(Math.min(1, n.utilization * 1.5) * 255),
+                        Math.floor(Math.max(0, 1 - n.utilization) * 200),
+                        0,
+                        160
+                    ] as [number, number, number, number]
+                }));
+
+            if (congestionPoints.length > 0) {
+                layers.push(new ScatterplotLayer({
+                    id: 'overlay-congestion-heatmap',
+                    data: congestionPoints,
+                    getPosition: (d: any) => d.position,
+                    getFillColor: (d: any) => d.color,
+                    getRadius: overlayRadius * 1.5,
+                    radiusMinPixels: 8,
+                    pickable: false,
+                    parameters: { depthTest: false }
+                }));
+            }
+        }
+    }
+
+    // ── Traffic density overlay ──────────────────────────────────────────────
+    if (activeOverlay === 'traffic') {
+        if (bridge.isInitialized()) {
+            const trafficFlows = bridge.getTrafficFlows();
+            const trafficPoints = trafficFlows.node_flows
+                .filter(f => f.utilization > 0.05)
+                .map(f => {
+                    const node = bridge.getAllInfrastructure().nodes.find(n => n.id === f.id);
+                    if (!node) return null;
+                    return {
+                        position: [node.x, node.y],
+                        utilization: f.utilization,
+                        color: [0, 255, 255, Math.floor(f.utilization * 200)] as [number, number, number, number]
+                    };
+                })
+                .filter(p => p !== null);
+
+            if (trafficPoints.length > 0) {
+                layers.push(new ScatterplotLayer({
+                    id: 'overlay-traffic-density',
+                    data: trafficPoints,
+                    getPosition: (d: any) => d.position,
+                    getFillColor: (d: any) => d.color,
+                    getRadius: overlayRadius * 2,
+                    radiusMinPixels: 10,
+                    pickable: false,
+                    parameters: { depthTest: false }
+                }));
+            }
+        }
+    }
+
     return layers;
 }
 

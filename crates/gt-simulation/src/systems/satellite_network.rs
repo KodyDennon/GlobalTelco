@@ -16,6 +16,8 @@ pub fn run(world: &mut GameWorld) {
         if let Some(edge) = world.infra_edges.remove(&edge_id) {
             world.network.remove_edge(edge.source, edge.target);
         }
+        // Fix: Also remove ownership component to prevent leak
+        world.ownerships.remove(&edge_id);
     }
 
     // Collect operational satellites

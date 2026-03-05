@@ -8,7 +8,10 @@
 
 use crate::components::ContractStatus;
 use crate::world::GameWorld;
-use gt_common::types::{EntityId, NetworkTier, NodeType, TrafficDemand, TrafficMatrix, TransitPermission};
+use gt_common::types::{
+    EntityId, NetworkTier, NodeType, PathAttribution, TrafficDemand, TrafficMatrix,
+    TransitPermission,
+};
 use std::collections::HashMap;
 
 // ─── Public entry point ───────────────────────────────────────────────────────
@@ -480,6 +483,7 @@ fn recompute_traffic_matrix_if_needed(world: &mut GameWorld) {
         corp_traffic_served: HashMap::new(),
         corp_traffic_dropped: HashMap::new(),
         contract_traffic: HashMap::new(),
+        path_attribution: Vec::new(),
     };
 }
 
@@ -553,6 +557,8 @@ struct TrafficAccumulator {
     corp_dropped: HashMap<u64, f64>,
     /// Per-contract traffic flow (contract_id → traffic units routed through it)
     contract_traffic: HashMap<u64, f64>,
+    /// Per-path attribution for alliance revenue splitting.
+    path_attribution: Vec<PathAttribution>,
 }
 
 impl TrafficAccumulator {
@@ -565,12 +571,22 @@ impl TrafficAccumulator {
             corp_served: HashMap::new(),
             corp_dropped: HashMap::new(),
             contract_traffic: HashMap::new(),
+            path_attribution: Vec::new(),
         }
     }
 
     fn record_served(&mut self, amount: f64, owner: u64) {
         self.total_served += amount;
         *self.corp_served.entry(owner).or_insert(0.0) += amount;
+    }
+
+    fn record_path_attribution(&mut self, src: EntityId, dst: EntityId, traffic: f64, corp_hops: HashMap<u64, u32>) {
+        self.path_attribution.push(PathAttribution {
+            source_city: src,
+            dest_city: dst,
+            traffic,
+            corp_hops,
+        });
     }
 
     fn record_dropped(&mut self, amount: f64, owner: Option<u64>) {
@@ -722,8 +738,11 @@ fn route_od_pair(
 
     match path {
         Some(ref p) if p.len() >= 2 => {
-            let served = push_traffic_on_path(p, od.demand, ctx, accum, &world.network);
+            let (served, corp_hops) = push_traffic_on_path(p, od.demand, ctx, accum, &world.network);
             accum.record_served(served, src_owner);
+            if served > 0.0 {
+                accum.record_path_attribution(od.source_city, od.dest_city, served, corp_hops);
+            }
             if served < od.demand {
                 accum.record_dropped(od.demand - served, Some(src_owner));
             }
@@ -761,8 +780,11 @@ fn route_external_traffic(
 
     match best_path {
         Some(ref p) if p.len() >= 2 => {
-            let served = push_traffic_on_path(p, demand, ctx, accum, &world.network);
+            let (served, corp_hops) = push_traffic_on_path(p, demand, ctx, accum, &world.network);
             accum.record_served(served, owner);
+            if served > 0.0 {
+                accum.record_path_attribution(city_id, 0, served, corp_hops); // 0 = external
+            }
             if served < demand {
                 accum.record_dropped(demand - served, Some(owner));
             }
@@ -771,6 +793,10 @@ fn route_external_traffic(
             // Access node is a backbone node
             *accum.node_load.entry(access_node).or_insert(0.0) += demand;
             accum.record_served(demand, owner);
+            
+            let mut corp_hops = HashMap::new();
+            corp_hops.insert(owner, 1);
+            accum.record_path_attribution(city_id, 0, demand, corp_hops);
         }
         None => {
             accum.record_dropped(demand, Some(owner));
@@ -779,22 +805,28 @@ fn route_external_traffic(
 }
 
 /// Push traffic along a path, respecting capacity and tracking cross-corp contract usage.
-/// Returns traffic actually served.
+/// Returns (traffic actually served, corp_hops).
 fn push_traffic_on_path(
     path: &[u64],
     demand: f64,
     ctx: &RoutingContext,
     accum: &mut TrafficAccumulator,
     network: &gt_infrastructure::NetworkGraph,
-) -> f64 {
+) -> (f64, HashMap<u64, u32>) {
     // Find bottleneck
     let mut min_remaining = demand;
+    let mut corp_hops = HashMap::new();
 
     for &nid in path {
         let cap = ctx.node_cap.get(&nid).copied().unwrap_or(0.0);
         let current = accum.node_load.get(&nid).copied().unwrap_or(0.0);
         let remaining = (cap * 1.2 - current).max(0.0);
         min_remaining = min_remaining.min(remaining);
+
+        // Track hops per corporation
+        if let Some(&owner) = ctx.node_owners.get(&nid) {
+            *corp_hops.entry(owner).or_insert(0) += 1;
+        }
     }
 
     for i in 0..path.len() - 1 {
@@ -813,7 +845,7 @@ fn push_traffic_on_path(
 
     let served = min_remaining.min(demand).max(0.0);
     if served <= 0.0 {
-        return 0.0;
+        return (0.0, corp_hops);
     }
 
     // Apply load and track cross-corp boundary crossings
@@ -836,7 +868,7 @@ fn push_traffic_on_path(
         }
     }
 
-    served
+    (served, corp_hops)
 }
 
 // ─── Apply Results ────────────────────────────────────────────────────────────
@@ -864,6 +896,7 @@ fn apply_loads(world: &mut GameWorld, accum: &TrafficAccumulator) {
     world.traffic_matrix.corp_traffic_served = accum.corp_served.clone();
     world.traffic_matrix.corp_traffic_dropped = accum.corp_dropped.clone();
     world.traffic_matrix.contract_traffic = accum.contract_traffic.clone();
+    world.traffic_matrix.path_attribution = accum.path_attribution.clone();
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────

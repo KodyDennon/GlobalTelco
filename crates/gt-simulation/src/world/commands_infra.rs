@@ -745,23 +745,64 @@ impl GameWorld {
     pub(super) fn cmd_upgrade_node(&mut self, entity: EntityId) -> gt_common::protocol::CommandResult {
         use gt_common::protocol::{CommandResult, DeltaOp};
 
-        let corp_id = match self.infra_nodes.get(&entity) {
+        let _node_owner = match self.infra_nodes.get(&entity) {
             Some(n) => n.owner,
             None => return CommandResult::fail("Node not found"),
         };
 
+        let player_corp = match self.player_corp_id {
+            Some(id) => id,
+            None => return CommandResult::fail("Not authenticated"),
+        };
+
+        // 1. Check Ownership & Co-ownership
+        let ownership = match self.ownerships.get(&entity) {
+            Some(o) => o,
+            None => return CommandResult::fail("Ownership data missing"),
+        };
+
+        // Must have some stake to propose upgrade
+        let has_stake = ownership.owner == player_corp || ownership.co_owners.iter().any(|(id, _)| *id == player_corp);
+        if !has_stake {
+            return CommandResult::fail("You do not have an ownership stake in this node");
+        }
+
+        // 2. Co-ownership Voting logic
+        if !ownership.co_owners.is_empty() {
+            // Proposed for co-owned node: start a vote
+            if self.pending_upgrade_votes.contains_key(&entity) {
+                return CommandResult::fail("Upgrade vote already in progress for this node");
+            }
+
+            let mut votes = std::collections::HashMap::new();
+            votes.insert(player_corp, true); // Proposer automatically votes YES
+
+            self.pending_upgrade_votes.insert(entity, (player_corp, votes, self.tick));
+
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::GlobalNotification {
+                    message: format!("Upgrade proposed for co-owned node {}. Voting started.", entity),
+                    level: "info".to_string(),
+                },
+            );
+
+            return CommandResult::ok();
+        }
+
+        // 3. Sole ownership: execute immediate upgrade
         let upgrade_cost = match self.infra_nodes.get(&entity) {
             Some(n) => n.construction_cost / 2,
             None => return CommandResult::fail("Node not found"),
         };
 
-        if let Some(fin) = self.financials.get(&corp_id) {
+        if let Some(fin) = self.financials.get(&player_corp) {
             if fin.cash < upgrade_cost {
                 return CommandResult::fail("Insufficient funds");
             }
         }
 
-        if let Some(fin) = self.financials.get_mut(&corp_id) {
+        if let Some(fin) = self.financials.get_mut(&player_corp) {
             fin.cash -= upgrade_cost;
         }
 

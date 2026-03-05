@@ -515,6 +515,7 @@ export async function initGame(config?: Partial<import('$lib/wasm/types').WorldC
 
 	// Read initial store values from main-thread WASM BEFORE handing off to worker.
 	updateStores();
+	await bridge.fetchGridCells();
 
 	// Try to offload simulation to a Web Worker (non-Tauri, browser only)
 	if (workerBridge.isSupported() && !bridge.isNativeSim()) {
@@ -586,6 +587,7 @@ export async function initMultiplayer(saveData: string) {
 	}
 
 	updateStores();
+	await bridge.fetchGridCells();
 
 	// Listen for corp delta updates from WebSocket TickUpdate messages.
 	// These arrive every server tick and carry lightweight financial deltas.

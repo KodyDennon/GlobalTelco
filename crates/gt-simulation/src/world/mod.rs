@@ -102,9 +102,13 @@ pub struct GameWorld {
     pub active_submarine_builds: HashMap<EntityId, EntityId>,
 
     // Co-ownership proposals: node_id → (proposer_corp, target_corp, share_pct)
-    // Pending until target corp accepts or rejects
     #[serde(default)]
     pub co_ownership_proposals: HashMap<EntityId, (EntityId, EntityId, f64)>,
+
+    // Pending infrastructure upgrade votes: node_id → (proposer_corp, votes_map, start_tick)
+    // votes_map: corp_id → boolean (accept/reject)
+    #[serde(default)]
+    pub pending_upgrade_votes: HashMap<EntityId, (EntityId, HashMap<EntityId, bool>, u64)>,
 
     // Building footprints: entity_id → BuildingFootprint
     // Per-city buildings that serve as demand points for subscriber revenue.
@@ -299,6 +303,7 @@ impl GameWorld {
             system_times: HashMap::new(),
             dirty_flags: u64::MAX, // all dirty on first tick
             intel_levels: HashMap::new(),
+            pending_upgrade_votes: HashMap::new(),
             cell_to_parcel: HashMap::new(),
             cell_to_region: HashMap::new(),
             cell_to_city: HashMap::new(),

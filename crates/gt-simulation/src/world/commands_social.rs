@@ -326,7 +326,26 @@ impl GameWorld {
             None => return,
         };
 
-        // Check the target corp is a co-owner of this node
+        // 1. Regulatory Check: Anti-Monopoly Threshold
+        if let Some(node_comp) = self.infra_nodes.get(&node) {
+            if let Some(&region_id) = self.cell_to_region.get(&node_comp.cell_index) {
+                let market_share = self.calculate_regional_market_share(region_id, corp_id);
+                
+                // Block if > 50% market share (Section 4 of Docs)
+                if market_share > 0.5 {
+                    self.event_queue.push(
+                        self.tick,
+                        gt_common::events::GameEvent::GlobalNotification {
+                            message: "Regulatory Block: Your market share in this region exceeds 50%. Acquisitions are restricted.".to_string(),
+                            level: "warning".to_string(),
+                        },
+                    );
+                    return;
+                }
+            }
+        }
+
+        // 2. Existing validation: check the target corp is a co-owner
         let is_co_owner = self
             .ownerships
             .get(&node)
@@ -342,7 +361,7 @@ impl GameWorld {
             }
         }
 
-        // Execute buyout
+        // 3. Execute buyout
         if let Some(fin) = self.financials.get_mut(&corp_id) {
             fin.cash -= price;
         }
@@ -364,54 +383,129 @@ impl GameWorld {
         );
     }
 
+    /// Calculate corporation's market share in a region (based on node count)
+    fn calculate_regional_market_share(&self, region_id: EntityId, corp_id: EntityId) -> f64 {
+        let mut total_nodes = 0;
+        let mut corp_nodes = 0;
+
+        for node in self.infra_nodes.values() {
+            if let Some(&r_id) = self.cell_to_region.get(&node.cell_index) {
+                if r_id == region_id {
+                    total_nodes += 1;
+                    if node.owner == corp_id {
+                        corp_nodes += 1;
+                    }
+                }
+            }
+        }
+
+        if total_nodes == 0 { 0.0 } else { corp_nodes as f64 / total_nodes as f64 }
+    }
+
     pub(super) fn cmd_vote_upgrade(&mut self, node: EntityId, approve: bool) {
         let corp_id = match self.player_corp_id {
             Some(id) => id,
             None => return,
         };
 
-        // Verify the voting corp has ownership stake in this node
-        let has_majority = if let Some(ownership) = self.ownerships.get(&node) {
-            if ownership.owner == corp_id {
-                // Primary owner — majority by default (owns 1.0 - sum of co-owner shares)
-                let co_owner_total: f64 = ownership.co_owners.iter().map(|(_, s)| *s).sum();
-                (1.0 - co_owner_total) > 0.5
-            } else {
-                // Co-owner — check their share
-                ownership
-                    .co_owners
-                    .iter()
-                    .find(|(id, _)| *id == corp_id)
-                    .map(|(_, share)| *share > 0.5)
-                    .unwrap_or(false)
-            }
-        } else {
-            return;
+        // Check if there is a pending vote for this node
+        let (_proposer, votes, _start_tick) = match self.pending_upgrade_votes.get_mut(&node) {
+            Some(v) => v,
+            None => return,
         };
 
-        if !has_majority {
-            self.event_queue.push(
-                self.tick,
-                gt_common::events::GameEvent::GlobalNotification {
-                    message: "Upgrade vote failed: insufficient ownership stake (need >50%)"
-                        .to_string(),
-                    level: "warning".to_string(),
-                },
-            );
-            return;
+        // Register the vote
+        votes.insert(corp_id, approve);
+
+        // Check if we have reached a resolution
+        let mut total_share_voted = 0.0;
+        let mut approval_share = 0.0;
+
+        if let Some(ownership) = self.ownerships.get(&node) {
+            let co_owner_total: f64 = ownership.co_owners.iter().map(|(_, s)| *s).sum();
+            let primary_share = (1.0 - co_owner_total).max(0.0);
+
+            // Add primary owner's vote
+            if let Some(&vote) = votes.get(&ownership.owner) {
+                total_share_voted += primary_share;
+                if vote { approval_share += primary_share; }
+            }
+
+            // Add co-owners' votes
+            for &(co_id, share) in &ownership.co_owners {
+                if let Some(&vote) = votes.get(&co_id) {
+                    total_share_voted += share;
+                    if vote { approval_share += share; }
+                }
+            }
         }
 
-        if approve {
-            self.cmd_upgrade_node(node);
+        // Majority (>50% of total ownership) required to approve
+        if approval_share > 0.5 {
+            // PASS: Execute upgrade
+            self.pending_upgrade_votes.remove(&node);
+            self.execute_shared_upgrade(node);
+            
             self.event_queue.push(
                 self.tick,
                 gt_common::events::GameEvent::UpgradeVotePassed { node },
             );
-        } else {
+        } else if (total_share_voted - approval_share) >= 0.5 {
+            // FAIL: Rejected by majority
+            self.pending_upgrade_votes.remove(&node);
             self.event_queue.push(
                 self.tick,
                 gt_common::events::GameEvent::UpgradeVoteRejected { node },
             );
         }
+    }
+
+    /// Internal: Execute node upgrade and split costs among all owners.
+    fn execute_shared_upgrade(&mut self, node_id: EntityId) {
+        let node_data = match self.infra_nodes.get(&node_id) {
+            Some(n) => n,
+            None => return,
+        };
+        let upgrade_cost = node_data.construction_cost / 2;
+
+        // Split cost among all owners
+        if let Some(ownership) = self.ownerships.get(&node_id) {
+            let co_owner_total: f64 = ownership.co_owners.iter().map(|(_, s)| *s).sum();
+            let primary_share = (1.0 - co_owner_total).max(0.0);
+
+            // Debit primary owner
+            if let Some(fin) = self.financials.get_mut(&ownership.owner) {
+                fin.cash -= (upgrade_cost as f64 * primary_share) as i64;
+            }
+
+            // Debit co-owners
+            for &(co_id, share) in &ownership.co_owners {
+                if let Some(fin) = self.financials.get_mut(&co_id) {
+                    fin.cash -= (upgrade_cost as f64 * share) as i64;
+                }
+            }
+        }
+
+        // Apply physical upgrade
+        if let Some(node) = self.infra_nodes.get_mut(&node_id) {
+            node.max_throughput *= 1.5;
+            node.reliability = (node.reliability + 0.05).min(1.0);
+        }
+        if let Some(cap) = self.capacities.get_mut(&node_id) {
+            cap.max_throughput *= 1.5;
+        }
+        if let Some(health) = self.healths.get_mut(&node_id) {
+            health.condition = 1.0;
+        }
+
+        let _node_type = self.infra_nodes.get(&node_id).map(|n| n.node_type).unwrap();
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::InfrastructureDamaged { // Re-using damaged event for condition reset? 
+                // Better use NodeBuilt or similar if no NodeUpgraded exists in GameEvent
+                entity: node_id,
+                damage: -1.0, // Negative damage = repair/upgrade
+            }
+        );
     }
 }

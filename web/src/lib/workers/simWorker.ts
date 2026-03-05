@@ -92,6 +92,11 @@ self.onmessage = async (e: MessageEvent) => {
 				// Collect full infrastructure JSON for rendering fallback
 				const allInfraJson = bridge.get_all_infrastructure();
 
+				// Collect additional data for overlays
+				const trafficFlowsJson = bridge.get_traffic_flows();
+				const cellCoverageJson = bridge.get_cell_coverage();
+				const spectrumLicensesJson = bridge.get_spectrum_licenses();
+
 				// Collect player corp data for main thread
 				let playerCorpJson: string | null = null;
 				try {
@@ -108,6 +113,9 @@ self.onmessage = async (e: MessageEvent) => {
 					corps,
 					info: infoJson,
 					allInfra: allInfraJson,
+					trafficFlows: trafficFlowsJson,
+					cellCoverage: cellCoverageJson,
+					spectrumLicenses: spectrumLicensesJson,
 					playerCorp: playerCorpJson,
 					notifications: notificationsJson,
 					tick,
@@ -122,12 +130,18 @@ self.onmessage = async (e: MessageEvent) => {
 				// Also return latest state to ensure instant feedback on main thread
 				const allInfraJson = bridge.get_all_infrastructure();
 				const infoJson = bridge.get_world_info();
+				const trafficFlowsJson = bridge.get_traffic_flows();
+				const cellCoverageJson = bridge.get_cell_coverage();
+				const spectrumLicensesJson = bridge.get_spectrum_licenses();
 
 				self.postMessage({
 					type: 'command-result',
 					result,
 					allInfra: allInfraJson,
 					info: infoJson,
+					trafficFlows: trafficFlowsJson,
+					cellCoverage: cellCoverageJson,
+					spectrumLicenses: spectrumLicensesJson,
 					seq: msg.seq,
 				});
 				break;

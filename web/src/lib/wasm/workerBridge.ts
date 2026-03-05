@@ -37,6 +37,9 @@ export interface TickResult {
 	corps: CorporationsTyped | null;
 	info: string;
 	allInfra: string | null;
+	trafficFlows: string | null;
+	cellCoverage: string | null;
+	spectrumLicenses: string | null;
 	playerCorp: string | null;
 	notifications: string | null;
 	tick: number;
@@ -84,6 +87,9 @@ function handleWorkerMessage(e: MessageEvent) {
 				corps: msg.corps,
 				info: msg.info,
 				allInfra: msg.allInfra ?? null,
+				trafficFlows: msg.trafficFlows ?? null,
+				cellCoverage: msg.cellCoverage ?? null,
+				spectrumLicenses: msg.spectrumLicenses ?? null,
 				playerCorp: msg.playerCorp ?? null,
 				notifications: msg.notifications ?? null,
 				tick: msg.tick,
@@ -105,6 +111,9 @@ function handleWorkerMessage(e: MessageEvent) {
 						...(latestTickResult || {}),
 						allInfra: msg.allInfra,
 						info: msg.info,
+						trafficFlows: msg.trafficFlows ?? latestTickResult?.trafficFlows ?? null,
+						cellCoverage: msg.cellCoverage ?? latestTickResult?.cellCoverage ?? null,
+						spectrumLicenses: msg.spectrumLicenses ?? latestTickResult?.spectrumLicenses ?? null,
 						playerCorp: msg.playerCorp ?? latestTickResult?.playerCorp ?? null,
 						notifications: msg.result, // result is the notifications JSON for commands
 						tick: latestTickResult?.tick ?? 0,

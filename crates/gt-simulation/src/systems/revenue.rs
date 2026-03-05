@@ -28,29 +28,103 @@ pub fn run(world: &mut GameWorld) {
         edge.revenue_generated = 0;
     }
 
+    // Temporary map to accumulate revenue per corporation
+    let mut corp_revenues: std::collections::HashMap<u64, i64> = std::collections::HashMap::new();
+    let mut node_revenue_updates: Vec<(u64, i64)> = Vec::new();
+    let mut edge_revenue_updates: Vec<(u64, i64)> = Vec::new();
+
+    // 1. Calculate Node Traffic Revenue
+    for (&node_id, node) in &world.infra_nodes {
+        let health = world.healths.get(&node_id).map(|h| h.condition).unwrap_or(1.0);
+        if world.constructions.contains_key(&node_id) || health < 0.1 {
+            continue;
+        }
+
+        let traffic = world.traffic_matrix.node_traffic.get(&node_id).copied().unwrap_or(0.0);
+        if traffic <= 0.0 { continue; }
+
+        let rate = node.node_type.traffic_revenue_rate();
+        let quality = quality_multiplier(world, node_id, health);
+        let total_node_revenue = (traffic * rate * quality) as i64;
+
+        if total_node_revenue > 0 {
+            // Track total generated for display
+            node_revenue_updates.push((node_id, total_node_revenue));
+
+            // Distribute to co-owners
+            if let Some(ownership) = world.ownerships.get(&node_id) {
+                let co_owner_total_share: f64 = ownership.co_owners.iter().map(|(_, s)| *s).sum();
+                let primary_share = (1.0 - co_owner_total_share).max(0.0);
+                
+                *corp_revenues.entry(ownership.owner).or_insert(0) += (total_node_revenue as f64 * primary_share) as i64;
+                for &(co_owner_id, share_pct) in &ownership.co_owners {
+                    *corp_revenues.entry(co_owner_id).or_insert(0) += (total_node_revenue as f64 * share_pct) as i64;
+                }
+            }
+        }
+    }
+
+    // 2. Calculate Edge Traffic Revenue (Transit Fees)
+    for (&edge_id, edge) in &world.infra_edges {
+        let traffic = world.traffic_matrix.edge_traffic.get(&edge_id).copied().unwrap_or(0.0);
+        if traffic <= 0.0 { continue; }
+
+        let rate = edge.edge_type.traffic_revenue_rate();
+        let total_edge_revenue = (traffic * rate * edge.health) as i64;
+
+        if total_edge_revenue > 0 {
+            edge_revenue_updates.push((edge_id, total_edge_revenue));
+
+            if let Some(ownership) = world.ownerships.get(&edge_id) {
+                let co_owner_total_share: f64 = ownership.co_owners.iter().map(|(_, s)| *s).sum();
+                let primary_share = (1.0 - co_owner_total_share).max(0.0);
+                
+                *corp_revenues.entry(ownership.owner).or_insert(0) += (total_edge_revenue as f64 * primary_share) as i64;
+                for &(co_owner_id, share_pct) in &ownership.co_owners {
+                    *corp_revenues.entry(co_owner_id).or_insert(0) += (total_edge_revenue as f64 * share_pct) as i64;
+                }
+            }
+        }
+    }
+
+    // Apply accumulated updates
+    for (node_id, rev) in node_revenue_updates {
+        if let Some(n) = world.infra_nodes.get_mut(&node_id) {
+            n.revenue_generated += rev;
+        }
+    }
+    for (edge_id, rev) in edge_revenue_updates {
+        if let Some(e) = world.infra_edges.get_mut(&edge_id) {
+            e.revenue_generated += rev;
+        }
+    }
+
+    // 3. Subscription & Contract Revenue (Iteration per corp is fine here as they are corp-centric)
     let mut corp_ids: Vec<u64> = world.corporations.keys().copied().collect();
     corp_ids.sort_unstable();
 
     for &corp_id in &corp_ids {
-        let mut total_revenue: i64 = 0;
+        let mut extra_revenue = 0;
+        extra_revenue += calculate_contract_revenue(world, corp_id);
+        extra_revenue += calculate_coverage_revenue(world, corp_id);
+        extra_revenue += calculate_building_revenue(world, corp_id);
+        
+        *corp_revenues.entry(corp_id).or_insert(0) += extra_revenue;
+    }
 
-        total_revenue += calculate_node_traffic_revenue(world, corp_id);
-        total_revenue += calculate_edge_traffic_revenue(world, corp_id);
-        total_revenue += calculate_contract_revenue(world, corp_id);
-        total_revenue += calculate_coverage_revenue(world, corp_id);
-        total_revenue += calculate_building_revenue(world, corp_id);
-
+    // 4. Apply all collected revenue to financials
+    for (&corp_id, &amount) in &corp_revenues {
         if let Some(fin) = world.financials.get_mut(&corp_id) {
-            fin.revenue_per_tick = total_revenue;
-            fin.cash += total_revenue;
+            fin.revenue_per_tick = amount;
+            fin.cash += amount;
         }
 
-        if total_revenue > 0 {
+        if amount > 0 {
             world.event_queue.push(
                 tick,
                 gt_common::events::GameEvent::RevenueEarned {
                     corporation: corp_id,
-                    amount: total_revenue,
+                    amount,
                 },
             );
         }
@@ -604,97 +678,71 @@ fn calculate_transit_settlements(world: &mut GameWorld, tick: u64) {
 // ─── Alliance Traffic Revenue Sharing ────────────────────────────────────────
 
 /// When alliance members' traffic flows through each other's network,
-/// the transit provider earns reduced revenue at the alliance's revenue_share_pct rate.
-fn calculate_alliance_traffic_revenue(world: &mut GameWorld, tick: u64) {
-    use crate::systems::utilization::{build_transit_permissions, ordered_pair};
-    use gt_common::types::TransitPermission;
+/// the transit provider earns a share of the total path revenue
+/// based on their node hop contribution.
+fn calculate_alliance_traffic_revenue(world: &mut GameWorld, _tick: u64) {
+    let attributions = world.traffic_matrix.path_attribution.clone();
+    
+    // Group alliances by member for fast lookup
+    let mut corp_to_alliance: std::collections::HashMap<u64, &crate::components::alliance::Alliance> = 
+        std::collections::HashMap::new();
+    for alliance in world.alliances.values() {
+        for &member_id in &alliance.member_corp_ids {
+            corp_to_alliance.insert(member_id, alliance);
+        }
+    }
 
-    let transit_perms = build_transit_permissions(world);
+    let mut alliance_settlements: std::collections::HashMap<u64, i64> = std::collections::HashMap::new();
 
-    // Build node ownership map
-    let node_owners: std::collections::HashMap<u64, u64> = world
-        .infra_nodes
-        .iter()
-        .filter(|(id, _)| !world.constructions.contains_key(id))
-        .map(|(&id, node)| (id, node.owner))
-        .collect();
-
-    // For each edge with traffic, check if it crosses an alliance boundary
-    let edge_traffic = world.traffic_matrix.edge_traffic.clone();
-    let mut alliance_payments: Vec<(u64, u64, i64)> = Vec::new(); // (provider, consumer, amount)
-
-    let mut edge_ids: Vec<u64> = edge_traffic.keys().copied().collect();
-    edge_ids.sort_unstable();
-
-    for edge_id in edge_ids {
-        let traffic = match edge_traffic.get(&edge_id) {
-            Some(&t) if t > 0.0 => t,
-            _ => continue,
-        };
-
-        let edge = match world.infra_edges.get(&edge_id) {
-            Some(e) => e,
-            None => continue,
-        };
-
-        let owner_a = node_owners.get(&edge.source).copied().unwrap_or(0);
-        let owner_b = node_owners.get(&edge.target).copied().unwrap_or(0);
-
-        if owner_a == owner_b || owner_a == 0 || owner_b == 0 {
+    for attr in attributions {
+        if attr.traffic <= 0.0 || attr.corp_hops.len() < 2 {
             continue;
         }
 
-        let (a, b) = ordered_pair(owner_a, owner_b);
-        let (perm, _) = transit_perms
-            .get(&(a, b))
-            .copied()
-            .unwrap_or((TransitPermission::Blocked, None));
+        // Find the \"Originator\" (primary owner of the source city)
+        let originator = world.cities.get(&attr.source_city)
+            .and_then(|_c| world.ownerships.get(&attr.source_city).map(|o| o.owner))
+            .unwrap_or(0);
 
-        if let TransitPermission::Alliance { revenue_share_pct } = perm {
-            // Edge owner earns reduced revenue from alliance traffic
-            let edge_owner = edge.owner;
-            let other = if edge_owner == owner_a { owner_b } else { owner_a };
+        
+        if originator == 0 { continue; }
 
-            let rate = edge.edge_type.traffic_revenue_rate();
-            let alliance_revenue = (traffic * rate * revenue_share_pct) as i64;
+        let alliance = match corp_to_alliance.get(&originator) {
+            Some(a) => a,
+            None => continue, // Originator not in an alliance
+        };
 
-            if alliance_revenue > 0 {
-                alliance_payments.push((edge_owner, other, alliance_revenue));
-            }
-        }
-    }
+        // Total hops in path
+        let total_hops: u32 = attr.corp_hops.values().sum();
+        if total_hops == 0 { continue; }
 
-    // Apply alliance payments
-    for (provider, _consumer, amount) in &alliance_payments {
-        if let Some(fin) = world.financials.get_mut(provider) {
-            fin.cash += amount;
-        }
-    }
+        // Calculate theoretical total revenue for this path
+        // (Simplified: using a blended path rate)
+        let path_rate = 0.5; // $0.5 per unit per hop (average)
+        let total_path_revenue = (attr.traffic * path_rate * total_hops as f64) as i64;
 
-    // Boost trust for alliances with active traffic flow
-    let mut alliance_pairs_with_traffic: HashSet<(u64, u64)> = HashSet::new();
-    for &(provider, consumer, _) in &alliance_payments {
-        let (a, b) = ordered_pair(provider, consumer);
-        alliance_pairs_with_traffic.insert((a, b));
-    }
+        for (&corp_id, &hops) in &attr.corp_hops {
+            if corp_id == originator { continue; }
 
-    let _ = tick; // tick used above in transit_settlements
-    for alliance in world.alliances.values_mut() {
-        for i in 0..alliance.member_corp_ids.len() {
-            for j in (i + 1)..alliance.member_corp_ids.len() {
-                let (a, b) = ordered_pair(alliance.member_corp_ids[i], alliance.member_corp_ids[j]);
-                if alliance_pairs_with_traffic.contains(&(a, b)) {
-                    // Boost trust slightly for smooth traffic flow
-                    if let Some(trust) = alliance.trust_scores.get_mut(&alliance.member_corp_ids[i])
-                    {
-                        *trust = (*trust + 0.001).min(1.0);
-                    }
-                    if let Some(trust) = alliance.trust_scores.get_mut(&alliance.member_corp_ids[j])
-                    {
-                        *trust = (*trust + 0.001).min(1.0);
-                    }
+            // Check if this contributor is an ally of the originator
+            if alliance.member_corp_ids.contains(&corp_id) {
+                // Proportional share based on hops
+                let share = (total_path_revenue as f64 * (hops as f64 / total_hops as f64)) as i64;
+                
+                if share > 0 {
+                    *alliance_settlements.entry(corp_id).or_insert(0) += share;
+                    *alliance_settlements.entry(originator).or_insert(0) -= share;
                 }
             }
+        }
+    }
+
+    // Apply settlements
+    for (&corp_id, &amount) in &alliance_settlements {
+        if let Some(fin) = world.financials.get_mut(&corp_id) {
+            fin.cash += amount;
+            // Also adjust revenue_per_tick for transparency
+            fin.revenue_per_tick += amount;
         }
     }
 }
