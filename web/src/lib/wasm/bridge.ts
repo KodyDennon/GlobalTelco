@@ -433,6 +433,30 @@ export function getContracts(corpId: number): ContractInfo[] {
 	}
 }
 
+export interface GrantInfo {
+	id: number;
+	region_id: number;
+	region_name: string;
+	required_coverage: number;
+	current_coverage: number;
+	reward: number;
+	deadline_tick: number;
+	ticks_remaining: number;
+	status: 'available' | 'active' | 'completed' | 'failed';
+	is_holder: boolean;
+}
+
+export function getGrants(corpId: number): GrantInfo[] {
+	if (useNativeSim) return tauriBridge.getCachedGrants(corpId);
+	try {
+		const json = bridge?.get_grants(BigInt(corpId)) ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getGrants');
+		return [];
+	}
+}
+
 export function getDebtInstruments(corpId: number): DebtInfo[] {
 	if (useNativeSim) return tauriBridge.getCachedDebtInstruments(corpId);
 	try {
@@ -906,6 +930,25 @@ export function getOrbitalView(): OrbitalSatellite[] {
 	}
 }
 
+export interface SatelliteInventoryItem {
+	id: number;
+	constellation_id: number;
+	constellation_name: string;
+	orbit_type: string;
+	mass_kg: number;
+}
+
+export function getSatelliteInventory(corpId: number): SatelliteInventoryItem[] {
+	if (useNativeSim) return tauriBridge.getCachedSatelliteInventory(corpId);
+	try {
+		const json = bridge?.get_satellite_inventory(BigInt(corpId)) ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getSatelliteInventory');
+		return [];
+	}
+}
+
 export function getLaunchSchedule(corpId: number): LaunchPadInfo[] {
 	if (useNativeSim) return tauriBridge.getCachedLaunchSchedule(corpId);
 	try {
@@ -1014,6 +1057,28 @@ export function getLawsuits(corpId: number): LawsuitInfo[] {
 		return JSON.parse(json);
 	} catch (e) {
 		onBridgeError(e, 'getLawsuits');
+		return [];
+	}
+}
+
+export function getCoOwnershipProposals(corpId: number): CoOwnershipProposal[] {
+	if (useNativeSim) return tauriBridge.getCachedCoOwnershipProposals(corpId);
+	try {
+		const json = bridge?.get_co_ownership_proposals(BigInt(corpId)) ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getCoOwnershipProposals');
+		return [];
+	}
+}
+
+export function getPendingUpgradeVotes(corpId: number): UpgradeVote[] {
+	if (useNativeSim) return tauriBridge.getCachedPendingUpgradeVotes(corpId);
+	try {
+		const json = bridge?.get_pending_upgrade_votes(BigInt(corpId)) ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getPendingUpgradeVotes');
 		return [];
 	}
 }

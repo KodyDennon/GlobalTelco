@@ -54,6 +54,10 @@ impl WasmBridge {
         gt_bridge::queries::query_contracts(&self.world, corp_id)
     }
 
+    pub fn get_grants(&self, corp_id: u64) -> String {
+        gt_bridge::queries::query_grants(&self.world, corp_id)
+    }
+
     pub fn get_debt_instruments(&self, corp_id: u64) -> String {
         gt_bridge::queries::query_debt_instruments(&self.world, corp_id)
     }
@@ -220,6 +224,14 @@ impl WasmBridge {
         gt_bridge::queries::query_lawsuits(&self.world, corp_id)
     }
 
+    pub fn get_co_ownership_proposals(&self, corp_id: u64) -> String {
+        gt_bridge::queries::query_co_ownership_proposals(&self.world, corp_id)
+    }
+
+    pub fn get_pending_upgrade_votes(&self, corp_id: u64) -> String {
+        gt_bridge::queries::query_pending_upgrade_votes(&self.world, corp_id)
+    }
+
     pub fn get_stock_market(&self, corp_id: u64) -> String {
         gt_bridge::queries::query_stock_market(&self.world, corp_id)
     }
@@ -236,6 +248,10 @@ impl WasmBridge {
 
     pub fn get_constellation_data(&self, corp_id: u64) -> String {
         gt_bridge::queries::query_constellation_data(&self.world, corp_id)
+    }
+
+    pub fn get_satellite_inventory(&self, corp_id: u64) -> String {
+        gt_bridge::queries::query_satellite_inventory(&self.world, corp_id)
     }
 
     pub fn get_orbital_view(&self) -> String {

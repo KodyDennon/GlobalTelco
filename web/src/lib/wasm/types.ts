@@ -360,6 +360,43 @@ export interface CorpSummary {
 	cost: number;
 }
 
+export interface CoOwnershipProposal {
+	id: number;
+	node_id: number;
+	node_type: string;
+	from_corp: number;
+	from_name: string;
+	to_corp: number;
+	to_name: string;
+	share_pct: number;
+	direction: 'incoming' | 'outgoing';
+}
+
+export interface UpgradeVote {
+	node_id: number;
+	node_type: string;
+	proposer_id: number;
+	proposer_name: string;
+	votes: Record<string, boolean>;
+	has_voted: boolean;
+}
+
+export interface StockMarket {
+	public: boolean;
+	total_shares: number;
+	share_price: number;
+	dividends_per_share: number;
+	ipo_tick: number | null;
+	shareholder_satisfaction: number;
+	board_votes: {
+		proposal: string;
+		votes_for: number;
+		votes_against: number;
+		deadline_tick: number;
+	}[];
+	shareholders: Record<number, number>;
+}
+
 // Phase 10 types
 export interface AuctionInfo {
 	id: number;

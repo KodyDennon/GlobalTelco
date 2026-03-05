@@ -1,35 +1,28 @@
 <script lang="ts">
-	import { playerCorp, formatMoney, allCorporations } from '$lib/stores/gameState';
+	import { playerCorp, formatMoney, allCorporations, worldInfo } from '$lib/stores/gameState';
 	import * as bridge from '$lib/wasm/bridge';
 	import { gameCommand } from '$lib/game/commandRouter';
-	import type { InfraNode, InfrastructureList } from '$lib/wasm/types';
+	import type { InfraNode, InfrastructureList, CoOwnershipProposal, UpgradeVote } from '$lib/wasm/types';
 	import { tooltip } from '$lib/ui/tooltip';
 
 	let infra: InfrastructureList = $state({ nodes: [], edges: [] });
-
-	// Proposals tracking (local UI state)
-	interface CoOwnershipProposal {
-		id: number;
-		nodeId: number;
-		nodeType: string;
-		fromCorp: number;
-		fromName: string;
-		toCorp: number;
-		toName: string;
-		sharePercent: number;
-		direction: 'incoming' | 'outgoing';
-	}
-
 	let proposals: CoOwnershipProposal[] = $state([]);
+	let upgradeVotes: UpgradeVote[] = $state([]);
+
 	let showProposeForm = $state(false);
 	let selectedNode = $state(0);
 	let targetCorp = $state(0);
 	let sharePercent = $state(50);
 
+	// Load all co-ownership data from bridge (every 5th tick)
 	$effect(() => {
 		const corp = $playerCorp;
+		const tick = $worldInfo.tick;
+		if (tick % 5 !== 0) return;
 		if (corp) {
 			infra = bridge.getInfrastructureList(corp.id);
+			proposals = bridge.getCoOwnershipProposals(corp.id);
+			upgradeVotes = bridge.getPendingUpgradeVotes(corp.id);
 		}
 	});
 
@@ -43,25 +36,6 @@
 				share_pct: sharePercent / 100
 			}
 		});
-		// Add to outgoing proposals for UI feedback
-		const node = operationalNodes.find((n) => n.id === selectedNode);
-		const target = aiCorps.find((c) => c.id === targetCorp);
-		if (node && target) {
-			proposals = [
-				...proposals,
-				{
-					id: Date.now(),
-					nodeId: node.id,
-					nodeType: node.node_type,
-					fromCorp: corp.id,
-					fromName: corp.name,
-					toCorp: targetCorp,
-					toName: target.name,
-					sharePercent,
-					direction: 'outgoing'
-				}
-			];
-		}
 		showProposeForm = false;
 		selectedNode = 0;
 		targetCorp = 0;
@@ -69,15 +43,12 @@
 	}
 
 	function respondProposal(proposalId: number, accept: boolean) {
-		const proposal = proposals.find((p) => p.id === proposalId);
-		if (!proposal) return;
 		gameCommand({
 			RespondCoOwnership: {
-				proposal: proposal.id,
+				proposal: proposalId,
 				accept
 			}
 		});
-		proposals = proposals.filter((p) => p.id !== proposalId);
 	}
 
 	function proposeBuyout(nodeId: number, targetCorpId: number, price: number) {
@@ -103,9 +74,35 @@
 		</div>
 		<div class="stat-row">
 			<span class="muted">Pending proposals</span>
-			<span class="mono">{incomingProposals.length + outgoingProposals.length}</span>
+			<span class="mono" class:warn={incomingProposals.length > 0}>{proposals.length}</span>
+		</div>
+		<div class="stat-row">
+			<span class="muted">Active votes</span>
+			<span class="mono" class:warn={upgradeVotes.length > 0}>{upgradeVotes.length}</span>
 		</div>
 	</div>
+
+	{#if upgradeVotes.length > 0}
+		<div class="section">
+			<h3 class="warn">Active Upgrade Votes</h3>
+			{#each upgradeVotes as vote}
+				<div class="vote-card">
+					<div class="vote-info">
+						<div class="vote-target">{vote.node_type} (ID: {vote.node_id})</div>
+						<div class="vote-proposer">Proposed by: {vote.proposer_name}</div>
+					</div>
+					<div class="vote-actions">
+						{#if !vote.has_voted}
+							<button class="accept-btn" onclick={() => voteUpgrade(vote.node_id, true)}>APPROVE</button>
+							<button class="reject-btn" onclick={() => voteUpgrade(vote.node_id, false)}>REJECT</button>
+						{:else}
+							<span class="badge voted">Voted</span>
+						{/if}
+					</div>
+				</div>
+			{/each}
+		</div>
+	{/if}
 
 	<div class="section">
 		<div class="section-hdr">
@@ -140,7 +137,7 @@
 				</label>
 				<label class="form-label">
 					<span class="muted">Share offered: {sharePercent}%</span>
-					<input type="range" min="10" max="90" step="5" bind:value={sharePercent} />
+					<input type="range" min={10} max={90} step={5} bind:value={sharePercent} />
 					<div class="share-labels">
 						<span>You: {100 - sharePercent}%</span>
 						<span>Partner: {sharePercent}%</span>
@@ -164,11 +161,11 @@
 			{#each incomingProposals as proposal}
 				<div class="proposal-card incoming">
 					<div class="proposal-info">
-						<div class="proposal-type">{proposal.nodeType}</div>
+						<div class="proposal-type">{proposal.node_type}</div>
 						<div class="proposal-parties">
-							<span>{proposal.fromName}</span>
+							<span>{proposal.from_name}</span>
 							<span class="arrow">wants</span>
-							<span class="mono">{proposal.sharePercent}%</span>
+							<span class="mono">{proposal.share_pct}%</span>
 						</div>
 					</div>
 					<div class="proposal-actions">
@@ -176,7 +173,7 @@
 							class="accept-btn"
 							onclick={() => respondProposal(proposal.id, true)}
 							use:tooltip={() =>
-								`Accept co-ownership with ${proposal.fromName}\nThey get ${proposal.sharePercent}% share of ${proposal.nodeType}`}
+								`Accept co-ownership with ${proposal.from_name}\nThey get ${proposal.share_pct}% share of ${proposal.node_type}`}
 						>
 							Accept
 						</button>
@@ -199,11 +196,11 @@
 			{#each outgoingProposals as proposal}
 				<div class="proposal-card outgoing">
 					<div class="proposal-info">
-						<div class="proposal-type">{proposal.nodeType}</div>
+						<div class="proposal-type">{proposal.node_type}</div>
 						<div class="proposal-parties">
 							<span class="arrow">to</span>
-							<span>{proposal.toName}</span>
-							<span class="mono">({proposal.sharePercent}%)</span>
+							<span>{proposal.to_name}</span>
+							<span class="mono">({proposal.share_pct}%)</span>
 						</div>
 					</div>
 					<div class="proposal-badge">
@@ -239,14 +236,14 @@
 						onclick={() => voteUpgrade(node.id, true)}
 						use:tooltip={() => `Vote to upgrade ${node.node_type}\nRequires co-owner agreement`}
 					>
-						Vote
+						Upgrade
 					</button>
 					<button
 						class="tiny-btn buyout"
 						onclick={() => proposeBuyout(node.id, 0, node.construction_cost)}
 						use:tooltip={() => `Propose buying out co-owners of ${node.node_type}`}
 					>
-						Buy
+						Buyout
 					</button>
 				</div>
 			</div>
@@ -293,7 +290,7 @@
 	}
 
 	.warn {
-		color: var(--red);
+		color: var(--amber, #f59e0b);
 	}
 
 	.section-hdr {
@@ -316,6 +313,32 @@
 
 	.action-btn:hover {
 		background: var(--bg-hover);
+	}
+
+	.vote-card {
+		background: rgba(245, 158, 11, 0.05);
+		border: 1px solid rgba(245, 158, 11, 0.2);
+		border-radius: var(--radius-md);
+		padding: 10px;
+		margin-bottom: 8px;
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.vote-target {
+		font-weight: 700;
+		color: var(--text-primary);
+	}
+
+	.vote-proposer {
+		font-size: 11px;
+		color: var(--text-dim);
+	}
+
+	.vote-actions {
+		display: flex;
+		gap: 6px;
 	}
 
 	.propose-form {
@@ -446,8 +469,13 @@
 	}
 
 	.badge.pending {
-		background: var(--amber-bg, rgba(245, 158, 11, 0.1));
-		color: var(--amber, #f59e0b);
+		background: rgba(245, 158, 11, 0.1);
+		color: #f59e0b;
+	}
+
+	.badge.voted {
+		background: rgba(34, 197, 94, 0.1);
+		color: var(--green);
 	}
 
 	.proposal-badge {

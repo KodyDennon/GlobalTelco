@@ -124,6 +124,39 @@ pub fn query_cities(world: &GameWorld) -> String {
     serde_json::to_string(&cities).unwrap_or_default()
 }
 
+pub fn query_grants(world: &GameWorld, corp_id: EntityId) -> String {
+    let tick = world.current_tick();
+    let grants: Vec<serde_json::Value> = world
+        .grants
+        .values()
+        .filter(|g| {
+            g.status == crate::components::grant::GrantStatus::Available 
+            || g.holder == Some(corp_id)
+        })
+        .map(|g| {
+            let region_name = world.regions.get(&g.region_id).map(|r| r.name.as_str()).unwrap_or("Unknown");
+            serde_json::json!({
+                "id": g.id,
+                "region_id": g.region_id,
+                "region_name": region_name,
+                "required_coverage": g.required_coverage,
+                "current_coverage": g.current_coverage,
+                "reward": g.reward,
+                "deadline_tick": g.deadline_tick,
+                "ticks_remaining": g.deadline_tick.saturating_sub(tick),
+                "status": match g.status {
+                    crate::components::grant::GrantStatus::Available => "available",
+                    crate::components::grant::GrantStatus::Active => "active",
+                    crate::components::grant::GrantStatus::Completed => "completed",
+                    crate::components::grant::GrantStatus::Failed => "failed",
+                },
+                "is_holder": g.holder == Some(corp_id),
+            })
+        })
+        .collect();
+    serde_json::to_string(&grants).unwrap_or_default()
+}
+
 pub fn query_all_corporations(world: &GameWorld) -> String {
     let player_id = world.player_corp_id().unwrap_or(0);
     let corps: Vec<serde_json::Value> = world
@@ -1243,6 +1276,64 @@ pub fn query_available_spectrum(world: &GameWorld, region_id: EntityId) -> Strin
 
 // ── Alliance / Legal / Stock Market Queries ─────────────────────────────
 
+pub fn query_co_ownership_proposals(world: &GameWorld, corp_id: EntityId) -> String {
+    let proposals: Vec<serde_json::Value> = world
+        .co_ownership_proposals
+        .iter()
+        .filter(|(_, &(proposer, target, _))| proposer == corp_id || target == corp_id)
+        .map(|(&node_id, &(proposer, target, share))| {
+            let node = world.infra_nodes.get(&node_id);
+            let proposer_name = world.corporations.get(&proposer).map(|c| c.name.as_str()).unwrap_or("Unknown");
+            let target_name = world.corporations.get(&target).map(|c| c.name.as_str()).unwrap_or("Unknown");
+            serde_json::json!({
+                "id": node_id, // Use node_id as proposal ID
+                "node_id": node_id,
+                "node_type": node.map(|n| n.node_type).unwrap_or(gt_common::types::NodeType::CellTower),
+                "from_corp": proposer,
+                "from_name": proposer_name,
+                "to_corp": target,
+                "to_name": target_name,
+                "share_pct": share * 100.0,
+                "direction": if proposer == corp_id { "outgoing" } else { "incoming" },
+            })
+        })
+        .collect();
+    serde_json::to_string(&proposals).unwrap_or_default()
+}
+
+pub fn query_pending_upgrade_votes(world: &GameWorld, corp_id: EntityId) -> String {
+    let votes: Vec<serde_json::Value> = world
+        .pending_upgrade_votes
+        .iter()
+        .filter(|(&node_id, _)| {
+            // Player must be an owner or co-owner to see/vote
+            world.ownerships.get(&node_id).map(|o| {
+                o.owner == corp_id || o.co_owners.iter().any(|(id, _)| *id == corp_id)
+            }).unwrap_or(false)
+        })
+        .map(|(&node_id, (proposer, votes_map, _))| {
+            let node = world.infra_nodes.get(&node_id);
+            let proposer_name = world.corporations.get(proposer).map(|c| c.name.as_str()).unwrap_or("Unknown");
+            
+            // Map votes_map keys to strings for JSON
+            let votes_data: std::collections::HashMap<String, bool> = votes_map
+                .iter()
+                .map(|(cid, val)| (cid.to_string(), *val))
+                .collect();
+
+            serde_json::json!({
+                "node_id": node_id,
+                "node_type": node.map(|n| n.node_type).unwrap_or(gt_common::types::NodeType::CellTower),
+                "proposer_id": proposer,
+                "proposer_name": proposer_name,
+                "votes": votes_data,
+                "has_voted": votes_map.contains_key(&corp_id),
+            })
+        })
+        .collect();
+    serde_json::to_string(&votes).unwrap_or_default()
+}
+
 pub fn query_alliances(world: &GameWorld, corp_id: EntityId) -> String {
     let alliances: Vec<serde_json::Value> = world
         .alliances
@@ -1372,6 +1463,28 @@ pub fn query_maintenance_priorities(world: &GameWorld, corp_id: EntityId) -> Str
 }
 
 // ── Satellite Queries ───────────────────────────────────────────────────
+
+pub fn query_satellite_inventory(world: &GameWorld, corp_id: EntityId) -> String {
+    let inventory: Vec<serde_json::Value> = world
+        .satellites
+        .iter()
+        .filter(|(_, s)| {
+            let owner = world.ownerships.get(&s.constellation_id).map(|o| o.owner).unwrap_or(0);
+            owner == corp_id && s.status == gt_common::types::SatelliteStatus::AwaitingLaunch
+        })
+        .map(|(&id, s)| {
+            let const_name = world.constellations.get(&s.constellation_id).map(|c| c.name.as_str()).unwrap_or("Independent");
+            serde_json::json!({
+                "id": id,
+                "constellation_id": s.constellation_id,
+                "constellation_name": const_name,
+                "orbit_type": s.orbit_type,
+                "mass_kg": s.mass_kg,
+            })
+        })
+        .collect();
+    serde_json::to_string(&inventory).unwrap_or_default()
+}
 
 pub fn query_constellation_data(world: &GameWorld, corp_id: EntityId) -> String {
     let constellations: Vec<serde_json::Value> = world
