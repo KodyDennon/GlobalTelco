@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.8.8 (2026-03-05)
+
+### Features
+
+- add new grant and co-ownership functionalities (b9d3fc4)
+- implement stock market buy/sell commands and UI integration (74b8181)
+
+### Bug Fixes
+
+- update package versions for gt-ai, gt-bridge, gt-common, gt-economy, gt-infrastructure, gt-population, gt-server, gt-simulation, gt-tauri, gt-wasm, and gt-world to 1.10.0 and gt-server to 0.13.4 (5359add)
+
+### Other
+
+- **engine:** v1.11.0 (291102f)
+- **server:** v1.0.0 (cbf79b6)
+- Refactor covert ops intel decay logic and adjust revenue calculations (1b978fd)
+
+
 ## 1.8.7 (2026-03-04)
 
 ### Features
