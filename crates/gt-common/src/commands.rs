@@ -130,6 +130,16 @@ pub enum Command {
         amount: Money,
     },
 
+    // Stock Market
+    BuyShares {
+        corporation: EntityId,
+        count: u32,
+    },
+    SellShares {
+        corporation: EntityId,
+        count: u32,
+    },
+
     // Mergers & Acquisitions
     ProposeAcquisition {
         target: EntityId,

@@ -643,6 +643,16 @@ impl GameWorld {
                 CommandResult::ok()
             }
 
+            // Stock Market
+            Command::BuyShares { corporation, count } => {
+                self.cmd_buy_shares(corporation, count);
+                CommandResult::ok()
+            }
+            Command::SellShares { corporation, count } => {
+                self.cmd_sell_shares(corporation, count);
+                CommandResult::ok()
+            }
+
             // Mergers & Acquisitions
             Command::ProposeAcquisition { target, offer } => {
                 self.cmd_propose_acquisition(target, offer);

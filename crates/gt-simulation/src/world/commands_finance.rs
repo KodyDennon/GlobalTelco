@@ -206,6 +206,96 @@ impl GameWorld {
         }
     }
 
+    // === Stock Market ===
+
+    pub(super) fn cmd_buy_shares(&mut self, target_corp: EntityId, count: u32) {
+        let buyer_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+
+        if count == 0 { return; }
+
+        // Verify target is public
+        let sm = match self.stock_market.get_mut(&target_corp) {
+            Some(sm) if sm.public => sm,
+            _ => return,
+        };
+
+        let price = sm.share_price;
+        let total_cost = price * count as i64;
+
+        // Check funds
+        if let Some(fin) = self.financials.get(&buyer_id) {
+            if fin.cash < total_cost {
+                return;
+            }
+        }
+
+        // Execute transaction
+        if let Some(fin) = self.financials.get_mut(&buyer_id) {
+            fin.cash -= total_cost;
+        }
+
+        let sm = self.stock_market.get_mut(&target_corp).unwrap();
+        *sm.shareholders.entry(buyer_id).or_insert(0) += count;
+        
+        // Increase price slightly on buy demand
+        sm.share_price = (sm.share_price as f64 * 1.01) as i64;
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::GlobalNotification {
+                message: format!("Purchased {} shares of {} for ${}", count, target_corp, total_cost),
+                level: "info".to_string(),
+            },
+        );
+    }
+
+    pub(super) fn cmd_sell_shares(&mut self, target_corp: EntityId, count: u32) {
+        let seller_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+
+        if count == 0 { return; }
+
+        let sm = match self.stock_market.get_mut(&target_corp) {
+            Some(sm) if sm.public => sm,
+            _ => return,
+        };
+
+        // Check ownership
+        let owned = sm.shareholders.get(&seller_id).copied().unwrap_or(0);
+        if owned < count {
+            return;
+        }
+
+        let price = sm.share_price;
+        let total_sale = price * count as i64;
+
+        // Execute transaction
+        *sm.shareholders.entry(seller_id).or_insert(0) -= count;
+        if sm.shareholders.get(&seller_id).copied().unwrap_or(0) == 0 {
+            sm.shareholders.remove(&seller_id);
+        }
+
+        // Decrease price slightly on sell pressure
+        sm.share_price = (sm.share_price as f64 * 0.99).max(1.0) as i64;
+
+        if let Some(fin) = self.financials.get_mut(&seller_id) {
+            fin.cash += total_sale;
+        }
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::GlobalNotification {
+                message: format!("Sold {} shares of {} for ${}", count, target_corp, total_sale),
+                level: "info".to_string(),
+            },
+        );
+    }
+
     // === Phase 10.2: Mergers & Acquisitions ===
 
     pub(super) fn cmd_propose_acquisition(&mut self, target: EntityId, offer: Money) {

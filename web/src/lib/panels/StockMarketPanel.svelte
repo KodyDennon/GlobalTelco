@@ -1,12 +1,16 @@
 <script lang="ts">
 	import { playerCorp, formatMoney, worldInfo } from '$lib/stores/gameState';
 	import * as bridge from '$lib/wasm/bridge';
+	import { gameCommand } from '$lib/game/commandRouter';
 
 	let isPublic = $state(false);
 	let totalShares = $state(1000);
 	let sharePrice = $state(0);
 	let dividendsPerShare = $state(0);
 	let satisfaction = $state(0.5);
+	let ownedShares = $state(0);
+
+	let tradeAmount = $state(10);
 
 	interface BoardVoteEntry {
 		proposal: string;
@@ -32,6 +36,7 @@
 		sharePrice = sm.share_price;
 		dividendsPerShare = sm.dividends_per_share;
 		satisfaction = sm.shareholder_satisfaction;
+		ownedShares = sm.shareholders?.[corp.id] || 0;
 		boardVotes = (sm.board_votes ?? []).map((v) => ({
 			proposal: v.proposal,
 			votesFor: v.votes_for,
@@ -39,6 +44,26 @@
 			deadlineTick: v.deadline_tick,
 		}));
 	});
+
+	function handleBuy() {
+		if (!$playerCorp) return;
+		gameCommand({
+			BuyShares: {
+				corporation: $playerCorp.id,
+				count: tradeAmount
+			}
+		});
+	}
+
+	function handleSell() {
+		if (!$playerCorp) return;
+		gameCommand({
+			SellShares: {
+				corporation: $playerCorp.id,
+				count: tradeAmount
+			}
+		});
+	}
 
 	let satisfactionLabel = $derived(
 		satisfaction >= 0.8
@@ -98,6 +123,10 @@
 				<span class="mono green">{formatMoney(sharePrice)}</span>
 			</div>
 			<div class="stat-row">
+				<span class="muted">Your Stake</span>
+				<span class="mono">{ownedShares.toLocaleString()} shares ({((ownedShares / totalShares) * 100).toFixed(1)}%)</span>
+			</div>
+			<div class="stat-row">
 				<span class="muted">Total Shares</span>
 				<span class="mono">{totalShares.toLocaleString()}</span>
 			</div>
@@ -111,19 +140,23 @@
 					{dividendsPerShare > 0 ? formatMoney(dividendsPerShare) + '/tick' : 'None'}
 				</span>
 			</div>
-			<div class="stat-row">
-				<span class="muted">Net Profit</span>
-				<span class="mono" class:green={netProfit > 0} class:red={netProfit < 0}>
-					{formatMoney(netProfit)}/tick
-				</span>
-			</div>
 		</div>
 
 		<div class="section">
-			<h3>Share Price</h3>
-			<div class="price-bar-container">
-				<div class="price-bar" style="width: {priceBarWidth}%"></div>
-				<span class="price-bar-label mono">{formatMoney(sharePrice)}</span>
+			<h3>Trade Shares</h3>
+			<div class="trade-controls">
+				<div class="amount-input">
+					<span class="muted">Amount</span>
+					<input type="number" bind:value={tradeAmount} min="1" max="1000" />
+				</div>
+				<div class="actions">
+					<button class="buy-btn" onclick={handleBuy} disabled={($playerCorp?.cash ?? 0) < sharePrice * tradeAmount}>
+						BUY ({formatMoney(sharePrice * tradeAmount)})
+					</button>
+					<button class="sell-btn" onclick={handleSell} disabled={ownedShares < tradeAmount}>
+						SELL ({formatMoney(sharePrice * tradeAmount)})
+					</button>
+				</div>
 			</div>
 		</div>
 
@@ -247,30 +280,71 @@
 		margin-bottom: 4px;
 	}
 
-	.price-bar-container {
-		position: relative;
-		height: 24px;
+	.trade-controls {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		margin-top: 4px;
+	}
+
+	.amount-input {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.amount-input input {
+		width: 60px;
 		background: var(--bg-surface);
-		border-radius: var(--radius-sm);
 		border: 1px solid var(--border);
-		overflow: hidden;
-	}
-
-	.price-bar {
-		height: 100%;
-		background: linear-gradient(90deg, rgba(34, 197, 94, 0.3), rgba(34, 197, 94, 0.6));
-		border-radius: var(--radius-sm);
-		transition: width 0.3s ease;
-	}
-
-	.price-bar-label {
-		position: absolute;
-		top: 50%;
-		left: 8px;
-		transform: translateY(-50%);
-		font-size: 11px;
 		color: var(--text-primary);
-		font-weight: 600;
+		padding: 4px 8px;
+		border-radius: 4px;
+		font-family: var(--font-mono);
+		text-align: right;
+	}
+
+	.actions {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 8px;
+	}
+
+	button {
+		padding: 8px;
+		font-size: 11px;
+		font-weight: 700;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: all 0.2s;
+		border: 1px solid transparent;
+	}
+
+	button:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.buy-btn {
+		background: rgba(34, 197, 94, 0.1);
+		color: var(--green);
+		border-color: rgba(34, 197, 94, 0.2);
+	}
+
+	.buy-btn:hover:not(:disabled) {
+		background: var(--green);
+		color: white;
+	}
+
+	.sell-btn {
+		background: rgba(239, 68, 68, 0.1);
+		color: var(--red);
+		border-color: rgba(239, 68, 68, 0.2);
+	}
+
+	.sell-btn:hover:not(:disabled) {
+		background: var(--red);
+		color: white;
 	}
 
 	.satisfaction-row {

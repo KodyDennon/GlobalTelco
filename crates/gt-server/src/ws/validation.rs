@@ -26,6 +26,8 @@ pub(crate) fn command_target_corp(command: &Command) -> Option<EntityId> {
         | Command::AcceptBailout { entity: corporation } => Some(*corporation),
         Command::ProposeContract { from, .. } => Some(*from),
         Command::CreateSubsidiary { parent, .. } => Some(*parent),
+        Command::BuyShares { corporation, .. }
+        | Command::SellShares { corporation, .. } => Some(*corporation),
         // Commands that operate on entities (nodes, edges, etc.) rather than
         // directly referencing a corp -- ownership is checked inside the
         // simulation engine, so we skip corp-level gating here.
@@ -152,6 +154,16 @@ pub(crate) fn validate_command(command: &Command) -> Result<(), &'static str> {
                 return Err("Buyout price must be positive");
             }
         }
+        Command::BuyShares { count, .. } => {
+            if *count == 0 {
+                return Err("Share count must be positive");
+            }
+        }
+        Command::SellShares { count, .. } => {
+            if *count == 0 {
+                return Err("Share count must be positive");
+            }
+        }
         _ => {}
     }
     Ok(())
@@ -185,7 +197,9 @@ pub(crate) fn categorize_command(command: &Command) -> CommandCategory {
         | Command::PlaceBid { .. }
         | Command::ProposeAcquisition { .. }
         | Command::ProposeContract { .. }
-        | Command::SetSatellitePricing { .. } => CommandCategory::Financial,
+        | Command::SetSatellitePricing { .. }
+        | Command::BuyShares { .. }
+        | Command::SellShares { .. } => CommandCategory::Financial,
 
         Command::StartResearch { .. }
         | Command::CancelResearch { .. } => CommandCategory::Research,
