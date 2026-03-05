@@ -333,14 +333,14 @@ pub fn spawn_world_tick_loop(
                             .map(|(t, et, v)| (*t, et.as_str(), v))
                             .collect();
                         if let Err(e) = db.batch_insert_events(world_id, &refs).await {
-                            warn!(\"Failed to persist events: {e}\");
+                            warn!("Failed to persist events: {e}");
                         }
 
                         // Periodic database maintenance: prune old events
                         if tick % DB_SNAPSHOT_INTERVAL_TICKS == 0 {
                             match db.prune_old_events(world_id, EVENT_RETENTION_TICKS).await {
-                                Ok(count) => if count > 0 { debug!(\"Pruned {} old events for world {}\", count, world_id); },
-                                Err(e) => warn!(\"Failed to prune old events: {e}\"),
+                                Ok(count) => if count > 0 { debug!("Pruned {} old events for world {}", count, world_id); },
+                                Err(e) => warn!("Failed to prune old events: {e}"),
                             }
                         }
                         });

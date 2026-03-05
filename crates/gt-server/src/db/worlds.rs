@@ -451,11 +451,11 @@ impl Database {
         keep_ticks: i64,
     ) -> Result<u64, sqlx::Error> {
         let result = sqlx::query(
-            \"DELETE FROM event_log
+            "DELETE FROM event_log
              WHERE world_id = $1
              AND tick < (
                  SELECT MAX(tick) - $2 FROM event_log WHERE world_id = $1
-             )\",
+             )",
         )
         .bind(world_id)
         .bind(keep_ticks)

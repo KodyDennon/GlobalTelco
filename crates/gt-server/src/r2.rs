@@ -19,6 +19,7 @@ use uuid::Uuid;
 #[cfg(feature = "r2")]
 pub struct R2Storage {
     bucket: Box<Bucket>,
+    bucket_name: String,
 }
 
 #[cfg(feature = "r2")]
@@ -49,7 +50,10 @@ impl R2Storage {
         // R2 supports both, but path-style is often more consistent with custom endpoints
         let bucket = Bucket::new(bucket_name, region, credentials)?.with_path_style();
 
-        Ok(Self { bucket })
+        Ok(Self { 
+            bucket,
+            bucket_name: bucket_name.to_string(),
+        })
     }
 
     /// Upload an object to R2.
@@ -62,11 +66,11 @@ impl R2Storage {
                 } else {
                     let error_text = String::from_utf8_lossy(response.as_slice());
                     if code == 403 {
-                        warn!(\"R2 PUT returned 403 Forbidden for key '{key}'. Please check if your R2 API token has 'Edit' permissions for the bucket '{bucket_name}'.\");
+                        warn!("R2 PUT returned 403 Forbidden for key '{key}'. Please check if your R2 API token has 'Edit' permissions for the bucket '{}'.", self.bucket_name);
                     } else {
-                        warn!(\"R2 PUT returned {code} for key '{key}': {error_text}\");
+                        warn!("R2 PUT returned {code} for key '{key}': {error_text}");
                     }
-                    Err(format!(\"R2 PUT returned status {code}: {error_text}\"))
+                    Err(format!("R2 PUT returned status {code}: {error_text}"))
                 }
             }
             Err(e) => {
