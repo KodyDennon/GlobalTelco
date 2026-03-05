@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.9.3 (2026-03-04)
+
+### Features
+
+- Update package versions and implement event pruning in the database (64811dc)
+
+### Other
+
+- **web:** v1.8.4 (0fd30f7)
+- **server:** v0.13.1 (afa8cf5)
+
+
 ## 1.9.2 (2026-03-04)
 
 ### Features
