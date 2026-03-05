@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.13.4 (2026-03-04)
+
+### Features
+
+- Introduce road network module and refactor road graph functionality (58b8620)
+
+### Bug Fixes
+
+- bump package versions for gt-ai, gt-bridge, gt-common, gt-economy, gt-infrastructure, gt-population, gt-server, gt-simulation, gt-tauri, gt-wasm, and gt-world to latest releases (a16fdf4)
+
+### Other
+
+- **engine:** v1.10.0 (6a4698f)
+- **web:** v1.8.6 (434f9d6)
+- **engine:** v1.9.4 (bc1158a)
+
+
 ## 0.13.3 (2026-03-04)
 
 ### Bug Fixes
