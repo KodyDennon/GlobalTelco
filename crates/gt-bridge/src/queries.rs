@@ -125,22 +125,59 @@ pub fn query_cities(world: &GameWorld) -> String {
 }
 
 pub fn query_all_corporations(world: &GameWorld) -> String {
-    let player_id = world.player_corp_id();
+    let player_id = world.player_corp_id().unwrap_or(0);
     let corps: Vec<serde_json::Value> = world
         .corporations
         .iter()
         .map(|(&id, corp)| {
             let fin = world.financials.get(&id);
-            let is_player = player_id == Some(id);
-            serde_json::json!({
-                "id": id,
-                "name": corp.name,
-                "is_player": is_player,
-                "credit_rating": corp.credit_rating,
-                "cash": fin.map(|f| f.cash).unwrap_or(0),
-                "revenue": fin.map(|f| f.revenue_per_tick).unwrap_or(0),
-                "cost": fin.map(|f| f.cost_per_tick).unwrap_or(0),
-            })
+            let is_player = player_id == id;
+            
+            let intel_level = if is_player {
+                3
+            } else {
+                world.intel_levels.get(&(player_id, id)).copied().unwrap_or(0)
+            };
+
+            if intel_level >= 2 {
+                // Detailed data
+                serde_json::json!({
+                    "id": id,
+                    "name": corp.name,
+                    "is_player": is_player,
+                    "credit_rating": corp.credit_rating,
+                    "cash": fin.map(|f| f.cash).unwrap_or(0),
+                    "revenue": fin.map(|f| f.revenue_per_tick).unwrap_or(0),
+                    "cost": fin.map(|f| f.cost_per_tick).unwrap_or(0),
+                    "intel_level": intel_level,
+                })
+            } else if intel_level == 1 {
+                // Obfuscated data (rounded to nearest 100k or 10k)
+                let cash = fin.map(|f| (f.cash / 100_000) * 100_000).unwrap_or(0);
+                let rev = fin.map(|f| (f.revenue_per_tick / 10_000) * 10_000).unwrap_or(0);
+                serde_json::json!({
+                    "id": id,
+                    "name": corp.name,
+                    "is_player": is_player,
+                    "credit_rating": corp.credit_rating,
+                    "cash": cash,
+                    "revenue": rev,
+                    "cost": null,
+                    "intel_level": intel_level,
+                })
+            } else {
+                // Basic data
+                serde_json::json!({
+                    "id": id,
+                    "name": corp.name,
+                    "is_player": is_player,
+                    "credit_rating": null,
+                    "cash": null,
+                    "revenue": null,
+                    "cost": null,
+                    "intel_level": intel_level,
+                })
+            }
         })
         .collect();
     serde_json::to_string(&corps).unwrap_or_default()

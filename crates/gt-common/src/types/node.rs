@@ -81,6 +81,8 @@ pub enum NodeType {
     SatelliteWarehouse,
     /// Launch pad for rocket launches
     LaunchPad,
+    /// Individual consumer/business building (demand point)
+    Building,
 }
 
 impl NodeType {
@@ -145,6 +147,7 @@ impl NodeType {
         NodeType::TerminalFactory,
         NodeType::SatelliteWarehouse,
         NodeType::LaunchPad,
+        NodeType::Building,
     ];
 
     /// Human-readable display name for UI.
@@ -216,6 +219,7 @@ impl NodeType {
             NodeType::TerminalFactory => "Terminal Factory",
             NodeType::SatelliteWarehouse => "Satellite Warehouse",
             NodeType::LaunchPad => "Launch Pad",
+            NodeType::Building => "Building",
         }
     }
 
@@ -231,7 +235,8 @@ impl NodeType {
             | NodeType::SmallCell
             | NodeType::NetworkAccessPoint
             | NodeType::MeshDroneRelay
-            | NodeType::TerahertzRelay => NetworkTier::Access,
+            | NodeType::TerahertzRelay
+            | NodeType::Building => NetworkTier::Access,
 
             // Aggregation tier — city/metro level
             NodeType::CentralOffice
@@ -358,6 +363,7 @@ impl NodeType {
             NodeType::TerminalFactory => 0.0,
             NodeType::SatelliteWarehouse => 0.0,
             NodeType::LaunchPad => 0.0,
+            NodeType::Building => 0.0,
         }
     }
 
@@ -451,6 +457,7 @@ impl NodeType {
             NodeType::TerminalFactory => 0.0,
             NodeType::SatelliteWarehouse => 0.0,
             NodeType::LaunchPad => 0.0,
+            NodeType::Building => 0.0,
         }
     }
 
@@ -523,6 +530,7 @@ impl NodeType {
             NodeType::TerminalFactory => 20_000_000,
             NodeType::SatelliteWarehouse => 5_000_000,
             NodeType::LaunchPad => 200_000_000,
+            NodeType::Building => 0,
         }
     }
 
@@ -596,6 +604,7 @@ impl NodeType {
             NodeType::TerminalFactory => 0.0,
             NodeType::SatelliteWarehouse => 0.0,
             NodeType::LaunchPad => 0.0,
+            NodeType::Building => 0.0,
         }
     }
 
@@ -668,6 +677,7 @@ impl NodeType {
             | NodeType::HEO_Satellite => Era::Modern,
 
             NodeType::GEO_Satellite => Era::Internet,
+            NodeType::Building => Era::Telegraph,
         }
     }
 
@@ -740,6 +750,7 @@ impl NodeType {
             NodeType::TerminalFactory => 0,
             NodeType::SatelliteWarehouse => 0,
             NodeType::LaunchPad => 0,
+            NodeType::Building => 0,
         }
     }
 

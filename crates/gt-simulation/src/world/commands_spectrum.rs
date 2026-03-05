@@ -442,58 +442,6 @@ impl GameWorld {
         );
     }
 
-    /// Purchase a cable ship for submarine cable construction.
-    /// Cost: $50,000,000. Required for building SubmarineCable edges.
-    pub(super) fn cmd_purchase_cable_ship(&mut self) {
-        let corp_id = match self.player_corp_id {
-            Some(id) => id,
-            None => return,
-        };
-
-        let ship_cost: Money = 50_000_000;
-
-        // Check funds
-        if let Some(fin) = self.financials.get(&corp_id) {
-            if fin.cash < ship_cost {
-                self.event_queue.push(
-                    self.tick,
-                    gt_common::events::GameEvent::GlobalNotification {
-                        message: format!(
-                            "Insufficient funds for cable ship. Need ${}, have ${}",
-                            ship_cost, fin.cash
-                        ),
-                        level: "warning".to_string(),
-                    },
-                );
-                return;
-            }
-        } else {
-            return;
-        }
-
-        // Deduct cost
-        if let Some(fin) = self.financials.get_mut(&corp_id) {
-            fin.cash -= ship_cost;
-        }
-
-        // Increment ship count
-        let count = self.cable_ships.entry(corp_id).or_insert(0);
-        *count += 1;
-
-        self.event_queue.push(
-            self.tick,
-            gt_common::events::GameEvent::CableShipPurchased { corp: corp_id },
-        );
-
-        self.event_queue.push(
-            self.tick,
-            gt_common::events::GameEvent::GlobalNotification {
-                message: format!("Cable ship purchased! You now own {} ship(s).", count),
-                level: "info".to_string(),
-            },
-        );
-    }
-
     // === Satellite System ===
 
     pub(super) fn cmd_build_constellation(

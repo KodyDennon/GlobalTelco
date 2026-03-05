@@ -162,6 +162,7 @@ impl InfraNode {
             NodeType::TerminalFactory => (0.0, 0.0, 20_000_000, 100_000, NetworkLevel::Local),
             NodeType::SatelliteWarehouse => (0.0, 0.0, 5_000_000, 25_000, NetworkLevel::Local),
             NodeType::LaunchPad => (0.0, 0.0, 200_000_000, 1_000_000, NetworkLevel::Local),
+            NodeType::Building => (0.0, 0.0, 0, 0, NetworkLevel::Local),
         };
 
         Self {
@@ -278,6 +279,7 @@ impl InfraNode {
             NodeType::TerminalFactory => 80,
             NodeType::SatelliteWarehouse => 20,
             NodeType::LaunchPad => 100,
+            NodeType::Building => 0,
         }
     }
 }

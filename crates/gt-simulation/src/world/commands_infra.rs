@@ -219,6 +219,7 @@ impl GameWorld {
             NodeType::TerminalFactory => 40,
             NodeType::SatelliteWarehouse => 20,
             NodeType::LaunchPad => 100,
+            NodeType::Building => 0,
         };
         let duration = (base_duration as f64 * difficulty.construction_time_multiplier) as Tick;
 
@@ -297,9 +298,9 @@ impl GameWorld {
             }
         };
 
-        // Verify target node exists and belongs to the same corp
+        // Verify target node exists and belongs to the same corp (or is a neutral Building)
         match self.infra_nodes.get(&to_node) {
-            Some(n) if n.owner == corp_id => {}
+            Some(n) if n.owner == corp_id || n.node_type == NodeType::Building => {}
             Some(_) => {
                 self.event_queue.push(
                     self.tick,
@@ -538,18 +539,9 @@ impl GameWorld {
 
             // Count active submarine constructions for this corporation
             let active_submarine_constructions = self
-                .infra_edges
-                .iter()
-                .filter(|(edge_id, edge)| {
-                    edge.owner == corp_id
-                        && matches!(
-                            edge.edge_type,
-                            EdgeType::Submarine
-                                | EdgeType::SubseaTelegraphCable
-                                | EdgeType::SubseaFiberCable
-                        )
-                        && self.constructions.contains_key(edge_id)
-                })
+                .active_submarine_builds
+                .values()
+                .filter(|&&owner| owner == corp_id)
                 .count() as u32;
 
             if active_submarine_constructions >= cable_ship_count {
@@ -1071,6 +1063,58 @@ impl GameWorld {
             gt_common::events::GameEvent::InsurancePurchased {
                 entity: node,
                 premium,
+            },
+        );
+    }
+
+    /// Purchase a cable ship for submarine cable construction.
+    /// Cost: $50,000,000. Required for building SubmarineCable edges.
+    pub(super) fn cmd_purchase_cable_ship(&mut self) {
+        let corp_id = match self.player_corp_id {
+            Some(id) => id,
+            None => return,
+        };
+
+        let ship_cost: Money = 50_000_000;
+
+        // Check funds
+        if let Some(fin) = self.financials.get(&corp_id) {
+            if fin.cash < ship_cost {
+                self.event_queue.push(
+                    self.tick,
+                    gt_common::events::GameEvent::GlobalNotification {
+                        message: format!(
+                            "Insufficient funds for cable ship. Need ${}, have ${}",
+                            ship_cost, fin.cash
+                        ),
+                        level: "warning".to_string(),
+                    },
+                );
+                return;
+            }
+        } else {
+            return;
+        }
+
+        // Deduct cost
+        if let Some(fin) = self.financials.get_mut(&corp_id) {
+            fin.cash -= ship_cost;
+        }
+
+        // Increment ship count
+        let count = self.cable_ships.entry(corp_id).or_insert(0);
+        *count += 1;
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::CableShipPurchased { corp: corp_id },
+        );
+
+        self.event_queue.push(
+            self.tick,
+            gt_common::events::GameEvent::GlobalNotification {
+                message: format!("Cable ship purchased! You now own {} ship(s).", count),
+                level: "info".to_string(),
             },
         );
     }

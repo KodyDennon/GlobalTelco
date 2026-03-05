@@ -97,8 +97,7 @@ pub struct GameWorld {
     #[serde(default)]
     pub cable_ships: HashMap<EntityId, u32>,
 
-    // Active submarine cable builds: ship key (corp_id, ship_index) → edge entity being built
-    // Tracks which cable ships are currently busy with submarine construction
+    // Active submarine cable builds: edge_id → corp_id
     #[serde(default)]
     pub active_submarine_builds: HashMap<EntityId, EntityId>,
 

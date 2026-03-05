@@ -787,6 +787,24 @@ impl GameWorld {
                         is_fringe,
                     );
                     self.building_footprints.insert(id, bldg);
+
+                    // Register as infra node for cable connections
+                    let node = InfraNode::new(NodeType::Building, cell_idx, 0);
+                    self.infra_nodes.insert(id, node);
+                    
+                    // Add position for map rendering and distance calc
+                    let cell_pos = self.grid_cell_positions[cell_idx];
+                    self.positions.insert(id, Position { 
+                        x: cell_pos.0, 
+                        y: cell_pos.1,
+                        region_id: Some(city_id), // Reuse city_id as region context for simplicity
+                    });
+                    
+                    // Initial health
+                    self.healths.insert(id, Health::new());
+                    
+                    // Add to network graph (as an endpoint)
+                    self.network.add_node(id);
                 }
             }
 

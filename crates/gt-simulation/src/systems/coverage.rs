@@ -258,7 +258,8 @@ pub fn run(world: &mut GameWorld) {
             gt_common::types::NodeType::SatelliteFactory
             | gt_common::types::NodeType::TerminalFactory
             | gt_common::types::NodeType::SatelliteWarehouse
-            | gt_common::types::NodeType::LaunchPad => 0.0,
+            | gt_common::types::NodeType::LaunchPad
+            | gt_common::types::NodeType::Building => 0.0,
         };
         let radius_km = base_radius_km.max(cell_spacing * min_cells);
 

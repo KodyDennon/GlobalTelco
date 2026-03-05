@@ -272,6 +272,7 @@ pub fn build_node(
         NodeType::TerminalFactory => 40,
         NodeType::SatelliteWarehouse => 20,
         NodeType::LaunchPad => 100,
+        NodeType::Building => 0,
     };
 
     acquire_parcel(world, corp_id, cell_index);

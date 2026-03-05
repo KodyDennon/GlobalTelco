@@ -930,7 +930,8 @@ fn scaled_coverage_radius(node_type: NodeType, cell_spacing: f64) -> f64 {
         NodeType::SatelliteFactory
         | NodeType::TerminalFactory
         | NodeType::SatelliteWarehouse
-        | NodeType::LaunchPad => 0.0,
+        | NodeType::LaunchPad
+        | NodeType::Building => 0.0,
     };
     base_radius.max(cell_spacing * min_cells)
 }

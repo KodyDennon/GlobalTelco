@@ -5,7 +5,23 @@ use gt_common::types::EntityId;
 pub fn run(world: &mut GameWorld) {
     let tick = world.current_tick();
 
-    // Only run every 5 ticks
+    // Intel Decay: Reduce all intel levels periodically
+    // (spy_corp, target_corp) → intel level (0..3)
+    if tick.is_multiple_of(1000) {
+        let mut keys_to_decay = Vec::new();
+        for (key, &level) in &world.intel_levels {
+            if level > 0 {
+                keys_to_decay.push(*key);
+            }
+        }
+        for key in keys_to_decay {
+            if let Some(level) = world.intel_levels.get_mut(&key) {
+                *level -= 1;
+            }
+        }
+    }
+
+    // Only run mission processing every 5 ticks
     if !tick.is_multiple_of(5) {
         return;
     }

@@ -28,7 +28,6 @@ pub mod population;
 pub mod position;
 pub mod pricing;
 pub mod region;
-pub mod road_graph;
 pub mod satellite;
 pub mod spectrum;
 pub mod stock_market;
@@ -66,8 +65,8 @@ pub use policy::Policy;
 pub use population::Population;
 pub use position::Position;
 pub use pricing::{PriceTier, RegionPricing};
+pub use gt_infrastructure::{RoadClass, RoadNetwork, RoadSegment};
 pub use region::RegionComponent;
-pub use road_graph::{RoadClass, RoadNetwork, RoadSegment};
 pub use satellite::{
     Constellation, LaunchPadComponent, OrbitalShell, Satellite, SatelliteFactoryComponent,
     SatelliteSubscription, ServiceMission, TerminalFactoryComponent, WarehouseComponent,
