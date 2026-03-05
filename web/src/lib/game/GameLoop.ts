@@ -238,7 +238,8 @@ function handleWorkerTickResult(result: workerBridge.TickResult) {
 		}
 
 		// Update less frequently (every 5th tick) via async worker queries
-		if (info.tick % 5 === 0) {
+		const shouldUpdateFullAsync = info.tick % 5 === 0 || info.tick === 0 || get(allCorporations).length === 0;
+		if (shouldUpdateFullAsync) {
 			workerBridge.query('get_regions').then(json => {
 				if (json) { try { regions.set(JSON.parse(json)); } catch { } }
 			}).catch(() => { });
@@ -316,7 +317,7 @@ function updateStores() {
 	}
 
 	// Update less frequently (every 10 frames roughly)
-	const shouldUpdateFull = info.tick % 5 === 0;
+	const shouldUpdateFull = info.tick % 5 === 0 || info.tick === 0 || get(allCorporations).length === 0;
 	if (shouldUpdateFull) {
 		regions.set(bridge.getRegions());
 		cities.set(bridge.getCities());
@@ -349,6 +350,9 @@ function updateStores() {
 		const saveTick = info.tick;
 		scheduleBackground(() => performAutoSave(saveTick));
 	}
+
+	// Signal map for re-render with new data
+	window.dispatchEvent(new CustomEvent('map-dirty'));
 }
 
 function checkCriticalEvent(event: GameEvent): string | null {

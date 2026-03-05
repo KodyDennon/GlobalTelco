@@ -73,7 +73,8 @@ fn calculate_node_traffic_revenue(world: &mut GameWorld, corp_id: EntityId) -> i
     let mut revenue: i64 = 0;
 
     for &node_id in &corp_nodes {
-        if world.constructions.contains_key(&node_id) {
+        let health = world.healths.get(&node_id).map(|h| h.condition).unwrap_or(1.0);
+        if world.constructions.contains_key(&node_id) || health < 0.1 {
             continue;
         }
 

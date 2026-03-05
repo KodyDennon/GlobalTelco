@@ -68,11 +68,11 @@ export function gameCommand(command: Record<string, unknown>): number | null {
 				audioManager.playSfx('error');
 				exitPlacementMode();
 			}
-		});
 
-		// Immediately signal map to re-render so new nodes/edges appear
-		// without waiting for the 2-second fallback interval
-		window.dispatchEvent(new CustomEvent('map-dirty'));
+			// Immediately signal map to re-render so new nodes/edges appear
+			// without waiting for the 2-second fallback interval
+			window.dispatchEvent(new CustomEvent('map-dirty'));
+		});
 
 		return null;
 	}

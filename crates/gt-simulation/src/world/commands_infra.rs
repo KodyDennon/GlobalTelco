@@ -657,6 +657,13 @@ impl GameWorld {
                 return CommandResult::fail("Insufficient funds");
             }
         } else {
+            self.event_queue.push(
+                self.tick,
+                gt_common::events::GameEvent::GlobalNotification {
+                    message: "Internal Error: Corporation financials not found.".to_string(),
+                    level: "error".to_string(),
+                },
+            );
             return CommandResult::fail("Corporation financials not found");
         }
 

@@ -495,6 +495,8 @@ struct RoutingContext {
     node_owners: HashMap<u64, u64>,
     /// Transit permission cache for cross-corp routing
     transit_permissions: TransitPermissionCache,
+    /// Set of entity IDs currently under construction
+    constructions: std::collections::HashSet<EntityId>,
 }
 
 fn accumulate_traffic_flows(world: &mut GameWorld) {
@@ -520,6 +522,7 @@ fn accumulate_traffic_flows(world: &mut GameWorld) {
         backbone_nodes: find_backbone_nodes(world),
         node_owners,
         transit_permissions,
+        constructions: world.constructions.keys().copied().collect(),
     };
 
     let mut accum = TrafficAccumulator::new();
@@ -796,6 +799,11 @@ fn push_traffic_on_path(
 
     for i in 0..path.len() - 1 {
         if let Some(eid) = network.get_edge_id(path[i], path[i + 1]) {
+            // Block traffic if edge is under construction
+            if ctx.constructions.contains(&eid) {
+                min_remaining = 0.0;
+                break;
+            }
             let cap = ctx.edge_cap.get(&eid).copied().unwrap_or(0.0);
             let current = accum.edge_load.get(&eid).copied().unwrap_or(0.0);
             let remaining = (cap * 1.2 - current).max(0.0);

@@ -221,6 +221,9 @@ export async function applyBatch(ops: unknown[]): Promise<void> {
 }
 
 export function getWorldInfo(): WorldInfo {
+	if (_latestTickResult?.info) {
+		try { return JSON.parse(_latestTickResult.info); } catch { }
+	}
 	if (useNativeSim) return tauriBridge.getCachedWorldInfo();
 	try {
 		const json = bridge?.get_world_info() ?? '{}';
@@ -232,6 +235,12 @@ export function getWorldInfo(): WorldInfo {
 }
 
 export function getCorporationData(corpId: number): CorporationData {
+	if (_latestTickResult?.playerCorp) {
+		try {
+			const data = JSON.parse(_latestTickResult.playerCorp);
+			if (data.id === corpId) return data;
+		} catch { }
+	}
 	if (useNativeSim) return tauriBridge.getCachedCorporationData(corpId);
 	try {
 		const json = bridge?.get_corporation_data(BigInt(corpId)) ?? '{}';
@@ -299,6 +308,13 @@ export function getVisibleEntities(
 }
 
 export function getNotifications(): Notification[] {
+	if (_latestTickResult?.notifications) {
+		try {
+			const notifs = JSON.parse(_latestTickResult.notifications);
+			_latestTickResult.notifications = null; // Clear cache after reading
+			return notifs;
+		} catch { }
+	}
 	if (useNativeSim) return tauriBridge.getCachedNotifications();
 	try {
 		const json = bridge?.get_notifications() ?? '[]';
@@ -355,6 +371,9 @@ export function getCellCoverage(): CellCoverage[] {
 }
 
 export function getAllInfrastructure(): AllInfrastructure {
+	if (_latestTickResult?.allInfra) {
+		try { return JSON.parse(_latestTickResult.allInfra); } catch { }
+	}
 	if (useNativeSim) return tauriBridge.getCachedAllInfrastructure();
 	try {
 		const json = bridge?.get_all_infrastructure() ?? '{"nodes":[],"edges":[]}';

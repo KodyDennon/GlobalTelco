@@ -89,6 +89,9 @@ self.onmessage = async (e: MessageEvent) => {
 
 				const tick = bridge.current_tick();
 
+				// Collect full infrastructure JSON for rendering fallback
+				const allInfraJson = bridge.get_all_infrastructure();
+
 				// Collect player corp data for main thread
 				let playerCorpJson: string | null = null;
 				try {
@@ -104,6 +107,7 @@ self.onmessage = async (e: MessageEvent) => {
 					edges,
 					corps,
 					info: infoJson,
+					allInfra: allInfraJson,
 					playerCorp: playerCorpJson,
 					notifications: notificationsJson,
 					tick,
@@ -114,9 +118,16 @@ self.onmessage = async (e: MessageEvent) => {
 			case 'command': {
 				if (!bridge) break;
 				const result = bridge.process_command(msg.json);
+
+				// Also return latest state to ensure instant feedback on main thread
+				const allInfraJson = bridge.get_all_infrastructure();
+				const infoJson = bridge.get_world_info();
+
 				self.postMessage({
 					type: 'command-result',
 					result,
+					allInfra: allInfraJson,
+					info: infoJson,
 					seq: msg.seq,
 				});
 				break;

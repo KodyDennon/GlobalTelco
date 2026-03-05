@@ -36,6 +36,7 @@ export interface TickResult {
 	edges: InfraEdgesTyped | null;
 	corps: CorporationsTyped | null;
 	info: string;
+	allInfra: string | null;
 	playerCorp: string | null;
 	notifications: string | null;
 	tick: number;
@@ -82,6 +83,7 @@ function handleWorkerMessage(e: MessageEvent) {
 				edges: msg.edges,
 				corps: msg.corps,
 				info: msg.info,
+				allInfra: msg.allInfra ?? null,
 				playerCorp: msg.playerCorp ?? null,
 				notifications: msg.notifications ?? null,
 				tick: msg.tick,
@@ -96,6 +98,19 @@ function handleWorkerMessage(e: MessageEvent) {
 			const pending = pendingCommands.get(msg.seq);
 			if (pending) {
 				pendingCommands.delete(msg.seq);
+				// If command result also contains state, update latest result
+				// This provides instant feedback even before the next tick
+				if (msg.allInfra && msg.info) {
+					latestTickResult = {
+						...(latestTickResult || {}),
+						allInfra: msg.allInfra,
+						info: msg.info,
+						playerCorp: msg.playerCorp ?? latestTickResult?.playerCorp ?? null,
+						notifications: msg.result, // result is the notifications JSON for commands
+						tick: latestTickResult?.tick ?? 0,
+					} as TickResult;
+					if (onTickResult) onTickResult(latestTickResult);
+				}
 				pending.resolve(msg.result);
 			}
 			break;

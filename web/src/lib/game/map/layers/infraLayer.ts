@@ -416,24 +416,27 @@ export function createInfraLayers(opts: {
     const minTier = minTierForZoom(currentZoom);
 
     // ── Process all infrastructure through a single pass ─────────────────────
-    // Use getAllInfrastructure for unified owner info, but fall back to per-corp
-    // iteration to preserve existing corp-color semantics.
-
     const allEdges: ProcessedEdge[] = [];
     const allNodes: ProcessedNode[] = [];
 
-    for (let i = 0; i < corps.length; i++) {
-        const corp = corps[i];
-        const baseColor = CORP_COLORS[i % CORP_COLORS.length];
-        const infra = bridge.getInfrastructureList(corp.id);
+    const corpMap = new Map<number, (typeof corps)[0]>();
+    for (const c of corps) corpMap.set(c.id, c);
 
-        for (const edge of infra.edges) {
+    if (bridge.isInitialized()) {
+        const allInfra = bridge.getAllInfrastructure();
+
+        // 1. Process Edges
+        for (const edge of allInfra.edges) {
+            const isPlayerEdge = playerCorpId !== undefined && edge.owner === playerCorpId;
             const tierRank = Math.max(
                 TIER_RANK[edge.edge_type] || 1,
-                // Estimate edge tier from type name
                 edgeTierRank(edge.edge_type),
             );
-            if (tierRank < minTier) continue; // LOD cull
+            if (tierRank < minTier && !isPlayerEdge) continue; // LOD cull (skip if not player's)
+
+            const corpIdx = corpIndex.get(edge.owner) ?? 0;
+            const corp = corpMap.get(edge.owner);
+            const baseColor = CORP_COLORS[corpIdx % CORP_COLORS.length];
 
             const style = EDGE_STYLES[edge.edge_type] || { color: baseColor, width: 2 };
             let color: [number, number, number] = style.color;
@@ -456,10 +459,7 @@ export function createInfraLayers(opts: {
                 }
             }
 
-            // Base width from strand-count / capacity class
             const baseWidth = edgeWidthByType(edge.edge_type);
-
-            // Medium traffic: wider, brighter glow
             const util = edge.utilization || 0;
             let width = baseWidth;
             if (!isCongestion && !isTraffic && util > 0.3 && util <= 0.7) {
@@ -467,53 +467,41 @@ export function createInfraLayers(opts: {
                 opacity = Math.min(255, opacity + 40);
             }
 
-            // Competitor visual hierarchy: competitors are dimmer and thinner than player's infra
-            const isPlayerEdge = playerCorpId !== undefined && corp.id === playerCorpId;
             if (!isPlayerEdge && !isCongestion && !isTraffic) {
                 opacity = Math.floor(opacity * 0.55);
                 width = width * 0.7;
             }
 
-            // Health-based color tinting (green > 0.8, amber 0.5-0.8, red < 0.5)
             const health = edge.health ?? 1;
             if (!isCongestion && !isTraffic) {
                 if (health < 0.5) {
-                    // Red tint for damaged edges
                     color = [
                         Math.min(255, Math.floor(color[0] * 0.3 + 239 * 0.7)),
                         Math.min(255, Math.floor(color[1] * 0.3 + 68 * 0.7)),
                         Math.min(255, Math.floor(color[2] * 0.3 + 68 * 0.7)),
                     ];
                 } else if (health < 0.8) {
-                    // Amber tint for degraded edges
                     color = [
                         Math.min(255, Math.floor(color[0] * 0.5 + 245 * 0.5)),
                         Math.min(255, Math.floor(color[1] * 0.5 + 158 * 0.5)),
                         Math.min(255, Math.floor(color[2] * 0.5 + 11 * 0.5)),
                     ];
                 }
-                // health >= 0.8: keep original color (healthy)
             }
 
-            // Build the display path: spline if waypoints exist, straight line otherwise
             const rawWaypoints: [number, number][] = edge.waypoints ?? [];
             const deployment: DeploymentMethod = edge.deployment ?? 'Underground';
 
             let path: [number, number][];
             if (rawWaypoints.length >= 2) {
-                // Waypoints already include src→dst route; tessellate as spline
                 path = catmullRomSpline(rawWaypoints);
             } else {
-                // Fallback: straight line from source to target
                 path = [
                     [edge.src_x, edge.src_y],
                     [edge.dst_x, edge.dst_y],
                 ];
             }
 
-            // At zoom > 7, offset cables that follow roads slightly from the road
-            // centerline (3-5px equivalent in degrees) so both road and cable are
-            // visible. An edge "follows a road" if it has 3+ waypoints (road-routed).
             if (currentZoom > 7 && rawWaypoints.length >= 3) {
                 path = offsetPathFromCenterline(path, currentZoom);
             }
@@ -540,26 +528,30 @@ export function createInfraLayers(opts: {
                 tierRank,
                 waypoints: rawWaypoints,
                 deployment,
-                owner: corp.id,
-                owner_name: corp.name,
+                owner: edge.owner,
+                owner_name: edge.owner_name || (corp?.name ?? 'Unknown'),
                 isPlayer: isPlayerEdge,
             });
         }
 
-        for (const node of infra.nodes) {
+        // 2. Process Nodes
+        for (const node of allInfra.nodes) {
+            const isPlayerNode = playerCorpId !== undefined && node.owner === playerCorpId;
             const tierRank = TIER_RANK[node.network_level] || 1;
-            if (tierRank < minTier) continue; // LOD cull
+            if (tierRank < minTier && !isPlayerNode) continue; // LOD cull (skip if not player's)
+
+            const corpIdx = corpIndex.get(node.owner) ?? 0;
+            const corp = corpMap.get(node.owner);
+            const baseColor = CORP_COLORS[corpIdx % CORP_COLORS.length];
 
             const nodeColor = validateRGBA(getNodeDisplayColor(
-                { ...node, owner: corp.id, owner_name: corp.name } as unknown as AllInfraNode,
+                { ...node, owner_name: node.owner_name || (corp?.name ?? 'Unknown') } as unknown as AllInfraNode,
                 baseColor,
                 isCongestion,
                 isTraffic,
                 trafficNodeFlowMap,
             ));
 
-            // Competitor visual hierarchy: competitors are dimmer than player's nodes
-            const isPlayerNode = playerCorpId !== undefined && corp.id === playerCorpId;
             if (!isPlayerNode && !isCongestion && !isTraffic) {
                 nodeColor[3] = Math.min(nodeColor[3], 170);
             }
@@ -578,8 +570,8 @@ export function createInfraLayers(opts: {
                 utilization: node.utilization || 0,
                 max_throughput: node.max_throughput || 0,
                 current_load: node.current_load || 0,
-                owner: corp.id,
-                owner_name: corp.name,
+                owner: node.owner,
+                owner_name: node.owner_name || (corp?.name ?? 'Unknown'),
                 tierRank,
                 x: node.x,
                 y: node.y,
