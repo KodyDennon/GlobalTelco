@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.8.5 (2026-03-04)
+
+### Features
+
+- Update package versions and implement event pruning in the database (64811dc)
+
+### Other
+
+- **server:** v0.13.2 (d5fb3b3)
+- **engine:** v1.9.3 (bfc8bfa)
+
+
 ## 1.8.4 (2026-03-04)
 
 ### Features
