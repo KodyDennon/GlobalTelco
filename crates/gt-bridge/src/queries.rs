@@ -125,32 +125,33 @@ pub fn query_cities(world: &GameWorld) -> String {
 }
 
 pub fn query_grants(world: &GameWorld, corp_id: EntityId) -> String {
+    use gt_simulation::components::grant::GrantStatus;
     let tick = world.current_tick();
     let grants: Vec<serde_json::Value> = world
         .grants
-        .values()
-        .filter(|g| {
-            g.status == crate::components::grant::GrantStatus::Available 
-            || g.holder == Some(corp_id)
+        .iter()
+        .filter(|(_, g)| {
+            g.status == GrantStatus::Available 
+            || g.awarded_corp == Some(corp_id)
         })
-        .map(|g| {
+        .map(|(&id, g)| {
             let region_name = world.regions.get(&g.region_id).map(|r| r.name.as_str()).unwrap_or("Unknown");
             serde_json::json!({
-                "id": g.id,
+                "id": id,
                 "region_id": g.region_id,
                 "region_name": region_name,
-                "required_coverage": g.required_coverage,
-                "current_coverage": g.current_coverage,
-                "reward": g.reward,
+                "required_coverage": g.required_coverage_pct,
+                "current_coverage": g.progress,
+                "reward": g.reward_cash,
                 "deadline_tick": g.deadline_tick,
                 "ticks_remaining": g.deadline_tick.saturating_sub(tick),
                 "status": match g.status {
-                    crate::components::grant::GrantStatus::Available => "available",
-                    crate::components::grant::GrantStatus::Active => "active",
-                    crate::components::grant::GrantStatus::Completed => "completed",
-                    crate::components::grant::GrantStatus::Failed => "failed",
+                    GrantStatus::Available => "available",
+                    GrantStatus::Awarded => "active",
+                    GrantStatus::Completed => "completed",
+                    GrantStatus::Expired => "failed",
                 },
-                "is_holder": g.holder == Some(corp_id),
+                "is_holder": g.awarded_corp == Some(corp_id),
             })
         })
         .collect();

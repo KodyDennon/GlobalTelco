@@ -30,7 +30,11 @@ import type {
 	CorporationsTyped,
 	SpectrumLicense,
 	SpectrumAuction,
-	AvailableSpectrum
+	AvailableSpectrum,
+	CoOwnershipProposal,
+	UpgradeVote,
+	GrantInfo,
+	SatelliteInventoryItem
 } from './types';
 
 import * as tauriBridge from './tauriBridge';
@@ -431,19 +435,6 @@ export function getContracts(corpId: number): ContractInfo[] {
 		onBridgeError(e, 'getContracts');
 		return [];
 	}
-}
-
-export interface GrantInfo {
-	id: number;
-	region_id: number;
-	region_name: string;
-	required_coverage: number;
-	current_coverage: number;
-	reward: number;
-	deadline_tick: number;
-	ticks_remaining: number;
-	status: 'available' | 'active' | 'completed' | 'failed';
-	is_holder: boolean;
 }
 
 export function getGrants(corpId: number): GrantInfo[] {
@@ -930,14 +921,6 @@ export function getOrbitalView(): OrbitalSatellite[] {
 	}
 }
 
-export interface SatelliteInventoryItem {
-	id: number;
-	constellation_id: number;
-	constellation_name: string;
-	orbit_type: string;
-	mass_kg: number;
-}
-
 export function getSatelliteInventory(corpId: number): SatelliteInventoryItem[] {
 	if (useNativeSim) return tauriBridge.getCachedSatelliteInventory(corpId);
 	try {
@@ -1091,6 +1074,7 @@ export interface StockMarketInfo {
 	ipo_tick: number | null;
 	shareholder_satisfaction: number;
 	board_votes: { proposal: string; votes_for: number; votes_against: number; deadline_tick: number }[];
+	shareholders: Record<number, number>;
 }
 
 export function getStockMarket(corpId: number): StockMarketInfo {
@@ -1100,7 +1084,7 @@ export function getStockMarket(corpId: number): StockMarketInfo {
 		return JSON.parse(json);
 	} catch (e) {
 		onBridgeError(e, 'getStockMarket');
-		return { public: false, total_shares: 0, share_price: 0, dividends_per_share: 0, ipo_tick: null, shareholder_satisfaction: 0, board_votes: [] };
+		return { public: false, total_shares: 0, share_price: 0, dividends_per_share: 0, ipo_tick: null, shareholder_satisfaction: 0, board_votes: [], shareholders: {} };
 	}
 }
 

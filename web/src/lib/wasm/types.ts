@@ -360,6 +360,27 @@ export interface CorpSummary {
 	cost: number;
 }
 
+export interface GrantInfo {
+	id: number;
+	region_id: number;
+	region_name: string;
+	required_coverage: number;
+	current_coverage: number;
+	reward: number;
+	deadline_tick: number;
+	ticks_remaining: number;
+	status: 'available' | 'active' | 'completed' | 'failed';
+	is_holder: boolean;
+}
+
+export interface SatelliteInventoryItem {
+	id: number;
+	constellation_id: number;
+	constellation_name: string;
+	orbit_type: string;
+	mass_kg: number;
+}
+
 export interface CoOwnershipProposal {
 	id: number;
 	node_id: number;

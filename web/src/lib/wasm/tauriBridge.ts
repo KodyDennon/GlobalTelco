@@ -40,6 +40,10 @@ import type {
 	SpectrumLicense,
 	SpectrumAuction,
 	AvailableSpectrum,
+	GrantInfo,
+	SatelliteInventoryItem,
+	CoOwnershipProposal,
+	UpgradeVote
 } from './types';
 
 import type {
@@ -136,7 +140,15 @@ let cachedAlliances: AllianceInfo[] = [];
 let cachedAlliancesCorpId = -1;
 let cachedLawsuits: LawsuitInfo[] = [];
 let cachedLawsuitsCorpId = -1;
-let cachedStockMarket: StockMarketInfo = { public: false, total_shares: 0, share_price: 0, dividends_per_share: 0, ipo_tick: null, shareholder_satisfaction: 0, board_votes: [] };
+let cachedGrants: GrantInfo[] = [];
+let cachedGrantsCorpId = -1;
+let cachedSatelliteInventory: SatelliteInventoryItem[] = [];
+let cachedSatelliteInventoryCorpId = -1;
+let cachedCoOwnershipProposals: CoOwnershipProposal[] = [];
+let cachedCoOwnershipCorpId = -1;
+let cachedPendingUpgradeVotes: UpgradeVote[] = [];
+let cachedUpgradeVotesCorpId = -1;
+let cachedStockMarket: StockMarketInfo = { public: false, total_shares: 0, share_price: 0, dividends_per_share: 0, ipo_tick: null, shareholder_satisfaction: 0, board_votes: [], shareholders: {} };
 let cachedStockMarketCorpId = -1;
 let cachedRegionPricing: RegionPricingInfo[] = [];
 let cachedRegionPricingCorpId = -1;
@@ -250,7 +262,7 @@ async function refreshFull(): Promise<void> {
 
 	// Refresh player-specific data
 	if (cachedPlayerCorpId > 0) {
-		const [infraJson, contractsJson, debtJson, damagedJson, covertJson, lobbyJson, achieveJson, constJson, launchJson, termJson, alliancesJson, lawsuitsJson, stockJson, pricingJson, maintJson] = await Promise.all([
+		const [infraJson, contractsJson, debtJson, damagedJson, covertJson, lobbyJson, achieveJson, constJson, launchJson, termJson, alliancesJson, lawsuitsJson, stockJson, pricingJson, maintJson, grantsJson, inventoryJson, coOwnershipJson, votesJson] = await Promise.all([
 			invoke('sim_get_infrastructure_list', { id: cachedPlayerCorpId }) as Promise<string>,
 			invoke('sim_get_contracts', { id: cachedPlayerCorpId }) as Promise<string>,
 			invoke('sim_get_debt_instruments', { id: cachedPlayerCorpId }) as Promise<string>,
@@ -266,6 +278,10 @@ async function refreshFull(): Promise<void> {
 			invoke('sim_get_stock_market', { id: cachedPlayerCorpId }) as Promise<string>,
 			invoke('sim_get_region_pricing', { id: cachedPlayerCorpId }) as Promise<string>,
 			invoke('sim_get_maintenance_priorities', { id: cachedPlayerCorpId }) as Promise<string>,
+			invoke('sim_get_grants', { id: cachedPlayerCorpId }) as Promise<string>,
+			invoke('sim_get_satellite_inventory', { id: cachedPlayerCorpId }) as Promise<string>,
+			invoke('sim_get_co_ownership_proposals', { id: cachedPlayerCorpId }) as Promise<string>,
+			invoke('sim_get_pending_upgrade_votes', { id: cachedPlayerCorpId }) as Promise<string>,
 		]);
 		cachedPlayerInfraList = JSON.parse(infraJson);
 		cachedContracts = JSON.parse(contractsJson);
@@ -296,6 +312,14 @@ async function refreshFull(): Promise<void> {
 		cachedRegionPricingCorpId = cachedPlayerCorpId;
 		cachedMaintenancePrioritiesList = JSON.parse(maintJson);
 		cachedMaintenancePrioritiesCorpId = cachedPlayerCorpId;
+		cachedGrants = JSON.parse(grantsJson);
+		cachedGrantsCorpId = cachedPlayerCorpId;
+		cachedSatelliteInventory = JSON.parse(inventoryJson);
+		cachedSatelliteInventoryCorpId = cachedPlayerCorpId;
+		cachedCoOwnershipProposals = JSON.parse(coOwnershipJson);
+		cachedCoOwnershipCorpId = cachedPlayerCorpId;
+		cachedPendingUpgradeVotes = JSON.parse(votesJson);
+		cachedUpgradeVotesCorpId = cachedPlayerCorpId;
 	}
 
 	// Debris + orbital view (not corp-specific)
@@ -403,6 +427,38 @@ export function getCachedSpectrumLicenses(): SpectrumLicense[] { return cachedSp
 export function getCachedGridCells(): GridCell[] { return cachedGridCells; }
 export function getCachedPlayerCorpId(): number { return cachedPlayerCorpId; }
 export function getCachedIsRealEarth(): boolean { return cachedIsRealEarth; }
+
+export function getCachedGrants(corpId: number): GrantInfo[] {
+	if (corpId !== cachedGrantsCorpId) {
+		cachedGrantsCorpId = corpId;
+		invoke('sim_get_grants', { id: corpId }).then((json) => { cachedGrants = JSON.parse(json as string); }).catch(() => {});
+	}
+	return cachedGrants;
+}
+
+export function getCachedSatelliteInventory(corpId: number): SatelliteInventoryItem[] {
+	if (corpId !== cachedSatelliteInventoryCorpId) {
+		cachedSatelliteInventoryCorpId = corpId;
+		invoke('sim_get_satellite_inventory', { id: corpId }).then((json) => { cachedSatelliteInventory = JSON.parse(json as string); }).catch(() => {});
+	}
+	return cachedSatelliteInventory;
+}
+
+export function getCachedCoOwnershipProposals(corpId: number): CoOwnershipProposal[] {
+	if (corpId !== cachedCoOwnershipCorpId) {
+		cachedCoOwnershipCorpId = corpId;
+		invoke('sim_get_co_ownership_proposals', { id: corpId }).then((json) => { cachedCoOwnershipProposals = JSON.parse(json as string); }).catch(() => {});
+	}
+	return cachedCoOwnershipProposals;
+}
+
+export function getCachedPendingUpgradeVotes(corpId: number): UpgradeVote[] {
+	if (corpId !== cachedUpgradeVotesCorpId) {
+		cachedUpgradeVotesCorpId = corpId;
+		invoke('sim_get_pending_upgrade_votes', { id: corpId }).then((json) => { cachedPendingUpgradeVotes = JSON.parse(json as string); }).catch(() => {});
+	}
+	return cachedPendingUpgradeVotes;
+}
 
 // Panel data (refreshed every 5 ticks via refreshFull, fetch-behind for different corpIds)
 

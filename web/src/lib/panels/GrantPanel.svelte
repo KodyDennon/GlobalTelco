@@ -3,7 +3,7 @@
 	import { gameCommand } from '$lib/game/commandRouter';
 	import { tooltip } from '$lib/ui/tooltip';
 	import * as bridge from '$lib/wasm/bridge';
-	import type { GrantInfo } from '$lib/wasm/bridge';
+	import type { GrantInfo } from '$lib/wasm/types';
 
 	let grants: GrantInfo[] = $state([]);
 

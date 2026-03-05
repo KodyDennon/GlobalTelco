@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { playerCorp, formatMoney, worldInfo } from '$lib/stores/gameState';
 	import * as bridge from '$lib/wasm/bridge';
-	import type { LaunchPadInfo, SatelliteInventoryItem } from '$lib/wasm/bridge';
+	import type { LaunchPadInfo } from '$lib/wasm/bridge';
+	import type { SatelliteInventoryItem } from '$lib/wasm/types';
 	import { gameCommand } from '$lib/game/commandRouter';
 	import { tooltip } from '$lib/ui/tooltip';
 
@@ -256,5 +257,4 @@
 	.queue-list { border-top: 1px solid var(--border); padding-top: 6px; }
 	.queue-item { display: flex; gap: 12px; padding: 2px 0; font-size: 11px; }
 	.queue-empty { font-size: 11px; color: var(--text-dim); }
-	.empty { color: var(--text-dim); text-align: center; padding: 16px; font-size: 12px; }
 </style>
