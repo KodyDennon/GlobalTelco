@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.11.1 (2026-03-05)
+
+### Features
+
+- enhance grant and co-ownership functionalities with new data structures and caching (e41048a)
+
+### Chores
+
+- update package versions to 1.11.0 and 1.0.0 (4b3fb8a)
+
+### Other
+
+- **web:** v1.8.8 (720efb7)
+
+
 ## 1.11.0 (2026-03-05)
 
 ### Features
