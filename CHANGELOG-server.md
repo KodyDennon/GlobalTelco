@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.13.1 (2026-03-04)
+
+### Features
+
+- Enhance infrastructure rendering and revenue calculation by addressing race conditions, improving data fetching, and ensuring immediate updates for player corporations (935d1fc)
+- Refactor Rust WASM conditional compilation and introduce latest tick result synchronization to the web bridge for UI consumers, alongside a type fix for player corporation ID. (49d950a)
+
+### Chores
+
+- update package versions to 1.9.1 and optimize database event logging (73c4e04)
+- update gt-server version to 0.13.0 in Cargo.lock (366e337)
+
+### Other
+
+- **engine:** v1.9.2 (ebdc26e)
+- **web:** v1.8.3 (2c45e84)
+- **engine:** v1.9.1 (0a9e121)
+- **web:** v1.8.2 (a97c3c9)
+- **engine:** v1.9.0 (aa2ee6a)
+
+
 ## 0.13.0 (2026-03-03)
 
 ### Features
