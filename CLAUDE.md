@@ -255,7 +255,7 @@ Players ──► server.globaltelco.online (Cloudflare proxy, SSL termination)
            Oracle Cloud Free Tier (nginx → Rust game server)
                 │
                 ▼
-           Neon PostgreSQL (world state, accounts, cloud saves)
+           Oracle Managed PostgreSQL (world state, accounts, cloud saves)
 
 Admins  ──► admin.globaltelco.online (Cloudflare Pages, static SvelteKit)
 ```
