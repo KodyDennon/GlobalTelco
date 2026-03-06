@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.11.2 (2026-03-06)
+
+### Features
+
+- Add Display implementation for EdgeType and NodeType enums (e13e6d0)
+- Enhance WASM bridge with static definitions and improved data structures (5aa6ce1)
+- add performance audit and overhaul plan documentation for rendering optimizations (2b85ede)
+
+### Chores
+
+- update gt packages to version 1.11.1 (b7bd579)
+
+### Other
+
+- **web:** v1.8.9 (4a13519)
+
+
 ## 1.11.1 (2026-03-05)
 
 ### Features
