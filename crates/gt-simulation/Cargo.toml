@@ -20,6 +20,7 @@ rand = { workspace = true }
 bincode = { workspace = true }
 zstd = { workspace = true, optional = true }
 crc32fast = { workspace = true, optional = true }
+rstar = "0.12.2"
 
 [dev-dependencies]
 criterion = "0.5"

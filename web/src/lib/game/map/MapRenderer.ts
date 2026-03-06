@@ -42,7 +42,7 @@ import { createCablePreviewLayers, type CableDrawingState } from './layers/cable
 import { createWaypointEditorLayers, type WaypointEditorState } from './layers/waypointEditorLayer';
 import { createOverlayLayers as createSpectrumAndOtherOverlays, createDensityOverlayLayers } from './layers/overlayLayers';
 import { createSatelliteLayers } from './layers/satelliteLayer';
-import { selectedBuildItem, buildCategory, buildMode, ghostPreviewInfo, TERRAIN_COST_MULTIPLIERS } from '$lib/stores/uiState';
+import { selectedBuildItem, buildCategory, buildMode, ghostPreviewInfo, TERRAIN_COST_MULTIPLIERS, viewport, zoomLevel } from '$lib/stores/uiState';
 import type { BuildOption } from '$lib/wasm/types';
 
 // ── MapRenderer class ───────────────────────────────────────────────────────
@@ -168,6 +168,19 @@ export class MapRenderer {
         // Track zoom changes
         this.map.on('zoom', () => {
             this.currentZoom = this.map!.getZoom();
+            zoomLevel.set(this.currentZoom);
+            setProjectionForZoom(this.currentZoom);
+        });
+
+        this.map.on('move', () => {
+            if (!this.map) return;
+            const b = this.map.getBounds();
+            viewport.set({
+                minX: b.getWest(),
+                minY: b.getSouth(),
+                maxX: b.getEast(),
+                maxY: b.getNorth()
+            });
         });
 
         // Expose camera state for BookmarkManager

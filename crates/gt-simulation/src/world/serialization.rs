@@ -108,6 +108,10 @@ impl GameWorld {
                             region_id,
                         },
                     );
+                    self.spatial_index.insert(crate::world::SpatialNode {
+                        id: *entity_id,
+                        pos: [*lon, *lat],
+                    });
                     self.ownerships.insert(*entity_id, Ownership::sole(*owner));
                     self.healths.insert(*entity_id, Health::new());
                     self.capacities.insert(*entity_id, Capacity::new(0.0));
@@ -163,6 +167,12 @@ impl GameWorld {
                     }
                 }
                 DeltaOp::NodeRemoved { entity_id } => {
+                    if let Some(pos) = self.positions.get(entity_id) {
+                        self.spatial_index.remove(&crate::world::SpatialNode {
+                            id: *entity_id,
+                            pos: [pos.x, pos.y],
+                        });
+                    }
                     if let Some(node) = self.infra_nodes.remove(entity_id) {
                         self.network.remove_node(*entity_id);
                         if let Some(nodes) = self.corp_infra_nodes.get_mut(&node.owner) {

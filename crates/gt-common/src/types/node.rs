@@ -85,6 +85,12 @@ pub enum NodeType {
     Building,
 }
 
+impl std::fmt::Display for NodeType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 impl NodeType {
     /// All node type variants for iteration.
     pub const ALL: &'static [NodeType] = &[

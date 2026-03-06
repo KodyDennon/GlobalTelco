@@ -244,6 +244,11 @@ impl GameWorld {
             },
         );
 
+        self.spatial_index.insert(crate::world::SpatialNode {
+            id: node_id,
+            pos: [lon, lat],
+        });
+
         self.corp_infra_nodes
             .entry(corp_id)
             .or_default()
@@ -826,6 +831,13 @@ impl GameWorld {
 
     pub(super) fn cmd_decommission_node(&mut self, entity: EntityId) -> gt_common::protocol::CommandResult {
         use gt_common::protocol::{CommandResult, DeltaOp};
+
+        if let Some(pos) = self.positions.get(&entity) {
+            self.spatial_index.remove(&crate::world::SpatialNode {
+                id: entity,
+                pos: [pos.x, pos.y],
+            });
+        }
 
         if let Some(node) = self.infra_nodes.remove(&entity) {
             let corp_id = node.owner;

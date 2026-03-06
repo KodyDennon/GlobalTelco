@@ -57,6 +57,12 @@ pub enum EdgeType {
     MEO_GroundLink,
 }
 
+impl std::fmt::Display for EdgeType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 impl EdgeType {
     /// All edge type variants for iteration.
     pub const ALL: &'static [EdgeType] = &[

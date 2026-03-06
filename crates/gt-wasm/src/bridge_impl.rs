@@ -46,6 +46,10 @@ impl BridgeQuery for WasmBridge {
         gt_bridge::queries::query_world_info(&self.world)
     }
 
+    fn get_static_definitions(&self) -> String {
+        gt_bridge::queries::query_static_definitions()
+    }
+
     fn get_corporation_data(&self, corp_id: gt_common::types::EntityId) -> String {
         gt_bridge::queries::query_corporation_data(&self.world, corp_id)
     }
@@ -173,8 +177,16 @@ impl BridgeQuery for WasmBridge {
         gt_bridge::queries::build_infra_arrays(&self.world)
     }
 
+    fn get_infra_arrays_viewport(&self, west: f64, south: f64, east: f64, north: f64) -> InfraArrays {
+        gt_bridge::queries::build_infra_arrays_viewport(&self.world, west, south, east, north)
+    }
+
     fn get_edge_arrays(&self) -> EdgeArrays {
         gt_bridge::queries::build_edge_arrays(&self.world)
+    }
+
+    fn get_edge_arrays_viewport(&self, west: f64, south: f64, east: f64, north: f64) -> EdgeArrays {
+        gt_bridge::queries::build_edge_arrays_viewport(&self.world, west, south, east, north)
     }
 
     fn get_satellite_arrays(&self) -> SatelliteArrays {

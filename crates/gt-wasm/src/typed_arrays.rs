@@ -10,10 +10,25 @@ impl WasmBridge {
     /// Returns infrastructure node data as a flat js_sys::Array.
     /// Layout: [count, ids, owners, positions, stats, node_types, network_levels, construction_flags]
     /// positions: Float64Array [lon0, lat0, lon1, lat1, ...] (2 floats per node)
-    /// stats: Float64Array [health0, utilization0, throughput0, ...] (3 floats per node)
+    /// Stats: Float64Array [health0, utilization0, throughput0, ...] (3 floats per node)
     pub fn get_infra_nodes_typed(&self) -> js_sys::Array {
         let arrays = gt_bridge::queries::build_infra_arrays(&self.world);
+        self.pack_infra_arrays(arrays)
+    }
 
+    pub fn get_infra_nodes_typed_viewport(
+        &self,
+        west: f64,
+        south: f64,
+        east: f64,
+        north: f64,
+    ) -> js_sys::Array {
+        let arrays =
+            gt_bridge::queries::build_infra_arrays_viewport(&self.world, west, south, east, north);
+        self.pack_infra_arrays(arrays)
+    }
+
+    fn pack_infra_arrays(&self, arrays: gt_bridge::InfraArrays) -> js_sys::Array {
         let result = js_sys::Array::new();
         result.push(&JsValue::from(arrays.ids.len() as u32));
         result.push(&Uint32Array::from(&arrays.ids[..]).into());
@@ -32,7 +47,22 @@ impl WasmBridge {
     /// stats: Float64Array [bandwidth0, utilization0, ...] (2 floats per edge)
     pub fn get_infra_edges_typed(&self) -> js_sys::Array {
         let arrays = gt_bridge::queries::build_edge_arrays(&self.world);
+        self.pack_edge_arrays(arrays)
+    }
 
+    pub fn get_infra_edges_typed_viewport(
+        &self,
+        west: f64,
+        south: f64,
+        east: f64,
+        north: f64,
+    ) -> js_sys::Array {
+        let arrays =
+            gt_bridge::queries::build_edge_arrays_viewport(&self.world, west, south, east, north);
+        self.pack_edge_arrays(arrays)
+    }
+
+    fn pack_edge_arrays(&self, arrays: gt_bridge::EdgeArrays) -> js_sys::Array {
         let result = js_sys::Array::new();
         result.push(&JsValue::from(arrays.ids.len() as u32));
         result.push(&Uint32Array::from(&arrays.ids[..]).into());

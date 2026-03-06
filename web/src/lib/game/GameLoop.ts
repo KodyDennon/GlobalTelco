@@ -27,6 +27,7 @@ import {
 	activeOverlay,
 	openPanelGroup,
 	closePanelGroup,
+	viewport,
 } from '$lib/stores/uiState';
 import { removeGhost, speedVotes, corpId } from '$lib/stores/multiplayerState';
 import type { OverlayType } from '$lib/stores/uiState';
@@ -149,7 +150,8 @@ function loop(timestamp: number) {
 				tickAccumulator -= interval;
 				tickInFlight = true;
 				workerTickStart = performance.now();
-				workerBridge.requestTick();
+				const v = get(viewport);
+				workerBridge.requestTick([v.minX, v.minY, v.maxX, v.maxY]);
 			}
 		} else if (bridge.isNativeSim()) {
 			// Native sim: async tick via Tauri IPC. Only one in flight at a time.

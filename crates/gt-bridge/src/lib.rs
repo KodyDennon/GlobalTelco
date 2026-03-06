@@ -123,6 +123,8 @@ pub trait BridgeQuery {
 
     // ── Typed array queries (hot-path rendering) ────────────────────────
     fn get_infra_arrays(&self) -> InfraArrays;
+    fn get_infra_arrays_viewport(&self, west: f64, south: f64, east: f64, north: f64) -> InfraArrays;
     fn get_edge_arrays(&self) -> EdgeArrays;
+    fn get_edge_arrays_viewport(&self, west: f64, south: f64, east: f64, north: f64) -> EdgeArrays;
     fn get_satellite_arrays(&self) -> SatelliteArrays;
 }

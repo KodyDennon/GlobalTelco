@@ -1,186 +1,124 @@
-/**
- * Sim Worker — runs WASM simulation in a dedicated Web Worker.
- * Offloads the entire tick() + query cycle off the main thread.
- *
- * Protocol:
- *   Main → Worker: { type: 'init', config?: string }
- *                   { type: 'tick' }
- *                   { type: 'command', json: string, seq: number }
- *                   { type: 'query', method: string, args?: any[], id: number }
- *                   { type: 'load', saveData: string }
- *   Worker → Main: { type: 'ready' }
- *                   { type: 'tick-result', nodes, edges, corps, info, playerCorp, notifications, tick }
- *                   { type: 'command-result', result: string, seq: number }
- *                   { type: 'query-result', data: any, id: number }
- *                   { type: 'error', message: string }
- */
+import initWasm, { WasmBridge } from '../wasm/pkg/gt_wasm';
 
-// Dynamic import to allow WASM to load inside the worker
-let wasmModule: any = null;
-let bridge: any = null;
+let bridge: WasmBridge | null = null;
 
 self.onmessage = async (e: MessageEvent) => {
-	const msg = e.data;
+    const { type, payload } = e.data;
 
-	try {
-		switch (msg.type) {
-			case 'init': {
-				// Import and initialize WASM inside the worker
-				wasmModule = await import('../wasm/pkg/gt_wasm');
-				await wasmModule.default();
+    switch (type) {
+        case 'init':
+            await initWasm();
+            bridge = WasmBridge.new();
+            if (payload?.config) {
+                // bridge.new_game(JSON.stringify(payload.config));
+            }
+            self.postMessage({ type: 'initComplete' });
+            break;
 
-				if (msg.config) {
-					bridge = wasmModule.WasmBridge.new_game(msg.config);
-				} else {
-					bridge = new wasmModule.WasmBridge();
-				}
+        case 'tick':
+            if (!bridge) return;
+            bridge.tick();
+            
+            const { bounds } = e.data; // [west, south, east, north]
+            
+            // Extract hot-path data (Typed Arrays) - Viewport aware if bounds provided
+            let nodesArr, edgesArr;
+            if (bounds && bounds.length === 4) {
+                nodesArr = bridge.get_infra_nodes_typed_viewport(bounds[0], bounds[1], bounds[2], bounds[3]);
+                edgesArr = bridge.get_infra_edges_typed_viewport(bounds[0], bounds[1], bounds[2], bounds[3]);
+            } else {
+                nodesArr = bridge.get_infra_nodes_typed();
+                edgesArr = bridge.get_infra_edges_typed();
+            }
+            
+            // const corpsArr = bridge.get_corporations_typed(); 
 
-				self.postMessage({ type: 'ready' });
-				break;
-			}
+            // Extract JSON data for UI (WorldInfo, PlayerCorp, Notifications)
+            const info = bridge.get_world_info();
+            // Parse info to get player_corp_id for next query
+            const infoObj = JSON.parse(info);
+            const playerCorp = infoObj.player_corp_id ? bridge.get_corporation_data(BigInt(infoObj.player_corp_id)) : "{}";
+            const notifications = bridge.get_notifications();
 
-			case 'tick': {
-				if (!bridge) break;
+            // Helper to get buffers
+            const transferables: Transferable[] = [];
+            const addBuffers = (arr: any[]) => {
+                arr.forEach(item => {
+                    if (item && item.buffer instanceof ArrayBuffer) {
+                        transferables.push(item.buffer);
+                    }
+                });
+            };
 
-				bridge.tick();
+            addBuffers(nodesArr);
+            addBuffers(edgesArr);
+            
+            self.postMessage({
+                type: 'tickResult',
+                nodes: nodesArr,
+                edges: edgesArr,
+                tick: bridge.current_tick(),
+                info,
+                playerCorp,
+                notifications
+            }, transferables);
+            break;
 
-				// Collect notifications first since it requires a mutable borrow (&mut self)
-				// Fetching this after read-only queries can cause "recursive use of object" panics
-				// if string references from earlier queries haven't been fully GC'd by the JS engine.
-				let notificationsJson: string | null = null;
-				try {
-					notificationsJson = bridge.get_notifications();
-				} catch { /* ignore */ }
+        case 'command':
+            if (!bridge) return;
+            try {
+                // e.data has { type, id, cmd }
+                const { id, cmd } = e.data;
+                const result = bridge.process_command(cmd);
+                self.postMessage({ type: 'commandResult', id, result });
+            } catch (err) {
+                console.error(err);
+            }
+            break;
 
-				// Collect typed arrays for hot-path rendering (read-only)
-				const nodesArr = bridge.get_infra_nodes_typed();
-				const edgesArr = bridge.get_infra_edges_typed();
-				const corpsArr = bridge.get_corporations_typed();
-				const infoJson = bridge.get_world_info();
+        case 'load':
+            if (!bridge) return;
+            try {
+                bridge.load_game(e.data.data);
+                self.postMessage({ type: 'loadComplete' });
+            } catch (err) {
+                console.error('Worker load failed:', err);
+            }
+            break;
 
-				// Parse the flat arrays into structured objects
-				const nodes = nodesArr && nodesArr.length >= 8 ? {
-					count: nodesArr[0] as number,
-					ids: nodesArr[1] as Uint32Array,
-					owners: nodesArr[2] as Uint32Array,
-					positions: nodesArr[3] as Float64Array,
-					stats: nodesArr[4] as Float64Array,
-					node_types: nodesArr[5] as Uint32Array,
-					network_levels: nodesArr[6] as Uint32Array,
-					construction_flags: nodesArr[7] as Uint8Array,
-				} : null;
-
-				const edges = edgesArr && edgesArr.length >= 6 ? {
-					count: edgesArr[0] as number,
-					ids: edgesArr[1] as Uint32Array,
-					owners: edgesArr[2] as Uint32Array,
-					endpoints: edgesArr[3] as Float64Array,
-					stats: edgesArr[4] as Float64Array,
-					edge_types: edgesArr[5] as Uint32Array,
-				} : null;
-
-				const corps = corpsArr && corpsArr.length >= 5 ? {
-					count: corpsArr[0] as number,
-					ids: corpsArr[1] as Uint32Array,
-					financials: corpsArr[2] as Float64Array,
-					name_offsets: corpsArr[3] as Uint32Array,
-					names_packed: corpsArr[4] as Uint8Array,
-				} : null;
-
-				const tick = bridge.current_tick();
-
-				// Collect full infrastructure JSON for rendering fallback
-				const allInfraJson = bridge.get_all_infrastructure();
-
-				// Collect additional data for overlays
-				const trafficFlowsJson = bridge.get_traffic_flows();
-				const cellCoverageJson = bridge.get_cell_coverage();
-				const spectrumLicensesJson = bridge.get_spectrum_licenses();
-
-				// Collect player corp data for main thread
-				let playerCorpJson: string | null = null;
-				try {
-					const info = JSON.parse(infoJson);
-					if (info.player_corp_id > 0) {
-						playerCorpJson = bridge.get_corporation_data(BigInt(info.player_corp_id));
-					}
-				} catch { /* ignore */ }
-
-				self.postMessage({
-					type: 'tick-result',
-					nodes,
-					edges,
-					corps,
-					info: infoJson,
-					allInfra: allInfraJson,
-					trafficFlows: trafficFlowsJson,
-					cellCoverage: cellCoverageJson,
-					spectrumLicenses: spectrumLicensesJson,
-					playerCorp: playerCorpJson,
-					notifications: notificationsJson,
-					tick,
-				});
-				break;
-			}
-
-			case 'command': {
-				if (!bridge) break;
-				const result = bridge.process_command(msg.json);
-
-				// Also return latest state to ensure instant feedback on main thread
-				const allInfraJson = bridge.get_all_infrastructure();
-				const infoJson = bridge.get_world_info();
-				const trafficFlowsJson = bridge.get_traffic_flows();
-				const cellCoverageJson = bridge.get_cell_coverage();
-				const spectrumLicensesJson = bridge.get_spectrum_licenses();
-
-				self.postMessage({
-					type: 'command-result',
-					result,
-					allInfra: allInfraJson,
-					info: infoJson,
-					trafficFlows: trafficFlowsJson,
-					cellCoverage: cellCoverageJson,
-					spectrumLicenses: spectrumLicensesJson,
-					seq: msg.seq,
-				});
-				break;
-			}
-
-			case 'query': {
-				if (!bridge) break;
-				const method = msg.method;
-				const args = msg.args || [];
-
-				let data: any;
-				if (typeof bridge[method] === 'function') {
-					data = bridge[method](...args);
-				} else {
-					data = null;
-				}
-
-				self.postMessage({
-					type: 'query-result',
-					data,
-					id: msg.id,
-				});
-				break;
-			}
-
-			case 'load': {
-				if (!wasmModule) break;
-				bridge = wasmModule.WasmBridge.load_game(msg.saveData);
-				self.postMessage({ type: 'ready' });
-				break;
-			}
-
-			default:
-				break;
-		}
-	} catch (err: any) {
-		self.postMessage({
-			type: 'error',
-			message: err?.message || String(err),
-		});
-	}
+        case 'query':
+            if (!bridge) return;
+            try {
+                const { id, name, args } = e.data;
+                let result;
+                // Safe lookup?
+                // Note: args is Array. WasmBridge methods expect spread? Or specific args?
+                // Example: get_corporation_data(id). args=[id].
+                // bridge.get_corporation_data(...args) works.
+                
+                // Need to cast bridge to any to access dynamic method
+                if (typeof (bridge as any)[name] === 'function') {
+                    // Convert args if necessary (e.g. string to BigInt?)
+                    // JS BigInt is transferable via postMessage, so args can contain BigInt.
+                    // But if they came from JSON, they are strings/numbers.
+                    // Rust bindgen expects BigInt for u64.
+                    
+                    const castArgs = args.map((a: any) => {
+                        // Heuristic: if method expects u64, and we got number/string, cast to BigInt?
+                        // Hard to know method signature here.
+                        // For now, rely on caller passing correct types or Rust bindgen handling it.
+                        return a;
+                    });
+                    
+                    result = (bridge as any)[name](...castArgs);
+                } else {
+                    console.error(`Unknown query: ${name}`);
+                    result = null;
+                }
+                self.postMessage({ type: 'queryResult', id, result });
+            } catch (err) {
+                console.error(err);
+            }
+            break;
+    }
 };

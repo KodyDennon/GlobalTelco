@@ -5,6 +5,7 @@
 //! these functions, eliminating duplicated serialization logic.
 
 use gt_common::types::EntityId;
+use gt_simulation::components::infra_edge::DeploymentMethod;
 use gt_simulation::world::GameWorld;
 
 // ── World / Corporation Queries ─────────────────────────────────────────
@@ -1665,7 +1666,28 @@ pub fn query_road_segments(world: &GameWorld) -> String {
 // ── Typed Array Helpers ─────────────────────────────────────────────────
 
 pub fn build_infra_arrays(world: &GameWorld) -> crate::InfraArrays {
-    let count = world.infra_nodes.len();
+    let ids: Vec<EntityId> = world.infra_nodes.keys().copied().collect();
+    build_infra_arrays_from_ids(world, &ids)
+}
+
+pub fn build_infra_arrays_viewport(
+    world: &GameWorld,
+    west: f64,
+    south: f64,
+    east: f64,
+    north: f64,
+) -> crate::InfraArrays {
+    let aabb = rstar::AABB::from_corners([west, south], [east, north]);
+    let ids: Vec<EntityId> = world
+        .spatial_index
+        .locate_in_envelope(&aabb)
+        .map(|sn| sn.id)
+        .collect();
+    build_infra_arrays_from_ids(world, &ids)
+}
+
+fn build_infra_arrays_from_ids(world: &GameWorld, ids_list: &[EntityId]) -> crate::InfraArrays {
+    let count = ids_list.len();
     let mut ids = Vec::with_capacity(count);
     let mut owners = Vec::with_capacity(count);
     let mut positions = Vec::with_capacity(count * 2);
@@ -1674,18 +1696,18 @@ pub fn build_infra_arrays(world: &GameWorld) -> crate::InfraArrays {
     let mut network_levels = Vec::with_capacity(count);
     let mut construction_flags = Vec::with_capacity(count);
 
-    for (&eid, node) in &world.infra_nodes {
+    for &eid in ids_list {
+        let node = match world.infra_nodes.get(&eid) {
+            Some(n) => n,
+            None => continue,
+        };
         ids.push(eid as u32);
         let owner = world.ownerships.get(&eid).map(|o| o.owner).unwrap_or(0);
         owners.push(owner as u32);
         let pos = world.positions.get(&eid);
         positions.push(pos.map(|p| p.x).unwrap_or(0.0));
         positions.push(pos.map(|p| p.y).unwrap_or(0.0));
-        let health = world
-            .healths
-            .get(&eid)
-            .map(|h| h.condition)
-            .unwrap_or(1.0);
+        let health = world.healths.get(&eid).map(|h| h.condition).unwrap_or(1.0);
         let utilization = world
             .capacities
             .get(&eid)
@@ -1715,19 +1737,54 @@ pub fn build_infra_arrays(world: &GameWorld) -> crate::InfraArrays {
 }
 
 pub fn build_edge_arrays(world: &GameWorld) -> crate::EdgeArrays {
-    let count = world.infra_edges.len();
+    let ids: Vec<EntityId> = world.infra_edges.keys().copied().collect();
+    build_edge_arrays_from_ids(world, &ids)
+}
+
+pub fn build_edge_arrays_viewport(
+    world: &GameWorld,
+    west: f64,
+    south: f64,
+    east: f64,
+    north: f64,
+) -> crate::EdgeArrays {
+    // Find edges where either endpoint is in the viewport
+    let aabb = rstar::AABB::from_corners([west, south], [east, north]);
+    let visible_node_ids: std::collections::HashSet<EntityId> = world
+        .spatial_index
+        .locate_in_envelope(&aabb)
+        .map(|sn| sn.id)
+        .collect();
+
+    let ids: Vec<EntityId> = world
+        .infra_edges
+        .iter()
+        .filter(|(_, e)| {
+            visible_node_ids.contains(&e.source) || visible_node_ids.contains(&e.target)
+        })
+        .map(|(&id, _)| id)
+        .collect();
+
+    build_edge_arrays_from_ids(world, &ids)
+}
+
+fn build_edge_arrays_from_ids(world: &GameWorld, ids_list: &[EntityId]) -> crate::EdgeArrays {
+    let count = ids_list.len();
     let mut ids = Vec::with_capacity(count);
     let mut owners = Vec::with_capacity(count);
     let mut endpoints = Vec::with_capacity(count * 4);
     let mut stats = Vec::with_capacity(count * 2);
     let mut edge_types = Vec::with_capacity(count);
     let mut deployment_types = Vec::with_capacity(count);
-    // Rough estimate for waypoints capacity
     let mut waypoints_data = Vec::with_capacity(count * 4);
     let mut waypoint_offsets = Vec::with_capacity(count);
     let mut waypoint_lengths = Vec::with_capacity(count);
 
-    for (&eid, edge) in &world.infra_edges {
+    for &eid in ids_list {
+        let edge = match world.infra_edges.get(&eid) {
+            Some(e) => e,
+            None => continue,
+        };
         ids.push(eid as u32);
         let owner = world.ownerships.get(&eid).map(|o| o.owner).unwrap_or(0);
         owners.push(owner as u32);
@@ -1745,14 +1802,13 @@ pub fn build_edge_arrays(world: &GameWorld) -> crate::EdgeArrays {
             .unwrap_or(0.0);
         stats.push(utilization);
         edge_types.push(edge.edge_type as u8);
-        
+
         deployment_types.push(match edge.deployment {
-            gt_common::types::DeploymentMethod::Underground => 0,
-            gt_common::types::DeploymentMethod::Aerial => 1,
+            DeploymentMethod::Underground => 0,
+            DeploymentMethod::Aerial => 1,
         });
 
         waypoint_offsets.push(waypoints_data.len() as u32);
-        // Limit to 255 points per edge to fit in u8
         let len = edge.waypoints.len().min(255);
         waypoint_lengths.push(len as u8);
         for &(lon, lat) in edge.waypoints.iter().take(len) {

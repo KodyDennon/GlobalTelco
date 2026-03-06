@@ -1,223 +1,144 @@
-/**
- * Worker Bridge — proxies WASM calls to the sim worker.
- *
- * Provides the same API surface as the direct bridge.ts module,
- * but routes all calls through postMessage to a Web Worker.
- * This keeps the main thread free for rendering and UI.
- *
- * Usage:
- *   import * as workerBridge from './workerBridge';
- *   await workerBridge.init(config);
- *   workerBridge.requestTick();
- *   const info = await workerBridge.query('get_world_info');
- */
-
-import type {
-	InfraNodesTyped,
-	InfraEdgesTyped,
-	CorporationsTyped,
-} from './types';
+import SimWorker from '$lib/workers/simWorker?worker';
+import type { TickResult } from './bridge';
+import { setLatestTickResult, setCommandProxy } from './bridge';
+import type { InfraNodesTyped, InfraEdgesTyped } from './types';
 
 let worker: Worker | null = null;
-let queryIdCounter = 0;
-let commandSeqCounter = 0;
-let ready = false;
+let commandId = 0;
+const commandResolvers = new Map<number, (res: string) => void>();
+let tickResultHandler: ((res: TickResult) => void) | null = null;
 
-// Pending query/command callbacks
-const pendingQueries = new Map<number, { resolve: (data: any) => void; reject: (err: any) => void }>();
-const pendingCommands = new Map<number, { resolve: (data: any) => void; reject: (err: any) => void }>();
-
-// Latest tick result (double-buffered: worker writes, main thread reads)
-let latestTickResult: TickResult | null = null;
-let onTickResult: ((result: TickResult) => void) | null = null;
-
-export interface TickResult {
-	nodes: InfraNodesTyped | null;
-	edges: InfraEdgesTyped | null;
-	corps: CorporationsTyped | null;
-	info: string;
-	allInfra: string | null;
-	trafficFlows: string | null;
-	cellCoverage: string | null;
-	spectrumLicenses: string | null;
-	playerCorp: string | null;
-	notifications: string | null;
-	tick: number;
-}
-
-/**
- * Initialize the sim worker and WASM module.
- * Returns a promise that resolves when the worker is ready.
- */
-export function init(config?: string): Promise<void> {
-	return new Promise((resolve, reject) => {
-		try {
-			worker = new Worker(
-				new URL('../workers/simWorker.ts', import.meta.url),
-				{ type: 'module' }
-			);
-		} catch (err) {
-			reject(err);
-			return;
-		}
-
-		const onReady = (e: MessageEvent) => {
-			if (e.data.type === 'ready') {
-				ready = true;
-				resolve();
-			}
-		};
-
-		worker.addEventListener('message', onReady, { once: true });
-
-		worker.addEventListener('message', handleWorkerMessage);
-
-		worker.postMessage({ type: 'init', config });
-	});
-}
-
-function handleWorkerMessage(e: MessageEvent) {
-	const msg = e.data;
-
-	switch (msg.type) {
-		case 'tick-result': {
-			latestTickResult = {
-				nodes: msg.nodes,
-				edges: msg.edges,
-				corps: msg.corps,
-				info: msg.info,
-				allInfra: msg.allInfra ?? null,
-				trafficFlows: msg.trafficFlows ?? null,
-				cellCoverage: msg.cellCoverage ?? null,
-				spectrumLicenses: msg.spectrumLicenses ?? null,
-				playerCorp: msg.playerCorp ?? null,
-				notifications: msg.notifications ?? null,
-				tick: msg.tick,
-			};
-			if (onTickResult) {
-				onTickResult(latestTickResult);
-			}
-			break;
-		}
-
-		case 'command-result': {
-			const pending = pendingCommands.get(msg.seq);
-			if (pending) {
-				pendingCommands.delete(msg.seq);
-				// If command result also contains state, update latest result
-				// This provides instant feedback even before the next tick
-				if (msg.allInfra && msg.info) {
-					latestTickResult = {
-						...(latestTickResult || {}),
-						allInfra: msg.allInfra,
-						info: msg.info,
-						trafficFlows: msg.trafficFlows ?? latestTickResult?.trafficFlows ?? null,
-						cellCoverage: msg.cellCoverage ?? latestTickResult?.cellCoverage ?? null,
-						spectrumLicenses: msg.spectrumLicenses ?? latestTickResult?.spectrumLicenses ?? null,
-						playerCorp: msg.playerCorp ?? latestTickResult?.playerCorp ?? null,
-						notifications: msg.result, // result is the notifications JSON for commands
-						tick: latestTickResult?.tick ?? 0,
-					} as TickResult;
-					if (onTickResult) onTickResult(latestTickResult);
-				}
-				pending.resolve(msg.result);
-			}
-			break;
-		}
-
-		case 'query-result': {
-			const pending = pendingQueries.get(msg.id);
-			if (pending) {
-				pendingQueries.delete(msg.id);
-				pending.resolve(msg.data);
-			}
-			break;
-		}
-
-		case 'error': {
-			console.error('[SimWorker]', msg.message);
-			break;
-		}
-	}
-}
-
-/** Request the worker to run one tick. Non-blocking — result arrives via onTickResult callback. */
-export function requestTick(): void {
-	if (!worker || !ready) return;
-	worker.postMessage({ type: 'tick' });
-}
-
-/** Set a callback for when tick results arrive. */
-export function setTickResultHandler(handler: (result: TickResult) => void): void {
-	onTickResult = handler;
-}
-
-/** Get the latest tick result (may be from previous tick). */
-export function getLatestTickResult(): TickResult | null {
-	return latestTickResult;
-}
-
-/** Send a command to the worker and wait for the result. */
-export function sendCommand(commandJson: string): Promise<string> {
-	return new Promise((resolve, reject) => {
-		if (!worker || !ready) {
-			reject(new Error('Worker not ready'));
-			return;
-		}
-		const seq = ++commandSeqCounter;
-		pendingCommands.set(seq, { resolve, reject });
-		worker.postMessage({ type: 'command', json: commandJson, seq });
-	});
-}
-
-/** Run a named query method on the worker bridge and wait for the result. */
-export function query(method: string, ...args: any[]): Promise<any> {
-	return new Promise((resolve, reject) => {
-		if (!worker || !ready) {
-			reject(new Error('Worker not ready'));
-			return;
-		}
-		const id = ++queryIdCounter;
-		pendingQueries.set(id, { resolve, reject });
-		worker.postMessage({ type: 'query', method, args, id });
-	});
-}
-
-/** Load a saved game in the worker. */
-export function loadGame(saveData: string): Promise<void> {
-	return new Promise((resolve, reject) => {
-		if (!worker) {
-			reject(new Error('Worker not initialized'));
-			return;
-		}
-
-		const onReady = (e: MessageEvent) => {
-			if (e.data.type === 'ready') {
-				ready = true;
-				resolve();
-			}
-		};
-
-		worker.addEventListener('message', onReady, { once: true });
-		worker.postMessage({ type: 'load', saveData });
-	});
-}
-
-/** Check if the worker is initialized and ready. */
-export function isReady(): boolean {
-	return ready;
-}
-
-/** Check if worker bridge is available (Web Workers supported). */
 export function isSupported(): boolean {
-	return typeof Worker !== 'undefined';
+    return typeof Worker !== 'undefined';
 }
 
-/** Terminate the worker. */
-export function terminate(): void {
-	if (worker) {
-		worker.terminate();
-		worker = null;
-		ready = false;
-	}
+export async function init(): Promise<void> {
+    worker = new SimWorker();
+    
+    worker.onmessage = (e) => {
+        const { type, nodes, edges, corps, tick, id, result, info, playerCorp, notifications } = e.data;
+        
+        if (type === 'initComplete') {
+            console.log('[WorkerBridge] Worker initialized');
+        }
+        else if (type === 'tickResult') {
+            const infraNodes: InfraNodesTyped = {
+                count: nodes[0],
+                ids: nodes[1],
+                owners: nodes[2],
+                positions: nodes[3],
+                stats: nodes[4],
+                node_types: nodes[5],
+                network_levels: nodes[6],
+                construction_flags: nodes[7],
+            };
+            
+            const infraEdges: InfraEdgesTyped = {
+                count: edges[0],
+                ids: edges[1],
+                owners: edges[2],
+                endpoints: edges[3],
+                stats: edges[4],
+                edge_types: edges[5],
+                deployment_types: edges[6],
+                waypoints_data: edges[7],
+                waypoint_offsets: edges[8],
+                waypoint_lengths: edges[9],
+            };
+
+            const res: TickResult = { 
+                infraNodes, 
+                infraEdges, 
+                tick,
+                // These are passed as JSON strings for compatibility with GameLoop expectations
+                // GameLoop expects 'info', 'playerCorp', 'notifications' in the result object
+                // But TickResult interface in bridge.ts might be strictly typed arrays?
+                // bridge.ts TickResult: { infraNodes?, infraEdges?, corporations?, tick? }
+                // GameLoop casts result to 'any' or workerBridge.TickResult?
+                // Let's check GameLoop again. It says `result: workerBridge.TickResult`.
+                // So I should define TickResult here to include JSON fields.
+            };
+            
+            // Attach JSON fields for GameLoop to parse
+            (res as any).info = info; // from worker
+            (res as any).playerCorp = playerCorp;
+            (res as any).notifications = notifications;
+
+            if (tickResultHandler) {
+                tickResultHandler(res);
+            } else {
+                // If no handler (e.g. initial load), just set it
+                setLatestTickResult(res);
+            }
+        }
+        else if (type === 'commandResult') {
+            const resolve = commandResolvers.get(id);
+            if (resolve) {
+                resolve(result);
+                commandResolvers.delete(id);
+            }
+        }
+        else if (type === 'queryResult') {
+             const resolve = commandResolvers.get(id);
+             if (resolve) {
+                 resolve(result);
+                 commandResolvers.delete(id);
+             }
+        }
+    };
+
+    return new Promise<void>((resolve) => {
+        const handler = (e: MessageEvent) => {
+            if (e.data.type === 'initComplete') {
+                worker?.removeEventListener('message', handler);
+                resolve();
+            }
+        };
+        worker?.addEventListener('message', handler);
+        worker?.postMessage({ type: 'init' });
+    });
 }
+
+export function setTickResultHandler(handler: (res: TickResult) => void) {
+    tickResultHandler = handler;
+}
+
+export function requestTick(bounds?: [number, number, number, number]) {
+    worker?.postMessage({ type: 'tick', bounds });
+}
+
+export async function sendCommand(json: string): Promise<string> {
+    if (!worker) return "";
+    return new Promise<string>((resolve) => {
+        const id = ++commandId;
+        commandResolvers.set(id, resolve);
+        worker?.postMessage({ type: 'command', id, cmd: json });
+    });
+}
+
+export async function loadGame(json: string): Promise<void> {
+    // We send a command to load game? Or specific message?
+    // bridge.load_game is a query/command? It's a method on WasmBridge.
+    // Let's assume we can use sendCommand with a special "LoadGame" command if supported,
+    // or add a 'load' message type.
+    // SimWorker needs to handle 'load'.
+    if (!worker) return;
+    worker.postMessage({ type: 'load', data: json });
+}
+
+export async function query(name: string, ...args: any[]): Promise<string> {
+    if (!worker) return "";
+    return new Promise<string>((resolve) => {
+        const id = ++commandId;
+        commandResolvers.set(id, resolve);
+        worker?.postMessage({ type: 'query', id, name, args });
+    });
+}
+
+export function terminate() {
+    worker?.terminate();
+    worker = null;
+}
+
+// Re-export TickResult to satisfy GameLoop import
+export type { TickResult } from './wasm/bridge';
