@@ -646,59 +646,86 @@ const EMPTY_F64 = new Float64Array(0);
 const EMPTY_U32 = new Uint32Array(0);
 const EMPTY_U8 = new Uint8Array(0);
 
+export function getStaticDefinitions(): any {
+    if (useNativeSim) return tauriBridge.getCachedStaticDefinitions();
+    try {
+        const json = bridge?.get_static_definitions() ?? '{}';
+        return JSON.parse(json);
+    } catch (e) {
+        onBridgeError(e, 'getStaticDefinitions');
+        return {};
+    }
+}
+
 export function getInfraNodesTyped(): InfraNodesTyped {
-	if (_latestTickResult?.infraNodes) {
-		return _latestTickResult.infraNodes;
-	}
-	if (useNativeSim) return tauriBridge.getCachedInfraNodesTyped();
-	try {
-		if (bridge && typeof bridge.get_infra_nodes_typed === 'function') {
-			const arr = bridge.get_infra_nodes_typed();
-			if (arr && arr.length >= 8) {
-				return {
-					count: arr[0] as number,
-					ids: arr[1] as Uint32Array,
-					owners: arr[2] as Uint32Array,
-					positions: arr[3] as Float64Array,
-					stats: arr[4] as Float64Array,
-					node_types: arr[5] as Uint32Array,
-					network_levels: arr[6] as Uint32Array,
-					construction_flags: arr[7] as Uint8Array,
-				};
-			}
-		}
-	} catch (e) {
-		onBridgeError(e, 'getInfraNodesTyped');
-	}
-	return { count: 0, ids: EMPTY_U32, owners: EMPTY_U32, positions: EMPTY_F64, stats: EMPTY_F64, node_types: EMPTY_U32, network_levels: EMPTY_U32, construction_flags: EMPTY_U8 };
+    if (_latestTickResult?.infraNodes) {
+        return _latestTickResult.infraNodes;
+    }
+    if (useNativeSim) return tauriBridge.getCachedInfraNodesTyped();
+    try {
+        if (bridge && typeof bridge.get_infra_nodes_typed === 'function') {
+            const arr = bridge.get_infra_nodes_typed();
+            if (arr && arr.length >= 8) {
+                return {
+                    count: arr[0] as number,
+                    ids: arr[1] as Uint32Array,
+                    owners: arr[2] as Uint32Array,
+                    positions: arr[3] as Float64Array,
+                    stats: arr[4] as Float64Array,
+                    node_types: arr[5] as Uint8Array,
+                    network_levels: arr[6] as Uint32Array,
+                    construction_flags: arr[7] as Uint8Array,
+                };
+            }
+        }
+    } catch (e) {
+        onBridgeError(e, 'getInfraNodesTyped');
+    }
+    return { count: 0, ids: EMPTY_U32, owners: EMPTY_U32, positions: EMPTY_F64, stats: EMPTY_F64, node_types: EMPTY_U8, network_levels: EMPTY_U32, construction_flags: EMPTY_U8 };
 }
 
 export function getInfraEdgesTyped(): InfraEdgesTyped {
-	if (_latestTickResult?.infraEdges) {
-		return _latestTickResult.infraEdges;
-	}
-	if (useNativeSim) return tauriBridge.getCachedInfraEdgesTyped();
-	try {
-		if (bridge && typeof bridge.get_infra_edges_typed === 'function') {
-			const arr = bridge.get_infra_edges_typed();
-			if (arr && arr.length >= 6) {
-				return {
-					count: arr[0] as number,
-					ids: arr[1] as Uint32Array,
-					owners: arr[2] as Uint32Array,
-					endpoints: arr[3] as Float64Array,
-					stats: arr[4] as Float64Array,
-					edge_types: arr[5] as Uint32Array,
-				};
-			}
-		}
-	} catch (e) {
-		onBridgeError(e, 'getInfraEdgesTyped');
-	}
-	return { count: 0, ids: EMPTY_U32, owners: EMPTY_U32, endpoints: EMPTY_F64, stats: EMPTY_F64, edge_types: EMPTY_U32 };
+    if (_latestTickResult?.infraEdges) {
+        return _latestTickResult.infraEdges;
+    }
+    if (useNativeSim) return tauriBridge.getCachedInfraEdgesTyped();
+    try {
+        if (bridge && typeof bridge.get_infra_edges_typed === 'function') {
+            const arr = bridge.get_infra_edges_typed();
+            if (arr && arr.length >= 10) {
+                return {
+                    count: arr[0] as number,
+                    ids: arr[1] as Uint32Array,
+                    owners: arr[2] as Uint32Array,
+                    endpoints: arr[3] as Float64Array,
+                    stats: arr[4] as Float64Array,
+                    edge_types: arr[5] as Uint8Array,
+                    deployment_types: arr[6] as Uint8Array,
+                    waypoints_data: arr[7] as Float64Array,
+                    waypoint_offsets: arr[8] as Uint32Array,
+                    waypoint_lengths: arr[9] as Uint8Array,
+                };
+            }
+        }
+    } catch (e) {
+        onBridgeError(e, 'getInfraEdgesTyped');
+    }
+    return { 
+        count: 0, 
+        ids: EMPTY_U32, 
+        owners: EMPTY_U32, 
+        endpoints: EMPTY_F64, 
+        stats: EMPTY_F64, 
+        edge_types: EMPTY_U8,
+        deployment_types: EMPTY_U8,
+        waypoints_data: EMPTY_F64,
+        waypoint_offsets: EMPTY_U32,
+        waypoint_lengths: EMPTY_U8
+    };
 }
 
 export function getCorporationsTyped(): CorporationsTyped {
+
 	if (_latestTickResult?.corporations) {
 		return _latestTickResult.corporations;
 	}

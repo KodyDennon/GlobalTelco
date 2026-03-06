@@ -20,14 +20,14 @@ impl WasmBridge {
         result.push(&Uint32Array::from(&arrays.owners[..]).into());
         result.push(&Float64Array::from(&arrays.positions[..]).into());
         result.push(&Float64Array::from(&arrays.stats[..]).into());
-        result.push(&Uint32Array::from(&arrays.node_types[..]).into());
+        result.push(&Uint8Array::from(&arrays.node_types[..]).into());
         result.push(&Uint32Array::from(&arrays.network_levels[..]).into());
         result.push(&Uint8Array::from(&arrays.construction_flags[..]).into());
         result
     }
 
     /// Returns infrastructure edge data as a flat js_sys::Array.
-    /// Layout: [count, ids, owners, endpoints, stats, edge_types]
+    /// Layout: [count, ids, owners, endpoints, stats, edge_types, deployment_types, waypoints_data, waypoint_offsets, waypoint_lengths]
     /// endpoints: Float64Array [src_lon0, src_lat0, dst_lon0, dst_lat0, ...] (4 floats per edge)
     /// stats: Float64Array [bandwidth0, utilization0, ...] (2 floats per edge)
     pub fn get_infra_edges_typed(&self) -> js_sys::Array {
@@ -39,7 +39,11 @@ impl WasmBridge {
         result.push(&Uint32Array::from(&arrays.owners[..]).into());
         result.push(&Float64Array::from(&arrays.endpoints[..]).into());
         result.push(&Float64Array::from(&arrays.stats[..]).into());
-        result.push(&Uint32Array::from(&arrays.edge_types[..]).into());
+        result.push(&Uint8Array::from(&arrays.edge_types[..]).into());
+        result.push(&Uint8Array::from(&arrays.deployment_types[..]).into());
+        result.push(&Float64Array::from(&arrays.waypoints_data[..]).into());
+        result.push(&Uint32Array::from(&arrays.waypoint_offsets[..]).into());
+        result.push(&Uint8Array::from(&arrays.waypoint_lengths[..]).into());
         result
     }
 

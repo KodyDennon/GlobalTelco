@@ -23,8 +23,8 @@ pub struct InfraArrays {
     pub positions: Vec<f64>,
     /// [health0, utilization0, throughput0, health1, utilization1, throughput1, ...] — 3 floats per node
     pub stats: Vec<f64>,
-    /// Node type enum discriminants
-    pub node_types: Vec<u32>,
+    /// Node type enum discriminants (u8)
+    pub node_types: Vec<u8>,
     /// Network level enum discriminants
     pub network_levels: Vec<u32>,
     /// 1 if under construction, 0 if not
@@ -41,8 +41,16 @@ pub struct EdgeArrays {
     pub endpoints: Vec<f64>,
     /// [bandwidth0, utilization0, bandwidth1, utilization1, ...] — 2 floats per edge
     pub stats: Vec<f64>,
-    /// Edge type enum discriminants
-    pub edge_types: Vec<u32>,
+    /// Edge type enum discriminants (u8)
+    pub edge_types: Vec<u8>,
+    /// Deployment method (0=Underground, 1=Aerial)
+    pub deployment_types: Vec<u8>,
+    /// Packed waypoint data [lon0, lat0, lon1, lat1, ...]
+    pub waypoints_data: Vec<f64>,
+    /// Start index in waypoints_data for each edge
+    pub waypoint_offsets: Vec<u32>,
+    /// Number of points (pairs) for each edge
+    pub waypoint_lengths: Vec<u8>,
 }
 
 /// Satellite data as flat typed arrays for orbital overlay rendering.
@@ -77,6 +85,7 @@ pub trait BridgeQuery {
 
     // ── JSON queries (non-hot-path) ─────────────────────────────────────
     fn get_world_info(&self) -> String;
+    fn get_static_definitions(&self) -> String;
     fn get_corporation_data(&self, corp_id: EntityId) -> String;
     fn get_regions(&self) -> String;
     fn get_cities(&self) -> String;

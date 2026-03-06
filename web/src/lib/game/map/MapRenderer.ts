@@ -12,6 +12,7 @@ import { get } from 'svelte/store';
 
 import * as bridge from '$lib/wasm/bridge';
 import type { City, Region, GridCell, CellCoverage } from '$lib/wasm/types';
+import { dataStore } from './DataStore';
 
 import { GridPathfinder, needsTerrainRouting } from '../GridPathfinder';
 import { selectedEdgeType } from '$lib/stores/uiState';
@@ -326,6 +327,9 @@ export class MapRenderer {
         this.cachedRegions = bridge.getRegions();
         this.cachedCells = cells;
 
+        // Initialize DataStore for binary infrastructure data
+        await dataStore.init();
+
         const worldInfo = bridge.getWorldInfo();
         if (worldInfo.cell_spacing_km && worldInfo.cell_spacing_km > 0) {
             this.cellSpacingKm = worldInfo.cell_spacing_km;
@@ -443,9 +447,11 @@ export class MapRenderer {
             this.createRegionLabelsLayer(),
             // 7b. Cable glow (low zoom) + pole dots (high zoom aerial) — below main infra
             ...createCableGlowLayers(
-                bridge.isInitialized() ? bridge.getAllInfrastructure().edges : [],
+                [], // Legacy argument, now using DataStore internally
                 this.currentZoom,
             ),
+            // Sync binary data before rendering infra layers
+            (() => { dataStore.sync(); return []; })(),
             // 8. Infrastructure (nodes, edges — above cities)
             ...createInfraLayers({
                 iconAtlas: this.iconAtlas,
@@ -458,6 +464,7 @@ export class MapRenderer {
                 hoveredNodeId: this.hoveredNodeId,
                 playerCorpId: bridge.isInitialized() ? bridge.getPlayerCorpId() : undefined,
                 activeDisasters: this.activeDisasters,
+                bounds: this.map ? this.map.getBounds().toArray() as [number, number, number, number] : undefined,
             }),
             // 8b. Satellite overlay (orbital positions, ISL links, coverage footprints)
             ...createSatelliteLayers(this.activeOverlay === 'satellite', this.currentZoom),

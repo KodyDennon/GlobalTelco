@@ -10,6 +10,10 @@ impl WasmBridge {
         gt_bridge::queries::query_world_info(&self.world)
     }
 
+    pub fn get_static_definitions(&self) -> String {
+        gt_bridge::queries::query_static_definitions()
+    }
+
     pub fn get_corporation_data(&self, corp_id: u64) -> String {
         gt_bridge::queries::query_corporation_data(&self.world, corp_id)
     }

@@ -9,6 +9,25 @@ use gt_simulation::world::GameWorld;
 
 // ── World / Corporation Queries ─────────────────────────────────────────
 
+pub fn query_static_definitions() -> String {
+    use gt_common::types::{NodeType, EdgeType};
+    
+    let node_types: std::collections::HashMap<u8, String> = NodeType::ALL
+        .iter()
+        .map(|&t| (t as u8, t.to_string()))
+        .collect();
+        
+    let edge_types: std::collections::HashMap<u8, String> = EdgeType::ALL
+        .iter()
+        .map(|&t| (t as u8, t.to_string()))
+        .collect();
+
+    serde_json::json!({
+        "node_types": node_types,
+        "edge_types": edge_types,
+    }).to_string()
+}
+
 pub fn query_world_info(world: &GameWorld) -> String {
     let info = serde_json::json!({
         "tick": world.current_tick(),
@@ -1675,7 +1694,7 @@ pub fn build_infra_arrays(world: &GameWorld) -> crate::InfraArrays {
         stats.push(health);
         stats.push(utilization);
         stats.push(node.max_throughput);
-        node_types.push(node.node_type as u32);
+        node_types.push(node.node_type as u8);
         network_levels.push(node.network_level as u32);
         construction_flags.push(if world.constructions.contains_key(&eid) {
             1u8
@@ -1702,6 +1721,11 @@ pub fn build_edge_arrays(world: &GameWorld) -> crate::EdgeArrays {
     let mut endpoints = Vec::with_capacity(count * 4);
     let mut stats = Vec::with_capacity(count * 2);
     let mut edge_types = Vec::with_capacity(count);
+    let mut deployment_types = Vec::with_capacity(count);
+    // Rough estimate for waypoints capacity
+    let mut waypoints_data = Vec::with_capacity(count * 4);
+    let mut waypoint_offsets = Vec::with_capacity(count);
+    let mut waypoint_lengths = Vec::with_capacity(count);
 
     for (&eid, edge) in &world.infra_edges {
         ids.push(eid as u32);
@@ -1720,7 +1744,21 @@ pub fn build_edge_arrays(world: &GameWorld) -> crate::EdgeArrays {
             .map(|c| c.utilization())
             .unwrap_or(0.0);
         stats.push(utilization);
-        edge_types.push(edge.edge_type as u32);
+        edge_types.push(edge.edge_type as u8);
+        
+        deployment_types.push(match edge.deployment {
+            gt_common::types::DeploymentMethod::Underground => 0,
+            gt_common::types::DeploymentMethod::Aerial => 1,
+        });
+
+        waypoint_offsets.push(waypoints_data.len() as u32);
+        // Limit to 255 points per edge to fit in u8
+        let len = edge.waypoints.len().min(255);
+        waypoint_lengths.push(len as u8);
+        for &(lon, lat) in edge.waypoints.iter().take(len) {
+            waypoints_data.push(lon);
+            waypoints_data.push(lat);
+        }
     }
 
     crate::EdgeArrays {
@@ -1729,6 +1767,10 @@ pub fn build_edge_arrays(world: &GameWorld) -> crate::EdgeArrays {
         endpoints,
         stats,
         edge_types,
+        deployment_types,
+        waypoints_data,
+        waypoint_offsets,
+        waypoint_lengths,
     }
 }
 

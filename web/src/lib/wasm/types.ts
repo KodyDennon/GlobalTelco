@@ -506,6 +506,11 @@ export interface WorldPreviewData {
 
 // Typed array interfaces for zero-copy hot-path rendering (deck.gl)
 
+export interface StaticDefinitions {
+    node_types: Record<number, string>;
+    edge_types: Record<number, string>;
+}
+
 export interface InfraNodesTyped {
 	count: number;
 	ids: Uint32Array;
@@ -514,7 +519,7 @@ export interface InfraNodesTyped {
 	positions: Float64Array;
 	/** [health0, utilization0, throughput0, ...] — 3 floats per node */
 	stats: Float64Array;
-	node_types: Uint32Array;
+	node_types: Uint8Array;
 	network_levels: Uint32Array;
 	construction_flags: Uint8Array;
 }
@@ -527,7 +532,14 @@ export interface InfraEdgesTyped {
 	endpoints: Float64Array;
 	/** [bandwidth0, utilization0, ...] — 2 floats per edge */
 	stats: Float64Array;
-	edge_types: Uint32Array;
+	edge_types: Uint8Array;
+	deployment_types: Uint8Array;
+	/** Packed [lon0, lat0, ...] for all edges */
+	waypoints_data: Float64Array;
+	/** Start index in waypoints_data for each edge */
+	waypoint_offsets: Uint32Array;
+	/** Number of points (pairs) for each edge */
+	waypoint_lengths: Uint8Array;
 }
 
 export interface CorporationsTyped {
