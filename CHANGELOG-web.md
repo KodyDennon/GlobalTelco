@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.9.0 (2026-03-06)
+
+### Features
+
+- Enhance data packing and querying with viewport support for infrastructure nodes and edges (f8ea329)
+
+### Chores
+
+- Update gt packages to version 1.11.2 (1fd0568)
+
+### Other
+
+- **engine:** v1.12.0 (6c8f34a)
+
+
 ## 1.8.10 (2026-03-06)
 
 ### Features
