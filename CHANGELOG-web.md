@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.9.2 (2026-03-06)
+
+### Other
+
+- **engine:** v1.12.2 (3b46a5f)
+- cargo (cc9e5ba)
+- **admin:** v1.2.0 (6fc639d)
+
+
 ## 1.9.1 (2026-03-06)
 
 ### Features
