@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.2.1 (2026-03-07)
+
+### Features
+
+- implement persistent world deletion and purge functionality (9a474b3)
+
+### Performance
+
+- overhaul simulation core and map rendering pipeline (84ab513)
+
+### Other
+
+- **server:** v1.1.0 (a831368)
+- **engine:** v1.12.4 (f9909de)
+- cargo (557db01)
+- **web:** v1.9.3 (a280a27)
+- **engine:** v1.12.3 (e82c312)
+- crg (a16e4a1)
+- **web:** v1.9.2 (6140543)
+- **engine:** v1.12.2 (3b46a5f)
+- cargo (cc9e5ba)
+
+
 ## 1.2.0 (2026-03-06)
 
 ### Features
