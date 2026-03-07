@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.12.5 (2026-03-07)
+
+### Features
+
+- **tools/gt:** add 'Force .env overwrite' option to deployer (1f88afa)
+
+### Other
+
+- crgo (f6ad014)
+- **web:** v1.10.0 (721271c)
+- **admin:** v1.2.1 (d666378)
+- **server:** v1.1.0 (a831368)
+
+
 ## 1.12.4 (2026-03-07)
 
 ### Features

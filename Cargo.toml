@@ -18,7 +18,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "1.12.4"
+version = "1.12.5"
 edition = "2021"
 license = "LicenseRef-GlobalTelco"
 
