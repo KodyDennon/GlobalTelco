@@ -27,6 +27,7 @@ type DeployModel struct {
 	err         error
 	output      []string
 	skipBuild   bool
+	forceEnv    bool
 	cursor      int
 	spinner     spinner.Model
 }
@@ -47,6 +48,7 @@ func (d DeployModel) Start(root string) DeployModel {
 	d.err = nil
 	d.output = nil
 	d.skipBuild = false
+	d.forceEnv = false
 	d.cursor = 0
 	return d
 }
@@ -72,13 +74,18 @@ func (d DeployModel) Update(msg tea.Msg) (DeployModel, tea.Cmd) {
 			return d, nil
 		}
 
+		maxCursor := 2
+		if d.componentID == "server" {
+			maxCursor = 3
+		}
+
 		switch msg.String() {
 		case "up", "k":
 			if d.cursor > 0 {
 				d.cursor--
 			}
 		case "down", "j":
-			if d.cursor < 2 {
+			if d.cursor < maxCursor {
 				d.cursor++
 			}
 		case "left", "h":
@@ -92,9 +99,11 @@ func (d DeployModel) Update(msg tea.Msg) (DeployModel, tea.Cmd) {
 		case " ":
 			if d.cursor == 1 {
 				d.skipBuild = !d.skipBuild
+			} else if d.cursor == 2 && d.componentID == "server" {
+				d.forceEnv = !d.forceEnv
 			}
 		case "enter":
-			if d.cursor == 2 {
+			if (d.cursor == 2 && d.componentID == "admin") || (d.cursor == 3 && d.componentID == "server") {
 				d.deploying = true
 				d.output = nil
 				return d, tea.Batch(d.spinner.Tick, d.executeDeploy())
@@ -170,19 +179,36 @@ func (d DeployModel) viewOptions(panelWidth int) string {
 	if d.skipBuild {
 		skipCheck = StyleProfit.Render("[x]")
 	}
-	prefix0 := "  "
-	if d.cursor == 1 {
-		prefix0 = StyleAccent.Render("> ")
-	}
-	lines = append(lines, fmt.Sprintf("%s%s Skip build", prefix0, skipCheck))
-
-	// Deploy button
 	prefix1 := "  "
-	if d.cursor == 2 {
+	if d.cursor == 1 {
 		prefix1 = StyleAccent.Render("> ")
 	}
+	lines = append(lines, fmt.Sprintf("%s%s Skip build", prefix1, skipCheck))
+
+	// Force env toggle (server only)
+	if d.componentID == "server" {
+		envCheck := "[ ]"
+		if d.forceEnv {
+			envCheck = StyleProfit.Render("[x]")
+		}
+		prefix2 := "  "
+		if d.cursor == 2 {
+			prefix2 = StyleAccent.Render("> ")
+		}
+		lines = append(lines, fmt.Sprintf("%s%s Force .env overwrite", prefix2, envCheck))
+	}
+
+	// Deploy button
+	prefixBtn := "  "
+	btnCursor := 2
+	if d.componentID == "server" {
+		btnCursor = 3
+	}
+	if d.cursor == btnCursor {
+		prefixBtn = StyleAccent.Render("> ")
+	}
 	lines = append(lines, "")
-	lines = append(lines, fmt.Sprintf("%s%s", prefix1, StyleAccent.Render("Deploy now")))
+	lines = append(lines, fmt.Sprintf("%s%s", prefixBtn, StyleAccent.Render("Deploy now")))
 
 	// Pipeline info
 	lines = append(lines, "")
@@ -271,6 +297,7 @@ func (d DeployModel) executeDeploy() tea.Cmd {
 	cfg := d.config
 	compID := d.componentID
 	skipBuild := d.skipBuild
+	forceEnv := d.forceEnv
 
 	return func() tea.Msg {
 		var output []string
@@ -279,6 +306,7 @@ func (d DeployModel) executeDeploy() tea.Cmd {
 			Config:      cfg,
 			ComponentID: compID,
 			SkipBuild:   skipBuild,
+			ForceEnv:    forceEnv,
 			OnStep: func(step core.DeployStep, msg string) {
 				output = append(output, fmt.Sprintf("[%s] %s", step, msg))
 			},

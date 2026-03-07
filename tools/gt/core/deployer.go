@@ -49,6 +49,7 @@ type DeployOpts struct {
 	Config      config.DeployConfig
 	ComponentID string
 	SkipBuild   bool
+	ForceEnv    bool
 	OnStep      func(step DeployStep, msg string)
 	OnOutput    func(line string)
 	OnError     func(step DeployStep, err error)
@@ -146,6 +147,17 @@ func executeServerDeploy(opts DeployOpts, notify func(DeployStep, string), outpu
 		return fmt.Errorf("upload failed: %w", err)
 	}
 
+	if opts.ForceEnv {
+		notify(DeployStepUpload, "Uploading .env file...")
+		envPath := opts.Root + "/.env"
+		scpEnvArgs := append(sshArgs, envPath, remote+":/tmp/.env")
+		out, err = exec.Command("scp", scpEnvArgs...).CombinedOutput()
+		output(string(out))
+		if err != nil {
+			return fmt.Errorf("env upload failed: %w", err)
+		}
+	}
+
 	// Step 3: Install & restart
 	notify(DeployStepInstall, "Installing and restarting service...")
 
@@ -153,11 +165,19 @@ func executeServerDeploy(opts DeployOpts, notify func(DeployStep, string), outpu
 		"sudo systemctl stop %s 2>/dev/null || true && "+
 			"sudo mv /tmp/gt-server %s && "+
 			"sudo chmod +x %s && "+
-			"sudo chown globaltelco:globaltelco %s && "+
-			"sudo systemctl daemon-reload && "+
+			"sudo chown globaltelco:globaltelco %s ",
+		cfg.ServiceName, cfg.BinaryPath, cfg.BinaryPath, cfg.BinaryPath,
+	)
+
+	if opts.ForceEnv {
+		installScript += fmt.Sprintf("&& sudo mv /tmp/.env /opt/globaltelco/.env && sudo chown globaltelco:globaltelco /opt/globaltelco/.env ")
+	}
+
+	installScript += fmt.Sprintf(
+		"&& sudo systemctl daemon-reload && "+
 			"sudo systemctl restart %s && "+
 			"echo 'Service restarted'",
-		cfg.ServiceName, cfg.BinaryPath, cfg.BinaryPath, cfg.BinaryPath, cfg.ServiceName,
+		cfg.ServiceName,
 	)
 
 	sshExecArgs := append(sshArgs, remote, installScript)

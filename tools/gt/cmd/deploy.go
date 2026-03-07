@@ -10,6 +10,7 @@ import (
 )
 
 var deploySkipBuild bool
+var deployForceEnv bool
 
 var deployCmd = &cobra.Command{
 	Use:   "deploy [component]",
@@ -22,7 +23,8 @@ Components:
 Examples:
   gt deploy
   gt deploy admin
-  gt deploy --skip-build`,
+  gt deploy --skip-build
+  gt deploy --force-env`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		root, err := config.FindProjectRoot()
@@ -52,6 +54,7 @@ Examples:
 			Config:      cfg,
 			ComponentID: compID,
 			SkipBuild:   deploySkipBuild,
+			ForceEnv:    deployForceEnv,
 			OnStep: func(step core.DeployStep, msg string) {
 				fmt.Printf("  [%s] %s\n", step, msg)
 			},
@@ -76,4 +79,5 @@ Examples:
 
 func init() {
 	deployCmd.Flags().BoolVar(&deploySkipBuild, "skip-build", false, "Skip cross-compilation, upload existing binary")
+	deployCmd.Flags().BoolVar(&deployForceEnv, "force-env", false, "Force overwrite .env file on remote server")
 }
