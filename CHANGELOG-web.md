@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.9.3 (2026-03-07)
+
+### Performance
+
+- overhaul simulation core and map rendering pipeline (84ab513)
+
+### Other
+
+- **engine:** v1.12.3 (e82c312)
+- crg (a16e4a1)
+
+
 ## 1.9.2 (2026-03-06)
 
 ### Other
