@@ -2,6 +2,8 @@
 Description=GlobalTelco Game Server
 After=network-online.target
 Wants=network-online.target
+StartLimitBurst=5
+StartLimitIntervalSec=60
 
 [Service]
 Type=simple
@@ -11,8 +13,6 @@ WorkingDirectory=/opt/globaltelco
 ExecStart=/opt/globaltelco/gt-server
 Restart=always
 RestartSec=5
-StartLimitBurst=5
-StartLimitIntervalSec=60
 
 # Environment
 EnvironmentFile=/opt/globaltelco/.env
