@@ -61,6 +61,7 @@ pub fn create_router(state: Arc<AppState>, tile_dir: Option<String>) -> Router {
         .route("/api/admin/audit", get(admin_audit_log))
         .route("/api/admin/health", get(admin_health))
         .route("/api/admin/worlds", post(admin_create_world))
+        .route("/api/admin/worlds/purge", post(admin_purge_worlds))
         .route("/api/admin/worlds/{world_id}", delete(admin_delete_world))
         .route("/api/admin/worlds/{world_id}/speed", post(admin_set_speed))
         .route("/api/admin/broadcast", post(admin_broadcast))

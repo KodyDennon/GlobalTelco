@@ -358,19 +358,25 @@ pub(crate) async fn admin_delete_world(
     }
 
     let removed = state.remove_world(&world_id).await;
+    
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        // Even if not in memory, try to archive it in DB
+        let _ = db.set_world_status(world_id, "archived").await;
+        
+        let details = serde_json::json!({ "kicked_players": kicked_players.len(), "in_memory": removed });
+        let _ = db
+            .insert_audit_log(
+                "admin",
+                "delete_world",
+                Some(&world_id.to_string()),
+                Some(&details),
+                None,
+            )
+            .await;
+    }
+
     if removed {
-        #[cfg(feature = "postgres")]
-        if let Some(db) = state.db.as_ref() {
-            let _ = db
-                .insert_audit_log(
-                    "admin",
-                    "delete_world",
-                    Some(&world_id.to_string()),
-                    Some(&serde_json::json!({ "kicked_players": kicked_players.len() })),
-                    None,
-                )
-                .await;
-        }
         (
             StatusCode::OK,
             Json(serde_json::json!({
@@ -380,11 +386,54 @@ pub(crate) async fn admin_delete_world(
             })),
         )
     } else {
+        // If it wasn't in memory but we archived it in DB (above), still return success
+        // but with a different flag
         (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": "World not found" })),
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "deleted": true,
+                "world_id": world_id,
+                "in_memory": false,
+                "message": "World was already stopped or not found in memory, but has been archived in database."
+            })),
         )
     }
+}
+
+pub(crate) async fn admin_purge_worlds(
+    headers: HeaderMap,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    if let Err(e) = extract_admin_claims(&headers) {
+        return e;
+    }
+
+    #[cfg(feature = "postgres")]
+    if let Some(db) = state.db.as_ref() {
+        match db.purge_archived_worlds().await {
+            Ok(count) => {
+                let details = serde_json::json!({ "purged_count": count });
+                let _ = db
+                    .insert_audit_log("admin", "purge_worlds", None, Some(&details), None)
+                    .await;
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({ "purged": true, "count": count })),
+                );
+            }
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Database error: {e}") })),
+                );
+            }
+        }
+    }
+
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({ "error": "Purge requires database" })),
+    )
 }
 
 #[derive(Deserialize)]

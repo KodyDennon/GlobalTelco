@@ -7,7 +7,7 @@
 	import WorldConfigForm from '$lib/components/WorldConfigForm.svelte';
 	import { toast } from '$lib/components/Toast.svelte';
 	import { confirm } from '$lib/components/ConfirmDialog.svelte';
-	import { fetchWorlds, createWorld, deleteWorld, setWorldSpeed, pauseWorld, fetchTemplates, createTemplate, updateTemplate, deleteTemplate, fetchServerLimits, setServerLimits } from '$lib/api/worlds.js';
+	import { fetchWorlds, createWorld, deleteWorld, purgeWorlds, setWorldSpeed, pauseWorld, fetchTemplates, createTemplate, updateTemplate, deleteTemplate, fetchServerLimits, setServerLimits } from '$lib/api/worlds.js';
 	import { startPolling, stopPolling } from '$lib/stores/polling.js';
 	import type { WorldConfig, WorldTemplate } from '$lib/api/types.js';
 	import type { ServerLimits } from '$lib/api/worlds.js';
@@ -96,6 +96,18 @@
 		try {
 			await deleteWorld(worldId);
 			toast(`World "${name}" deleted`, 'success');
+			await loadData();
+		} catch (e) {
+			toast(`Failed: ${e}`, 'error');
+		}
+	}
+
+	async function handlePurge() {
+		const ok = await confirm('Purge Archived Worlds', 'Permanently delete all archived and deleted worlds from the database? This action cannot be undone.', { variant: 'danger', confirmLabel: 'Purge All' });
+		if (!ok) return;
+		try {
+			const res = await purgeWorlds();
+			toast(`Successfully purged ${res.count} world(s)`, 'success');
 			await loadData();
 		} catch (e) {
 			toast(`Failed: ${e}`, 'error');
@@ -191,9 +203,14 @@
 <div class="page">
 	<div class="page-header">
 		<h1 class="page-title">Worlds</h1>
-		<button class="btn-primary" onclick={() => (showCreate = !showCreate)}>
-			{showCreate ? 'Cancel' : '+ Create World'}
-		</button>
+		<div class="header-actions">
+			<button class="btn-sm btn-danger" onclick={handlePurge} style="margin-right: 8px">
+				Purge Archived
+			</button>
+			<button class="btn-primary" onclick={() => (showCreate = !showCreate)}>
+				{showCreate ? 'Cancel' : '+ Create World'}
+			</button>
+		</div>
 	</div>
 
 	<!-- Server Limits -->

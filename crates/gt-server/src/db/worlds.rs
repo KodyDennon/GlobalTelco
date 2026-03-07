@@ -302,6 +302,22 @@ impl Database {
         .await
     }
 
+    pub async fn set_world_status(&self, world_id: Uuid, status: &str) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query("UPDATE game_worlds SET status = $1, updated_at = NOW() WHERE id = $2")
+            .bind(status)
+            .bind(world_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn purge_archived_worlds(&self) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query("DELETE FROM game_worlds WHERE status = 'archived' OR status = 'deleted'")
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected())
+    }
+
     // ── Snapshots ─────────────────────────────────────────────────────────
 
     pub async fn save_snapshot(

@@ -16,6 +16,10 @@ export function deleteWorld(worldId: string): Promise<{ deleted: boolean }> {
 	return adminFetch(`/api/admin/worlds/${worldId}`, { method: 'DELETE' });
 }
 
+export function purgeWorlds(): Promise<{ purged: boolean; count: number }> {
+	return adminFetch('/api/admin/worlds/purge', { method: 'POST' });
+}
+
 export function setWorldSpeed(worldId: string, speed: string): Promise<{ speed: string }> {
 	return adminFetch(`/api/admin/worlds/${worldId}/speed`, {
 		method: 'POST',

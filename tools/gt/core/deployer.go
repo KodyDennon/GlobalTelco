@@ -154,6 +154,7 @@ func executeServerDeploy(opts DeployOpts, notify func(DeployStep, string), outpu
 			"sudo mv /tmp/gt-server %s && "+
 			"sudo chmod +x %s && "+
 			"sudo chown globaltelco:globaltelco %s && "+
+			"sudo systemctl daemon-reload && "+
 			"sudo systemctl restart %s && "+
 			"echo 'Service restarted'",
 		cfg.ServiceName, cfg.BinaryPath, cfg.BinaryPath, cfg.BinaryPath, cfg.ServiceName,
@@ -167,27 +168,42 @@ func executeServerDeploy(opts DeployOpts, notify func(DeployStep, string), outpu
 	}
 
 	// Step 4: Health check
-	notify(DeployStepHealthCheck, "Running health check...")
+	notify(DeployStepHealthCheck, "Running health check (with retries)...")
 
-	time.Sleep(3 * time.Second)
+	// Max 10 retries, every 3 seconds (total 30s)
+	maxRetries := 10
+	var lastErr error
+	var response string
 
-	healthURL := fmt.Sprintf("https://%s/health", cfg.Domain)
-	healthCmd := exec.Command("curl", "-sf", "--max-time", "10", healthURL)
-	out, err = healthCmd.CombinedOutput()
-	if err != nil {
-		output(fmt.Sprintf("HTTPS health check failed, trying HTTP..."))
-		healthURL = fmt.Sprintf("http://%s/health", cfg.Domain)
-		healthCmd = exec.Command("curl", "-sf", "--max-time", "10", healthURL)
-		out, err = healthCmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("health check failed: %w", err)
+	for i := 1; i <= maxRetries; i++ {
+		time.Sleep(3 * time.Second)
+		output(fmt.Sprintf("Attempt %d/%d...", i, maxRetries))
+
+		// Try HTTPS first, then HTTP
+		urls := []string{
+			fmt.Sprintf("https://%s/health", cfg.Domain),
+			fmt.Sprintf("http://%s/health", cfg.Domain),
+		}
+
+		success := false
+		for _, healthURL := range urls {
+			healthCmd := exec.Command("curl", "-sf", "--max-time", "5", healthURL)
+			out, err = healthCmd.CombinedOutput()
+			if err == nil {
+				response = strings.TrimSpace(string(out))
+				success = true
+				break
+			}
+			lastErr = err
+		}
+
+		if success {
+			output(fmt.Sprintf("Health check: %s", response))
+			notify(DeployStepDone, fmt.Sprintf("Deploy complete! Server running at %s", cfg.Domain))
+			return nil
 		}
 	}
 
-	response := strings.TrimSpace(string(out))
-	output(fmt.Sprintf("Health check: %s", response))
-
-	notify(DeployStepDone, fmt.Sprintf("Deploy complete! Server running at %s", cfg.Domain))
-	return nil
+	return fmt.Errorf("health check failed after %d retries: %w", maxRetries, lastErr)
 }
 
