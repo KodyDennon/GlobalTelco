@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.12.1 (2026-03-06)
+
+### Features
+
+- Reorganize documentation, update `gt-simulation` systems and world commands, refine admin panel components, and adjust server-side logic and dependencies. (244d9dd)
+
+### Other
+
+- nonsense (619ec84)
+- **web:** v1.9.0 (b3c4a3b)
+
+
 ## 1.12.0 (2026-03-06)
 
 ### Features
