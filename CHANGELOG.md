@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.12.2 (2026-03-06)
+
+### Other
+
+- cargo (cc9e5ba)
+- **admin:** v1.2.0 (6fc639d)
+- **web:** v1.9.1 (5f77149)
+- **server:** v1.0.1 (da54a24)
+
+
 ## 1.12.1 (2026-03-06)
 
 ### Features
