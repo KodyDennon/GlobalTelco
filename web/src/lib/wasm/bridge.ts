@@ -68,10 +68,25 @@ export function isNativeSim(): boolean {
 
 // Command proxy for Web Worker mode — routes commands through the worker
 let _commandProxy: ((json: string) => Promise<string>) | null = null;
-let _latestTickResult: any = null;
+
+export interface TickResult {
+    infraNodes?: InfraNodesTyped;
+    infraEdges?: InfraEdgesTyped;
+    corporations?: CorporationsTyped;
+    tick?: number;
+    info?: string;
+    playerCorp?: string;
+    notifications?: string;
+    cellCoverage?: string;
+    allInfra?: string;
+    trafficFlows?: string;
+    spectrumLicenses?: string;
+}
+
+let _latestTickResult: TickResult | null = null;
 
 /** Update the latest tick result from the worker. */
-export function setLatestTickResult(result: any): void {
+export function setLatestTickResult(result: TickResult): void {
 	_latestTickResult = result;
 }
 
@@ -313,13 +328,14 @@ export function getVisibleEntities(
 }
 
 export function getNotifications(): Notification[] {
-	if (_latestTickResult?.notifications) {
+	if (_latestTickResult && _latestTickResult.notifications) {
 		try {
 			const notifs = JSON.parse(_latestTickResult.notifications);
-			_latestTickResult.notifications = null; // Clear cache after reading
+			_latestTickResult.notifications = undefined; // Clear cache after reading
 			return notifs;
 		} catch { }
 	}
+
 	if (useNativeSim) return tauriBridge.getCachedNotifications();
 	try {
 		const json = bridge?.get_notifications() ?? '[]';
@@ -684,6 +700,30 @@ export function getInfraNodesTyped(): InfraNodesTyped {
     return { count: 0, ids: EMPTY_U32, owners: EMPTY_U32, positions: EMPTY_F64, stats: EMPTY_F64, node_types: EMPTY_U8, network_levels: EMPTY_U32, construction_flags: EMPTY_U8 };
 }
 
+export function getInfraNodesTypedViewport(west: number, south: number, east: number, north: number): InfraNodesTyped {
+    if (useNativeSim) return tauriBridge.getCachedInfraNodesTypedViewport(west, south, east, north);
+    try {
+        if (bridge && typeof bridge.get_infra_nodes_typed_viewport === 'function') {
+            const arr = bridge.get_infra_nodes_typed_viewport(west, south, east, north);
+            if (arr && arr.length >= 8) {
+                return {
+                    count: arr[0] as number,
+                    ids: arr[1] as Uint32Array,
+                    owners: arr[2] as Uint32Array,
+                    positions: arr[3] as Float64Array,
+                    stats: arr[4] as Float64Array,
+                    node_types: arr[5] as Uint8Array,
+                    network_levels: arr[6] as Uint32Array,
+                    construction_flags: arr[7] as Uint8Array,
+                };
+            }
+        }
+    } catch (e) {
+        onBridgeError(e, 'getInfraNodesTypedViewport');
+    }
+    return getInfraNodesTyped();
+}
+
 export function getInfraEdgesTyped(): InfraEdgesTyped {
     if (_latestTickResult?.infraEdges) {
         return _latestTickResult.infraEdges;
@@ -722,6 +762,32 @@ export function getInfraEdgesTyped(): InfraEdgesTyped {
         waypoint_offsets: EMPTY_U32,
         waypoint_lengths: EMPTY_U8
     };
+}
+
+export function getInfraEdgesTypedViewport(west: number, south: number, east: number, north: number): InfraEdgesTyped {
+    if (useNativeSim) return tauriBridge.getCachedInfraEdgesTypedViewport(west, south, east, north);
+    try {
+        if (bridge && typeof bridge.get_infra_edges_typed_viewport === 'function') {
+            const arr = bridge.get_infra_edges_typed_viewport(west, south, east, north);
+            if (arr && arr.length >= 10) {
+                return {
+                    count: arr[0] as number,
+                    ids: arr[1] as Uint32Array,
+                    owners: arr[2] as Uint32Array,
+                    endpoints: arr[3] as Float64Array,
+                    stats: arr[4] as Float64Array,
+                    edge_types: arr[5] as Uint8Array,
+                    deployment_types: arr[6] as Uint8Array,
+                    waypoints_data: arr[7] as Float64Array,
+                    waypoint_offsets: arr[8] as Uint32Array,
+                    waypoint_lengths: arr[9] as Uint8Array,
+                };
+            }
+        }
+    } catch (e) {
+        onBridgeError(e, 'getInfraEdgesTypedViewport');
+    }
+    return getInfraEdgesTyped();
 }
 
 export function getCorporationsTyped(): CorporationsTyped {

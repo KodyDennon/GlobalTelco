@@ -197,20 +197,23 @@ function handleWorkerTickResult(result: workerBridge.TickResult) {
 	// Sync worker's latest state with the bridge for UI consumers (prevents staleness)
 	bridge.setLatestTickResult(result);
 
-	try {
-		// Parse world info from worker result
-		const info = JSON.parse(result.info);
-		worldInfo.set(info);
+	const info = result.info ? JSON.parse(result.info) : null;
 
+	try {
+		if (info) {
+			worldInfo.set(info);
+		}
 		// Update player corp from worker result
 		if (result.playerCorp) {
 			try {
 				const corpData = JSON.parse(result.playerCorp);
 				playerCorp.set(corpData);
 
-				// Record finance snapshot every 10 ticks
-				if (info.tick % 10 === 0) {
-					recordSnapshot(info.tick, corpData.revenue_per_tick, corpData.cost_per_tick, corpData.cash);
+				if (info) {
+					// Record finance snapshot every 10 ticks
+					if (info.tick % 10 === 0) {
+						recordSnapshot(info.tick, corpData.revenue_per_tick, corpData.cost_per_tick, corpData.cash);
+					}
 				}
 
 				// Update ambient music intensity based on game state
@@ -224,7 +227,7 @@ function handleWorkerTickResult(result: workerBridge.TickResult) {
 		}
 
 		// Record network snapshot every 10 ticks (same frequency as direct mode)
-		if (info.tick % 10 === 0) {
+		if (info && info.tick % 10 === 0) {
 			const trafficPromise = workerBridge.query('get_traffic_flows');
 			const infraPromise = workerBridge.query('get_infrastructure_list', BigInt(info.player_corp_id));
 			Promise.all([
@@ -240,7 +243,7 @@ function handleWorkerTickResult(result: workerBridge.TickResult) {
 		}
 
 		// Update less frequently (every 5th tick) via async worker queries
-		const shouldUpdateFullAsync = info.tick % 5 === 0 || info.tick === 0 || get(allCorporations).length === 0;
+		const shouldUpdateFullAsync = info && (info.tick % 5 === 0 || info.tick === 0 || get(allCorporations).length === 0);
 		if (shouldUpdateFullAsync) {
 			workerBridge.query('get_regions').then(json => {
 				if (json) { try { regions.set(JSON.parse(json)); } catch { } }
@@ -278,7 +281,7 @@ function handleWorkerTickResult(result: workerBridge.TickResult) {
 		}
 
 		// Auto-save check (scheduled as background priority)
-		if (info.tick > 0 && info.tick - lastAutoSaveTick >= get(autoSaveInterval)) {
+		if (info && info.tick > 0 && info.tick - lastAutoSaveTick >= get(autoSaveInterval)) {
 			lastAutoSaveTick = info.tick;
 			const saveTick = info.tick;
 			scheduleBackground(() => performAutoSaveWorker(saveTick));

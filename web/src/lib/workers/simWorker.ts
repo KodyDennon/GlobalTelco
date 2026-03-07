@@ -8,7 +8,7 @@ self.onmessage = async (e: MessageEvent) => {
     switch (type) {
         case 'init':
             await initWasm();
-            bridge = WasmBridge.new();
+            bridge = new WasmBridge();
             if (payload?.config) {
                 // bridge.new_game(JSON.stringify(payload.config));
             }
@@ -24,8 +24,8 @@ self.onmessage = async (e: MessageEvent) => {
             // Extract hot-path data (Typed Arrays) - Viewport aware if bounds provided
             let nodesArr, edgesArr;
             if (bounds && bounds.length === 4) {
-                nodesArr = bridge.get_infra_nodes_typed_viewport(bounds[0], bounds[1], bounds[2], bounds[3]);
-                edgesArr = bridge.get_infra_edges_typed_viewport(bounds[0], bounds[1], bounds[2], bounds[3]);
+                nodesArr = (bridge as any).get_infra_nodes_typed_viewport(bounds[0], bounds[1], bounds[2], bounds[3]);
+                edgesArr = (bridge as any).get_infra_edges_typed_viewport(bounds[0], bounds[1], bounds[2], bounds[3]);
             } else {
                 nodesArr = bridge.get_infra_nodes_typed();
                 edgesArr = bridge.get_infra_edges_typed();
@@ -61,7 +61,7 @@ self.onmessage = async (e: MessageEvent) => {
                 info,
                 playerCorp,
                 notifications
-            }, transferables);
+            }, { transfer: transferables });
             break;
 
         case 'command':
@@ -77,9 +77,9 @@ self.onmessage = async (e: MessageEvent) => {
             break;
 
         case 'load':
-            if (!bridge) return;
             try {
-                bridge.load_game(e.data.data);
+                // load_game is static and returns a new bridge instance
+                bridge = WasmBridge.load_game(e.data.data);
                 self.postMessage({ type: 'loadComplete' });
             } catch (err) {
                 console.error('Worker load failed:', err);

@@ -48,6 +48,10 @@ impl BridgeQuery for TauriBridge {
         gt_bridge::queries::query_world_info(&w)
     }
 
+    fn get_static_definitions(&self) -> String {
+        gt_bridge::queries::query_static_definitions()
+    }
+
     fn get_corporation_data(&self, corp_id: gt_common::types::EntityId) -> String {
         let w = self.world.lock().unwrap();
         gt_bridge::queries::query_corporation_data(&w, corp_id)
@@ -207,9 +211,19 @@ impl BridgeQuery for TauriBridge {
         gt_bridge::queries::build_infra_arrays(&w)
     }
 
+    fn get_infra_arrays_viewport(&self, west: f64, south: f64, east: f64, north: f64) -> InfraArrays {
+        let w = self.world.lock().unwrap();
+        gt_bridge::queries::build_infra_arrays_viewport(&w, west, south, east, north)
+    }
+
     fn get_edge_arrays(&self) -> EdgeArrays {
         let w = self.world.lock().unwrap();
         gt_bridge::queries::build_edge_arrays(&w)
+    }
+
+    fn get_edge_arrays_viewport(&self, west: f64, south: f64, east: f64, north: f64) -> EdgeArrays {
+        let w = self.world.lock().unwrap();
+        gt_bridge::queries::build_edge_arrays_viewport(&w, west, south, east, north)
     }
 
     fn get_satellite_arrays(&self) -> SatelliteArrays {

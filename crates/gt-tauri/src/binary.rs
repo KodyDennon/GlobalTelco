@@ -15,14 +15,14 @@ use gt_bridge::{EdgeArrays, InfraArrays, SatelliteArrays};
 /// [count*4: owners as u32 LE]
 /// [count*16: positions as f64 LE (2 per node)]
 /// [count*24: stats as f64 LE (3 per node)]
-/// [count*4: node_types as u32 LE]
+/// [count*1: node_types as u8]
 /// [count*4: network_levels as u32 LE]
 /// [count*1: construction_flags as u8]
 /// ```
 pub fn pack_infra_arrays(arrays: &InfraArrays) -> Vec<u8> {
     let count = arrays.ids.len();
-    // Total size: 4 + count*(4+4+16+24+4+4+1) = 4 + count*57
-    let total = 4 + count * 57;
+    // Total size: 4 + count*(4+4+16+24+1+4+1) = 4 + count*54
+    let total = 4 + count * 54;
     let mut buf = Vec::with_capacity(total);
 
     buf.extend_from_slice(&(count as u32).to_le_bytes());
@@ -39,9 +39,7 @@ pub fn pack_infra_arrays(arrays: &InfraArrays) -> Vec<u8> {
     for &stat in &arrays.stats {
         buf.extend_from_slice(&stat.to_le_bytes());
     }
-    for &nt in &arrays.node_types {
-        buf.extend_from_slice(&nt.to_le_bytes());
-    }
+    buf.extend_from_slice(&arrays.node_types);
     for &nl in &arrays.network_levels {
         buf.extend_from_slice(&nl.to_le_bytes());
     }
@@ -59,12 +57,19 @@ pub fn pack_infra_arrays(arrays: &InfraArrays) -> Vec<u8> {
 /// [count*4: owners as u32 LE]
 /// [count*32: endpoints as f64 LE (4 per edge)]
 /// [count*16: stats as f64 LE (2 per edge)]
-/// [count*4: edge_types as u32 LE]
+/// [count*1: edge_types as u8]
+/// [count*1: deployment_types as u8]
+/// [4: waypoints_count as u32 LE]
+/// [waypoints_count*16: waypoints_data as f64 LE (2 per point)]
+/// [count*4: waypoint_offsets as u32 LE]
+/// [count*1: waypoint_lengths as u8]
 /// ```
 pub fn pack_edge_arrays(arrays: &EdgeArrays) -> Vec<u8> {
     let count = arrays.ids.len();
-    // Total: 4 + count*(4+4+32+16+4) = 4 + count*60
-    let total = 4 + count * 60;
+    let waypoints_count = arrays.waypoints_data.len() / 2;
+    
+    // Base size: 4 + count*(4+4+32+16+1+1+4+1) + 4 + waypoints_count*16
+    let total = 4 + count * 63 + 4 + waypoints_count * 16;
     let mut buf = Vec::with_capacity(total);
 
     buf.extend_from_slice(&(count as u32).to_le_bytes());
@@ -81,9 +86,18 @@ pub fn pack_edge_arrays(arrays: &EdgeArrays) -> Vec<u8> {
     for &stat in &arrays.stats {
         buf.extend_from_slice(&stat.to_le_bytes());
     }
-    for &et in &arrays.edge_types {
-        buf.extend_from_slice(&et.to_le_bytes());
+    buf.extend_from_slice(&arrays.edge_types);
+    buf.extend_from_slice(&arrays.deployment_types);
+
+    // Waypoints
+    buf.extend_from_slice(&(waypoints_count as u32).to_le_bytes());
+    for &w in &arrays.waypoints_data {
+        buf.extend_from_slice(&w.to_le_bytes());
     }
+    for &off in &arrays.waypoint_offsets {
+        buf.extend_from_slice(&off.to_le_bytes());
+    }
+    buf.extend_from_slice(&arrays.waypoint_lengths);
 
     buf
 }
@@ -204,6 +218,10 @@ mod tests {
             endpoints: vec![1.0, 2.0, 3.0, 4.0],
             stats: vec![500.0, 0.7],
             edge_types: vec![3],
+            deployment_types: vec![1],
+            waypoints_data: vec![1.5, 2.5],
+            waypoint_offsets: vec![0],
+            waypoint_lengths: vec![1],
         };
         let buf = pack_edge_arrays(&arrays);
         let count = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);

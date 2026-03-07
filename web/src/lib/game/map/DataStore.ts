@@ -1,5 +1,13 @@
-import { getInfraNodesTyped, getInfraEdgesTyped, getStaticDefinitions } from '$lib/wasm/bridge';
+import { 
+    getInfraNodesTyped, 
+    getInfraEdgesTyped, 
+    getStaticDefinitions,
+    getInfraNodesTypedViewport,
+    getInfraEdgesTypedViewport
+} from '$lib/wasm/bridge';
 import type { InfraNodesTyped, InfraEdgesTyped, StaticDefinitions } from '$lib/wasm/types';
+import { viewport } from '$lib/stores/uiState';
+import { get } from 'svelte/store';
 
 class DataStore {
     nodes: InfraNodesTyped;
@@ -19,8 +27,14 @@ class DataStore {
 
     sync() {
         // This is called every frame or tick by the render loop
-        this.nodes = getInfraNodesTyped();
-        this.edges = getInfraEdgesTyped();
+        const v = get(viewport);
+        if (v && v.maxX !== 180) { // Check if viewport is actualy set/relevant
+            this.nodes = getInfraNodesTypedViewport(v.minX, v.minY, v.maxX, v.maxY);
+            this.edges = getInfraEdgesTypedViewport(v.minX, v.minY, v.maxX, v.maxY);
+        } else {
+            this.nodes = getInfraNodesTyped();
+            this.edges = getInfraEdgesTyped();
+        }
     }
 
     // ── Helper Accessors ────────────────────────────────────────────────

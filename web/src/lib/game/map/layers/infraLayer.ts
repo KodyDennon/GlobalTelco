@@ -1,5 +1,4 @@
-import { PathLayer, ScatterplotLayer, TextLayer, IconLayer, ColumnLayer } from '@deck.gl/layers';
-import { TripsLayer } from '@deck.gl/geo-layers';
+import { PathLayer, ScatterplotLayer, TextLayer, IconLayer } from '@deck.gl/layers';
 import { CollisionFilterExtension } from '@deck.gl/extensions';
 import type { Layer } from '@deck.gl/core';
 
@@ -94,6 +93,7 @@ export function createInfraLayers(opts: {
     hoveredNodeId: number | null;
     playerCorpId?: number;
     activeDisasters?: ActiveDisaster[];
+    bounds?: [number, number, number, number];
 }): Layer[] {
     const {
         iconAtlas,
@@ -106,6 +106,7 @@ export function createInfraLayers(opts: {
         hoveredNodeId,
         playerCorpId,
         activeDisasters,
+        bounds,
     } = opts;
 
     // Ensure we have access to the corps list for coloring
@@ -137,15 +138,7 @@ export function createInfraLayers(opts: {
             if (x < bounds[0] - 1 || x > bounds[2] + 1 || y < bounds[1] - 1 || y > bounds[3] + 1) continue;
         }
 
-        const level = nodes.network_levels[i]; // This is an enum ID (u32)
-        // Wait, network_levels in TypedArray is u32 (enum variant).
-        // But TIER_RANK expects a string key.
-        // We assume 1-based tier mapping for now or use DataStore to get string?
-        // Let's rely on `dataStore.staticDefs`.
-        // Or better: In Rust, `network_level` is `NetworkLevel` enum.
-        // 0=Local, 1=Regional, 2=National, 3=Continental, 4=GlobalBackbone.
-        // So tier = level + 1.
-        
+        const level = nodes.network_levels[i]; 
         const tier = (level || 0) + 1;
         const owner = nodes.owners[i];
         const isPlayer = playerCorpId !== undefined && owner === playerCorpId;
@@ -163,10 +156,6 @@ export function createInfraLayers(opts: {
             const dstX = edges.endpoints[i*4+2];
             const dstY = edges.endpoints[i*4+3];
             
-            // Check if either endpoint is in view (plus margin)
-            // Or if the edge crosses the view?
-            // Simple check: if BOTH are outside same side, cull.
-            // i.e. both Left of view, or both Right of view.
             const minX = bounds[0] - 1;
             const maxX = bounds[2] + 1;
             const minY = bounds[1] - 1;
@@ -179,14 +168,6 @@ export function createInfraLayers(opts: {
         }
 
         const typeId = edges.edge_types[i];
-        // We need to map typeId to tier.
-        // Doing string lookup via dataStore.getEdgeType(typeId) is slow inside loop.
-        // Ideally we'd have a `tier` array for edges in WASM.
-        // For now, let's just include all edges if Zoom > 5, else filter strictly.
-        // Or assume most edges are low tier.
-        
-        // Let's skip LOD on edges for a moment or implement a cache?
-        // For correctness, we use the helper:
         const typeStr = dataStore.getEdgeType(typeId);
         const tier = edgeTierRank(typeStr);
         const owner = edges.owners[i];
@@ -198,26 +179,24 @@ export function createInfraLayers(opts: {
 
     // ── Accessors ───────────────────────────────────────────────────────────
 
-    const getNodePosition = (i: number) => [nodes.positions[i*2], nodes.positions[i*2+1]];
-    const getNodeColor = (i: number) => {
+    const getNodePosition = (i: number): [number, number] => [nodes.positions[i*2], nodes.positions[i*2+1]];
+    const getNodeColor = (i: number): [number, number, number, number] => {
         const owner = nodes.owners[i];
         const c = getCorpColor(owner, corpIndex);
-        const health = nodes.stats[i*3]; // [health, util, throughput]
+        const health = nodes.stats[i*3]; 
         
         if (health < 0.2) return [239, 68, 68, 220]; // Damaged
         if (health < 0.5) return [245, 158, 11, 220]; // Degraded
         
-        // Dim non-player nodes
         if (playerCorpId !== undefined && owner !== playerCorpId) {
             return [c[0], c[1], c[2], 150];
         }
         return [c[0], c[1], c[2], 255];
     };
 
-    const getEdgeColor = (i: number) => {
+    const getEdgeColor = (i: number): [number, number, number, number] => {
         const owner = edges.owners[i];
         const c = getCorpColor(owner, corpIndex);
-        // Dim non-player edges
         if (playerCorpId !== undefined && owner !== playerCorpId) {
             return [c[0], c[1], c[2], 100];
         }
@@ -232,9 +211,9 @@ export function createInfraLayers(opts: {
     layers.push(new PathLayer({
         id: 'infra-edges',
         data: visibleEdgeIndices,
-        getPath: (i: number) => dataStore.getEdgePath(i),
-        getColor: (i: number) => getEdgeColor(i),
-        getWidth: (i: number) => {
+        getPath: (i: number): [number, number][] => dataStore.getEdgePath(i),
+        getColor: (i: number): [number, number, number, number] => getEdgeColor(i),
+        getWidth: (i: number): number => {
              const typeStr = dataStore.getEdgeType(edges.edge_types[i]);
              return edgeWidthByType(typeStr);
         },
@@ -257,11 +236,11 @@ export function createInfraLayers(opts: {
         layers.push(new IconLayer({
             id: 'infra-nodes',
             data: visibleNodeIndices,
-            getPosition: (i: number) => getNodePosition(i),
-            getIcon: (i: number) => toIconKey(dataStore.getNodeType(nodes.node_types[i])),
+            getPosition: (i: number): [number, number] => getNodePosition(i),
+            getIcon: (i: number): string => toIconKey(dataStore.getNodeType(nodes.node_types[i])),
             iconAtlas: iconAtlas as any,
             iconMapping: iconMapping,
-            getSize: (i: number) => {
+            getSize: (i: number): number => {
                 const lvl = nodes.network_levels[i];
                 // Map level 0-4 to size. 
                 // Local=20, Regional=28, National=36, Continental=48, Backbone=64
@@ -270,7 +249,7 @@ export function createInfraLayers(opts: {
             },
             sizeMinPixels: 10,
             sizeMaxPixels: 64,
-            getColor: (i: number) => getNodeColor(i),
+            getColor: (i: number): [number, number, number, number] => getNodeColor(i),
             pickable: true,
             autoHighlight: true,
             updateTriggers: {
@@ -283,8 +262,8 @@ export function createInfraLayers(opts: {
         layers.push(new ScatterplotLayer({
             id: 'infra-nodes-fallback',
             data: visibleNodeIndices,
-            getPosition: (i: number) => getNodePosition(i),
-            getFillColor: (i: number) => getNodeColor(i),
+            getPosition: (i: number): [number, number] => getNodePosition(i),
+            getFillColor: (i: number): [number, number, number, number] => getNodeColor(i),
             getRadius: 500, // meters
             radiusMinPixels: 5,
             pickable: true,

@@ -477,7 +477,11 @@ export class MapRenderer {
                 hoveredNodeId: this.hoveredNodeId,
                 playerCorpId: bridge.isInitialized() ? bridge.getPlayerCorpId() : undefined,
                 activeDisasters: this.activeDisasters,
-                bounds: this.map ? this.map.getBounds().toArray() as [number, number, number, number] : undefined,
+                bounds: (() => {
+                    if (!this.map) return undefined;
+                    const b = this.map.getBounds();
+                    return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()] as [number, number, number, number];
+                })(),
             }),
             // 8b. Satellite overlay (orbital positions, ISL links, coverage footprints)
             ...createSatelliteLayers(this.activeOverlay === 'satellite', this.currentZoom),

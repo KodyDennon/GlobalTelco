@@ -141,4 +141,4 @@ export function terminate() {
 }
 
 // Re-export TickResult to satisfy GameLoop import
-export type { TickResult } from './wasm/bridge';
+export type { TickResult } from './bridge';

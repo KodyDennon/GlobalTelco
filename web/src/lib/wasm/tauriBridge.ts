@@ -79,8 +79,19 @@ let invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 let cachedWorldInfo: WorldInfo = {} as WorldInfo;
 let cachedNotifications: Notification[] = [];
 let cachedPlayerCorpData: CorporationData = {} as CorporationData;
-let cachedInfraNodes: InfraNodesTyped = { count: 0, ids: new Uint32Array(0), owners: new Uint32Array(0), positions: new Float64Array(0), stats: new Float64Array(0), node_types: new Uint32Array(0), network_levels: new Uint32Array(0), construction_flags: new Uint8Array(0) };
-let cachedInfraEdges: InfraEdgesTyped = { count: 0, ids: new Uint32Array(0), owners: new Uint32Array(0), endpoints: new Float64Array(0), stats: new Float64Array(0), edge_types: new Uint32Array(0) };
+let cachedInfraNodes: InfraNodesTyped = { count: 0, ids: new Uint32Array(0), owners: new Uint32Array(0), positions: new Float64Array(0), stats: new Float64Array(0), node_types: new Uint8Array(0), network_levels: new Uint32Array(0), construction_flags: new Uint8Array(0) };
+let cachedInfraEdges: InfraEdgesTyped = { 
+    count: 0, 
+    ids: new Uint32Array(0), 
+    owners: new Uint32Array(0), 
+    endpoints: new Float64Array(0), 
+    stats: new Float64Array(0), 
+    edge_types: new Uint8Array(0),
+    deployment_types: new Uint8Array(0),
+    waypoints_data: new Float64Array(0),
+    waypoint_offsets: new Uint32Array(0),
+    waypoint_lengths: new Uint8Array(0)
+};
 let cachedCorporationsTyped: CorporationsTyped = { count: 0, ids: new Uint32Array(0), financials: new Float64Array(0), name_offsets: new Uint32Array(0), names_packed: new Uint8Array(0) };
 let cachedSatelliteArrays: SatelliteArrays | null = null;
 
@@ -98,6 +109,7 @@ let cachedSpectrumLicenses: SpectrumLicense[] = [];
 let cachedGridCells: GridCell[] = [];
 let cachedIsRealEarth = false;
 let cachedPlayerCorpId = 0;
+let cachedStaticDefinitions: any = null;
 
 // Panel data caches (fetch-behind: return cached, async refresh in background)
 let cachedContracts: ContractInfo[] = [];
@@ -427,6 +439,25 @@ export function getCachedSpectrumLicenses(): SpectrumLicense[] { return cachedSp
 export function getCachedGridCells(): GridCell[] { return cachedGridCells; }
 export function getCachedPlayerCorpId(): number { return cachedPlayerCorpId; }
 export function getCachedIsRealEarth(): boolean { return cachedIsRealEarth; }
+
+export function getCachedStaticDefinitions(): any {
+	if (cachedStaticDefinitions === null) {
+		invoke('sim_get_static_definitions').then((json) => {
+			cachedStaticDefinitions = JSON.parse(json as string);
+		}).catch(() => {});
+	}
+	return cachedStaticDefinitions;
+}
+
+export function getCachedInfraNodesTypedViewport(west: number, south: number, east: number, north: number): InfraNodesTyped {
+	// Tauri doesn't currently support partial viewport sync via IPC; return full cached set
+	// This maintains API compatibility with the worker bridge
+	return cachedInfraNodes;
+}
+
+export function getCachedInfraEdgesTypedViewport(west: number, south: number, east: number, north: number): InfraEdgesTyped {
+	return cachedInfraEdges;
+}
 
 export function getCachedGrants(corpId: number): GrantInfo[] {
 	if (corpId !== cachedGrantsCorpId) {

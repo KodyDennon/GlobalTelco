@@ -43,6 +43,7 @@ impl Default for RenderSnapshot {
 #[derive(Debug)]
 pub enum QueryKind {
     WorldInfo,
+    StaticDefinitions,
     CorporationData(EntityId),
     Regions,
     Cities,
@@ -94,7 +95,9 @@ pub enum QueryKind {
 #[derive(Debug)]
 pub enum BinaryQueryKind {
     InfraNodes,
+    InfraNodesViewport(f64, f64, f64, f64),
     InfraEdges,
+    InfraEdgesViewport(f64, f64, f64, f64),
     Satellites,
     Corporations,
 }
@@ -385,6 +388,7 @@ fn update_render_snapshot(bridge: &crate::TauriBridge, snapshot: &Arc<RwLock<Ren
 fn dispatch_json_query(bridge: &mut crate::TauriBridge, kind: QueryKind) -> String {
     match kind {
         QueryKind::WorldInfo => bridge.get_world_info(),
+        QueryKind::StaticDefinitions => bridge.get_static_definitions(),
         QueryKind::CorporationData(id) => bridge.get_corporation_data(id),
         QueryKind::Regions => bridge.get_regions(),
         QueryKind::Cities => bridge.get_cities(),
@@ -446,8 +450,16 @@ fn dispatch_binary_query(bridge: &crate::TauriBridge, kind: BinaryQueryKind) -> 
             let arrays = bridge.get_infra_arrays();
             binary::pack_infra_arrays(&arrays)
         }
+        BinaryQueryKind::InfraNodesViewport(w, s, e, n) => {
+            let arrays = bridge.get_infra_arrays_viewport(w, s, e, n);
+            binary::pack_infra_arrays(&arrays)
+        }
         BinaryQueryKind::InfraEdges => {
             let arrays = bridge.get_edge_arrays();
+            binary::pack_edge_arrays(&arrays)
+        }
+        BinaryQueryKind::InfraEdgesViewport(w, s, e, n) => {
+            let arrays = bridge.get_edge_arrays_viewport(w, s, e, n);
             binary::pack_edge_arrays(&arrays)
         }
         BinaryQueryKind::Satellites => {
