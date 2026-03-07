@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.12.4 (2026-03-07)
+
+### Features
+
+- implement persistent world deletion and purge functionality (9a474b3)
+
+### Other
+
+- cargo (557db01)
+- **web:** v1.9.3 (a280a27)
+
+
 ## 1.12.3 (2026-03-07)
 
 ### Performance
