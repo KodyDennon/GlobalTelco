@@ -274,13 +274,12 @@ pub fn run(world: &mut GameWorld) {
         let cos_lat = (node_lat.to_radians()).cos().max(0.1);
         let lon_range = radius_km / (111.0 * cos_lat);
 
-        // Scan cells within bounding box
-        for (cell_idx, &(cell_lat, cell_lon)) in world.grid_cell_positions.iter().enumerate() {
-            // Quick bounding box check
-            if (cell_lat - node_lat).abs() > lat_range || (cell_lon - node_lon).abs() > lon_range {
-                continue;
-            }
+        // Optimization: Use spatial range query instead of scanning ALL cells
+        let candidate_cells = world.cells_in_range(node_lat, node_lon, lat_range, lon_range);
 
+        for cell_idx in candidate_cells {
+            let (cell_lat, cell_lon) = world.grid_cell_positions[cell_idx];
+            
             // Calculate actual distance using haversine
             let dist_km = haversine_km(node_lat, node_lon, cell_lat, cell_lon);
             if dist_km > radius_km {

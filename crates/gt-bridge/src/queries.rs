@@ -239,6 +239,68 @@ pub fn query_all_corporations(world: &GameWorld) -> String {
 
 // ── Infrastructure Queries ──────────────────────────────────────────────
 
+pub fn query_node_metadata(world: &GameWorld, id: EntityId) -> String {
+    let node = match world.infra_nodes.get(&id) {
+        Some(n) => n,
+        None => return String::new(),
+    };
+    let pos = world.positions.get(&id);
+    let health = world.healths.get(&id);
+    let cap = world.capacities.get(&id);
+    let under_construction = world.constructions.contains_key(&id);
+    
+    let data = serde_json::json!({
+        "id": id,
+        "node_type": node.node_type,
+        "x": pos.map(|p| p.x).unwrap_or(0.0),
+        "y": pos.map(|p| p.y).unwrap_or(0.0),
+        "health": health.map(|h| h.condition).unwrap_or(1.0),
+        "utilization": cap.map(|c| c.utilization()).unwrap_or(0.0),
+        "under_construction": under_construction,
+        "owner": node.owner,
+        "cell_index": node.cell_index,
+    });
+    serde_json::to_string(&data).unwrap_or_default()
+}
+
+pub fn query_edge_metadata(world: &GameWorld, id: EntityId) -> String {
+    let e = match world.infra_edges.get(&id) {
+        Some(e) => e,
+        None => return String::new(),
+    };
+    let src_pos = world.positions.get(&e.source);
+    let dst_pos = world.positions.get(&e.target);
+    
+    let data = serde_json::json!({
+        "id": id,
+        "edge_type": e.edge_type,
+        "source": e.source,
+        "target": e.target,
+        "src_x": src_pos.map(|p| p.x).unwrap_or(0.0),
+        "src_y": src_pos.map(|p| p.y).unwrap_or(0.0),
+        "dst_x": dst_pos.map(|p| p.x).unwrap_or(0.0),
+        "dst_y": dst_pos.map(|p| p.y).unwrap_or(0.0),
+        "health": e.health,
+        "owner": e.owner,
+    });
+    serde_json::to_string(&data).unwrap_or_default()
+}
+
+pub fn query_nodes_metadata(world: &GameWorld, ids: &[EntityId]) -> String {
+    let nodes: Vec<serde_json::Value> = ids.iter().filter_map(|&id| {
+        let node = world.infra_nodes.get(&id)?;
+        let pos = world.positions.get(&id)?;
+        Some(serde_json::json!({
+            "id": id,
+            "node_type": node.node_type,
+            "x": pos.x,
+            "y": pos.y,
+            "owner": node.owner,
+        }))
+    }).collect();
+    serde_json::to_string(&nodes).unwrap_or_default()
+}
+
 pub fn query_infrastructure_list(world: &GameWorld, corp_id: EntityId) -> String {
     let node_ids = world
         .corp_infra_nodes
@@ -1695,6 +1757,7 @@ fn build_infra_arrays_from_ids(world: &GameWorld, ids_list: &[EntityId]) -> crat
     let mut node_types = Vec::with_capacity(count);
     let mut network_levels = Vec::with_capacity(count);
     let mut construction_flags = Vec::with_capacity(count);
+    let mut cell_indices = Vec::with_capacity(count);
 
     for &eid in ids_list {
         let node = match world.infra_nodes.get(&eid) {
@@ -1723,6 +1786,7 @@ fn build_infra_arrays_from_ids(world: &GameWorld, ids_list: &[EntityId]) -> crat
         } else {
             0u8
         });
+        cell_indices.push(node.cell_index as u32);
     }
 
     crate::InfraArrays {
@@ -1733,6 +1797,7 @@ fn build_infra_arrays_from_ids(world: &GameWorld, ids_list: &[EntityId]) -> crat
         node_types,
         network_levels,
         construction_flags,
+        cell_indices,
     }
 }
 

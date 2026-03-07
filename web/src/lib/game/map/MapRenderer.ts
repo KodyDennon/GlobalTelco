@@ -745,18 +745,13 @@ export class MapRenderer {
 
         if (this.activeOverlay === 'market_share') {
             if (bridge.isInitialized() && this.cachedRegions.length > 0) {
-                const allInfra = bridge.getAllInfrastructure();
                 const corps = bridge.getAllCorporations();
                 const corpIndex = new Map<number, number>();
                 for (let i = 0; i < corps.length; i++) {
                     corpIndex.set(corps[i].id, i);
                 }
 
-                // Count nodes per corporation per region using city region mapping
-                // Build a map of region_id -> { corp_id -> node_count }
-                const regionCorpCounts = new Map<number, Map<number, number>>();
-
-                // Build a quick lookup from cell_index to region_id via cities
+                // Optimization: Use DataStore to get region corp counts
                 const cellToRegion = new Map<number, number>();
                 for (const city of this.cachedCities) {
                     for (const cp of city.cell_positions) {
@@ -764,15 +759,7 @@ export class MapRenderer {
                     }
                 }
 
-                for (const node of allInfra.nodes) {
-                    const regionId = cellToRegion.get(node.cell_index);
-                    if (regionId === undefined) continue;
-                    if (!regionCorpCounts.has(regionId)) {
-                        regionCorpCounts.set(regionId, new Map());
-                    }
-                    const counts = regionCorpCounts.get(regionId)!;
-                    counts.set(node.owner, (counts.get(node.owner) ?? 0) + 1);
-                }
+                const regionCorpCounts = dataStore.getRegionCorpCounts(cellToRegion);
 
                 // Build polygon data for regions with a dominant corporation
                 interface MarketShareRegion {
@@ -835,7 +822,6 @@ export class MapRenderer {
 
         if (this.activeOverlay === 'coverage_overlap') {
             if (bridge.isInitialized()) {
-                const allInfra = bridge.getAllInfrastructure();
                 const corps = bridge.getAllCorporations();
                 const playerCorpId = bridge.getPlayerCorpId();
 
@@ -855,13 +841,12 @@ export class MapRenderer {
                     }
                 }
 
-                // Count distinct corporations per cell
-                const cellCorpSets = new Map<number, Set<number>>();
-                for (const node of allInfra.nodes) {
-                    if (!cellCorpSets.has(node.cell_index)) {
-                        cellCorpSets.set(node.cell_index, new Set());
-                    }
-                    cellCorpSets.get(node.cell_index)!.add(node.owner);
+                // Optimization: Use DataStore to get cell corp sets and region corp counts
+                const cellCorpSets = dataStore.getCellCorpSets();
+                const regionCorpCounts = dataStore.getRegionCorpCounts(cellToRegion);
+                const regionCorps = new Map<number, Set<number>>();
+                for (const [regionId, counts] of regionCorpCounts) {
+                    regionCorps.set(regionId, new Set(counts.keys()));
                 }
 
                 // (a) Cell-level competition heatmap: cells with 2+ corps
@@ -932,16 +917,7 @@ export class MapRenderer {
                     }
                 }
 
-                // (b) Region competition borders
-                const regionCorps = new Map<number, Set<number>>();
-                for (const node of allInfra.nodes) {
-                    const regionId = cellToRegion.get(node.cell_index);
-                    if (regionId === undefined) continue;
-                    if (!regionCorps.has(regionId)) {
-                        regionCorps.set(regionId, new Set());
-                    }
-                    regionCorps.get(regionId)!.add(node.owner);
-                }
+                // (b) Region competition borders (already computed above as regionCorps)
 
                 interface CompetitionRegion {
                     polygon: [number, number][];
@@ -1118,10 +1094,9 @@ export class MapRenderer {
     private createSelectionLayer(): Layer | null {
         if (this.selectedId === null || this.selectedId === undefined) return null;
 
-        const infra = bridge.getAllInfrastructure();
-
-        const node = infra.nodes.find(n => n.id === this.selectedId);
-        if (node) {
+        // Optimization: Use targeted metadata query instead of scanning all infrastructure
+        const node = bridge.getNodeMetadata(this.selectedId);
+        if (node && node.id) {
             return new ScatterplotLayer({
                 id: 'selection-highlight',
                 data: [{ position: [node.x, node.y] }],
@@ -1137,8 +1112,8 @@ export class MapRenderer {
             });
         }
 
-        const edge = infra.edges.find(e => e.id === this.selectedId);
-        if (edge) {
+        const edge = bridge.getEdgeMetadata(this.selectedId);
+        if (edge && edge.id) {
             return new LineLayer({
                 id: 'selection-highlight-edge',
                 data: [edge],
@@ -1177,11 +1152,11 @@ export class MapRenderer {
     private createEdgeBuildHighlights(): Layer[] {
         if (this.currentEdgeSourceId === null) return [];
 
-        const infra = bridge.getAllInfrastructure();
         const layers: Layer[] = [];
 
-        const sourceNode = infra.nodes.find(n => n.id === this.currentEdgeSourceId);
-        if (sourceNode) {
+        // Optimization: Targeted query
+        const sourceNode = bridge.getNodeMetadata(this.currentEdgeSourceId);
+        if (sourceNode && sourceNode.id) {
             layers.push(new ScatterplotLayer({
                 id: 'edge-source-ring',
                 data: [{ position: [sourceNode.x, sourceNode.y] }],
@@ -1198,9 +1173,10 @@ export class MapRenderer {
         }
 
         if (this.edgeTargetIds.size > 0) {
-            const validTargets = infra.nodes
-                .filter(n => this.edgeTargetIds.has(n.id))
-                .map(n => ({ position: [n.x, n.y], id: n.id }));
+            // Optimization: Batch query for valid targets
+            const targetIds = Array.from(this.edgeTargetIds);
+            const validTargets = bridge.getNodesMetadata(targetIds)
+                .map((n: any) => ({ position: [n.x, n.y], id: n.id }));
 
             if (validTargets.length > 0) {
                 layers.push(new ScatterplotLayer({
@@ -1462,11 +1438,11 @@ export class MapRenderer {
             return null;
         }
 
-        const allInfra = bridge.getAllInfrastructure();
-        const sourceNode = allInfra.nodes.find(n => n.id === this.currentEdgeSourceId);
-        const targetNode = allInfra.nodes.find(n => n.id === this.hoveredEntity!.object?.id);
+        // Optimization: Use targeted metadata queries
+        const sourceNode = bridge.getNodeMetadata(this.currentEdgeSourceId);
+        const targetNode = bridge.getNodeMetadata(this.hoveredEntity!.object?.id);
 
-        if (!sourceNode || !targetNode || sourceNode.id === targetNode.id) return null;
+        if (!sourceNode || !sourceNode.id || !targetNode || !targetNode.id || sourceNode.id === targetNode.id) return null;
 
         const srcCell = sourceNode.cell_index;
         const tgtCell = targetNode.cell_index;
@@ -1516,9 +1492,8 @@ export class MapRenderer {
     /** Update building coverage/connection status from current infrastructure nodes. */
     private refreshBuildingCoverage(): void {
         if (!bridge.isInitialized()) return;
-        const allInfra = bridge.getAllInfrastructure();
-        const playerCorpId = bridge.getPlayerCorpId();
-        updateBuildingCoverage(allInfra.nodes, playerCorpId);
+        // Optimization: updateBuildingCoverage now uses dataStore.nodes internally
+        updateBuildingCoverage();
     }
 
     updateCities(): void {

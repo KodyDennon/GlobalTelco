@@ -38,6 +38,7 @@ impl WasmBridge {
         result.push(&Uint8Array::from(&arrays.node_types[..]).into());
         result.push(&Uint32Array::from(&arrays.network_levels[..]).into());
         result.push(&Uint8Array::from(&arrays.construction_flags[..]).into());
+        result.push(&Uint32Array::from(&arrays.cell_indices[..]).into());
         result
     }
 

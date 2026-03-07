@@ -79,7 +79,8 @@ let invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 let cachedWorldInfo: WorldInfo = {} as WorldInfo;
 let cachedNotifications: Notification[] = [];
 let cachedPlayerCorpData: CorporationData = {} as CorporationData;
-let cachedInfraNodes: InfraNodesTyped = { count: 0, ids: new Uint32Array(0), owners: new Uint32Array(0), positions: new Float64Array(0), stats: new Float64Array(0), node_types: new Uint8Array(0), network_levels: new Uint32Array(0), construction_flags: new Uint8Array(0) };
+let cachedCorporationMetadata: Map<number, CorporationData> = new Map();
+let cachedInfraNodes: InfraNodesTyped = { count: 0, ids: new Uint32Array(0), owners: new Uint32Array(0), positions: new Float64Array(0), stats: new Float64Array(0), node_types: new Uint8Array(0), network_levels: new Uint32Array(0), construction_flags: new Uint8Array(0), cell_indices: new Uint32Array(0) };
 let cachedInfraEdges: InfraEdgesTyped = { 
     count: 0, 
     ids: new Uint32Array(0), 
@@ -166,6 +167,10 @@ let cachedRegionPricing: RegionPricingInfo[] = [];
 let cachedRegionPricingCorpId = -1;
 let cachedMaintenancePrioritiesList: MaintenancePriorityInfo[] = [];
 let cachedMaintenancePrioritiesCorpId = -1;
+
+// Targeted metadata caches
+let cachedNodeMetadata: Map<number, any> = new Map();
+let cachedEdgeMetadata: Map<number, any> = new Map();
 
 let lastFullRefreshTick = -1;
 
@@ -415,10 +420,15 @@ export function getCachedCorporationsTyped(): CorporationsTyped { return cachedC
 export function getCachedSatelliteArrays(): SatelliteArrays | null { return cachedSatelliteArrays; }
 export function getCachedCorporationData(corpId: number): CorporationData {
 	if (corpId === cachedPlayerCorpId) return cachedPlayerCorpData;
-	// Non-player corp: trigger async fetch, return empty placeholder for now
+	
+	const cached = cachedCorporationMetadata.get(corpId);
+	if (cached) return cached;
+
+	// Trigger async fetch for background/competitor corp
 	invoke('sim_get_corporation_data', { id: corpId }).then((json) => {
-		cachedPlayerCorpData = JSON.parse(json as string);
+		cachedCorporationMetadata.set(corpId, JSON.parse(json as string));
 	}).catch(() => {});
+	
 	return {} as CorporationData;
 }
 
@@ -662,6 +672,31 @@ export function getCachedMaintenancePriorities(corpId: number): MaintenancePrior
 		invoke('sim_get_maintenance_priorities', { id: corpId }).then((json) => { cachedMaintenancePrioritiesList = JSON.parse(json as string); }).catch(() => {});
 	}
 	return cachedMaintenancePrioritiesList;
+}
+
+export function getCachedNodeMetadata(id: number): any {
+	if (!cachedNodeMetadata.has(id)) {
+		invoke('sim_get_node_metadata', { id }).then((json) => {
+			cachedNodeMetadata.set(id, JSON.parse(json as string));
+		}).catch(() => {});
+		return {};
+	}
+	return cachedNodeMetadata.get(id);
+}
+
+export function getCachedNodesMetadata(ids: number[]): any[] {
+	// Simple implementation for now: fetch each or return empty
+	return ids.map(id => getCachedNodeMetadata(id));
+}
+
+export function getCachedEdgeMetadata(id: number): any {
+	if (!cachedEdgeMetadata.has(id)) {
+		invoke('sim_get_edge_metadata', { id }).then((json) => {
+			cachedEdgeMetadata.set(id, JSON.parse(json as string));
+		}).catch(() => {});
+		return {};
+	}
+	return cachedEdgeMetadata.get(id);
 }
 
 export function getCachedWorldPreview(config: Partial<WorldConfig>): WorldPreviewData | null {

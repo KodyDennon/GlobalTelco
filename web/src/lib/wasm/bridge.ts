@@ -691,13 +691,14 @@ export function getInfraNodesTyped(): InfraNodesTyped {
                     node_types: arr[5] as Uint8Array,
                     network_levels: arr[6] as Uint32Array,
                     construction_flags: arr[7] as Uint8Array,
+                    cell_indices: arr[8] as Uint32Array,
                 };
             }
         }
     } catch (e) {
         onBridgeError(e, 'getInfraNodesTyped');
     }
-    return { count: 0, ids: EMPTY_U32, owners: EMPTY_U32, positions: EMPTY_F64, stats: EMPTY_F64, node_types: EMPTY_U8, network_levels: EMPTY_U32, construction_flags: EMPTY_U8 };
+    return { count: 0, ids: EMPTY_U32, owners: EMPTY_U32, positions: EMPTY_F64, stats: EMPTY_F64, node_types: EMPTY_U8, network_levels: EMPTY_U32, construction_flags: EMPTY_U8, cell_indices: EMPTY_U32 };
 }
 
 export function getInfraNodesTypedViewport(west: number, south: number, east: number, north: number): InfraNodesTyped {
@@ -705,7 +706,7 @@ export function getInfraNodesTypedViewport(west: number, south: number, east: nu
     try {
         if (bridge && typeof bridge.get_infra_nodes_typed_viewport === 'function') {
             const arr = bridge.get_infra_nodes_typed_viewport(west, south, east, north);
-            if (arr && arr.length >= 8) {
+            if (arr && arr.length >= 9) {
                 return {
                     count: arr[0] as number,
                     ids: arr[1] as Uint32Array,
@@ -715,6 +716,7 @@ export function getInfraNodesTypedViewport(west: number, south: number, east: nu
                     node_types: arr[5] as Uint8Array,
                     network_levels: arr[6] as Uint32Array,
                     construction_flags: arr[7] as Uint8Array,
+                    cell_indices: arr[8] as Uint32Array,
                 };
             }
         }
@@ -1216,7 +1218,42 @@ export function getMaintenancePriorities(corpId: number): MaintenancePriorityInf
 	}
 }
 
-// ── Tauri Native Filesystem ───────────────────────────────────────────
+export function getNodeMetadata(id: number): any {
+	if (useNativeSim) return tauriBridge.getCachedNodeMetadata(id);
+	try {
+		const json = bridge?.get_node_metadata(BigInt(id)) ?? '{}';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getNodeMetadata');
+		return {};
+	}
+}
+
+export function getNodesMetadata(ids: number[]): any[] {
+	if (useNativeSim) return tauriBridge.getCachedNodesMetadata(ids);
+	try {
+		const bigIds = ids.map(id => BigInt(id));
+		const json = bridge?.get_nodes_metadata(bigIds) ?? '[]';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getNodesMetadata');
+		return [];
+	}
+}
+
+export function getEdgeMetadata(id: number): any {
+	if (useNativeSim) return tauriBridge.getCachedEdgeMetadata(id);
+	try {
+		const json = bridge?.get_edge_metadata(BigInt(id)) ?? '{}';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getEdgeMetadata');
+		return {};
+	}
+}
+
+// ── Satellite Queries ────────────────────────────────────────────────
+
 
 export async function saveGameNative(slot: number, data: string): Promise<string | null> {
 	if (!tauriInvoke) return null;

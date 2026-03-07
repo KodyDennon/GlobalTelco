@@ -522,6 +522,7 @@ export interface InfraNodesTyped {
 	node_types: Uint8Array;
 	network_levels: Uint32Array;
 	construction_flags: Uint8Array;
+	cell_indices: Uint32Array;
 }
 
 export interface InfraEdgesTyped {

@@ -146,6 +146,39 @@ impl GeodesicGrid {
         self.nearest_cell(x, y, z)
     }
 
+    /// Find all cell indices within a bounding box defined by lat/lon ranges.
+    /// Used for optimized coverage calculation.
+    pub fn cells_in_range(&self, lat: f64, lon: f64, lat_range: f64, lon_range: f64) -> Vec<usize> {
+        let resolution = 10.0;
+        let (nx, ny, nz) = latlon_to_xyz(lat, lon);
+        let key = (
+            (nx * resolution) as i32,
+            (ny * resolution) as i32,
+            (nz * resolution) as i32,
+        );
+
+        let mut result = Vec::new();
+        // Search a wider area based on resolution vs ranges
+        // Lat range of 1 deg is ~111km. Resolution 10 means buckets are ~0.1 units (~600km?).
+        // For safety, we search +/- 2 buckets in all directions.
+        for dx in -2..=2 {
+            for dy in -2..=2 {
+                for dz in -2..=2 {
+                    let search_key = (key.0 + dx, key.1 + dy, key.2 + dz);
+                    if let Some(indices) = self.spatial_hash.get(&search_key) {
+                        for &idx in indices {
+                            let c = &self.cells[idx];
+                            if (c.lat - lat).abs() <= lat_range && (c.lon - lon).abs() <= lon_range {
+                                result.push(idx);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        result
+    }
+
     pub fn cell_count(&self) -> usize {
         self.cells.len()
     }

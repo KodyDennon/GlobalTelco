@@ -51,17 +51,34 @@ impl GameWorld {
             return None;
         }
         let mut best_idx = 0;
-        let mut best_dist = f64::MAX;
+        let mut best_dist_sq = f64::MAX;
         for (idx, &(cell_lat, cell_lon)) in self.grid_cell_positions.iter().enumerate() {
             let dlat = cell_lat - lat;
             let dlon = cell_lon - lon;
             let dist_sq = dlat * dlat + dlon * dlon;
-            if dist_sq < best_dist {
-                best_dist = dist_sq;
+            if dist_sq < best_dist_sq {
+                best_dist_sq = dist_sq;
                 best_idx = idx;
             }
         }
-        Some((best_idx, best_dist.sqrt()))
+        Some((best_idx, best_dist_sq.sqrt()))
+    }
+
+    pub fn nearest_cell_latlon(&self, lat: f64, lon: f64) -> usize {
+        self.find_nearest_cell(lon, lat).map(|(idx, _)| idx).unwrap_or(0)
+    }
+
+    /// Find all cell indices within a bounding box.
+    pub fn cells_in_range(&self, lat: f64, lon: f64, lat_range: f64, lon_range: f64) -> Vec<usize> {
+        let mut result = Vec::new();
+        // Optimization: still a scan, but we could use a spatial hash here too if needed.
+        // Given GameWorld doesn't have the GeodesicGrid spatial hash, we do a bounding box scan.
+        for (i, &(clat, clon)) in self.grid_cell_positions.iter().enumerate() {
+            if (clat - lat).abs() <= lat_range && (clon - lon).abs() <= lon_range {
+                result.push(i);
+            }
+        }
+        result
     }
 
     /// Get the terrain for a given cell index by looking up the land parcel.

@@ -152,62 +152,57 @@ impl NetworkGraph {
         None
     }
 
-    /// Recompute cached paths for dirty nodes
-    pub fn recompute_dirty(&mut self, weight_fn: &dyn Fn(EntityId, EntityId) -> f64) {
+    /// Recompute cached paths for dirty nodes (No-op in lazy mode, kept for trait compatibility if needed)
+    pub fn recompute_dirty(&mut self, _weight_fn: &dyn Fn(EntityId, EntityId) -> f64) {
+        // In lazy mode, we don't precompute.
+        // We just clear affected cache entries when nodes become dirty.
         let dirty = self.take_dirty_nodes();
-        for source in dirty {
-            let paths = self.compute_all_paths_from(source, weight_fn);
-            self.cached_paths.insert(source, paths);
+        for id in dirty {
+            self.cached_paths.shift_remove(&id);
         }
     }
 
-    fn compute_all_paths_from(
+    /// Get a path between two nodes, using cache if available, otherwise computing it.
+    pub fn get_or_compute_path(
+        &mut self,
+        from: EntityId,
+        to: EntityId,
+        edge_weights: &HashMap<EntityId, f64>,
+    ) -> Option<Vec<EntityId>> {
+        if let Some(src_cache) = self.cached_paths.get(&from) {
+            if let Some(path) = src_cache.get(&to) {
+                return Some(path.clone());
+            }
+        }
+
+        // Compute on demand
+        let path = self.shortest_path_with_map(from, to, edge_weights)?;
+        
+        // Cache it (LRU-ish: we just insert, the simulation tick clears dirty sources)
+        self.cached_paths
+            .entry(from)
+            .or_default()
+            .insert(to, path.clone());
+            
+        Some(path)
+    }
+
+    /// Compute shortest path using an edge weight map (EntityId -> f64)
+    pub fn shortest_path_with_map(
         &self,
-        source: EntityId,
-        weight_fn: &dyn Fn(EntityId, EntityId) -> f64,
-    ) -> IndexMap<EntityId, Vec<EntityId>> {
-        let mut dist: HashMap<EntityId, f64> = HashMap::new();
-        let mut prev: HashMap<EntityId, EntityId> = HashMap::new();
-        let mut heap: BinaryHeap<Reverse<(OrderedFloat, EntityId)>> = BinaryHeap::new();
-
-        dist.insert(source, 0.0);
-        heap.push(Reverse((OrderedFloat(0.0), source)));
-
-        while let Some(Reverse((OrderedFloat(cost), node))) = heap.pop() {
-            if cost > *dist.get(&node).unwrap_or(&f64::MAX) {
-                continue;
+        from: EntityId,
+        to: EntityId,
+        edge_weights: &HashMap<EntityId, f64>,
+    ) -> Option<Vec<EntityId>> {
+        let weight_fn = |a: EntityId, b: EntityId| -> f64 {
+            let key = if a < b { (a, b) } else { (b, a) };
+            if let Some(&eid) = self.edge_map.get(&key) {
+                edge_weights.get(&eid).copied().unwrap_or(f64::MAX)
+            } else {
+                f64::MAX
             }
-
-            for &neighbor in self.neighbors(node) {
-                let edge_weight = weight_fn(node, neighbor);
-                let new_dist = cost + edge_weight;
-                if new_dist < *dist.get(&neighbor).unwrap_or(&f64::MAX) {
-                    dist.insert(neighbor, new_dist);
-                    prev.insert(neighbor, node);
-                    heap.push(Reverse((OrderedFloat(new_dist), neighbor)));
-                }
-            }
-        }
-
-        // Build path map
-        let mut paths = IndexMap::new();
-        for &target in dist.keys() {
-            if target == source {
-                continue;
-            }
-            let mut path = vec![target];
-            let mut current = target;
-            while let Some(&p) = prev.get(&current) {
-                path.push(p);
-                current = p;
-            }
-            path.reverse();
-            if path.first() == Some(&source) {
-                paths.insert(target, path);
-            }
-        }
-
-        paths
+        };
+        self.shortest_path(from, to, &weight_fn)
     }
 
     pub fn get_cached_path(&self, from: EntityId, to: EntityId) -> Option<&Vec<EntityId>> {

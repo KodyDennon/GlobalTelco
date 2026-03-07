@@ -248,6 +248,18 @@ impl WasmBridge {
         gt_bridge::queries::query_maintenance_priorities(&self.world, corp_id)
     }
 
+    pub fn get_node_metadata(&self, id: u64) -> String {
+        gt_bridge::queries::query_node_metadata(&self.world, id)
+    }
+
+    pub fn get_nodes_metadata(&self, ids: Vec<u64>) -> String {
+        gt_bridge::queries::query_nodes_metadata(&self.world, &ids)
+    }
+
+    pub fn get_edge_metadata(&self, id: u64) -> String {
+        gt_bridge::queries::query_edge_metadata(&self.world, id)
+    }
+
     // ── Satellite Queries ───────────────────────────────────────────────
 
     pub fn get_constellation_data(&self, corp_id: u64) -> String {

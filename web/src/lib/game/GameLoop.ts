@@ -170,21 +170,25 @@ function loop(timestamp: number) {
 			}
 		} else {
 			// WASM: synchronous ticks (fallback — main thread)
+			let ticked = false;
 			while (tickAccumulator >= interval) {
 				tickAccumulator -= interval;
 				const t0 = performance.now();
 				bridge.tick();
 				const t1 = performance.now();
 				simTickTime.set(Math.round((t1 - t0) * 100) / 100);
+				ticked = true;
+			}
+			if (ticked) {
+				updateStores();
 			}
 		}
 	}
 
 	// In worker mode, store updates happen via the tick result handler.
-	// In direct mode, update stores synchronously each frame.
-	if (!isMultiplayerMode && !useWorker) {
-		updateStores();
-	}
+	// In direct mode, we already updated stores if a tick occurred.
+	// We only need a fallback for the first frame or initial state.
+	// However, initGame already calls updateStores once.
 	animFrameId = requestAnimationFrame(loop);
 }
 
@@ -522,21 +526,25 @@ export async function initGame(config?: Partial<import('$lib/wasm/types').WorldC
 	updateStores();
 	await bridge.fetchGridCells();
 
-	// Try to offload simulation to a Web Worker (non-Tauri, browser only)
-	if (workerBridge.isSupported() && !bridge.isNativeSim()) {
-		try {
-			// Save initial state from main thread, then load into worker
-			const initialState = await bridge.saveGame();
-			await workerBridge.init();
-			await workerBridge.loadGame(initialState);
-			workerBridge.setTickResultHandler(handleWorkerTickResult);
-			// Route all commands through the worker (it owns the authoritative state)
-			bridge.setCommandProxy((json) => workerBridge.sendCommand(json));
-			useWorker = true;
-			console.log('[GameLoop] Sim offloaded to Web Worker');
-		} catch (e) {
-			console.warn('[GameLoop] Worker init failed, falling back to main thread:', e);
-			useWorker = false;
+	// Try to offload simulation to a Web Worker (Mandatory for browser performance)
+	if (!bridge.isNativeSim()) {
+		if (workerBridge.isSupported()) {
+			try {
+				// Save initial state from main thread, then load into worker
+				const initialState = await bridge.saveGame();
+				await workerBridge.init();
+				await workerBridge.loadGame(initialState);
+				workerBridge.setTickResultHandler(handleWorkerTickResult);
+				// Route all commands through the worker (it owns the authoritative state)
+				bridge.setCommandProxy((json) => workerBridge.sendCommand(json));
+				useWorker = true;
+				console.log('[GameLoop] Sim offloaded to Web Worker');
+			} catch (e) {
+				console.error('[GameLoop] Worker initialization failed:', e);
+				throw new Error('Failed to initialize simulation worker. Please check browser compatibility.');
+			}
+		} else {
+			throw new Error('Web Workers are not supported in this browser. GlobalTelco requires Web Workers for simulation.');
 		}
 	}
 

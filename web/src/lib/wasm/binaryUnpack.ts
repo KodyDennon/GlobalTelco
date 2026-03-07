@@ -22,13 +22,13 @@ const EMPTY_U8 = new Uint8Array(0);
  */
 export function unpackInfraNodes(buffer: ArrayBuffer): InfraNodesTyped {
 	if (buffer.byteLength < 4) {
-		return { count: 0, ids: EMPTY_U32, owners: EMPTY_U32, positions: EMPTY_F64, stats: EMPTY_F64, node_types: EMPTY_U8, network_levels: EMPTY_U32, construction_flags: EMPTY_U8 };
+		return { count: 0, ids: EMPTY_U32, owners: EMPTY_U32, positions: EMPTY_F64, stats: EMPTY_F64, node_types: EMPTY_U8, network_levels: EMPTY_U32, construction_flags: EMPTY_U8, cell_indices: EMPTY_U32 };
 	}
 
 	const view = new DataView(buffer);
 	const count = view.getUint32(0, true);
 	if (count === 0) {
-		return { count: 0, ids: EMPTY_U32, owners: EMPTY_U32, positions: EMPTY_F64, stats: EMPTY_F64, node_types: EMPTY_U8, network_levels: EMPTY_U32, construction_flags: EMPTY_U8 };
+		return { count: 0, ids: EMPTY_U32, owners: EMPTY_U32, positions: EMPTY_F64, stats: EMPTY_F64, node_types: EMPTY_U8, network_levels: EMPTY_U32, construction_flags: EMPTY_U8, cell_indices: EMPTY_U32 };
 	}
 
 	let offset = 4;
@@ -52,8 +52,11 @@ export function unpackInfraNodes(buffer: ArrayBuffer): InfraNodesTyped {
 	offset += count * 4;
 
 	const construction_flags = new Uint8Array(buffer.slice(offset, offset + count));
+	offset += count;
 
-	return { count, ids, owners, positions, stats, node_types, network_levels, construction_flags };
+	const cell_indices = new Uint32Array(buffer.slice(offset, offset + count * 4));
+
+	return { count, ids, owners, positions, stats, node_types, network_levels, construction_flags, cell_indices };
 }
 
 /**

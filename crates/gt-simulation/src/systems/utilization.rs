@@ -422,51 +422,65 @@ pub fn lookup_permission(
 
 fn recompute_traffic_matrix_if_needed(world: &mut GameWorld) {
     let tick = world.current_tick();
+    // Recompute matrix every 100 ticks or if empty
     let needs_recompute = world.traffic_matrix.od_pairs.is_empty()
-        || tick.saturating_sub(world.traffic_matrix.last_computed_tick) >= 50;
+        || tick.saturating_sub(world.traffic_matrix.last_computed_tick) >= 100;
 
     if !needs_recompute {
         return;
     }
 
-    let mut city_demands: Vec<(EntityId, f64)> = world
-        .cities
-        .iter()
-        .map(|(&id, city)| {
-            let demand = world
-                .demands
-                .get(&id)
-                .map(|d| d.current_demand)
-                .unwrap_or(city.telecom_demand);
-            (id, demand)
-        })
+    // Identify Global Hubs (Population > 500k)
+    let hub_ids: Vec<EntityId> = world.cities.iter()
+        .filter(|(_, c)| c.population > 500_000)
+        .map(|(&id, _)| id)
         .collect();
-    city_demands.sort_unstable_by_key(|t| t.0);
-
-    let total_demand: f64 = city_demands.iter().map(|(_, d)| d).sum();
-    if total_demand <= 0.0 {
-        world.traffic_matrix = TrafficMatrix {
-            last_computed_tick: tick,
-            ..TrafficMatrix::default()
-        };
-        return;
-    }
 
     let mut od_pairs: Vec<TrafficDemand> = Vec::new();
     let mut external_traffic: Vec<(EntityId, f64)> = Vec::new();
+    let mut total_demand = 0.0;
 
-    for i in 0..city_demands.len() {
-        let (src_id, src_demand) = city_demands[i];
+    // Build regional mapping for fast neighbor lookups
+    let mut region_cities: HashMap<EntityId, Vec<EntityId>> = HashMap::new();
+    for (&id, city) in &world.cities {
+        region_cities.entry(city.region_id).or_default().push(id);
+    }
+
+    for (&src_id, src_city) in &world.cities {
+        let src_demand = world.demands.get(&src_id).map(|d| d.current_demand).unwrap_or(src_city.telecom_demand);
+        if src_demand <= 0.0 { continue; }
+        
+        // 40% of traffic is "Internet-bound" (external)
         external_traffic.push((src_id, src_demand * 0.4));
+        total_demand += src_demand;
 
-        for &(dst_id, dst_demand) in &city_demands[(i + 1)..] {
-            let traffic = src_demand * dst_demand / total_demand;
+        // Peer-to-peer traffic targets (Gravity Model)
+        // D_ij = G * (P_i * P_j) / dist^2
+        
+        // 1. Regional targets (all cities in same region)
+        if let Some(neighbors) = region_cities.get(&src_city.region_id) {
+            for &dst_id in neighbors {
+                if src_id == dst_id { continue; }
+                let dst_city = &world.cities[&dst_id];
+                let dst_demand = world.demands.get(&dst_id).map(|d| d.current_demand).unwrap_or(dst_city.telecom_demand);
+                
+                // Simplified gravity: shared demand factor
+                let traffic = (src_demand * dst_demand * 0.3) / total_demand.max(1.0);
+                if traffic > 0.05 {
+                    od_pairs.push(TrafficDemand { source_city: src_id, dest_city: dst_id, demand: traffic });
+                }
+            }
+        }
+
+        // 2. Global Hub targets (long-distance high-fidelity traffic)
+        for &hub_id in &hub_ids {
+            if src_id == hub_id || src_city.region_id == world.cities[&hub_id].region_id { continue; }
+            let hub_city = &world.cities[&hub_id];
+            let hub_demand = world.demands.get(&hub_id).map(|d| d.current_demand).unwrap_or(hub_city.telecom_demand);
+            
+            let traffic = (src_demand * hub_demand * 0.2) / total_demand.max(1.0);
             if traffic > 0.1 {
-                od_pairs.push(TrafficDemand {
-                    source_city: src_id,
-                    dest_city: dst_id,
-                    demand: traffic,
-                });
+                od_pairs.push(TrafficDemand { source_city: src_id, dest_city: hub_id, demand: traffic });
             }
         }
     }
@@ -704,7 +718,7 @@ fn find_backbone_nodes(world: &GameWorld) -> Vec<u64> {
 // ─── Traffic Routing ──────────────────────────────────────────────────────────
 
 fn route_od_pair(
-    world: &GameWorld,
+    world: &mut GameWorld,
     od: &TrafficDemand,
     ctx: &RoutingContext,
     accum: &mut TrafficAccumulator,
@@ -730,11 +744,8 @@ fn route_od_pair(
         return;
     }
 
-    let path = world
-        .network
-        .get_cached_path(src_node, dst_node)
-        .or_else(|| world.network.get_cached_path(dst_node, src_node))
-        .cloned();
+    // Optimization: Lazy compute and cache paths
+    let path = world.network.get_or_compute_path(src_node, dst_node, &ctx.edge_cap);
 
     match path {
         Some(ref p) if p.len() >= 2 => {
@@ -754,7 +765,7 @@ fn route_od_pair(
 }
 
 fn route_external_traffic(
-    world: &GameWorld,
+    world: &mut GameWorld,
     city_id: EntityId,
     demand: f64,
     ctx: &RoutingContext,
@@ -768,12 +779,13 @@ fn route_external_traffic(
         }
     };
 
-    // Find shortest path to any backbone node
+    // External traffic goes to nearest backbone node
     let mut best_path: Option<Vec<u64>> = None;
+
     for &bb in &ctx.backbone_nodes {
-        if let Some(path) = world.network.get_cached_path(access_node, bb) {
+        if let Some(path) = world.network.get_or_compute_path(access_node, bb, &ctx.edge_cap) {
             if best_path.is_none() || path.len() < best_path.as_ref().unwrap().len() {
-                best_path = Some(path.clone());
+                best_path = Some(path);
             }
         }
     }

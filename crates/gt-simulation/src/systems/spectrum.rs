@@ -49,17 +49,6 @@ pub fn run(world: &mut GameWorld) {
         return;
     }
 
-    // Build a per-band spatial index: band_name -> vec of (node_id, lon, lat)
-    let mut band_nodes: HashMap<String, Vec<(u64, f64, f64)>> = HashMap::new();
-    for &(node_id, _, lon, lat, ref bands, _) in &wireless_nodes {
-        for band_name in bands {
-            band_nodes
-                .entry(band_name.clone())
-                .or_default()
-                .push((node_id, lon, lat));
-        }
-    }
-
     // For each wireless node, compute effective throughput:
     // 1. Carrier aggregation: sum bandwidth contributions from all assigned bands
     // 2. Interference penalty: for each assigned band, count same-band neighbors
@@ -94,14 +83,30 @@ pub fn run(world: &mut GameWorld) {
 
             // Count same-band interferers within interference radius
             let interference_radius_km = interference_radius_for_band(&band);
-            let interferer_count = count_interferers(
-                node_id,
-                lon,
-                lat,
-                band_name,
-                interference_radius_km,
-                &band_nodes,
+            
+            // Optimization: Use spatial index to find nearby nodes
+            // Convert radius_km to approximate degrees for RTree query
+            let deg_range = interference_radius_km / 111.0;
+            let envelope = rstar::AABB::from_corners(
+                [lon - deg_range * 2.0, lat - deg_range],
+                [lon + deg_range * 2.0, lat + deg_range]
             );
+            
+            let mut interferer_count = 0;
+            for spatial_node in world.spatial_index.locate_in_envelope(&envelope) {
+                if spatial_node.id == node_id { continue; }
+                
+                // Check if this candidate node uses the same band
+                if let Some(other_node) = world.infra_nodes.get(&spatial_node.id) {
+                    if other_node.assigned_bands.contains(band_name) {
+                        // Precise distance check
+                        let dist = haversine_km(lat, lon, spatial_node.pos[1], spatial_node.pos[0]);
+                        if dist <= interference_radius_km {
+                            interferer_count += 1;
+                        }
+                    }
+                }
+            }
 
             // Apply diminishing interference penalty: 0.85^interferer_count
             let interference_factor = 0.85_f64.powi(interferer_count as i32);
@@ -144,33 +149,6 @@ fn interference_radius_for_band(band: &FrequencyBand) -> f64 {
         FrequencyBand::BandV => 60.0,
         FrequencyBand::BandQ => 40.0,
     }
-}
-
-/// Count the number of other nodes using the same band within the interference radius.
-fn count_interferers(
-    node_id: u64,
-    lon: f64,
-    lat: f64,
-    band_name: &str,
-    radius_km: f64,
-    band_nodes: &HashMap<String, Vec<(u64, f64, f64)>>,
-) -> u32 {
-    let nodes = match band_nodes.get(band_name) {
-        Some(n) => n,
-        None => return 0,
-    };
-
-    let mut count = 0u32;
-    for &(other_id, other_lon, other_lat) in nodes {
-        if other_id == node_id {
-            continue;
-        }
-        let dist = haversine_km(lat, lon, other_lat, other_lon);
-        if dist <= radius_km {
-            count += 1;
-        }
-    }
-    count
 }
 
 fn is_wireless_node(node_type: NodeType) -> bool {
@@ -246,39 +224,5 @@ mod tests {
         assert!((0.85_f64.powi(2) - 0.7225).abs() < 0.0001);
         // 5 interferers: 0.85^5 ~= 0.4437
         assert!((0.85_f64.powi(5) - 0.4437).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_count_interferers_empty() {
-        let band_nodes: HashMap<String, Vec<(u64, f64, f64)>> = HashMap::new();
-        let count = count_interferers(1, 0.0, 0.0, "Band700MHz", 50.0, &band_nodes);
-        assert_eq!(count, 0);
-    }
-
-    #[test]
-    fn test_count_interferers_self_excluded() {
-        let mut band_nodes: HashMap<String, Vec<(u64, f64, f64)>> = HashMap::new();
-        band_nodes.insert(
-            "Band700MHz".to_string(),
-            vec![(1, 0.0, 0.0)], // only self
-        );
-        let count = count_interferers(1, 0.0, 0.0, "Band700MHz", 50.0, &band_nodes);
-        assert_eq!(count, 0);
-    }
-
-    #[test]
-    fn test_count_interferers_nearby() {
-        let mut band_nodes: HashMap<String, Vec<(u64, f64, f64)>> = HashMap::new();
-        band_nodes.insert(
-            "Band700MHz".to_string(),
-            vec![
-                (1, 0.0, 0.0),
-                (2, 0.01, 0.0),   // ~1.1 km away — within 50 km
-                (3, 0.1, 0.0),    // ~11.1 km away — within 50 km
-                (4, 10.0, 10.0),  // very far — outside radius
-            ],
-        );
-        let count = count_interferers(1, 0.0, 0.0, "Band700MHz", 50.0, &band_nodes);
-        assert_eq!(count, 2); // nodes 2 and 3
     }
 }

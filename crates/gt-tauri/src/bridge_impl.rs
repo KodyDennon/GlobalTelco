@@ -181,6 +181,21 @@ impl BridgeQuery for TauriBridge {
         gt_bridge::queries::query_maintenance_priorities(&w, corp_id)
     }
 
+    fn get_node_metadata(&self, id: gt_common::types::EntityId) -> String {
+        let w = self.world.lock().unwrap();
+        gt_bridge::queries::query_node_metadata(&w, id)
+    }
+
+    fn get_nodes_metadata(&self, ids: &[gt_common::types::EntityId]) -> String {
+        let w = self.world.lock().unwrap();
+        gt_bridge::queries::query_nodes_metadata(&w, ids)
+    }
+
+    fn get_edge_metadata(&self, id: gt_common::types::EntityId) -> String {
+        let w = self.world.lock().unwrap();
+        gt_bridge::queries::query_edge_metadata(&w, id)
+    }
+
     fn get_constellation_data(&self, corp_id: gt_common::types::EntityId) -> String {
         let w = self.world.lock().unwrap();
         gt_bridge::queries::query_constellation_data(&w, corp_id)

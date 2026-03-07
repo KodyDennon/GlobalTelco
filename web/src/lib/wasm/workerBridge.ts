@@ -31,6 +31,7 @@ export async function init(): Promise<void> {
                 node_types: nodes[5],
                 network_levels: nodes[6],
                 construction_flags: nodes[7],
+                cell_indices: nodes[8],
             };
             
             const infraEdges: InfraEdgesTyped = {

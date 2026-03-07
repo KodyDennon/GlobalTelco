@@ -29,6 +29,8 @@ pub struct InfraArrays {
     pub network_levels: Vec<u32>,
     /// 1 if under construction, 0 if not
     pub construction_flags: Vec<u8>,
+    /// Grid cell index for each node
+    pub cell_indices: Vec<u32>,
 }
 
 /// Edge data as flat typed arrays.
@@ -113,6 +115,11 @@ pub trait BridgeQuery {
     fn get_stock_market(&self, corp_id: EntityId) -> String;
     fn get_region_pricing(&self, corp_id: EntityId) -> String;
     fn get_maintenance_priorities(&self, corp_id: EntityId) -> String;
+
+    // ── Targeted Metadata Queries (Optimization) ────────────────────────
+    fn get_node_metadata(&self, id: EntityId) -> String;
+    fn get_nodes_metadata(&self, ids: &[EntityId]) -> String;
+    fn get_edge_metadata(&self, id: EntityId) -> String;
 
     // ── Satellite queries ───────────────────────────────────────────────
     fn get_constellation_data(&self, corp_id: EntityId) -> String;

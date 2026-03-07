@@ -3,6 +3,7 @@ import type { Layer } from '@deck.gl/core';
 import type { City, Region, CellCoverage, SpectrumLicense, AllInfraNode } from '$lib/wasm/types';
 import { CORP_COLORS } from '../constants';
 import * as bridge from '$lib/wasm/bridge';
+import { dataStore } from '../DataStore';
 import { ZONE_CONFIGS, zoneRadii, type BuildingZone } from './buildingsLayer';
 
 // ── Spectrum band color + coverage mappings ────────────────────────────────
@@ -171,14 +172,13 @@ export function createOverlayLayers(opts: {
 
     if (activeOverlay === 'market_share') {
         if (bridge.isInitialized() && regions.length > 0) {
-            const allInfra = bridge.getAllInfrastructure();
             const corps = bridge.getAllCorporations();
             const corpIndex = new Map<number, number>();
             for (let i = 0; i < corps.length; i++) {
                 corpIndex.set(corps[i].id, i);
             }
 
-            // Count nodes per corporation per region
+            // Count nodes per corporation per region using optimized DataStore
             const cellToRegion = new Map<number, number>();
             for (const city of cities) {
                 for (const cp of city.cell_positions) {
@@ -186,16 +186,7 @@ export function createOverlayLayers(opts: {
                 }
             }
 
-            const regionCorpCounts = new Map<number, Map<number, number>>();
-            for (const node of allInfra.nodes) {
-                const regionId = cellToRegion.get(node.cell_index);
-                if (regionId === undefined) continue;
-                if (!regionCorpCounts.has(regionId)) {
-                    regionCorpCounts.set(regionId, new Map());
-                }
-                const counts = regionCorpCounts.get(regionId)!;
-                counts.set(node.owner, (counts.get(node.owner) ?? 0) + 1);
-            }
+            const regionCorpCounts = dataStore.getRegionCorpCounts(cellToRegion);
 
             interface MarketShareRegion {
                 polygon: [number, number][];
@@ -263,19 +254,24 @@ export function createOverlayLayers(opts: {
     // ── Congestion heatmap overlay ───────────────────────────────────────────
     if (activeOverlay === 'congestion') {
         if (bridge.isInitialized()) {
-            const allInfra = bridge.getAllInfrastructure();
-            const congestionPoints = allInfra.nodes
-                .filter(n => n.utilization > 0.1)
-                .map(n => ({
-                    position: [n.x, n.y],
-                    utilization: n.utilization,
-                    color: [
-                        Math.floor(Math.min(1, n.utilization * 1.5) * 255),
-                        Math.floor(Math.max(0, 1 - n.utilization) * 200),
-                        0,
-                        160
-                    ] as [number, number, number, number]
-                }));
+            const n = dataStore.nodes;
+            const congestionPoints = [];
+            
+            for (let i = 0; i < n.count; i++) {
+                const utilization = n.stats[i * 3 + 1];
+                if (utilization > 0.1) {
+                    congestionPoints.push({
+                        position: [n.positions[i * 2], n.positions[i * 2 + 1]],
+                        utilization,
+                        color: [
+                            Math.floor(Math.min(1, utilization * 1.5) * 255),
+                            Math.floor(Math.max(0, 1 - utilization) * 200),
+                            0,
+                            160
+                        ] as [number, number, number, number]
+                    });
+                }
+            }
 
             if (congestionPoints.length > 0) {
                 layers.push(new ScatterplotLayer({
@@ -299,8 +295,8 @@ export function createOverlayLayers(opts: {
             const trafficPoints = trafficFlows.node_flows
                 .filter(f => f.utilization > 0.05)
                 .map(f => {
-                    const node = bridge.getAllInfrastructure().nodes.find(n => n.id === f.id);
-                    if (!node) return null;
+                    const node = bridge.getNodeMetadata(f.id);
+                    if (!node || !node.id) return null;
                     return {
                         position: [node.x, node.y],
                         utilization: f.utilization,
@@ -339,9 +335,9 @@ export function createOverlayLayers(opts: {
 function createSpectrumOverlayLayers(regions: Region[], cities: City[]): Layer[] {
     const layers: Layer[] = [];
     const licenses = bridge.getSpectrumLicenses();
-    const allInfra = bridge.getAllInfrastructure();
 
     // ── (a) Licensed region polygons colored by dominant frequency band ──────
+
 
     const regionBandCounts = new Map<number, Map<string, number>>();
     const licensedRegionIds = new Set<number>();
@@ -446,18 +442,24 @@ function createSpectrumOverlayLayers(regions: Region[], cities: City[]): Layer[]
     }
     const coverageCircles: CoverageCircle[] = [];
 
-    const wirelessNodes = allInfra.nodes.filter(n => WIRELESS_OVERLAY_TYPES.has(n.node_type));
+    const n = dataStore.nodes;
+    const nodeTypes = bridge.getStaticDefinitions().node_types;
 
-    for (const node of wirelessNodes) {
-        const regionId = cellToRegion.get(node.cell_index);
-        const ownerKey = regionId !== undefined ? `${regionId}-${node.owner}` : '';
+    for (let i = 0; i < n.count; i++) {
+        const nodeType = nodeTypes[n.node_types[i]];
+        if (!WIRELESS_OVERLAY_TYPES.has(nodeType)) continue;
+
+        const cellIndex = n.cell_indices[i];
+        const owner = n.owners[i];
+        const regionId = cellToRegion.get(cellIndex);
+        const ownerKey = regionId !== undefined ? `${regionId}-${owner}` : '';
         const band = regionOwnerBands.get(ownerKey) ?? '';
 
         const bandColor = band ? (BAND_COLORS[band] ?? UNASSIGNED_BAND_COLOR) : UNASSIGNED_BAND_COLOR;
         const coverageM = band ? (BAND_COVERAGE_M[band] ?? DEFAULT_COVERAGE_M) : DEFAULT_COVERAGE_M;
 
         coverageCircles.push({
-            position: [node.x, node.y],
+            position: [n.positions[i * 2], n.positions[i * 2 + 1]],
             radius: coverageM,
             color: [bandColor[0], bandColor[1], bandColor[2], 80],
             band: band || 'unassigned',
@@ -603,7 +605,6 @@ function createCoverageOverlapLayers(
     cellRadiusM: number,
 ): Layer[] {
     const layers: Layer[] = [];
-    const allInfra = bridge.getAllInfrastructure();
     const corps = bridge.getAllCorporations();
     const playerCorpId = bridge.getPlayerCorpId();
 
@@ -623,14 +624,8 @@ function createCoverageOverlapLayers(
         }
     }
 
-    // Count distinct corporations per cell
-    const cellCorpSets = new Map<number, Set<number>>();
-    for (const node of allInfra.nodes) {
-        if (!cellCorpSets.has(node.cell_index)) {
-            cellCorpSets.set(node.cell_index, new Set());
-        }
-        cellCorpSets.get(node.cell_index)!.add(node.owner);
-    }
+    // Count distinct corporations per cell using optimized DataStore
+    const cellCorpSets = dataStore.getCellCorpSets();
 
     // ── (a) Cell-level competition heatmap ──────────────────────────────────
 
@@ -707,15 +702,11 @@ function createCoverageOverlapLayers(
 
     // ── (b) Region competition borders ──────────────────────────────────────
 
-    // Count distinct corps per region
+    // Count distinct corps per region using optimized DataStore
+    const regionCorpCounts = dataStore.getRegionCorpCounts(cellToRegion);
     const regionCorps = new Map<number, Set<number>>();
-    for (const node of allInfra.nodes) {
-        const regionId = cellToRegion.get(node.cell_index);
-        if (regionId === undefined) continue;
-        if (!regionCorps.has(regionId)) {
-            regionCorps.set(regionId, new Set());
-        }
-        regionCorps.get(regionId)!.add(node.owner);
+    for (const [regionId, counts] of regionCorpCounts) {
+        regionCorps.set(regionId, new Set(counts.keys()));
     }
 
     interface CompetitionRegion {

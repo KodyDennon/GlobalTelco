@@ -40,6 +40,8 @@
 import { PolygonLayer, PathLayer } from '@deck.gl/layers';
 import type { Layer } from '@deck.gl/core';
 import type { City } from '$lib/wasm/types';
+import * as bridge from '$lib/wasm/bridge';
+import { dataStore } from '../DataStore';
 import { getCachedCityStreets } from './roadsLayer';
 import type { CityStreet } from './roadsLayer';
 
@@ -1004,6 +1006,16 @@ let coverageVersion: number = 0;
 /** Track population tiers at generation time for dynamic updates. */
 let cachedCityTiers: Map<number, PopulationTier> = new Map();
 
+/** Spatial index for buildings: grid_key -> indices in cachedBuildings */
+const buildingSpatialIndex: Map<string, number[]> = new Map();
+const GRID_SIZE = 0.05; // ~5km buckets
+
+function getGridKey(x: number, y: number): string {
+    const gx = Math.floor(x / GRID_SIZE);
+    const gy = Math.floor(y / GRID_SIZE);
+    return `${gx},${gy}`;
+}
+
 /**
  * Build and cache building footprint and street data from city array.
  * Call once after cities are loaded from WASM.
@@ -1019,6 +1031,7 @@ export function buildBuildingData(cities: City[]): void {
         cachedStreets = [];
         cachedCityCount = 0;
         cachedCityTiers.clear();
+        buildingSpatialIndex.clear();
         return;
     }
 
@@ -1036,6 +1049,7 @@ export function buildBuildingData(cities: City[]): void {
     const allShadows: { polygon: [number, number][]; color: [number, number, number, number] }[] = [];
     const allStreets: StreetSegment[] = [];
     const newTiers = new Map<number, PopulationTier>();
+    buildingSpatialIndex.clear();
 
     for (const city of sorted) {
         if (allBuildings.length >= MAX_VISIBLE_BUILDINGS && allStreets.length >= MAX_STREET_SEGMENTS) break;
@@ -1060,7 +1074,15 @@ export function buildBuildingData(cities: City[]): void {
             const toAdd = cityBuildings.slice(0, remaining);
 
             for (const b of toAdd) {
+                const bIdx = allBuildings.length;
                 allBuildings.push(b);
+
+                // Add to spatial index
+                const key = getGridKey(b.cx, b.cy);
+                if (!buildingSpatialIndex.has(key)) {
+                    buildingSpatialIndex.set(key, []);
+                }
+                buildingSpatialIndex.get(key)!.push(bIdx);
 
                 // Generate shadow: offset polygon slightly SE and darker
                 const shadowOffset = 0.00003; // ~3m offset
@@ -1093,6 +1115,7 @@ export function disposeBuildingData(): void {
     cachedStreets = null;
     cachedCityCount = 0;
     cachedCityTiers.clear();
+    buildingSpatialIndex.clear();
 }
 
 // ── Dynamic building spawn/destruction (Gap #14) ──────────────────────────
@@ -1232,11 +1255,19 @@ function distSqMeters(lon1: number, lat1: number, lon2: number, lat2: number): n
  * @param playerNodes Array of infrastructure nodes (from bridge.getAllInfrastructure().nodes)
  * @param playerCorpId The player's corporation ID
  */
+/**
+ * Updates connection status for all cached buildings based on proximity to infrastructure.
+ *
+ * Performance optimization: Now uses `dataStore.nodes` (typed array) instead of JSON
+ * to avoid massive serialization overhead on each tick.
+ */
 export function updateBuildingCoverage(
-    playerNodes: Array<{ x: number; y: number; node_type: string; owner: number }>,
-    playerCorpId: number
+    _playerNodes?: any[], // Deprecated, kept for backward compat if needed
+    playerCorpIdOverride?: number
 ): void {
     if (!cachedBuildings || cachedBuildings.length === 0) return;
+
+    const playerCorpId = playerCorpIdOverride ?? bridge.getPlayerCorpId();
 
     // Reset all buildings to unserved
     for (const b of cachedBuildings) {
@@ -1254,33 +1285,62 @@ export function updateBuildingCoverage(
         'WirelessRelay': 600,
     };
 
-    // Squared radii for faster comparison
-    const coverageNodes = playerNodes
-        .filter(n => NODE_COVERAGE[n.node_type] !== undefined)
-        .map(n => ({
-            x: n.x,
-            y: n.y,
-            owner: n.owner,
-            radiusSqM: (NODE_COVERAGE[n.node_type]!) ** 2,
-        }));
+    // Optimization: Collect coverage nodes from typed array
+    const n = dataStore.nodes;
+    const nodeTypes = bridge.getStaticDefinitions().node_types;
+    if (!nodeTypes) return;
+
+    const coverageNodes = [];
+    for (let i = 0; i < n.count; i++) {
+        const typeName = nodeTypes[n.node_types[i]];
+        const radius = NODE_COVERAGE[typeName];
+        if (radius !== undefined) {
+            coverageNodes.push({
+                x: n.positions[i * 2],
+                y: n.positions[i * 2 + 1],
+                owner: n.owners[i],
+                radiusSqM: radius ** 2,
+            });
+        }
+    }
 
     if (coverageNodes.length === 0) return;
 
-    for (const b of cachedBuildings) {
-        for (const node of coverageNodes) {
-            const dSq = distSqMeters(b.cx, b.cy, node.x, node.y);
-            if (dSq <= node.radiusSqM) {
-                if (node.owner === playerCorpId) {
-                    // Player coverage -- only upgrade, never downgrade
-                    if (b.connectionStatus !== 'connected') {
-                        b.connectionStatus = 'covered';
-                        b.providerCorpId = playerCorpId;
-                    }
-                } else {
-                    // Competitor coverage -- only set if not already covered by player
-                    if (b.connectionStatus === 'unserved') {
-                        b.connectionStatus = 'competitor';
-                        b.providerCorpId = node.owner;
+    // Optimization: Use spatial index to only check local buildings
+    for (const node of coverageNodes) {
+        // Find grid cells overlapping this node's coverage radius
+        const radiusDeg = Math.sqrt(node.radiusSqM) / 111320;
+        const minX = node.x - radiusDeg;
+        const maxX = node.x + radiusDeg;
+        const minY = node.y - radiusDeg;
+        const maxY = node.y + radiusDeg;
+
+        const startGX = Math.floor(minX / GRID_SIZE);
+        const endGX = Math.floor(maxX / GRID_SIZE);
+        const startGY = Math.floor(minY / GRID_SIZE);
+        const endGY = Math.floor(maxY / GRID_SIZE);
+
+        for (let gx = startGX; gx <= endGX; gx++) {
+            for (let gy = startGY; gy <= endGY; gy++) {
+                const key = `${gx},${gy}`;
+                const bIndices = buildingSpatialIndex.get(key);
+                if (!bIndices) continue;
+
+                for (const bIdx of bIndices) {
+                    const b = cachedBuildings[bIdx];
+                    const dSq = distSqMeters(b.cx, b.cy, node.x, node.y);
+                    if (dSq <= node.radiusSqM) {
+                        if (node.owner === playerCorpId) {
+                            if (b.connectionStatus !== 'connected') {
+                                b.connectionStatus = 'covered';
+                                b.providerCorpId = playerCorpId;
+                            }
+                        } else {
+                            if (b.connectionStatus === 'unserved') {
+                                b.connectionStatus = 'competitor';
+                                b.providerCorpId = node.owner;
+                            }
+                        }
                     }
                 }
             }
