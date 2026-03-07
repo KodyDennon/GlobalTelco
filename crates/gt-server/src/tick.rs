@@ -143,6 +143,12 @@ pub fn spawn_world_tick_loop(
         let mut tick_interval = interval(Duration::from_millis(world.tick_rate_ms));
         let prev_deltas: Mutex<HashMap<EntityId, CorpDelta>> = Mutex::new(HashMap::new());
 
+        // Buffer for events to reduce DB pressure
+        let mut event_buffer: Vec<(i64, String, serde_json::Value)> = Vec::new();
+        let mut last_event_flush = Instant::now();
+        const EVENT_FLUSH_INTERVAL: Duration = Duration::from_secs(2);
+        const MAX_EVENT_BUFFER: usize = 200;
+
         loop {
             tick_interval.tick().await;
 
@@ -300,35 +306,42 @@ pub fn spawn_world_tick_loop(
                 });
             }
 
-            // Persist events to database in background (before broadcast consumes them)
+            // Buffering events for database persistence
             if let Some(db_ref) = db.as_ref() {
                 if !events.is_empty() {
+                    for e in &events {
+                        // Extract a readable variant name for the event type
+                        let event_type = match e {
+                            gt_common::events::GameEvent::ConstructionStarted { .. } => "ConstructionStarted",
+                            gt_common::events::GameEvent::ConstructionCompleted { .. } => "ConstructionCompleted",
+                            gt_common::events::GameEvent::NodeBuilt { .. } => "NodeBuilt",
+                            gt_common::events::GameEvent::NodeDestroyed { .. } => "NodeDestroyed",
+                            gt_common::events::GameEvent::RevenueEarned { .. } => "RevenueEarned",
+                            gt_common::events::GameEvent::CostIncurred { .. } => "CostIncurred",
+                            gt_common::events::GameEvent::BankruptcyDeclared { .. } => "BankruptcyDeclared",
+                            gt_common::events::GameEvent::ResearchStarted { .. } => "ResearchStarted",
+                            gt_common::events::GameEvent::ResearchCompleted { .. } => "ResearchCompleted",
+                            gt_common::events::GameEvent::DisasterStruck { .. } => "DisasterStruck",
+                            gt_common::events::GameEvent::RepairCompleted { .. } => "RepairCompleted",
+                            gt_common::events::GameEvent::CorporationFounded { .. } => "CorporationFounded",
+                            _ => "Other",
+                        }.to_string();
+                        
+                        if let Ok(v) = serde_json::to_value(e) {
+                            event_buffer.push((tick as i64, event_type, v));
+                        }
+                    }
+                }
+
+                // Flush buffer if interval elapsed or buffer is full
+                if !event_buffer.is_empty() && (last_event_flush.elapsed() >= EVENT_FLUSH_INTERVAL || event_buffer.len() >= MAX_EVENT_BUFFER) {
                     let db = Arc::clone(db_ref);
                     let world_id = world.id;
-                    let event_tuples: Vec<(i64, String, serde_json::Value)> = events
-                        .iter()
-                        .filter_map(|e| {
-                            // Extract a readable variant name for the event type
-                            let event_type = match e {
-                                gt_common::events::GameEvent::ConstructionStarted { .. } => "ConstructionStarted",
-                                gt_common::events::GameEvent::ConstructionCompleted { .. } => "ConstructionCompleted",
-                                gt_common::events::GameEvent::NodeBuilt { .. } => "NodeBuilt",
-                                gt_common::events::GameEvent::NodeDestroyed { .. } => "NodeDestroyed",
-                                gt_common::events::GameEvent::RevenueEarned { .. } => "RevenueEarned",
-                                gt_common::events::GameEvent::CostIncurred { .. } => "CostIncurred",
-                                gt_common::events::GameEvent::BankruptcyDeclared { .. } => "BankruptcyDeclared",
-                                gt_common::events::GameEvent::ResearchStarted { .. } => "ResearchStarted",
-                                gt_common::events::GameEvent::ResearchCompleted { .. } => "ResearchCompleted",
-                                gt_common::events::GameEvent::DisasterStruck { .. } => "DisasterStruck",
-                                gt_common::events::GameEvent::RepairCompleted { .. } => "RepairCompleted",
-                                gt_common::events::GameEvent::CorporationFounded { .. } => "CorporationFounded",
-                                _ => "Other",
-                            }.to_string();
-                            serde_json::to_value(e).ok().map(|v| (tick as i64, event_type, v))
-                        })
-                        .collect();
+                    let to_flush = std::mem::take(&mut event_buffer);
+                    last_event_flush = Instant::now();
+
                     tokio::spawn(async move {
-                        let refs: Vec<(i64, &str, &serde_json::Value)> = event_tuples
+                        let refs: Vec<(i64, &str, &serde_json::Value)> = to_flush
                             .iter()
                             .map(|(t, et, v)| (*t, et.as_str(), v))
                             .collect();
@@ -336,15 +349,14 @@ pub fn spawn_world_tick_loop(
                             warn!("Failed to persist events: {e}");
                         }
 
-                        // Periodic database maintenance: prune old events
+                        // Periodic database maintenance: prune old events (only on flush)
                         if tick % DB_SNAPSHOT_INTERVAL_TICKS == 0 {
                             match db.prune_old_events(world_id, EVENT_RETENTION_TICKS).await {
                                 Ok(count) => if count > 0 { debug!("Pruned {} old events for world {}", count, world_id); },
                                 Err(e) => warn!("Failed to prune old events: {e}"),
                             }
                         }
-                        });
-
+                    });
                 }
 
                 // Update leaderboard periodically (every DB_SNAPSHOT_INTERVAL_TICKS)

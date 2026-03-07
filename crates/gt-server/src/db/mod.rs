@@ -34,7 +34,18 @@ pub struct Database {
 #[cfg(feature = "postgres")]
 impl Database {
     pub async fn connect(url: &str) -> Result<Self, sqlx::Error> {
-        let pool = PgPool::connect(url).await?;
+        use sqlx::postgres::PgPoolOptions;
+        use std::time::Duration;
+
+        let pool = PgPoolOptions::new()
+            .max_connections(50)
+            .min_connections(2)
+            .acquire_timeout(Duration::from_secs(5))
+            .idle_timeout(Duration::from_secs(600))
+            .max_lifetime(Duration::from_secs(1800))
+            .connect(url)
+            .await?;
+
         Ok(Self { pool })
     }
 
