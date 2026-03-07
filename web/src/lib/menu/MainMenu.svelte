@@ -4,7 +4,7 @@
 
 	let { onNewGame, onLoadGame, onSettings, onMultiplayer, onCredits, onProfile }: { onNewGame: () => void; onLoadGame: () => void; onSettings: () => void; onMultiplayer: () => void; onCredits: () => void; onProfile: () => void } = $props();
 
-	const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.12.2';
+	const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.12.3';
 </script>
 
 <div class="main-menu" role="navigation" aria-label={$tr('menu.title')}>
