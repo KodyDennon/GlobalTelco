@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.0.1 (2026-03-06)
+
+### Features
+
+- Reorganize documentation, update `gt-simulation` systems and world commands, refine admin panel components, and adjust server-side logic and dependencies. (244d9dd)
+- Enhance data packing and querying with viewport support for infrastructure nodes and edges (f8ea329)
+- Add Display implementation for EdgeType and NodeType enums (e13e6d0)
+- Enhance WASM bridge with static definitions and improved data structures (5aa6ce1)
+- add performance audit and overhaul plan documentation for rendering optimizations (2b85ede)
+- enhance grant and co-ownership functionalities with new data structures and caching (e41048a)
+
+### Chores
+
+- Update gt packages to version 1.11.2 (1fd0568)
+- update gt packages to version 1.11.1 (b7bd579)
+- update package versions to 1.11.0 and 1.0.0 (4b3fb8a)
+
+### Other
+
+- **engine:** v1.12.1 (d877d32)
+- nonsense (619ec84)
+- **web:** v1.9.0 (b3c4a3b)
+- **engine:** v1.12.0 (6c8f34a)
+- **web:** v1.8.10 (a4a8520)
+- **engine:** v1.11.2 (88bd2c0)
+- **web:** v1.8.9 (4a13519)
+- **engine:** v1.11.1 (a0fba1d)
+- **web:** v1.8.8 (720efb7)
+- **engine:** v1.11.0 (291102f)
+
+
 ## 1.0.0 (2026-03-05)
 
 ### Features
