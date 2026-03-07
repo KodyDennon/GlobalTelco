@@ -34,7 +34,7 @@ fn record_utilization_history(world: &mut GameWorld) {
     let node_utils: Vec<(u64, f64)> = world
         .infra_nodes
         .iter()
-        .filter(|(id, _)| !world.constructions.contains_key(id))
+        .filter(|(id, _)| !world.constructions.contains_key(*id))
         .map(|(&id, _)| {
             let util = world
                 .capacities
@@ -82,7 +82,7 @@ fn reset_node_effective_throughput(world: &mut GameWorld) {
         let mut v: Vec<_> = world
             .infra_nodes
             .iter()
-            .filter(|(id, _)| !world.constructions.contains_key(id))
+            .filter(|(id, _)| !world.constructions.contains_key(*id))
             .map(|(&id, node)| {
                 let health = world.healths.get(&id).map(|h| h.condition).unwrap_or(1.0);
                 let effective = if health < 0.5 {
@@ -178,7 +178,7 @@ fn apply_exchange_point_latency(world: &mut GameWorld) {
             .filter(|(id, node)| {
                 (node.node_type == NodeType::ExchangePoint
                     || node.node_type == NodeType::InternetExchangePoint)
-                    && !world.constructions.contains_key(id)
+                    && !world.constructions.contains_key(*id)
             })
             .map(|(&id, node)| {
                 let health = world.healths.get(&id).map(|h| h.condition).unwrap_or(1.0);
@@ -514,7 +514,7 @@ fn accumulate_traffic_flows(world: &mut GameWorld) {
     let node_owners: HashMap<u64, u64> = world
         .infra_nodes
         .iter()
-        .filter(|(id, _)| !world.constructions.contains_key(id))
+        .filter(|(id, _)| !world.constructions.contains_key(*id))
         .map(|(&id, node)| (id, node.owner))
         .collect();
 
@@ -614,7 +614,7 @@ fn collect_node_capacities(world: &GameWorld) -> HashMap<u64, f64> {
     world
         .infra_nodes
         .iter()
-        .filter(|(id, _)| !world.constructions.contains_key(id))
+        .filter(|(id, _)| !world.constructions.contains_key(*id))
         .map(|(&id, _)| {
             let cap = world.capacities.get(&id).map(|c| c.max_throughput).unwrap_or(0.0);
             (id, cap)
@@ -640,7 +640,7 @@ fn find_city_access_nodes(world: &GameWorld) -> HashMap<EntityId, (EntityId, Ent
     let mut node_data: Vec<(u64, usize, NodeType, u64)> = world
         .infra_nodes
         .iter()
-        .filter(|(id, _)| !world.constructions.contains_key(id))
+        .filter(|(id, _)| !world.constructions.contains_key(*id))
         .map(|(&id, node)| (id, node.cell_index, node.node_type, node.owner))
         .collect();
     node_data.sort_unstable_by_key(|t| t.0);
@@ -688,7 +688,7 @@ fn find_backbone_nodes(world: &GameWorld) -> Vec<u64> {
     let mut nodes: Vec<u64> = world
         .infra_nodes
         .iter()
-        .filter(|(id, _)| !world.constructions.contains_key(id))
+        .filter(|(id, _)| !world.constructions.contains_key(*id))
         .filter(|(_, node)| {
             matches!(
                 node.node_type.tier(),

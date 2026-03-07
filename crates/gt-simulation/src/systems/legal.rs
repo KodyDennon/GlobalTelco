@@ -127,6 +127,6 @@ pub fn run(world: &mut GameWorld) {
         .collect();
 
     for id in to_remove {
-        world.lawsuits.remove(&id);
+        world.lawsuits.shift_remove(&id);
     }
 }

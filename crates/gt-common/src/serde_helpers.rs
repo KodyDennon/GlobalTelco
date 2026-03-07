@@ -4,16 +4,16 @@
 //! handled automatically, but tuple keys like `(EntityId, EntityId)` are not.
 //! These helpers convert tuple keys to/from `"a_b"` string format.
 
-/// Serialize/deserialize `HashMap<(u64, u64), V>` with `"a_b"` string keys for JSON compat.
+/// Serialize/deserialize `IndexMap<(u64, u64), V>` with `"a_b"` string keys for JSON compat.
 pub mod entity_pair_map {
+    use indexmap::IndexMap;
     use serde::de::{self, MapAccess, Visitor};
     use serde::ser::SerializeMap;
     use serde::{Deserializer, Serializer};
-    use std::collections::HashMap;
     use std::fmt;
     use std::marker::PhantomData;
 
-    pub fn serialize<V, S>(map: &HashMap<(u64, u64), V>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<V, S>(map: &IndexMap<(u64, u64), V>, serializer: S) -> Result<S::Ok, S::Error>
     where
         V: serde::Serialize,
         S: Serializer,
@@ -26,7 +26,7 @@ pub mod entity_pair_map {
         m.end()
     }
 
-    pub fn deserialize<'de, V, D>(deserializer: D) -> Result<HashMap<(u64, u64), V>, D::Error>
+    pub fn deserialize<'de, V, D>(deserializer: D) -> Result<IndexMap<(u64, u64), V>, D::Error>
     where
         V: serde::Deserialize<'de>,
         D: Deserializer<'de>,
@@ -34,14 +34,14 @@ pub mod entity_pair_map {
         struct PairMapVisitor<V>(PhantomData<V>);
 
         impl<'de, V: serde::Deserialize<'de>> Visitor<'de> for PairMapVisitor<V> {
-            type Value = HashMap<(u64, u64), V>;
+            type Value = IndexMap<(u64, u64), V>;
 
             fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 f.write_str("a map with \"a_b\" string keys")
             }
 
             fn visit_map<M: MapAccess<'de>>(self, mut access: M) -> Result<Self::Value, M::Error> {
-                let mut map = HashMap::with_capacity(access.size_hint().unwrap_or(0));
+                let mut map = IndexMap::with_capacity(access.size_hint().unwrap_or(0));
                 while let Some((key, value)) = access.next_entry::<String, V>()? {
                     let parts: Vec<&str> = key.splitn(2, '_').collect();
                     if parts.len() != 2 {

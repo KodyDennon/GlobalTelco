@@ -170,7 +170,7 @@ impl GameWorld {
             .collect();
 
         for auction_id in ended {
-            let auction = match self.spectrum_auctions.remove(&auction_id) {
+            let auction = match self.spectrum_auctions.shift_remove(&auction_id) {
                 Some(a) => a,
                 None => continue,
             };
@@ -215,7 +215,7 @@ impl GameWorld {
             .collect();
 
         for license_id in expired {
-            if let Some(license) = self.spectrum_licenses.remove(&license_id) {
+            if let Some(license) = self.spectrum_licenses.shift_remove(&license_id) {
                 self.event_queue.push(
                     self.tick,
                     gt_common::events::GameEvent::SpectrumLicenseExpired {

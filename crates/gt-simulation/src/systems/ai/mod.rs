@@ -480,17 +480,17 @@ fn execute_survive(world: &mut GameWorld, corp_id: EntityId, fin: &Financial) {
         .copied();
 
     if let Some(node_id) = least_utilized {
-        if let Some(node) = world.infra_nodes.remove(&node_id) {
+        if let Some(node) = world.infra_nodes.shift_remove(&node_id) {
             let salvage = node.construction_cost / 5;
             if let Some(f) = world.financials.get_mut(&corp_id) {
                 f.cash += salvage;
                 f.cost_per_tick = (f.cost_per_tick - node.maintenance_cost).max(0);
             }
             world.network.remove_node(node_id);
-            world.positions.remove(&node_id);
-            world.healths.remove(&node_id);
-            world.capacities.remove(&node_id);
-            world.ownerships.remove(&node_id);
+            world.positions.shift_remove(&node_id);
+            world.healths.shift_remove(&node_id);
+            world.capacities.shift_remove(&node_id);
+            world.ownerships.shift_remove(&node_id);
             if let Some(nodes) = world.corp_infra_nodes.get_mut(&corp_id) {
                 nodes.retain(|&id| id != node_id);
             }

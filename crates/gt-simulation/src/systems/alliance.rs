@@ -83,7 +83,7 @@ pub fn run(world: &mut GameWorld) {
 
     // Process dissolutions
     for (alliance_id, reason) in to_dissolve {
-        world.alliances.remove(&alliance_id);
+        world.alliances.shift_remove(&alliance_id);
         world.event_queue.push(
             tick,
             gt_common::events::GameEvent::AllianceDissolved {

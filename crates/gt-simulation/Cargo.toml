@@ -21,6 +21,7 @@ bincode = { workspace = true }
 zstd = { workspace = true, optional = true }
 crc32fast = { workspace = true, optional = true }
 rstar = "0.12.2"
+indexmap = { version = "2", features = ["serde"] }
 
 [dev-dependencies]
 criterion = "0.5"

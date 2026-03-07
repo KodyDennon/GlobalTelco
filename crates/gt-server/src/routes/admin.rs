@@ -1180,7 +1180,7 @@ pub(crate) async fn admin_metrics(
     for instance in worlds.values() {
         let w = instance.world.lock().await;
         let tick_history: Vec<u64> = instance.tick_history.read().await.iter().copied().collect();
-        let system_times: std::collections::HashMap<String, u64> = w.system_times.clone();
+        let system_times: indexmap::IndexMap<String, u64> = w.system_times.clone();
         world_metrics.push(serde_json::json!({
             "id": instance.id,
             "name": instance.name,

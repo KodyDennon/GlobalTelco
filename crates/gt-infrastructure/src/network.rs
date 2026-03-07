@@ -1,16 +1,17 @@
 use gt_common::types::EntityId;
+use indexmap::{IndexMap, IndexSet};
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::{BinaryHeap, HashMap};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NetworkGraph {
-    adjacency: HashMap<EntityId, Vec<EntityId>>,
+    adjacency: IndexMap<EntityId, Vec<EntityId>>,
     #[serde(with = "gt_common::serde_helpers::entity_pair_map")]
-    edge_map: HashMap<(EntityId, EntityId), EntityId>,
-    dirty_nodes: HashSet<EntityId>,
+    edge_map: IndexMap<(EntityId, EntityId), EntityId>,
+    dirty_nodes: IndexSet<EntityId>,
     #[serde(skip)]
-    cached_paths: HashMap<EntityId, HashMap<EntityId, Vec<EntityId>>>,
+    cached_paths: IndexMap<EntityId, IndexMap<EntityId, Vec<EntityId>>>,
 }
 
 impl NetworkGraph {
@@ -37,7 +38,7 @@ impl NetworkGraph {
     }
 
     pub fn remove_node(&mut self, id: EntityId) {
-        if let Some(neighbors) = self.adjacency.remove(&id) {
+        if let Some(neighbors) = self.adjacency.shift_remove(&id) {
             for neighbor in &neighbors {
                 if let Some(adj) = self.adjacency.get_mut(neighbor) {
                     adj.retain(|&n| n != id);
@@ -53,10 +54,10 @@ impl NetworkGraph {
             .copied()
             .collect();
         for key in keys_to_remove {
-            self.edge_map.remove(&key);
+            self.edge_map.shift_remove(&key);
         }
-        self.dirty_nodes.remove(&id);
-        self.cached_paths.remove(&id);
+        self.dirty_nodes.shift_remove(&id);
+        self.cached_paths.shift_remove(&id);
     }
 
     pub fn remove_edge(&mut self, from: EntityId, to: EntityId) {
@@ -67,7 +68,7 @@ impl NetworkGraph {
             adj.retain(|&n| n != from);
         }
         let key = if from < to { (from, to) } else { (to, from) };
-        self.edge_map.remove(&key);
+        self.edge_map.shift_remove(&key);
         self.dirty_nodes.insert(from);
         self.dirty_nodes.insert(to);
     }
@@ -92,13 +93,13 @@ impl NetworkGraph {
         !self.dirty_nodes.is_empty()
     }
 
-    pub fn take_dirty_nodes(&mut self) -> HashSet<EntityId> {
+    pub fn take_dirty_nodes(&mut self) -> IndexSet<EntityId> {
         std::mem::take(&mut self.dirty_nodes)
     }
 
     pub fn invalidate_node(&mut self, id: EntityId) {
         self.dirty_nodes.insert(id);
-        self.cached_paths.remove(&id);
+        self.cached_paths.shift_remove(&id);
     }
 
     /// Compute shortest path between two nodes using Dijkstra
@@ -164,7 +165,7 @@ impl NetworkGraph {
         &self,
         source: EntityId,
         weight_fn: &dyn Fn(EntityId, EntityId) -> f64,
-    ) -> HashMap<EntityId, Vec<EntityId>> {
+    ) -> IndexMap<EntityId, Vec<EntityId>> {
         let mut dist: HashMap<EntityId, f64> = HashMap::new();
         let mut prev: HashMap<EntityId, EntityId> = HashMap::new();
         let mut heap: BinaryHeap<Reverse<(OrderedFloat, EntityId)>> = BinaryHeap::new();
@@ -189,7 +190,7 @@ impl NetworkGraph {
         }
 
         // Build path map
-        let mut paths = HashMap::new();
+        let mut paths = IndexMap::new();
         for &target in dist.keys() {
             if target == source {
                 continue;
@@ -214,7 +215,7 @@ impl NetworkGraph {
     }
 
     /// Get all cached paths from all sources (for traffic flow computation).
-    pub fn get_all_cached_paths(&self) -> &HashMap<EntityId, HashMap<EntityId, Vec<EntityId>>> {
+    pub fn get_all_cached_paths(&self) -> &IndexMap<EntityId, IndexMap<EntityId, Vec<EntityId>>> {
         &self.cached_paths
     }
 
@@ -230,7 +231,7 @@ impl NetworkGraph {
         &self,
         from: EntityId,
         to: EntityId,
-        exclude_nodes: &HashSet<EntityId>,
+        exclude_nodes: &IndexSet<EntityId>,
         weight_fn: &dyn Fn(EntityId, EntityId) -> f64,
     ) -> Option<Vec<EntityId>> {
         if from == to {
@@ -281,8 +282,8 @@ impl NetworkGraph {
     }
 
     /// Get all nodes connected to the given node (reachable)
-    pub fn connected_nodes(&self, start: EntityId) -> HashSet<EntityId> {
-        let mut visited = HashSet::new();
+    pub fn connected_nodes(&self, start: EntityId) -> IndexSet<EntityId> {
+        let mut visited = IndexSet::new();
         let mut stack = vec![start];
         while let Some(node) = stack.pop() {
             if visited.insert(node) {

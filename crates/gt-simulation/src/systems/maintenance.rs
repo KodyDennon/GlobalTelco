@@ -176,7 +176,7 @@ pub fn run(world: &mut GameWorld) {
     let mut non_infra_health_ids: Vec<u64> = world
         .healths
         .keys()
-        .filter(|id| !world.infra_nodes.contains_key(id))
+        .filter(|id| !world.infra_nodes.contains_key(*id))
         .copied()
         .collect();
     non_infra_health_ids.sort_unstable();

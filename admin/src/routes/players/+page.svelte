@@ -162,10 +162,10 @@
 		{#if showBanForm}
 			<div class="ban-form">
 				<div class="form-grid">
-					<div class="form-field"><label>Account ID</label><input type="text" bind:value={banAccountId} placeholder="UUID" /></div>
-					<div class="form-field"><label>Reason</label><input type="text" bind:value={banReason} placeholder="Ban reason" /></div>
-					<div class="form-field"><label>World ID (optional)</label><input type="text" bind:value={banWorldId} placeholder="Leave empty for global" /></div>
-					<div class="form-field"><label>Expires (optional)</label><input type="datetime-local" bind:value={banExpiresAt} /></div>
+					<div class="form-field"><label for="ban-acc">Account ID</label><input id="ban-acc" type="text" bind:value={banAccountId} placeholder="UUID" /></div>
+					<div class="form-field"><label for="ban-reason">Reason</label><input id="ban-reason" type="text" bind:value={banReason} placeholder="Ban reason" /></div>
+					<div class="form-field"><label for="ban-world">World ID (optional)</label><input id="ban-world" type="text" bind:value={banWorldId} placeholder="Leave empty for global" /></div>
+					<div class="form-field"><label for="ban-exp">Expires (optional)</label><input id="ban-exp" type="datetime-local" bind:value={banExpiresAt} /></div>
 				</div>
 				<button class="btn-primary" onclick={handleCreateBan}>Create Ban</button>
 			</div>

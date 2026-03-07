@@ -112,7 +112,7 @@
 <div class="wcf">
 	<!-- Presets -->
 	<div class="wcf-section">
-		<label class="wcf-label">Map Preset</label>
+		<span class="wcf-label">Map Preset</span>
 		<div class="preset-row">
 			{#each Object.entries(PRESETS) as [key, def]}
 				<button
@@ -130,44 +130,54 @@
 	<!-- Core settings -->
 	<div class="wcf-grid">
 		<div class="wcf-field">
-			<label class="wcf-label">Starting Era</label>
-			<select bind:value={era}>
-				{#each ERAS as e}<option value={e}>{e}</option>{/each}
-			</select>
+			<label class="wcf-label">
+				Starting Era
+				<select bind:value={era}>
+					{#each ERAS as e}<option value={e}>{e}</option>{/each}
+				</select>
+			</label>
 		</div>
 		<div class="wcf-field">
-			<label class="wcf-label">Difficulty</label>
-			<select bind:value={difficulty}>
-				{#each DIFFICULTIES as d}<option value={d}>{d}</option>{/each}
-			</select>
+			<label class="wcf-label">
+				Difficulty
+				<select bind:value={difficulty}>
+					{#each DIFFICULTIES as d}<option value={d}>{d}</option>{/each}
+				</select>
+			</label>
 		</div>
 		<div class="wcf-field">
-			<label class="wcf-label">Map Size</label>
-			<select bind:value={mapSize}>
-				{#each MAP_SIZES as m}<option value={m}>{m}</option>{/each}
-			</select>
+			<label class="wcf-label">
+				Map Size
+				<select bind:value={mapSize}>
+					{#each MAP_SIZES as m}<option value={m}>{m}</option>{/each}
+				</select>
+			</label>
 		</div>
 		<div class="wcf-field">
-			<label class="wcf-label">AI Corporations</label>
-			<div class="slider-row">
-				<input type="range" min="0" max="20" bind:value={aiCorps} />
-				<span class="slider-val">{aiCorps}</span>
-			</div>
+			<label class="wcf-label">
+				AI Corporations
+				<div class="slider-row">
+					<input type="range" min="0" max="20" bind:value={aiCorps} />
+					<span class="slider-val">{aiCorps}</span>
+				</div>
+			</label>
 		</div>
 	</div>
 
 	<!-- Seed -->
 	<div class="wcf-field seed-field">
-		<label class="wcf-label">Seed</label>
-		<div class="seed-row">
-			<input type="number" bind:value={seed} min="0" />
-			<button class="btn-sm" onclick={randomizeSeed} title="Randomize">Dice</button>
-		</div>
+		<label class="wcf-label">
+			Seed
+			<div class="seed-row">
+				<input type="number" bind:value={seed} min="0" />
+				<button class="btn-sm" onclick={randomizeSeed} title="Randomize">Dice</button>
+			</div>
+		</label>
 	</div>
 
 	<!-- Terrain settings -->
 	<div class="wcf-section">
-		<label class="wcf-label">Terrain Generation</label>
+		<span class="wcf-label">Terrain Generation</span>
 		{#if useRealEarth}
 			<div class="real-earth-notice">
 				Using real-world geography — terrain sliders locked.
@@ -175,46 +185,58 @@
 		{/if}
 		<div class="wcf-grid">
 			<div class="wcf-field">
-				<label class="wcf-label-sm">Continents</label>
-				<div class="slider-row">
-					<input type="range" min="1" max="8" bind:value={continentCount} disabled={useRealEarth} />
-					<span class="slider-val">{continentCount}</span>
-				</div>
+				<label class="wcf-label-sm">
+					Continents
+					<div class="slider-row">
+						<input type="range" min="1" max="8" bind:value={continentCount} disabled={useRealEarth} />
+						<span class="slider-val">{continentCount}</span>
+					</div>
+				</label>
 			</div>
 			<div class="wcf-field">
-				<label class="wcf-label-sm">Ocean %</label>
-				<div class="slider-row">
-					<input type="range" min="30" max="90" bind:value={oceanPct} disabled={useRealEarth} />
-					<span class="slider-val">{oceanPct}%</span>
-				</div>
+				<label class="wcf-label-sm">
+					Ocean %
+					<div class="slider-row">
+						<input type="range" min="30" max="90" bind:value={oceanPct} disabled={useRealEarth} />
+						<span class="slider-val">{oceanPct}%</span>
+					</div>
+				</label>
 			</div>
 			<div class="wcf-field">
-				<label class="wcf-label-sm">Roughness</label>
-				<div class="slider-row">
-					<input type="range" min="0" max="100" bind:value={roughness} disabled={useRealEarth} />
-					<span class="slider-val">{roughness}%</span>
-				</div>
+				<label class="wcf-label-sm">
+					Roughness
+					<div class="slider-row">
+						<input type="range" min="0" max="100" bind:value={roughness} disabled={useRealEarth} />
+						<span class="slider-val">{roughness}%</span>
+					</div>
+				</label>
 			</div>
 			<div class="wcf-field">
-				<label class="wcf-label-sm">Climate</label>
-				<div class="slider-row">
-					<input type="range" min="0" max="100" bind:value={climate} disabled={useRealEarth} />
-					<span class="slider-val">{climate}%</span>
-				</div>
+				<label class="wcf-label-sm">
+					Climate
+					<div class="slider-row">
+						<input type="range" min="0" max="100" bind:value={climate} disabled={useRealEarth} />
+						<span class="slider-val">{climate}%</span>
+					</div>
+				</label>
 			</div>
 			<div class="wcf-field">
-				<label class="wcf-label-sm">City Density</label>
-				<div class="slider-row">
-					<input type="range" min="0" max="100" bind:value={density} disabled={useRealEarth} />
-					<span class="slider-val">{density}%</span>
-				</div>
+				<label class="wcf-label-sm">
+					City Density
+					<div class="slider-row">
+						<input type="range" min="0" max="100" bind:value={density} disabled={useRealEarth} />
+						<span class="slider-val">{density}%</span>
+					</div>
+				</label>
 			</div>
 			<div class="wcf-field">
-				<label class="wcf-label-sm">Disaster Severity</label>
-				<div class="slider-row">
-					<input type="range" min="1" max="10" bind:value={disasterSeverity} />
-					<span class="slider-val">{disasterSeverity}</span>
-				</div>
+				<label class="wcf-label-sm">
+					Disaster Severity
+					<div class="slider-row">
+						<input type="range" min="1" max="10" bind:value={disasterSeverity} />
+						<span class="slider-val">{disasterSeverity}</span>
+					</div>
+				</label>
 			</div>
 		</div>
 	</div>

@@ -196,7 +196,8 @@
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="palette-overlay" onclick={closePalette} onkeydown={handlePaletteKeydown}>
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="palette-modal" onclick={(e: MouseEvent) => e.stopPropagation()}>
+			<div class="palette-modal" onclick={(e: MouseEvent) => e.stopPropagation()} onkeydown={(e) => e.key === 'Escape' && (paletteOpen = false)}>
+
 				<input
 					bind:this={paletteInput}
 					type="text"

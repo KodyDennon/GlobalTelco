@@ -57,7 +57,7 @@ pub fn run(world: &mut GameWorld) {
     }
 
     for (license_id, patent_id, licensee) in expired_licenses {
-        world.licenses.remove(&license_id);
+        world.licenses.shift_remove(&license_id);
 
         // Remove from tech_research licensed_to
         if let Some(patent) = world.patents.get(&patent_id) {

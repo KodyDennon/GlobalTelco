@@ -183,13 +183,13 @@
 		<div class="broadcast-section">
 			<div class="broadcast-form">
 				<div class="form-row">
-					<label>Message</label>
-					<textarea bind:value={broadcastMessage} placeholder="Enter message to broadcast..." rows={3} class="broadcast-input"></textarea>
+					<label for="broadcast-msg">Message</label>
+					<textarea id="broadcast-msg" bind:value={broadcastMessage} placeholder="Enter message to broadcast..." rows={3} class="broadcast-input"></textarea>
 				</div>
 				<div class="form-row">
-					<label>Target</label>
+					<label for="broadcast-target">Target</label>
 					<div class="target-row">
-						<select bind:value={broadcastWorldId} class="target-select">
+						<select id="broadcast-target" bind:value={broadcastWorldId} class="target-select">
 							<option value="">All Players</option>
 						</select>
 						<button class="btn-primary" onclick={handleBroadcast} disabled={sendingBroadcast || !broadcastMessage.trim()}>
@@ -240,14 +240,14 @@
 			<div class="pref-group">
 				<h3 class="pref-title">Auto-Refresh</h3>
 				<div class="pref-row">
-					<label class="pref-label">Enable Auto-Refresh</label>
+					<label class="pref-label" for="pref-auto">Enable Auto-Refresh</label>
 					<label class="toggle">
-						<input type="checkbox" bind:checked={autoRefresh} />
+						<input id="pref-auto" type="checkbox" bind:checked={autoRefresh} />
 						<span class="toggle-track"><span class="toggle-thumb"></span></span>
 					</label>
 				</div>
 				<div class="pref-row">
-					<label class="pref-label">Refresh Interval</label>
+					<span class="pref-label">Refresh Interval</span>
 					<div class="interval-options">
 						{#each [5000, 10000, 30000, 60000] as ms}
 							<button
@@ -265,9 +265,9 @@
 			<div class="pref-group">
 				<h3 class="pref-title">Layout</h3>
 				<div class="pref-row">
-					<label class="pref-label">Sidebar Collapsed</label>
+					<label class="pref-label" for="pref-sidebar">Sidebar Collapsed</label>
 					<label class="toggle">
-						<input type="checkbox" bind:checked={sidebarCollapsed} />
+						<input id="pref-sidebar" type="checkbox" bind:checked={sidebarCollapsed} />
 						<span class="toggle-track"><span class="toggle-thumb"></span></span>
 					</label>
 				</div>

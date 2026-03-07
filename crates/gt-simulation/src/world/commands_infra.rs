@@ -779,7 +779,7 @@ impl GameWorld {
                 return CommandResult::fail("Upgrade vote already in progress for this node");
             }
 
-            let mut votes = std::collections::HashMap::new();
+            let mut votes = indexmap::IndexMap::new();
             votes.insert(player_corp, true); // Proposer automatically votes YES
 
             self.pending_upgrade_votes.insert(entity, (player_corp, votes, self.tick));
@@ -839,7 +839,7 @@ impl GameWorld {
             });
         }
 
-        if let Some(node) = self.infra_nodes.remove(&entity) {
+        if let Some(node) = self.infra_nodes.shift_remove(&entity) {
             let corp_id = node.owner;
             // Remove from network
             self.network.remove_node(entity);
@@ -852,7 +852,7 @@ impl GameWorld {
                 .collect();
             let mut result = CommandResult::ok_with_entity(entity);
             for eid in &edges_to_remove {
-                if let Some(edge) = self.infra_edges.remove(eid) {
+                if let Some(edge) = self.infra_edges.shift_remove(eid) {
                     if let Some(fin) = self.financials.get_mut(&corp_id) {
                         fin.cost_per_tick = (fin.cost_per_tick - edge.maintenance_cost).max(0);
                     }
@@ -868,11 +868,11 @@ impl GameWorld {
                 nodes.retain(|&id| id != entity);
             }
             // Cleanup other components
-            self.positions.remove(&entity);
-            self.healths.remove(&entity);
-            self.capacities.remove(&entity);
-            self.ownerships.remove(&entity);
-            self.constructions.remove(&entity);
+            self.positions.shift_remove(&entity);
+            self.healths.shift_remove(&entity);
+            self.capacities.shift_remove(&entity);
+            self.ownerships.shift_remove(&entity);
+            self.constructions.shift_remove(&entity);
 
             self.event_queue.push(
                 self.tick,

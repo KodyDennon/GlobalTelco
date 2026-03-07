@@ -7,8 +7,21 @@
 	let { value, onchange, label = 'Configuration' }: Props = $props();
 
 	let rawMode = $state(false);
-	let rawJson = $state(JSON.stringify(value, null, 2));
+	let rawJson = $state("");
 	let parseError = $state('');
+
+	import { onMount } from 'svelte';
+	onMount(() => {
+		rawJson = JSON.stringify($state.snapshot(value), null, 2);
+	});
+
+	$effect(() => {
+		// Update rawJson when value changes from outside (or via form fields)
+		// We only want to do this if we are NOT currently editing the raw JSON to avoid overwriting work
+		// But detecting "currently editing" is hard.
+		// For now, simple sync.
+		rawJson = JSON.stringify(value, null, 2);
+	});
 
 	const knownFields: { key: string; label: string; type: 'string' | 'number' | 'boolean' | 'select'; options?: string[] }[] = [
 		{ key: 'starting_era', label: 'Starting Era', type: 'select', options: ['Telegraph', 'Telephone', 'EarlyDigital', 'Internet', 'Modern', 'NearFuture'] },

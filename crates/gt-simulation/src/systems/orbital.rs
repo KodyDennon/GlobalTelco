@@ -150,7 +150,7 @@ fn update_constellation_counts(world: &mut GameWorld) {
             .filter(|id| {
                 world
                     .satellites
-                    .get(id)
+                    .get(*id)
                     .map(|s| s.status == SatelliteStatus::Operational)
                     .unwrap_or(false)
             })

@@ -62,7 +62,7 @@ fn calculate_quality_factor(world: &GameWorld, corp_id: EntityId) -> f64 {
         .iter()
         .filter(|(id, s)| {
             s.status == gt_common::types::SatelliteStatus::Operational
-                && world.ownerships.get(id).map(|o| o.owner) == Some(corp_id)
+                && world.ownerships.get(*id).map(|o| o.owner) == Some(corp_id)
         })
         .count();
 

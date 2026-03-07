@@ -13,11 +13,11 @@ pub fn run(world: &mut GameWorld) {
     let old_edges: Vec<EntityId> = world.dynamic_satellite_edges.drain(..).collect();
     for edge_id in old_edges {
         // Look up source/target before removing
-        if let Some(edge) = world.infra_edges.remove(&edge_id) {
+        if let Some(edge) = world.infra_edges.shift_remove(&edge_id) {
             world.network.remove_edge(edge.source, edge.target);
         }
         // Fix: Also remove ownership component to prevent leak
-        world.ownerships.remove(&edge_id);
+        world.ownerships.shift_remove(&edge_id);
     }
 
     // Collect operational satellites

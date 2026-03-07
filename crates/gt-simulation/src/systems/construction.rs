@@ -11,7 +11,7 @@ pub fn run(world: &mut GameWorld) {
     completed.sort_unstable();
 
     for entity in completed {
-        world.constructions.remove(&entity);
+        world.constructions.shift_remove(&entity);
 
         // When construction completes, activate the infrastructure
         if let Some(node) = world.infra_nodes.get(&entity) {
@@ -27,7 +27,7 @@ pub fn run(world: &mut GameWorld) {
 
         // When a submarine cable edge completes construction, free its cable ship
         if world.infra_edges.contains_key(&entity) {
-            world.active_submarine_builds.remove(&entity);
+            world.active_submarine_builds.shift_remove(&entity);
         }
 
         world.event_queue.push(

@@ -148,7 +148,7 @@ pub fn run(world: &mut GameWorld) {
     let mut nodes: Vec<(u64, usize, gt_common::types::NodeType, f64, u64, f64)> = world
         .infra_nodes
         .iter()
-        .filter(|(id, _)| !world.constructions.contains_key(id))
+        .filter(|(id, _)| !world.constructions.contains_key(*id))
         .filter(|(id, _)| backhauled_nodes.contains(id))
         .map(|(&id, node)| {
             let health = world.healths.get(&id).map(|h| h.condition).unwrap_or(1.0);

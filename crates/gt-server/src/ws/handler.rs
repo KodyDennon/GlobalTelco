@@ -91,7 +91,7 @@ pub(crate) async fn handle_client_message(
                         .unwrap_or(false);
                     let ticks = w.current_tick();
                     // Remove AI proxy
-                    w.ai_states.remove(&existing_corp);
+                    w.ai_states.shift_remove(&existing_corp);
 
                     #[cfg(feature = "postgres")]
                     if let Some(db) = state.db.as_ref() {
@@ -243,7 +243,7 @@ pub(crate) async fn handle_client_message(
                     if let Some(node_ids) = w.corp_infra_nodes.get(&corp_id) {
                         let total = node_ids.len();
                         let damaged = node_ids.iter()
-                            .filter(|nid| w.healths.get(nid).map(|h| h.condition < 0.9).unwrap_or(false))
+                            .filter(|nid| w.healths.get(*nid).map(|h| h.condition < 0.9).unwrap_or(false))
                             .count();
                         let mut desc = format!("Infrastructure: {} nodes", total);
                         if damaged > 0 {

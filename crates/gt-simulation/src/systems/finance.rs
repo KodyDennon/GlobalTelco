@@ -28,7 +28,7 @@ pub fn run(world: &mut GameWorld) {
     }
 
     for id in paid_off {
-        world.debt_instruments.remove(&id);
+        world.debt_instruments.shift_remove(&id);
     }
 
     // Sandbox mode: keep player corporation flush with cash
@@ -207,7 +207,7 @@ pub fn run(world: &mut GameWorld) {
                         .map(|(&id, _)| id)
                         .collect();
                     for id in debts {
-                        world.debt_instruments.remove(&id);
+                        world.debt_instruments.shift_remove(&id);
                     }
                 }
             }
@@ -266,14 +266,14 @@ fn check_ai_bankruptcy_liquidation(world: &mut GameWorld) {
         );
 
         // Remove all infrastructure nodes
-        let nodes = world.corp_infra_nodes.remove(&corp_id).unwrap_or_default();
+        let nodes = world.corp_infra_nodes.shift_remove(&corp_id).unwrap_or_default();
         for node_id in &nodes {
-            world.infra_nodes.remove(node_id);
-            world.positions.remove(node_id);
-            world.healths.remove(node_id);
-            world.capacities.remove(node_id);
-            world.ownerships.remove(node_id);
-            world.constructions.remove(node_id);
+            world.infra_nodes.shift_remove(node_id);
+            world.positions.shift_remove(node_id);
+            world.healths.shift_remove(node_id);
+            world.capacities.shift_remove(node_id);
+            world.ownerships.shift_remove(node_id);
+            world.constructions.shift_remove(node_id);
             world.network.remove_node(*node_id);
         }
 
@@ -285,7 +285,7 @@ fn check_ai_bankruptcy_liquidation(world: &mut GameWorld) {
             .map(|(&id, _)| id)
             .collect();
         for edge_id in edge_ids {
-            world.infra_edges.remove(&edge_id);
+            world.infra_edges.shift_remove(&edge_id);
         }
 
         // Remove debt instruments
@@ -296,7 +296,7 @@ fn check_ai_bankruptcy_liquidation(world: &mut GameWorld) {
             .map(|(&id, _)| id)
             .collect();
         for id in debts {
-            world.debt_instruments.remove(&id);
+            world.debt_instruments.shift_remove(&id);
         }
 
         // Remove contracts involving this corp
@@ -307,16 +307,16 @@ fn check_ai_bankruptcy_liquidation(world: &mut GameWorld) {
             .map(|(&id, _)| id)
             .collect();
         for id in contracts {
-            world.contracts.remove(&id);
+            world.contracts.shift_remove(&id);
         }
 
         // Remove all corporation components
-        world.corporations.remove(&corp_id);
-        world.financials.remove(&corp_id);
-        world.ai_states.remove(&corp_id);
-        world.policies.remove(&corp_id);
-        world.workforces.remove(&corp_id);
-        world.covert_ops.remove(&corp_id);
-        world.achievements.remove(&corp_id);
+        world.corporations.shift_remove(&corp_id);
+        world.financials.shift_remove(&corp_id);
+        world.ai_states.shift_remove(&corp_id);
+        world.policies.shift_remove(&corp_id);
+        world.workforces.shift_remove(&corp_id);
+        world.covert_ops.shift_remove(&corp_id);
+        world.achievements.shift_remove(&corp_id);
     }
 }

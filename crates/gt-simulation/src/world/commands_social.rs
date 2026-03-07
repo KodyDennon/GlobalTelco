@@ -122,7 +122,7 @@ impl GameWorld {
             return;
         }
 
-        self.alliances.remove(&alliance_id);
+        self.alliances.shift_remove(&alliance_id);
         self.event_queue.push(
             self.tick,
             gt_common::events::GameEvent::AllianceDissolved {
@@ -281,7 +281,7 @@ impl GameWorld {
     pub(super) fn cmd_respond_co_ownership(&mut self, proposal_node: EntityId, accept: bool) {
         // Look up pending proposal by node ID
         let (_proposer, target, share_pct) =
-            match self.co_ownership_proposals.remove(&proposal_node) {
+            match self.co_ownership_proposals.shift_remove(&proposal_node) {
                 Some(p) => p,
                 None => return,
             };
@@ -443,7 +443,7 @@ impl GameWorld {
         // Majority (>50% of total ownership) required to approve
         if approval_share > 0.5 {
             // PASS: Execute upgrade
-            self.pending_upgrade_votes.remove(&node);
+            self.pending_upgrade_votes.shift_remove(&node);
             self.execute_shared_upgrade(node);
             
             self.event_queue.push(
@@ -452,7 +452,7 @@ impl GameWorld {
             );
         } else if (total_share_voted - approval_share) >= 0.5 {
             // FAIL: Rejected by majority
-            self.pending_upgrade_votes.remove(&node);
+            self.pending_upgrade_votes.shift_remove(&node);
             self.event_queue.push(
                 self.tick,
                 gt_common::events::GameEvent::UpgradeVoteRejected { node },

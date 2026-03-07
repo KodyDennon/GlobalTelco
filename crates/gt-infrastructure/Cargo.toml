@@ -6,3 +6,4 @@ edition.workspace = true
 [dependencies]
 gt-common = { path = "../gt-common" }
 serde = { workspace = true }
+indexmap = { version = "2", features = ["serde"] }

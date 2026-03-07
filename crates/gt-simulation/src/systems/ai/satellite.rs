@@ -281,16 +281,17 @@ fn manage_satellite_production(
         .filter(|(sat_id, _)| {
             world
                 .ownerships
-                .get(sat_id)
+                .get(*sat_id)
                 .map(|o| o.owner == corp_id)
                 .unwrap_or(false)
         })
-        .map(|(&id, _)| id)
+        .map(|(id, _)| *id)
         .collect();
 
     if awaiting_launch.is_empty() {
         return;
     }
+
 
     // Check launch pad cooldown
     let pad_ready_to_launch = world
@@ -386,24 +387,24 @@ fn manage_satellite_servicing(
         .filter(|(sat_id, _)| {
             world
                 .ownerships
-                .get(sat_id)
+                .get(*sat_id)
                 .map(|o| o.owner == corp_id)
                 .unwrap_or(false)
         })
-        .filter_map(|(&sat_id, sat)| {
+        .filter_map(|(sat_id, sat)| {
             if sat.status == SatelliteStatus::Operational && sat.fuel_remaining < sat.fuel_capacity * 0.2 {
-                Some((sat_id, ServiceType::Refuel))
+                Some((*sat_id, ServiceType::Refuel))
             } else if sat.status == SatelliteStatus::Decaying {
-                Some((sat_id, ServiceType::Refuel))
+                Some((*sat_id, ServiceType::Refuel))
             } else {
                 // Check health
                 let low_health = world
                     .healths
-                    .get(&sat_id)
+                    .get(sat_id)
                     .map(|h| h.condition < 0.3)
                     .unwrap_or(false);
                 if low_health {
-                    Some((sat_id, ServiceType::Repair))
+                    Some((*sat_id, ServiceType::Repair))
                 } else {
                     None
                 }

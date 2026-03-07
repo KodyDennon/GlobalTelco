@@ -11,3 +11,4 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 rmp-serde = { workspace = true }
 chrono = { workspace = true }
+indexmap = { version = "2", features = ["serde"] }

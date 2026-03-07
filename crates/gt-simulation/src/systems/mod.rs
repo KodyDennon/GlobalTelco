@@ -36,7 +36,7 @@ pub mod utilization;
 pub mod weather;
 
 #[cfg(not(target_family = "wasm"))]
-use std::collections::HashMap;
+use indexmap::IndexMap;
 #[cfg(not(target_family = "wasm"))]
 use std::time::Instant;
 
@@ -214,7 +214,7 @@ pub fn run_all_systems_timed(world: &mut GameWorld) {
 
 #[cfg(not(target_family = "wasm"))]
 pub fn run_all_systems_timed(world: &mut GameWorld) {
-    let mut times = HashMap::new();
+    let mut times = IndexMap::new();
 
     macro_rules! timed {
         ($name:expr, $call:expr) => {{

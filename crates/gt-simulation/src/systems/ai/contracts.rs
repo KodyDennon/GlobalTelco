@@ -283,7 +283,7 @@ pub fn evaluate_incoming(world: &mut GameWorld, corp_id: EntityId, ai: &AiState,
                 );
             }
         } else {
-            world.contracts.remove(&contract_id);
+            world.contracts.shift_remove(&contract_id);
         }
     }
 }

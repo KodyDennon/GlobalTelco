@@ -489,7 +489,8 @@ mod tests {
         assert!(world.infra_nodes.get(&nap_id).unwrap().active_ftth);
 
         // Remove the feeder fiber edge, breaking the chain
-        world.infra_edges.remove(&100);
+        world.infra_edges.shift_remove(&100);
+
 
         // Second run: should deactivate
         run(&mut world);

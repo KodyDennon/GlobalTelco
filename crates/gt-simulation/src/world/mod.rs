@@ -12,7 +12,7 @@ mod utils;
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
 use gt_common::commands::Command;
 use gt_common::types::*;
@@ -72,44 +72,44 @@ pub struct GameWorld {
     player_corp_id: Option<EntityId>,
 
     // Original component storage
-    pub positions: HashMap<EntityId, Position>,
-    pub ownerships: HashMap<EntityId, Ownership>,
-    pub financials: HashMap<EntityId, Financial>,
-    pub capacities: HashMap<EntityId, Capacity>,
-    pub healths: HashMap<EntityId, Health>,
-    pub constructions: HashMap<EntityId, Construction>,
-    pub populations: HashMap<EntityId, Population>,
-    pub demands: HashMap<EntityId, Demand>,
-    pub workforces: HashMap<EntityId, Workforce>,
-    pub ai_states: HashMap<EntityId, AiState>,
-    pub policies: HashMap<EntityId, Policy>,
-    pub corporations: HashMap<EntityId, Corporation>,
+    pub positions: IndexMap<EntityId, Position>,
+    pub ownerships: IndexMap<EntityId, Ownership>,
+    pub financials: IndexMap<EntityId, Financial>,
+    pub capacities: IndexMap<EntityId, Capacity>,
+    pub healths: IndexMap<EntityId, Health>,
+    pub constructions: IndexMap<EntityId, Construction>,
+    pub populations: IndexMap<EntityId, Population>,
+    pub demands: IndexMap<EntityId, Demand>,
+    pub workforces: IndexMap<EntityId, Workforce>,
+    pub ai_states: IndexMap<EntityId, AiState>,
+    pub policies: IndexMap<EntityId, Policy>,
+    pub corporations: IndexMap<EntityId, Corporation>,
 
     // World generation component storage
-    pub land_parcels: HashMap<EntityId, LandParcelComponent>,
-    pub regions: HashMap<EntityId, RegionComponent>,
-    pub cities: HashMap<EntityId, CityComponent>,
+    pub land_parcels: IndexMap<EntityId, LandParcelComponent>,
+    pub regions: IndexMap<EntityId, RegionComponent>,
+    pub cities: IndexMap<EntityId, CityComponent>,
 
     // Infrastructure component storage
-    pub infra_nodes: HashMap<EntityId, InfraNode>,
-    pub infra_edges: HashMap<EntityId, InfraEdge>,
-    pub contracts: HashMap<EntityId, Contract>,
-    pub debt_instruments: HashMap<EntityId, DebtInstrument>,
-    pub tech_research: HashMap<EntityId, TechResearch>,
+    pub infra_nodes: IndexMap<EntityId, InfraNode>,
+    pub infra_edges: IndexMap<EntityId, InfraEdge>,
+    pub contracts: IndexMap<EntityId, Contract>,
+    pub debt_instruments: IndexMap<EntityId, DebtInstrument>,
+    pub tech_research: IndexMap<EntityId, TechResearch>,
 
     // Advanced gameplay (Phase 10)
-    pub auctions: HashMap<EntityId, Auction>,
-    pub acquisition_proposals: HashMap<EntityId, AcquisitionProposal>,
-    pub covert_ops: HashMap<EntityId, CovertOps>,
-    pub lobbying_campaigns: HashMap<EntityId, LobbyingCampaign>,
-    pub achievements: HashMap<EntityId, AchievementTracker>,
+    pub auctions: IndexMap<EntityId, Auction>,
+    pub acquisition_proposals: IndexMap<EntityId, AcquisitionProposal>,
+    pub covert_ops: IndexMap<EntityId, CovertOps>,
+    pub lobbying_campaigns: IndexMap<EntityId, LobbyingCampaign>,
+    pub achievements: IndexMap<EntityId, AchievementTracker>,
     pub victory_state: Option<VictoryConditions>,
 
     // Phase 8: Spectrum & Frequency Management
     #[serde(default)]
-    pub spectrum_licenses: HashMap<EntityId, SpectrumLicense>,
+    pub spectrum_licenses: IndexMap<EntityId, SpectrumLicense>,
     #[serde(default)]
-    pub spectrum_auctions: HashMap<EntityId, SpectrumAuction>,
+    pub spectrum_auctions: IndexMap<EntityId, SpectrumAuction>,
 
     // Road network graph (backend spatial data for fiber routing)
     #[serde(default)]
@@ -117,75 +117,75 @@ pub struct GameWorld {
 
     // Cable ships per corporation: corp_id → ship count
     #[serde(default)]
-    pub cable_ships: HashMap<EntityId, u32>,
+    pub cable_ships: IndexMap<EntityId, u32>,
 
     // Active submarine cable builds: edge_id → corp_id
     #[serde(default)]
-    pub active_submarine_builds: HashMap<EntityId, EntityId>,
+    pub active_submarine_builds: IndexMap<EntityId, EntityId>,
 
     // Co-ownership proposals: node_id → (proposer_corp, target_corp, share_pct)
     #[serde(default)]
-    pub co_ownership_proposals: HashMap<EntityId, (EntityId, EntityId, f64)>,
+    pub co_ownership_proposals: IndexMap<EntityId, (EntityId, EntityId, f64)>,
 
     // Pending infrastructure upgrade votes: node_id → (proposer_corp, votes_map, start_tick)
     // votes_map: corp_id → boolean (accept/reject)
     #[serde(default)]
-    pub pending_upgrade_votes: HashMap<EntityId, (EntityId, HashMap<EntityId, bool>, u64)>,
+    pub pending_upgrade_votes: IndexMap<EntityId, (EntityId, IndexMap<EntityId, bool>, u64)>,
 
     // Building footprints: entity_id → BuildingFootprint
     // Per-city buildings that serve as demand points for subscriber revenue.
     // Dynamically spawned/destroyed based on city population changes.
     #[serde(default)]
-    pub building_footprints: HashMap<EntityId, crate::components::BuildingFootprint>,
+    pub building_footprints: IndexMap<EntityId, crate::components::BuildingFootprint>,
 
     // Per-city building census: city_id → CityBuildingCensus
     // Tracks building counts and targets for dynamic spawn/destruction.
     #[serde(default)]
-    pub city_building_census: HashMap<EntityId, crate::components::CityBuildingCensus>,
+    pub city_building_census: IndexMap<EntityId, crate::components::CityBuildingCensus>,
 
     // Alliance system (Phase 5.1)
     #[serde(default)]
-    pub alliances: HashMap<EntityId, crate::components::alliance::Alliance>,
+    pub alliances: IndexMap<EntityId, crate::components::alliance::Alliance>,
 
     // Legal system (Phase 5.2)
     #[serde(default)]
-    pub lawsuits: HashMap<EntityId, crate::components::lawsuit::Lawsuit>,
+    pub lawsuits: IndexMap<EntityId, crate::components::lawsuit::Lawsuit>,
 
     // Patent system (Phase 5.3)
     #[serde(default)]
-    pub patents: HashMap<EntityId, Patent>,
+    pub patents: IndexMap<EntityId, Patent>,
     #[serde(default)]
-    pub licenses: HashMap<EntityId, License>,
+    pub licenses: IndexMap<EntityId, License>,
 
     // Government Grants (Phase 5.4)
     #[serde(default)]
-    pub grants: HashMap<EntityId, GovernmentGrant>,
+    pub grants: IndexMap<EntityId, GovernmentGrant>,
 
     // Stock Market (Phase 6.1)
     #[serde(default)]
-    pub stock_market: HashMap<EntityId, StockMarket>,
+    pub stock_market: IndexMap<EntityId, StockMarket>,
 
     // Satellite System
     #[serde(default)]
-    pub satellites: HashMap<EntityId, Satellite>,
+    pub satellites: IndexMap<EntityId, Satellite>,
     #[serde(default)]
-    pub constellations: HashMap<EntityId, Constellation>,
+    pub constellations: IndexMap<EntityId, Constellation>,
     #[serde(default)]
     pub orbital_shells: Vec<crate::components::satellite::OrbitalShell>,
     /// Dynamic satellite edges (ISL + downlinks) — cleared and rebuilt each tick.
     #[serde(default)]
     pub dynamic_satellite_edges: Vec<EntityId>,
     #[serde(default)]
-    pub satellite_factories: HashMap<EntityId, crate::components::satellite::SatelliteFactoryComponent>,
+    pub satellite_factories: IndexMap<EntityId, crate::components::satellite::SatelliteFactoryComponent>,
     #[serde(default)]
-    pub terminal_factories: HashMap<EntityId, crate::components::satellite::TerminalFactoryComponent>,
+    pub terminal_factories: IndexMap<EntityId, crate::components::satellite::TerminalFactoryComponent>,
     #[serde(default)]
-    pub warehouses: HashMap<EntityId, crate::components::satellite::WarehouseComponent>,
+    pub warehouses: IndexMap<EntityId, crate::components::satellite::WarehouseComponent>,
     #[serde(default)]
-    pub launch_pads: HashMap<EntityId, crate::components::satellite::LaunchPadComponent>,
+    pub launch_pads: IndexMap<EntityId, crate::components::satellite::LaunchPadComponent>,
     /// (city_id, corp_id) → SatelliteSubscription
     #[serde(default)]
-    pub satellite_subscriptions: HashMap<(EntityId, EntityId), crate::components::satellite::SatelliteSubscription>,
+    pub satellite_subscriptions: IndexMap<(EntityId, EntityId), crate::components::satellite::SatelliteSubscription>,
     /// Pending contract launches: (rocket_type_str, satellite_ids)
     #[serde(default)]
     pub pending_contract_launches: Vec<(String, Vec<EntityId>)>,
@@ -195,16 +195,16 @@ pub struct GameWorld {
 
     // Regional pricing: (corp_id, region_id) → RegionPricing
     #[serde(default)]
-    pub region_pricing: HashMap<(EntityId, EntityId), crate::components::RegionPricing>,
+    pub region_pricing: IndexMap<(EntityId, EntityId), crate::components::RegionPricing>,
 
     // Maintenance priorities: entity_id → MaintenancePriority
     #[serde(default)]
-    pub maintenance_priorities: HashMap<EntityId, crate::components::MaintenancePriority>,
+    pub maintenance_priorities: IndexMap<EntityId, crate::components::MaintenancePriority>,
 
     // Per-system timing from last tick (microseconds). Runtime profiling only.
     #[serde(default)]
     #[serde(skip)]
-    pub system_times: HashMap<String, u64>,
+    pub system_times: IndexMap<String, u64>,
 
     /// Dirty flags for conditional system skipping.
     /// Each bit corresponds to one system — if clear, the system can be skipped.
@@ -217,13 +217,13 @@ pub struct GameWorld {
     // 0 = infra positions only (default), 1 = basic financials (ranges),
     // 2 = detailed financials (exact), 3 = operational data (utilization, health, throughput)
     #[serde(with = "gt_common::serde_helpers::entity_pair_map")]
-    pub intel_levels: HashMap<(EntityId, EntityId), u8>,
+    pub intel_levels: IndexMap<(EntityId, EntityId), u8>,
 
     // Mappings for fast lookup
-    pub cell_to_parcel: HashMap<usize, EntityId>,
-    pub cell_to_region: HashMap<usize, EntityId>,
-    pub cell_to_city: HashMap<usize, EntityId>,
-    pub corp_infra_nodes: HashMap<EntityId, Vec<EntityId>>,
+    pub cell_to_parcel: IndexMap<usize, EntityId>,
+    pub cell_to_region: IndexMap<usize, EntityId>,
+    pub cell_to_city: IndexMap<usize, EntityId>,
+    pub corp_infra_nodes: IndexMap<EntityId, Vec<EntityId>>,
 
     // World grid reference (used by systems for spatial queries)
     pub grid_cell_count: usize,
@@ -235,7 +235,7 @@ pub struct GameWorld {
 
     // Per-cell coverage data (recalculated each tick by coverage system)
     #[serde(skip)]
-    pub cell_coverage: HashMap<usize, crate::systems::coverage::CellCoverage>,
+    pub cell_coverage: IndexMap<usize, crate::systems::coverage::CellCoverage>,
 
     // Traffic flow data (computed by utilization system)
     pub traffic_matrix: gt_common::types::TrafficMatrix,
@@ -243,7 +243,7 @@ pub struct GameWorld {
     /// Per-node utilization history (last 100 ticks). Updated by utilization system.
     /// Key: entity_id (node or edge), Value: ring buffer of utilization values (0.0-1.0).
     #[serde(default)]
-    pub utilization_history: HashMap<EntityId, std::collections::VecDeque<f64>>,
+    pub utilization_history: IndexMap<EntityId, std::collections::VecDeque<f64>>,
 
     // Weather system (Phase 7.5): active weather conditions per region
     #[serde(default)]
@@ -273,74 +273,74 @@ impl GameWorld {
             speed: GameSpeed::Normal,
             next_entity_id: 1,
             player_corp_id: None,
-            positions: HashMap::new(),
-            ownerships: HashMap::new(),
-            financials: HashMap::new(),
-            capacities: HashMap::new(),
-            healths: HashMap::new(),
-            constructions: HashMap::new(),
-            populations: HashMap::new(),
-            demands: HashMap::new(),
-            workforces: HashMap::new(),
-            ai_states: HashMap::new(),
-            policies: HashMap::new(),
-            corporations: HashMap::new(),
-            land_parcels: HashMap::new(),
-            regions: HashMap::new(),
-            cities: HashMap::new(),
-            infra_nodes: HashMap::new(),
-            infra_edges: HashMap::new(),
-            contracts: HashMap::new(),
-            debt_instruments: HashMap::new(),
-            tech_research: HashMap::new(),
-            auctions: HashMap::new(),
-            acquisition_proposals: HashMap::new(),
-            covert_ops: HashMap::new(),
-            lobbying_campaigns: HashMap::new(),
-            achievements: HashMap::new(),
+            positions: IndexMap::new(),
+            ownerships: IndexMap::new(),
+            financials: IndexMap::new(),
+            capacities: IndexMap::new(),
+            healths: IndexMap::new(),
+            constructions: IndexMap::new(),
+            populations: IndexMap::new(),
+            demands: IndexMap::new(),
+            workforces: IndexMap::new(),
+            ai_states: IndexMap::new(),
+            policies: IndexMap::new(),
+            corporations: IndexMap::new(),
+            land_parcels: IndexMap::new(),
+            regions: IndexMap::new(),
+            cities: IndexMap::new(),
+            infra_nodes: IndexMap::new(),
+            infra_edges: IndexMap::new(),
+            contracts: IndexMap::new(),
+            debt_instruments: IndexMap::new(),
+            tech_research: IndexMap::new(),
+            auctions: IndexMap::new(),
+            acquisition_proposals: IndexMap::new(),
+            covert_ops: IndexMap::new(),
+            lobbying_campaigns: IndexMap::new(),
+            achievements: IndexMap::new(),
             victory_state: None,
-            spectrum_licenses: HashMap::new(),
-            spectrum_auctions: HashMap::new(),
+            spectrum_licenses: IndexMap::new(),
+            spectrum_auctions: IndexMap::new(),
             road_network: RoadNetwork::new(),
-            cable_ships: HashMap::new(),
-            active_submarine_builds: HashMap::new(),
-            co_ownership_proposals: HashMap::new(),
-            building_footprints: HashMap::new(),
-            city_building_census: HashMap::new(),
-            alliances: HashMap::new(),
-            lawsuits: HashMap::new(),
-            patents: HashMap::new(),
-            licenses: HashMap::new(),
-            grants: HashMap::new(),
-            stock_market: HashMap::new(),
-            satellites: HashMap::new(),
-            constellations: HashMap::new(),
+            cable_ships: IndexMap::new(),
+            active_submarine_builds: IndexMap::new(),
+            co_ownership_proposals: IndexMap::new(),
+            building_footprints: IndexMap::new(),
+            city_building_census: IndexMap::new(),
+            alliances: IndexMap::new(),
+            lawsuits: IndexMap::new(),
+            patents: IndexMap::new(),
+            licenses: IndexMap::new(),
+            grants: IndexMap::new(),
+            stock_market: IndexMap::new(),
+            satellites: IndexMap::new(),
+            constellations: IndexMap::new(),
             orbital_shells: crate::components::satellite::OrbitalShell::standard_shells(),
             dynamic_satellite_edges: Vec::new(),
-            satellite_factories: HashMap::new(),
-            terminal_factories: HashMap::new(),
-            warehouses: HashMap::new(),
-            launch_pads: HashMap::new(),
-            satellite_subscriptions: HashMap::new(),
+            satellite_factories: IndexMap::new(),
+            terminal_factories: IndexMap::new(),
+            warehouses: IndexMap::new(),
+            launch_pads: IndexMap::new(),
+            satellite_subscriptions: IndexMap::new(),
             pending_contract_launches: Vec::new(),
             service_missions: Vec::new(),
-            region_pricing: HashMap::new(),
-            maintenance_priorities: HashMap::new(),
-            system_times: HashMap::new(),
+            region_pricing: IndexMap::new(),
+            maintenance_priorities: IndexMap::new(),
+            system_times: IndexMap::new(),
             dirty_flags: u64::MAX, // all dirty on first tick
-            intel_levels: HashMap::new(),
-            pending_upgrade_votes: HashMap::new(),
-            cell_to_parcel: HashMap::new(),
-            cell_to_region: HashMap::new(),
-            cell_to_city: HashMap::new(),
-            corp_infra_nodes: HashMap::new(),
+            intel_levels: IndexMap::new(),
+            pending_upgrade_votes: IndexMap::new(),
+            cell_to_parcel: IndexMap::new(),
+            cell_to_region: IndexMap::new(),
+            cell_to_city: IndexMap::new(),
+            corp_infra_nodes: IndexMap::new(),
             grid_cell_count: 0,
             grid_cell_positions: Vec::new(),
             grid_cell_neighbors: Vec::new(),
             cell_spacing_km: 100.0,
-            cell_coverage: HashMap::new(),
+            cell_coverage: IndexMap::new(),
             traffic_matrix: gt_common::types::TrafficMatrix::default(),
-            utilization_history: HashMap::new(),
+            utilization_history: IndexMap::new(),
             weather_conditions: Vec::new(),
             network: gt_infrastructure::NetworkGraph::new(),
             rng_seed,
@@ -578,7 +578,7 @@ impl GameWorld {
                 CommandResult::ok()
             }
             Command::RejectContract { contract } => {
-                self.contracts.remove(&contract);
+                self.contracts.shift_remove(&contract);
                 CommandResult::ok()
             }
             Command::StartResearch { corporation, tech } => {
@@ -594,7 +594,7 @@ impl GameWorld {
                     .map(|(&id, _)| id)
                     .collect();
                 for id in to_remove {
-                    self.tech_research.remove(&id);
+                    self.tech_research.shift_remove(&id);
                 }
                 CommandResult::ok()
             }
@@ -728,7 +728,7 @@ impl GameWorld {
                 CommandResult::ok()
             }
             Command::CancelLobbying { lobby_id } => {
-                self.lobbying_campaigns.remove(&lobby_id);
+                self.lobbying_campaigns.shift_remove(&lobby_id);
                 CommandResult::ok()
             }
 
@@ -1042,7 +1042,7 @@ impl GameWorld {
 
     pub fn transfer_corporation_assets(&mut self, from: EntityId, to: EntityId) {
         // Transfer infrastructure nodes
-        let nodes = self.corp_infra_nodes.remove(&from).unwrap_or_default();
+        let nodes = self.corp_infra_nodes.shift_remove(&from).unwrap_or_default();
         for &node_id in &nodes {
             if let Some(node) = self.infra_nodes.get_mut(&node_id) {
                 node.owner = to;
@@ -1071,7 +1071,7 @@ impl GameWorld {
         }
 
         // Merge financials
-        let from_fin = self.financials.remove(&from).unwrap_or(Financial {
+        let from_fin = self.financials.shift_remove(&from).unwrap_or(Financial {
             cash: 0,
             revenue_per_tick: 0,
             cost_per_tick: 0,
@@ -1083,7 +1083,7 @@ impl GameWorld {
         }
 
         // Transfer workforce
-        if let Some(from_wf) = self.workforces.remove(&from) {
+        if let Some(from_wf) = self.workforces.shift_remove(&from) {
             if let Some(to_wf) = self.workforces.get_mut(&to) {
                 to_wf.employee_count += from_wf.employee_count;
             }
@@ -1097,11 +1097,11 @@ impl GameWorld {
         }
 
         // Remove the absorbed corporation
-        self.corporations.remove(&from);
-        self.ai_states.remove(&from);
-        self.policies.remove(&from);
-        self.covert_ops.remove(&from);
-        self.achievements.remove(&from);
+        self.corporations.shift_remove(&from);
+        self.ai_states.shift_remove(&from);
+        self.policies.shift_remove(&from);
+        self.covert_ops.shift_remove(&from);
+        self.achievements.shift_remove(&from);
     }
 
     pub(super) fn charge_per_unit_fees(&mut self, corp_id: EntityId) {

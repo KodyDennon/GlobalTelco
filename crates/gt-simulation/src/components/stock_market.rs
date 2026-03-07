@@ -1,6 +1,6 @@
 use gt_common::types::{EntityId, Money, Tick};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
 /// A board vote proposal for a public corporation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,7 +24,7 @@ pub struct StockMarket {
     pub board_votes: Vec<BoardVote>,
     /// Maps entity ID (player/corp) to number of shares owned
     #[serde(default)]
-    pub shareholders: HashMap<EntityId, u32>,
+    pub shareholders: IndexMap<EntityId, u32>,
 }
 
 impl StockMarket {
@@ -37,7 +37,7 @@ impl StockMarket {
             ipo_tick: None,
             shareholder_satisfaction: 0.5,
             board_votes: Vec::new(),
-            shareholders: HashMap::new(),
+            shareholders: IndexMap::new(),
         }
     }
 

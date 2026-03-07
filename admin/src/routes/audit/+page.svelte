@@ -107,24 +107,24 @@
 
 	<div class="filters">
 		<div class="filter-group">
-			<label>Actor Filter</label>
-			<input type="text" bind:value={actorFilter} placeholder="Filter by actor..." class="filter-input" />
+			<label for="filter-actor">Actor Filter</label>
+			<input id="filter-actor" type="text" bind:value={actorFilter} placeholder="Filter by actor..." class="filter-input" />
 		</div>
 		<div class="filter-group">
-			<label>Action Type</label>
-			<select bind:value={actionFilter} class="filter-input filter-select">
+			<label for="filter-action">Action Type</label>
+			<select id="filter-action" bind:value={actionFilter} class="filter-input filter-select">
 				{#each actionTypes as t}
 					<option value={t}>{t === 'all' ? 'All Actions' : t.replace(/_/g, ' ')}</option>
 				{/each}
 			</select>
 		</div>
 		<div class="filter-group">
-			<label>From</label>
-			<input type="date" bind:value={dateFrom} class="filter-input filter-date" />
+			<label for="filter-from">From</label>
+			<input id="filter-from" type="date" bind:value={dateFrom} class="filter-input filter-date" />
 		</div>
 		<div class="filter-group">
-			<label>To</label>
-			<input type="date" bind:value={dateTo} class="filter-input filter-date" />
+			<label for="filter-to">To</label>
+			<input id="filter-to" type="date" bind:value={dateTo} class="filter-input filter-date" />
 		</div>
 		<span class="total-count">{total} total entries</span>
 	</div>

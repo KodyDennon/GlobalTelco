@@ -173,23 +173,23 @@ impl GameWorld {
                             pos: [pos.x, pos.y],
                         });
                     }
-                    if let Some(node) = self.infra_nodes.remove(entity_id) {
+                    if let Some(node) = self.infra_nodes.shift_remove(entity_id) {
                         self.network.remove_node(*entity_id);
                         if let Some(nodes) = self.corp_infra_nodes.get_mut(&node.owner) {
                             nodes.retain(|&id| id != *entity_id);
                         }
-                        self.positions.remove(entity_id);
-                        self.healths.remove(entity_id);
-                        self.capacities.remove(entity_id);
-                        self.ownerships.remove(entity_id);
-                        self.constructions.remove(entity_id);
+                        self.positions.shift_remove(entity_id);
+                        self.healths.shift_remove(entity_id);
+                        self.capacities.shift_remove(entity_id);
+                        self.ownerships.shift_remove(entity_id);
+                        self.constructions.shift_remove(entity_id);
                     }
                 }
                 DeltaOp::EdgeRemoved { entity_id } => {
-                    self.infra_edges.remove(entity_id);
+                    self.infra_edges.shift_remove(entity_id);
                 }
                 DeltaOp::ConstructionCompleted { entity_id } => {
-                    self.constructions.remove(entity_id);
+                    self.constructions.shift_remove(entity_id);
                 }
                 DeltaOp::SatelliteLaunched {
                     entity_id,

@@ -312,7 +312,7 @@ pub fn evaluate_co_ownership_proposals(
                     ownership.co_owners.push((corp_id, share_pct));
                 }
             }
-            world.co_ownership_proposals.remove(&node_id);
+            world.co_ownership_proposals.shift_remove(&node_id);
 
             world.event_queue.push(
                 _tick,
@@ -322,11 +322,12 @@ pub fn evaluate_co_ownership_proposals(
                     share_pct,
                 },
             );
-        } else {
-            world.co_ownership_proposals.remove(&node_id);
+            } else {
+            world.co_ownership_proposals.shift_remove(&node_id);
             world.event_queue.push(
                 _tick,
                 gt_common::events::GameEvent::GlobalNotification {
+
                     message: format!(
                         "Co-ownership proposal for node {} was rejected",
                         node_id

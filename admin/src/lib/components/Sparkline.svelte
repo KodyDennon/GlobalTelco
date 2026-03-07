@@ -47,6 +47,8 @@
 		{width}
 		{height}
 		viewBox="0 0 {width} {height}"
+		role="img"
+		aria-label="Sparkline chart"
 		onmousemove={(e) => {
 			const rect = (e.currentTarget as SVGElement).getBoundingClientRect();
 			const x = e.clientX - rect.left;

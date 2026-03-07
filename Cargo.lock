@@ -998,6 +998,7 @@ name = "gt-common"
 version = "1.12.0"
 dependencies = [
  "chrono",
+ "indexmap",
  "rand 0.8.5",
  "rmp-serde",
  "serde",
@@ -1019,6 +1020,7 @@ name = "gt-infrastructure"
 version = "1.12.0"
 dependencies = [
  "gt-common",
+ "indexmap",
  "serde",
 ]
 
@@ -1043,6 +1045,7 @@ dependencies = [
  "futures",
  "gt-common",
  "gt-simulation",
+ "indexmap",
  "jsonwebtoken",
  "rand 0.9.2",
  "reqwest",
@@ -1076,6 +1079,7 @@ dependencies = [
  "gt-infrastructure",
  "gt-population",
  "gt-world",
+ "indexmap",
  "rand 0.8.5",
  "rstar",
  "serde",

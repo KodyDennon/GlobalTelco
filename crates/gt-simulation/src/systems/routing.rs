@@ -14,7 +14,7 @@ pub fn run(world: &mut GameWorld) {
     let node_owners: std::collections::HashMap<u64, u64> = world
         .infra_nodes
         .iter()
-        .filter(|(id, _)| !world.constructions.contains_key(id))
+        .filter(|(id, _)| !world.constructions.contains_key(*id))
         .map(|(&id, node)| (id, node.owner))
         .collect();
 

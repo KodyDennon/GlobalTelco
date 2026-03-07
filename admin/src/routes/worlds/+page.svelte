@@ -208,12 +208,12 @@
 			</div>
 			<div class="limits-grid">
 				<div class="form-field">
-					<label>Max Active Worlds</label>
-					<input type="number" bind:value={limitsMaxWorlds} min="1" max="100" />
+					<label for="lim-max-w">Max Active Worlds</label>
+					<input id="lim-max-w" type="number" bind:value={limitsMaxWorlds} min="1" max="100" />
 				</div>
 				<div class="form-field">
-					<label>Max Worlds Per Player</label>
-					<input type="number" bind:value={limitsMaxPerPlayer} min="1" max="50" />
+					<label for="lim-max-p">Max Worlds Per Player</label>
+					<input id="lim-max-p" type="number" bind:value={limitsMaxPerPlayer} min="1" max="50" />
 				</div>
 				<div class="form-field" style="align-self: end;">
 					<button class="btn-primary" onclick={handleSaveLimits} disabled={savingLimits}>
@@ -228,12 +228,12 @@
 		<div class="create-form">
 			<div class="form-grid">
 				<div class="form-field">
-					<label>Name</label>
-					<input type="text" bind:value={newName} placeholder="World name" />
+					<label for="new-w-name">Name</label>
+					<input id="new-w-name" type="text" bind:value={newName} placeholder="World name" />
 				</div>
 				<div class="form-field">
-					<label>Max Players</label>
-					<input type="number" bind:value={newMaxPlayers} min="1" max="100" />
+					<label for="new-w-max">Max Players</label>
+					<input id="new-w-max" type="number" bind:value={newMaxPlayers} min="1" max="100" />
 				</div>
 			</div>
 			<WorldConfigForm bind:value={newConfig} onchange={(c) => (newConfig = c)} />
@@ -284,11 +284,11 @@
 				<div class="template-form">
 					<h3>{editingTemplate ? 'Edit Template' : 'New Template'}</h3>
 					<div class="form-grid">
-						<div class="form-field"><label>Name</label><input type="text" bind:value={tplName} /></div>
-						<div class="form-field"><label>Icon</label><input type="text" bind:value={tplIcon} placeholder="e.g. tower" /></div>
-						<div class="form-field full"><label>Description</label><input type="text" bind:value={tplDescription} /></div>
-						<div class="form-field"><label>Max Instances</label><input type="number" bind:value={tplMaxInstances} /></div>
-						<div class="form-field"><label>Sort Order</label><input type="number" bind:value={tplSortOrder} /></div>
+						<div class="form-field"><label for="tpl-name">Name</label><input id="tpl-name" type="text" bind:value={tplName} /></div>
+						<div class="form-field"><label for="tpl-icon">Icon</label><input id="tpl-icon" type="text" bind:value={tplIcon} placeholder="e.g. tower" /></div>
+						<div class="form-field full"><label for="tpl-desc">Description</label><input id="tpl-desc" type="text" bind:value={tplDescription} /></div>
+						<div class="form-field"><label for="tpl-max">Max Instances</label><input id="tpl-max" type="number" bind:value={tplMaxInstances} /></div>
+						<div class="form-field"><label for="tpl-sort">Sort Order</label><input id="tpl-sort" type="number" bind:value={tplSortOrder} /></div>
 						<div class="form-field"><label><input type="checkbox" bind:checked={tplEnabled} /> Enabled</label></div>
 					</div>
 					<ConfigEditor label="Config Defaults" value={tplConfigDefaults} onchange={(v) => (tplConfigDefaults = v)} />
@@ -347,7 +347,7 @@
 	.form-field { display: flex; flex-direction: column; gap: 3px; }
 	.form-field.full { grid-column: 1 / -1; }
 	.form-field label { font-size: 11px; color: var(--text-dim); font-weight: 600; }
-	.form-field input, .form-field select {
+	.form-field input {
 		padding: 6px 10px; background: var(--bg-surface); border: 1px solid var(--border);
 		border-radius: var(--radius-sm); color: var(--text-primary); font-size: 13px; font-family: inherit;
 	}

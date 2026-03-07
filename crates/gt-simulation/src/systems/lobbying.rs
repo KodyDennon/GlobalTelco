@@ -168,6 +168,6 @@ pub fn run(world: &mut GameWorld) {
         .map(|(&id, _)| id)
         .collect();
     for id in to_remove {
-        world.lobbying_campaigns.remove(&id);
+        world.lobbying_campaigns.shift_remove(&id);
     }
 }

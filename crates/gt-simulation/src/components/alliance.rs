@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
 use gt_common::types::{EntityId, Tick};
 use serde::{Deserialize, Serialize};
@@ -8,7 +8,7 @@ pub struct Alliance {
     pub id: EntityId,
     pub name: String,
     pub member_corp_ids: Vec<EntityId>, // max 3
-    pub trust_scores: HashMap<EntityId, f64>, // per-member trust (0.0 - 1.0)
+    pub trust_scores: IndexMap<EntityId, f64>, // per-member trust (0.0 - 1.0)
     pub revenue_share_pct: f64,
     pub formed_tick: Tick,
 }
@@ -21,7 +21,7 @@ impl Alliance {
         revenue_share_pct: f64,
         tick: Tick,
     ) -> Self {
-        let mut trust_scores = HashMap::new();
+        let mut trust_scores = IndexMap::new();
         for &member in &founding_members {
             trust_scores.insert(member, 0.5); // Start at neutral trust
         }
@@ -48,6 +48,6 @@ impl Alliance {
     /// Remove a member from the alliance.
     pub fn remove_member(&mut self, corp_id: EntityId) {
         self.member_corp_ids.retain(|&id| id != corp_id);
-        self.trust_scores.remove(&corp_id);
+        self.trust_scores.shift_remove(&corp_id);
     }
 }

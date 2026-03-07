@@ -46,7 +46,7 @@
 		try {
 			const [c, w] = await Promise.all([fetchConnections(), fetchWorlds()]);
 			connections = c.connections;
-			worlds = w.worlds as unknown as Record<string, unknown>[];
+			worlds = w as unknown as Record<string, unknown>[];
 			loading = false;
 		} catch { if (loading) loading = false; }
 	}
@@ -109,8 +109,8 @@
 	{:else if activeTab === 'votes'}
 		<div class="control-form">
 			<div class="form-row">
-				<label>World</label>
-				<select bind:value={votesWorldId} onchange={loadVotes}>
+				<label for="votes-world">World</label>
+				<select id="votes-world" bind:value={votesWorldId} onchange={loadVotes}>
 					<option value="">Select world...</option>
 					{#each worlds as w}
 						<option value={w.id as string}>{w.name}</option>
@@ -132,7 +132,7 @@
 					<p class="empty-text">No active votes</p>
 				{/if}
 				<div class="form-row">
-					<label>Admin Override</label>
+					<span class="field-label">Admin Override</span>
 					<div class="speed-btns">
 						{#each ['Paused', 'Normal', 'Fast', 'VeryFast', 'Ultra'] as s}
 							<button class="btn-sm" class:active={votesData.current_speed === s} onclick={() => handleOverrideSpeed(s)}>{s}</button>
@@ -145,8 +145,8 @@
 	{:else if activeTab === 'ownership'}
 		<div class="control-form">
 			<div class="form-row">
-				<label>World</label>
-				<select bind:value={transferWorldId}>
+				<label for="trans-world">World</label>
+				<select id="trans-world" bind:value={transferWorldId}>
 					<option value="">Select world...</option>
 					{#each worlds as w}
 						<option value={w.id as string}>{w.name}</option>
@@ -154,8 +154,8 @@
 				</select>
 			</div>
 			<div class="form-row">
-				<label>New Owner ID</label>
-				<input type="text" bind:value={transferNewOwner} placeholder="Player UUID" />
+				<label for="trans-owner">New Owner ID</label>
+				<input id="trans-owner" type="text" bind:value={transferNewOwner} placeholder="Player UUID" />
 			</div>
 			<button class="btn-primary" onclick={handleTransfer}>Transfer</button>
 		</div>
@@ -163,8 +163,8 @@
 	{:else if activeTab === 'assign'}
 		<div class="control-form">
 			<div class="form-row">
-				<label>World</label>
-				<select bind:value={assignWorldId}>
+				<label for="assign-world">World</label>
+				<select id="assign-world" bind:value={assignWorldId}>
 					<option value="">Select world...</option>
 					{#each worlds as w}
 						<option value={w.id as string}>{w.name}</option>
@@ -172,12 +172,12 @@
 				</select>
 			</div>
 			<div class="form-row">
-				<label>Player ID</label>
-				<input type="text" bind:value={assignPlayerId} placeholder="Player UUID" />
+				<label for="assign-player">Player ID</label>
+				<input id="assign-player" type="text" bind:value={assignPlayerId} placeholder="Player UUID" />
 			</div>
 			<div class="form-row">
-				<label>Corp ID</label>
-				<input type="number" bind:value={assignCorpId} placeholder="Corporation entity ID" />
+				<label for="assign-corp">Corp ID</label>
+				<input id="assign-corp" type="number" bind:value={assignCorpId} placeholder="Corporation entity ID" />
 			</div>
 			<button class="btn-primary" onclick={handleAssign}>Assign</button>
 		</div>

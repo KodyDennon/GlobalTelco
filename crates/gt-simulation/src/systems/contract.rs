@@ -190,6 +190,6 @@ pub fn run(world: &mut GameWorld) {
         .collect();
 
     for id in to_remove {
-        world.contracts.remove(&id);
+        world.contracts.shift_remove(&id);
     }
 }

@@ -118,7 +118,7 @@ pub fn run(world: &mut GameWorld) {
         .map(|(&id, _)| id)
         .collect();
     for id in to_remove {
-        world.grants.remove(&id);
+        world.grants.shift_remove(&id);
     }
 }
 

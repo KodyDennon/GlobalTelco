@@ -27,7 +27,7 @@ pub fn run(world: &mut GameWorld) {
         let mut v: Vec<_> = world
             .infra_nodes
             .iter()
-            .filter(|(id, _)| !world.constructions.contains_key(id))
+            .filter(|(id, _)| !world.constructions.contains_key(*id))
             .filter(|(_, node)| is_wireless_node(node.node_type))
             .filter_map(|(&id, node)| {
                 let pos = world.positions.get(&id)?;

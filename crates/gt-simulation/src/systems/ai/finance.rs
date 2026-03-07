@@ -146,7 +146,7 @@ fn maybe_repay_early(
                 }
             }
             if debt.is_paid_off() {
-                world.debt_instruments.remove(&loan_id);
+                world.debt_instruments.shift_remove(&loan_id);
             }
         }
     }

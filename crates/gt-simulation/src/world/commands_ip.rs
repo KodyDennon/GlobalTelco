@@ -152,7 +152,7 @@ impl GameWorld {
             Some(p) if p.holder_corp == corp_id => {}
             _ => return,
         }
-        self.licenses.remove(&license_id);
+        self.licenses.shift_remove(&license_id);
         if let Some(patent) = self.patents.get(&patent_id) {
             let tech_id = patent.tech_id;
             if let Some(tech) = self.tech_research.get_mut(&tech_id) {

@@ -62,8 +62,9 @@
 <svelte:window onkeydown={handleKeydown} />
 
 {#if dialogState.open}
-	<div class="overlay" onclick={handleCancel} role="presentation">
-		<div class="dialog" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div class="overlay" onclick={handleCancel} onkeydown={(e) => e.key === 'Enter' && handleCancel()} role="button" tabindex="-1">
+		<div class="dialog" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="0">
 			<h3 class="dialog-title">{dialogState.title}</h3>
 			<p class="dialog-message">{dialogState.message}</p>
 			<div class="dialog-actions">

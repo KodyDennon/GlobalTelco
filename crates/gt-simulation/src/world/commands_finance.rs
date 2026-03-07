@@ -63,7 +63,7 @@ impl GameWorld {
             }
 
             if debt.is_paid_off() {
-                self.debt_instruments.remove(&loan_id);
+                self.debt_instruments.shift_remove(&loan_id);
             }
         }
     }
@@ -114,8 +114,9 @@ impl GameWorld {
             .map(|(&id, _)| id)
             .collect();
         for id in debts_to_remove {
-            self.debt_instruments.remove(&id);
+            self.debt_instruments.shift_remove(&id);
         }
+
 
         self.event_queue.push(
             self.tick,
@@ -277,7 +278,7 @@ impl GameWorld {
         // Execute transaction
         *sm.shareholders.entry(seller_id).or_insert(0) -= count;
         if sm.shareholders.get(&seller_id).copied().unwrap_or(0) == 0 {
-            sm.shareholders.remove(&seller_id);
+            sm.shareholders.shift_remove(&seller_id);
         }
 
         // Decrease price slightly on sell pressure
