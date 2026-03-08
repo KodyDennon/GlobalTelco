@@ -3,7 +3,7 @@ import { playerCorp } from './gameState';
 import { audioManager } from '$lib/audio/AudioManager';
 
 export type PanelType = 'none' | 'info' | 'dashboard' | 'infrastructure' | 'network' | 'research' | 'contracts' | 'region' | 'workforce' | 'advisor' | 'auctions' | 'mergers' | 'intel' | 'achievements' | 'spectrum';
-export type OverlayType = 'none' | 'terrain' | 'ownership' | 'population' | 'demand' | 'disaster' | 'coverage' | 'congestion' | 'traffic' | 'market_share' | 'ocean_depth' | 'spectrum' | 'elevation_contour' | 'submarine_reference' | 'coverage_overlap' | 'density' | 'interconnection' | 'satellite';
+export type OverlayType = 'none' | 'terrain' | 'ownership' | 'population' | 'demand' | 'coverage' | 'congestion' | 'traffic' | 'market_share' | 'ocean_depth' | 'spectrum' | 'elevation_contour' | 'submarine_reference' | 'coverage_overlap' | 'density' | 'interconnection' | 'satellite';
 export type PanelGroupType = 'finance' | 'operations' | 'diplomacy' | 'research' | 'market' | 'info' | 'satellite';
 
 // ── Company Size Tier (Management Scaling) ───────────────────────────────────
@@ -30,7 +30,6 @@ export const PANEL_GROUP_TABS: Record<PanelGroupType, Array<{ key: string; label
 	finance: [
 		{ key: 'dashboard', label: 'Dashboard', component: 'dashboard' },
 		{ key: 'pricing', label: 'Pricing', component: 'pricing' },
-		{ key: 'insurance', label: 'Insurance', component: 'insurance' },
 		{ key: 'stockmarket', label: 'Stock Market', component: 'stockmarket' },
 	],
 	operations: [

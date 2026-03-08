@@ -75,12 +75,7 @@
 		"preview_ocean": "Ocean",
 		"preview_unavailable": "World preview not available",
 		"preview_placeholder": "Adjust settings and click Preview to generate a world preview",
-		"randomize_seed": "Randomize",
-		"disaster_severity": "Disaster Severity",
-		"disaster_severity_low": "Low",
-		"disaster_severity_moderate": "Moderate",
-		"disaster_severity_high": "High",
-		"disaster_severity_extreme": "Extreme"
+		"randomize_seed": "Randomize"
 	},
 	"multiplayer": {
 		"title": "Multiplayer",
@@ -174,7 +169,6 @@
 		"terrain_overlay": "Terrain Overlay",
 		"ownership_overlay": "Ownership Overlay",
 		"demand_overlay": "Demand Overlay",
-		"disaster_overlay": "Disaster Risk Overlay",
 		"coverage_overlay": "Coverage Overlay",
 		"congestion_overlay": "Congestion Overlay"
 	},
@@ -412,8 +406,6 @@
 		"political_player_desc": "Win 3 lobbying campaigns.",
 		"partnership": "Partnership",
 		"partnership_desc": "Co-own infrastructure with another corporation.",
-		"storm_weatherer": "Storm Weatherer",
-		"storm_weatherer_desc": "Survive 3 natural disasters.",
 		"first_satellite": "Space Pioneer",
 		"first_satellite_desc": "Launch your first satellite into orbit.",
 		"constellation": "Constellation Operator",
@@ -436,8 +428,6 @@
 		"no_infra_detail": "Build your first cell tower to start generating revenue.",
 		"expand_title": "Expand Network",
 		"expand_detail": "Build more nodes and connect them to increase coverage and revenue.",
-		"damaged_title": "{count} Damaged Node(s)",
-		"damaged_detail": "Repair damaged infrastructure to restore capacity.",
 		"demand_title": "Unmet Market Demand",
 		"demand_detail": "High-population regions need more infrastructure coverage.",
 		"no_research_title": "No Active Research",
@@ -471,12 +461,9 @@
 		"save_title": "Save Your Progress",
 		"save_text": "Press F5 to quick save and F9 to quick load. Auto-save runs periodically. Your progress is stored locally in the browser.",
 		"ready_title": "You're Ready!",
-		"ready_text": "Build your network, outcompete rivals, survive disasters, and dominate the global telecom market. Good luck, CEO!"
+		"ready_text": "Build your network, outcompete rivals, and dominate the global telecom market. Good luck, CEO!"
 	},
 	"notifications": {
-		"disaster": "Disaster",
-		"weather": "Weather",
-		"weather_forecast": "Weather Forecast",
 		"infrastructure": "Infrastructure",
 		"finance": "Finance",
 		"contract": "Contract",
@@ -549,12 +536,10 @@
 		"tip_1": "Build cell towers near cities to maximize demand coverage.",
 		"tip_2": "Keep your debt-to-cash ratio low for better credit ratings.",
 		"tip_3": "Research optical networks to unlock fiber backbone connections.",
-		"tip_4": "Diversify across regions to reduce disaster risk exposure.",
-		"tip_5": "Monitor AI competitors — they expand aggressively in easy markets.",
-		"tip_6": "Use contracts to generate steady income from unused capacity.",
-		"tip_7": "Hire more employees to speed up construction and research.",
-		"tip_8": "Insurance protects against disaster damage costs.",
-		"tip_9": "Connect your central office to cell towers for maximum coverage.",
-		"tip_10": "Pause the game to plan complex network expansions."
-	}
-}
+		"tip_4": "Monitor AI competitors — they expand aggressively in easy markets.",
+		"tip_5": "Use contracts to generate steady income from unused capacity.",
+		"tip_6": "Hire more employees to speed up construction and research.",
+		"tip_7": "Connect your central office to cell towers for maximum coverage.",
+		"tip_8": "Pause the game to plan complex network expansions."
+		}
+		}

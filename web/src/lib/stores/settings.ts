@@ -19,7 +19,6 @@ export const autoSaveInterval = persistentStore('gt_autosave', 50);
 export const mapQuality = persistentStore<'low' | 'medium' | 'high'>('gt_map_quality', 'medium');
 export const showNotifications = persistentStore('gt_show_notifs', true);
 export const notificationCategories = persistentStore<Record<string, boolean>>('gt_notif_cats', {
-	disaster: true,
 	infrastructure: true,
 	finance: true,
 	contract: true,
@@ -29,4 +28,3 @@ export const notificationCategories = persistentStore<Record<string, boolean>>('
 export const colorblindMode = persistentStore<'none' | 'protanopia' | 'deuteranopia' | 'tritanopia'>('gt_colorblind', 'none');
 export const uiScale = persistentStore<number>('gt_ui_scale', 1);
 export const showPerfMonitor = persistentStore<boolean>('gt_perf_monitor', false);
-export const autoPauseOnCritical = persistentStore<boolean>('gt_auto_pause_critical', true);

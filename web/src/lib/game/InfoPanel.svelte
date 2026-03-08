@@ -83,12 +83,6 @@
 		});
 	}
 
-	function toggleInsurance() {
-		if (!entityData) return;
-		// Toggle based on current state (we don't have insured field yet, so just purchase)
-		gameCommand({ PurchaseInsurance: { node: entityData.id } });
-	}
-
 	function proposeTransit() {
 		if (!entityData?.owner) return;
 		const playerId = bridge.getPlayerCorpId();
@@ -234,7 +228,6 @@
 							<button class="action-btn emergency" onclick={emergencyRepair} use:tooltip={'Instant repair at 3x normal cost\nCompletes immediately instead of over time'}>Emergency</button>
 						{/if}
 						<button class="action-btn upgrade" onclick={upgradeNode} use:tooltip={() => `Upgrade throughput by +50%\nCost: ${formatMoney(Math.floor((entityData.construction_cost ?? 0) / 2))}\nCurrent throughput: ${entityData.max_throughput.toFixed(0)}`}>Upgrade</button>
-						<button class="action-btn insurance" onclick={toggleInsurance} use:tooltip={'Purchase disaster insurance\nCovers repair costs if this node is damaged by a disaster'}>Insure</button>
 						<button class="action-btn decommission" onclick={decommissionNode} use:tooltip={() => `Decommission this ${entityData.node_type}\nRecover 20% of build cost (${formatMoney(Math.floor((entityData.construction_cost ?? 0) * 0.2))})`}>Decom</button>
 					</div>
 				{:else if !isPlayerOwned && entityData.owner}
@@ -379,9 +372,6 @@
 
 	.action-btn.upgrade { color: #3b82f6; border-color: rgba(59, 130, 246, 0.3); }
 	.action-btn.upgrade:hover { background: rgba(59, 130, 246, 0.15); }
-
-	.action-btn.insurance { color: #8b5cf6; border-color: rgba(139, 92, 246, 0.3); }
-	.action-btn.insurance:hover { background: rgba(139, 92, 246, 0.15); }
 
 	.action-btn.decommission { color: #ef4444; border-color: rgba(239, 68, 68, 0.3); }
 	.action-btn.decommission:hover { background: rgba(239, 68, 68, 0.15); }

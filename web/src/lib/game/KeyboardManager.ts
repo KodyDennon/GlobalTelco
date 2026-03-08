@@ -292,8 +292,8 @@ export function createDefaultBindings(manager: KeyboardManager): void {
 	manager.bind('o', () => toggleOverlay('ownership'));
 	manager.bind('d', () => toggleOverlay('demand'));
 	manager.bind('c', () => toggleOverlay('coverage'));
-	manager.bind('r', () => toggleOverlay('disaster'));
 	manager.bind('g', () => toggleOverlay('congestion'));
+
 	manager.bind('f', () => toggleOverlay('traffic'));
 	manager.bind('n', () => activeOverlay.set('none'));
 

@@ -8,10 +8,6 @@ export type SfxName =
 	| 'contract_signed'
 	| 'error'
 	| 'click'
-	| 'earthquake'
-	| 'storm'
-	| 'flood'
-	| 'cyber_glitch'
 	| 'cash_register'
 	| 'ui_open'
 	| 'ui_close'
@@ -19,7 +15,6 @@ export type SfxName =
 	| 'ui_hover'
 	| 'ui_slider'
 	| 'notification'
-	| 'disaster_alert'
 	| 'achievement'
 	| 'victory';
 
@@ -169,7 +164,7 @@ export class AudioManager {
 		// Suppress non-essential UI sounds when user prefers reduced motion
 		if (this.shouldSuppressNonEssential()) {
 			const essentialSounds: SfxName[] = [
-				'error', 'disaster_alert', 'notification',
+				'error', 'notification',
 			];
 			if (!essentialSounds.includes(name)) return;
 		}
@@ -205,94 +200,6 @@ export class AudioManager {
 			case 'click':
 				this.playTone(1000, 'square', 0.15, now, 0.02);
 				break;
-
-			case 'earthquake': {
-				const noise = this.createNoiseSource('brown');
-				const gain = this.ctx.createGain();
-				gain.gain.setValueAtTime(0, now);
-				gain.gain.linearRampToValueAtTime(0.4, now + 0.3);
-				gain.gain.linearRampToValueAtTime(0.5, now + 0.6);
-				gain.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
-				const lp = this.ctx.createBiquadFilter();
-				lp.type = 'lowpass';
-				lp.frequency.value = 80;
-				noise.connect(lp);
-				lp.connect(gain);
-				gain.connect(this.sfxGain);
-				noise.start(now);
-				noise.stop(now + 1.05);
-				break;
-			}
-
-			case 'storm': {
-				const noise = this.createNoiseSource('white');
-				const bp = this.ctx.createBiquadFilter();
-				bp.type = 'bandpass';
-				bp.frequency.value = 2000;
-				bp.Q.value = 0.5;
-				const gain = this.ctx.createGain();
-				gain.gain.setValueAtTime(0.3, now);
-				gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
-				noise.connect(bp);
-				bp.connect(gain);
-				gain.connect(this.sfxGain);
-				noise.start(now);
-				noise.stop(now + 0.55);
-				break;
-			}
-
-			case 'flood': {
-				// Low rumbling water sound: brown noise through bandpass
-				const noise = this.createNoiseSource('brown');
-				const bp = this.ctx.createBiquadFilter();
-				bp.type = 'bandpass';
-				bp.frequency.value = 250;
-				bp.Q.value = 0.8;
-				const gain = this.ctx.createGain();
-				gain.gain.setValueAtTime(0, now);
-				gain.gain.linearRampToValueAtTime(0.35, now + 0.2);
-				gain.gain.linearRampToValueAtTime(0.4, now + 0.5);
-				gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
-				// Modulate filter for rushing water effect
-				const lfo = this.ctx.createOscillator();
-				lfo.type = 'sine';
-				lfo.frequency.value = 3;
-				const lfoGain = this.ctx.createGain();
-				lfoGain.gain.value = 100;
-				lfo.connect(lfoGain);
-				lfoGain.connect(bp.frequency);
-				lfo.start(now);
-				lfo.stop(now + 1.25);
-				noise.connect(bp);
-				bp.connect(gain);
-				gain.connect(this.sfxGain);
-				noise.start(now);
-				noise.stop(now + 1.25);
-				break;
-			}
-
-			case 'cyber_glitch': {
-				// Digital glitch: rapid random frequency changes + noise burst
-				for (let i = 0; i < 6; i++) {
-					const freq = 200 + Math.random() * 3000;
-					const t = now + i * 0.04;
-					this.playTone(freq, 'square', 0.2, t, 0.03);
-				}
-				// White noise burst
-				const noise = this.createNoiseSource('white');
-				const hp = this.ctx.createBiquadFilter();
-				hp.type = 'highpass';
-				hp.frequency.value = 4000;
-				const gain = this.ctx.createGain();
-				gain.gain.setValueAtTime(0.25, now);
-				gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-				noise.connect(hp);
-				hp.connect(gain);
-				gain.connect(this.sfxGain);
-				noise.start(now);
-				noise.stop(now + 0.35);
-				break;
-			}
 
 			case 'cash_register':
 				this.playTone(2000, 'sine', 0.25, now, 0.05);
@@ -334,16 +241,6 @@ export class AudioManager {
 				this.playTone(880, 'sine', 0.2, now, 0.1);
 				this.playTone(1100, 'sine', 0.15, now + 0.12, 0.08);
 				break;
-
-			case 'disaster_alert': {
-				// Urgent two-tone alert siren
-				this.duckMusic(2.0);
-				this.playTone(800, 'sine', 0.35, now, 0.15);
-				this.playTone(600, 'sine', 0.35, now + 0.15, 0.15);
-				this.playTone(800, 'sine', 0.35, now + 0.3, 0.15);
-				this.playTone(600, 'sine', 0.35, now + 0.45, 0.15);
-				break;
-			}
 
 			case 'achievement': {
 				// Triumphant ascending fanfare — C major arpeggio + octave
@@ -685,8 +582,6 @@ export class AudioManager {
 		ConstructionStarted: 'build',
 		ConstructionCompleted: 'build',
 		RevenueEarned: 'cash_register',
-		DisasterStruck: 'disaster_alert',
-		InfrastructureDamaged: 'disaster_alert',
 		BankruptcyDeclared: 'error',
 		BailoutTaken: 'error',
 		InsolvencyWarning: 'error',
@@ -700,22 +595,20 @@ export class AudioManager {
 		AcquisitionRejected: 'error',
 		AuctionWon: 'cash_register',
 		AuctionStarted: 'notification',
-		SabotageCompleted: 'cyber_glitch',
-		SabotageDetected: 'disaster_alert',
+		SabotageCompleted: 'error',
+		SabotageDetected: 'error',
 		EspionageCompleted: 'notification',
-		EspionageDetected: 'disaster_alert',
+		EspionageDetected: 'error',
 		VictoryAchieved: 'victory',
 		ScandalOccurred: 'error',
 		MergerCompleted: 'contract_signed',
 		LobbyingSucceeded: 'notification',
 		LobbyingFailed: 'error',
-		InsurancePayout: 'cash_register',
 		NodeBuilt: 'build',
 		EdgeBuilt: 'build',
 		NodeDestroyed: 'demolish',
 		RepairCompleted: 'build',
 		CorporationFounded: 'achievement',
-		WeatherStarted: 'storm',
 	};
 
 	playEventSound(event: string | Record<string, unknown>): void {

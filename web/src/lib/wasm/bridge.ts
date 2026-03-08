@@ -507,17 +507,6 @@ export function getBuildableEdges(sourceId: number): EdgeTarget[] {
 	}
 }
 
-export function getDamagedNodes(corpId: number): DamagedNode[] {
-	if (useNativeSim) return tauriBridge.getCachedDamagedNodes(corpId);
-	try {
-		const json = bridge?.get_damaged_nodes(BigInt(corpId)) ?? '[]';
-		return JSON.parse(json);
-	} catch (e) {
-		onBridgeError(e, 'getDamagedNodes');
-		return [];
-	}
-}
-
 export async function saveGame(): Promise<string> {
 	if (useNativeSim) return tauriBridge.saveGame();
 	if (!bridge) throw new Error('No game to save');
@@ -856,49 +845,6 @@ export function getAvailableSpectrum(regionId: number): AvailableSpectrum[] {
 		return JSON.parse(json);
 	} catch (e) {
 		onBridgeError(e, 'getAvailableSpectrum');
-		return [];
-	}
-}
-
-// ── Phase 9: Disaster Forecasts ──────────────────────────────────────
-
-export interface DisasterForecast {
-	region_id: number;
-	region_name: string;
-	predicted_tick: number;
-	probability: number;
-	disaster_type: string;
-}
-
-export function getDisasterForecasts(): DisasterForecast[] {
-	if (useNativeSim) return tauriBridge.getCachedDisasterForecasts();
-	try {
-		const json = bridge?.get_disaster_forecasts() ?? '[]';
-		return JSON.parse(json);
-	} catch (e) {
-		onBridgeError(e, 'getDisasterForecasts');
-		return [];
-	}
-}
-
-// ── Phase 7.5: Weather Forecasts ─────────────────────────────────────
-
-export interface WeatherForecast {
-	region_id: number;
-	region_name: string;
-	predicted_type: string;
-	probability: number;
-	eta_ticks: number;
-	predicted_severity: number;
-}
-
-export function getWeatherForecasts(): WeatherForecast[] {
-	if (useNativeSim) return tauriBridge.getCachedWeatherForecasts();
-	try {
-		const json = bridge?.get_weather_forecasts() ?? '[]';
-		return JSON.parse(json);
-	} catch (e) {
-		onBridgeError(e, 'getWeatherForecasts');
 		return [];
 	}
 }

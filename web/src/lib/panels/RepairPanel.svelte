@@ -11,10 +11,9 @@
 	let repairingNodes: Map<number, 'standard' | 'emergency'> = $state(new Map());
 
 	$effect(() => {
-		const corp = $playerCorp;
-		if (corp) {
-			damagedNodes = bridge.getDamagedNodes(corp.id);
-		}
+		// Infrastructure damage system is currently disabled for performance.
+		// All nodes remain at 100% health.
+		damagedNodes = [];
 	});
 
 	function repairNode(node: DamagedNode) {

@@ -661,13 +661,6 @@
 		text-align: right;
 	}
 
-	.disaster-label {
-		margin-left: 6px;
-		font-size: 11px;
-		color: #6b7280;
-		font-weight: 400;
-	}
-
 	.seed-row {
 		display: flex;
 		gap: 8px;

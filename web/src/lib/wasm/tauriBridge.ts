@@ -47,8 +47,6 @@ import type {
 } from './types';
 
 import type {
-	DisasterForecast,
-	WeatherForecast,
 	RoadSegmentInfo,
 	ConstellationData,
 	OrbitalSatellite,
@@ -136,8 +134,6 @@ let cachedVictoryState: VictoryInfo = {} as VictoryInfo;
 let cachedSpectrumAuctions: SpectrumAuction[] = [];
 let cachedAvailableSpectrum: AvailableSpectrum[] = [];
 let cachedAvailableSpectrumRegionId = -1;
-let cachedDisasterForecasts: DisasterForecast[] = [];
-let cachedWeatherForecasts: WeatherForecast[] = [];
 let cachedRoadSegments: RoadSegmentInfo[] = [];
 let cachedConstellationData: ConstellationData[] = [];
 let cachedConstellationCorpId = -1;
@@ -246,7 +242,7 @@ async function refreshPostTick(): Promise<void> {
 }
 
 async function refreshFull(): Promise<void> {
-	const [regionsJson, citiesJson, corpsJson, coverageJson, allInfraJson, spectrumJson, trafficJson, auctionsJson, acqJson, specAuctJson, disasterJson, weatherJson, victoryJson, researchJson] = await Promise.all([
+	const [regionsJson, citiesJson, corpsJson, coverageJson, allInfraJson, spectrumJson, trafficJson, auctionsJson, acqJson, specAuctJson, victoryJson, researchJson] = await Promise.all([
 		invoke('sim_get_regions') as Promise<string>,
 		invoke('sim_get_cities') as Promise<string>,
 		invoke('sim_get_all_corporations') as Promise<string>,
@@ -257,8 +253,6 @@ async function refreshFull(): Promise<void> {
 		invoke('sim_get_auctions') as Promise<string>,
 		invoke('sim_get_acquisition_proposals') as Promise<string>,
 		invoke('sim_get_spectrum_auctions') as Promise<string>,
-		invoke('sim_get_disaster_forecasts') as Promise<string>,
-		invoke('sim_get_weather_forecasts') as Promise<string>,
 		invoke('sim_get_victory_state') as Promise<string>,
 		invoke('sim_get_research_state') as Promise<string>,
 	]);
@@ -272,8 +266,6 @@ async function refreshFull(): Promise<void> {
 	cachedAuctions = JSON.parse(auctionsJson);
 	cachedAcquisitionProposals = JSON.parse(acqJson);
 	cachedSpectrumAuctions = JSON.parse(specAuctJson);
-	cachedDisasterForecasts = JSON.parse(disasterJson);
-	cachedWeatherForecasts = JSON.parse(weatherJson);
 	cachedVictoryState = JSON.parse(victoryJson);
 	cachedResearchState = JSON.parse(researchJson);
 
@@ -583,9 +575,6 @@ export function getCachedAvailableSpectrum(regionId: number): AvailableSpectrum[
 	}
 	return cachedAvailableSpectrum;
 }
-
-export function getCachedDisasterForecasts(): DisasterForecast[] { return cachedDisasterForecasts; }
-export function getCachedWeatherForecasts(): WeatherForecast[] { return cachedWeatherForecasts; }
 
 export function getCachedRoadPathfind(fromLon: number, fromLat: number, toLon: number, toLat: number): [number, number][] {
 	// Road pathfinding is on-demand; fire-and-forget won't help since result is location-specific.

@@ -31,7 +31,7 @@ import {
 } from '$lib/stores/uiState';
 import { removeGhost, speedVotes, corpId } from '$lib/stores/multiplayerState';
 import type { OverlayType } from '$lib/stores/uiState';
-import { autoPauseOnCritical, showPerfMonitor, autoSaveInterval } from '$lib/stores/settings';
+import { showPerfMonitor, autoSaveInterval } from '$lib/stores/settings';
 import { writable } from 'svelte/store';
 
 let running = false;
@@ -266,17 +266,6 @@ function handleWorkerTickResult(result: workerBridge.TickResult) {
 				for (const notif of notifs) {
 					audioManager.playEventSound(notif.event);
 				}
-
-				// Auto-pause on critical events
-				if (get(autoPauseOnCritical) && currentSpeed > 0) {
-					for (const notif of notifs) {
-						const reason = checkCriticalEvent(notif.event);
-						if (reason) {
-							autoPauseReason.set(reason);
-							break;
-						}
-					}
-				}
 			}
 		}
 
@@ -335,18 +324,6 @@ function updateStores() {
 		for (const notif of notifs) {
 			audioManager.playEventSound(notif.event);
 		}
-
-		// Auto-pause on critical events
-		if (get(autoPauseOnCritical) && currentSpeed > 0) {
-			for (const notif of notifs) {
-				const reason = checkCriticalEvent(notif.event);
-				if (reason) {
-					setSpeed(0);
-					autoPauseReason.set(reason);
-					break;
-				}
-			}
-		}
 	}
 
 	// Auto-save check (scheduled as background priority)
@@ -358,32 +335,6 @@ function updateStores() {
 
 	// Signal map for re-render with new data
 	window.dispatchEvent(new CustomEvent('map-dirty'));
-}
-
-function checkCriticalEvent(event: GameEvent): string | null {
-	const type = eventType(event);
-	const data = eventData(event);
-
-	// Disasters with severity > 0.3
-	if (type === 'DisasterStruck') {
-		const severity = data.severity as number;
-		if (severity > 0.3) {
-			return `Major disaster: ${data.disaster_type ?? 'Unknown'}!`;
-		}
-	}
-	// Insolvency / Bankruptcy
-	if (type === 'InsolvencyWarning' || type === 'BankruptcyDeclared' || type === 'Bankruptcy') {
-		return 'Financial crisis — insolvency warning!';
-	}
-	// Hostile acquisition
-	if (type === 'AcquisitionProposed') {
-		return 'Acquisition attempt!';
-	}
-	// Espionage detected
-	if (type === 'EspionageDetected' || type === 'SabotageDetected') {
-		return 'Espionage operation detected!';
-	}
-	return null;
 }
 
 async function performAutoSave(tick: number) {

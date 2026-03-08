@@ -43,17 +43,6 @@
 			s.push({ priority: 'info', title: translate('advisor.expand_title'), detail: translate('advisor.expand_detail'), action: null });
 		}
 
-		// Check damaged nodes
-		const damaged = bridge.getDamagedNodes(corp.id);
-		if (damaged.length > 0) {
-			// Fly to the first damaged node
-			const firstDamaged = damaged[0];
-			const flyAction: SuggestionAction = firstDamaged
-				? { type: 'fly-to', lon: firstDamaged.x, lat: firstDamaged.y }
-				: { type: 'open-panel', group: 'operations' };
-			s.push({ priority: 'warning', title: translate('advisor.damaged_title', { count: damaged.length }), detail: translate('advisor.damaged_detail'), action: flyAction });
-		}
-
 		// Check unmet demand
 		const regs = $regions;
 		const highDemandRegions = regs.filter((r) => r.population > 100000);

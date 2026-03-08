@@ -23,12 +23,11 @@ Mix of city builder, tycoon/business sim, and grand strategy. Web-based with off
 - Real Earth mode with ESRI satellite tiles, OpenStreetMap roads, and building footprints
 - Intra-city street generation (Grid, Radial, Organic, Mixed layouts)
 - Dynamic building spawn/destruction based on city population growth
-- Weather system with disasters, vulnerability matrix, and insurance
 
 **Business Simulation**
 - Per-building subscriber revenue model with competition
 - Research tree freely explorable across eras (no era gating)
-- Contracts, loans, insurance, mergers & acquisitions
+- Contracts, loans, mergers & acquisitions
 - AI corporations with 4 archetypes that use every game system
 - Tiered management: manual at small scale, policy-driven at large scale
 
@@ -175,7 +174,7 @@ See [Docs/](Docs/) for full design specifications.
 |---|---|
 | ![Map](screenshots/01-default-map.png) | ![Terrain](screenshots/02-terrain-overlay.png) |
 | ![Ownership](screenshots/03-ownership-overlay.png) | ![Demand](screenshots/04-demand-overlay.png) |
-| ![Coverage](screenshots/05-coverage-overlay.png) | ![Disasters](screenshots/06-disaster-risk-overlay.png) |
+| ![Coverage](screenshots/05-coverage-overlay.png) | |
 | ![Congestion](screenshots/07-congestion-overlay.png) | ![Traffic](screenshots/08-traffic-flow-overlay.png) |
 | ![Dashboard](screenshots/09-financial-dashboard.png) | ![Infrastructure](screenshots/10-infrastructure.png) |
 | ![Contracts](screenshots/11-contracts.png) | ![Research](screenshots/12-research-technology.png) |

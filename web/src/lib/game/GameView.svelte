@@ -155,7 +155,6 @@
 		intel: () => import("$lib/panels/IntelPanel.svelte"),
 		achievements: () => import("$lib/panels/AchievementPanel.svelte"),
 		spectrum: () => import("$lib/panels/SpectrumPanel.svelte"),
-		insurance: () => import("$lib/panels/InsurancePanel.svelte"),
 		repair: () => import("$lib/panels/RepairPanel.svelte"),
 		coownership: () => import("$lib/panels/CoOwnershipPanel.svelte"),
 		grants: () => import("$lib/panels/GrantPanel.svelte"),
