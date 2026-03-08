@@ -650,15 +650,6 @@ fn collect_edge_capacities(world: &GameWorld) -> HashMap<u64, f64> {
 /// Returns map: city_id → (node_id, owner_corp_id).
 fn find_city_access_nodes(world: &GameWorld) -> HashMap<EntityId, (EntityId, EntityId)> {
     let mut result: HashMap<EntityId, (EntityId, EntityId)> = HashMap::new();
-
-    let mut node_data: Vec<(u64, usize, NodeType, u64)> = world
-        .infra_nodes
-        .iter()
-        .filter(|(id, _)| !world.constructions.contains_key(*id))
-        .map(|(&id, node)| (id, node.cell_index, node.node_type, node.owner))
-        .collect();
-    node_data.sort_unstable_by_key(|t| t.0);
-
     let cell_spacing = world.cell_spacing_km;
 
     for (&city_id, city) in &world.cities {
@@ -667,26 +658,38 @@ fn find_city_access_nodes(world: &GameWorld) -> HashMap<EntityId, (EntityId, Ent
             None => continue,
         };
 
+        // Optimization: Use spatial index to find nearby candidate nodes
+        // Max coverage radius is ~6.0 * cell_spacing (SatelliteGround)
+        let search_radius_km = cell_spacing * 7.0;
+        let deg_range = search_radius_km / 111.0;
+        let envelope = rstar::AABB::from_corners(
+            [city_pos.1 - deg_range * 2.0, city_pos.0 - deg_range],
+            [city_pos.1 + deg_range * 2.0, city_pos.0 + deg_range]
+        );
+
         let mut best: Option<(u64, u64, f64)> = None;
 
-        for &(nid, cell_index, node_type, owner) in &node_data {
-            let node_pos = match world.grid_cell_positions.get(cell_index) {
-                Some(p) => *p,
-                None => continue,
-            };
-
-            let radius_km = scaled_coverage_radius(node_type, cell_spacing);
-            let dist = haversine_km(city_pos.0, city_pos.1, node_pos.0, node_pos.1);
-            if dist > radius_km {
+        for spatial_node in world.spatial_index.locate_in_envelope(&envelope) {
+            let nid = spatial_node.id;
+            
+            // Skip nodes under construction
+            if world.constructions.contains_key(&nid) {
                 continue;
             }
 
-            // Prefer access-tier nodes (lower tier penalty)
-            let tier_penalty = node_type.tier().value() as f64 * 10.0;
-            let effective_dist = dist + tier_penalty;
+            if let Some(node) = world.infra_nodes.get(&nid) {
+                let radius_km = scaled_coverage_radius(node.node_type, cell_spacing);
+                let dist = haversine_km(city_pos.0, city_pos.1, spatial_node.pos[1], spatial_node.pos[0]);
+                
+                if dist <= radius_km {
+                    // Prefer access-tier nodes (lower tier penalty)
+                    let tier_penalty = node.node_type.tier().value() as f64 * 10.0;
+                    let effective_dist = dist + tier_penalty;
 
-            if best.is_none() || effective_dist < best.unwrap().2 {
-                best = Some((nid, owner, effective_dist));
+                    if best.is_none() || effective_dist < best.unwrap().2 {
+                        best = Some((nid, node.owner, effective_dist));
+                    }
+                }
             }
         }
 
@@ -829,7 +832,11 @@ fn push_traffic_on_path(
     let mut min_remaining = demand;
     let mut corp_hops = HashMap::new();
 
-    for &nid in path {
+    // Single pass to find bottleneck and track hops
+    for i in 0..path.len() {
+        let nid = path[i];
+        
+        // Node capacity check
         let cap = ctx.node_cap.get(&nid).copied().unwrap_or(0.0);
         let current = accum.node_load.get(&nid).copied().unwrap_or(0.0);
         let remaining = (cap * 1.2 - current).max(0.0);
@@ -839,20 +846,22 @@ fn push_traffic_on_path(
         if let Some(&owner) = ctx.node_owners.get(&nid) {
             *corp_hops.entry(owner).or_insert(0) += 1;
         }
-    }
 
-    for i in 0..path.len() - 1 {
-        if let Some(eid) = network.get_edge_id(path[i], path[i + 1]) {
-            // Block traffic if edge is under construction
-            if ctx.constructions.contains(&eid) {
-                min_remaining = 0.0;
-                break;
+        // Edge capacity check (for all but last node)
+        if i < path.len() - 1 {
+            if let Some(eid) = network.get_edge_id(nid, path[i + 1]) {
+                // Block traffic if edge is under construction
+                if ctx.constructions.contains(&eid) {
+                    return (0.0, corp_hops);
+                }
+                let cap = ctx.edge_cap.get(&eid).copied().unwrap_or(0.0);
+                let current = accum.edge_load.get(&eid).copied().unwrap_or(0.0);
+                let remaining = (cap * 1.2 - current).max(0.0);
+                min_remaining = min_remaining.min(remaining);
             }
-            let cap = ctx.edge_cap.get(&eid).copied().unwrap_or(0.0);
-            let current = accum.edge_load.get(&eid).copied().unwrap_or(0.0);
-            let remaining = (cap * 1.2 - current).max(0.0);
-            min_remaining = min_remaining.min(remaining);
         }
+
+        if min_remaining <= 0.0 { break; }
     }
 
     let served = min_remaining.min(demand).max(0.0);
@@ -861,21 +870,23 @@ fn push_traffic_on_path(
     }
 
     // Apply load and track cross-corp boundary crossings
-    for &nid in path {
+    for i in 0..path.len() {
+        let nid = path[i];
         *accum.node_load.entry(nid).or_insert(0.0) += served;
-    }
-    for i in 0..path.len() - 1 {
-        if let Some(eid) = network.get_edge_id(path[i], path[i + 1]) {
-            *accum.edge_load.entry(eid).or_insert(0.0) += served;
-        }
 
-        // Track per-contract traffic when crossing corporate boundaries
-        let owner_a = ctx.node_owners.get(&path[i]).copied().unwrap_or(0);
-        let owner_b = ctx.node_owners.get(&path[i + 1]).copied().unwrap_or(0);
-        if owner_a != owner_b && owner_a != 0 && owner_b != 0 {
-            let (_, contract_id) = lookup_permission(&ctx.transit_permissions, owner_a, owner_b);
-            if let Some(cid) = contract_id {
-                accum.record_contract_traffic(cid, served);
+        if i < path.len() - 1 {
+            if let Some(eid) = network.get_edge_id(nid, path[i + 1]) {
+                *accum.edge_load.entry(eid).or_insert(0.0) += served;
+            }
+
+            // Track per-contract traffic when crossing corporate boundaries
+            let owner_a = ctx.node_owners.get(&nid).copied().unwrap_or(0);
+            let owner_b = ctx.node_owners.get(&path[i + 1]).copied().unwrap_or(0);
+            if owner_a != owner_b && owner_a != 0 && owner_b != 0 {
+                let (_, contract_id) = lookup_permission(&ctx.transit_permissions, owner_a, owner_b);
+                if let Some(cid) = contract_id {
+                    accum.record_contract_traffic(cid, served);
+                }
             }
         }
     }

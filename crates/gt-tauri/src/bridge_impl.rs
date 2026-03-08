@@ -181,6 +181,11 @@ impl BridgeQuery for TauriBridge {
         gt_bridge::queries::query_maintenance_priorities(&w, corp_id)
     }
 
+    fn get_terrain_at(&self, lon: f64, lat: f64) -> String {
+        let w = self.world.lock().unwrap();
+        gt_bridge::queries::query_terrain_at(&w, lon, lat)
+    }
+
     fn get_node_metadata(&self, id: gt_common::types::EntityId) -> String {
         let w = self.world.lock().unwrap();
         gt_bridge::queries::query_node_metadata(&w, id)
@@ -226,9 +231,9 @@ impl BridgeQuery for TauriBridge {
         gt_bridge::queries::build_infra_arrays(&w)
     }
 
-    fn get_infra_arrays_viewport(&self, west: f64, south: f64, east: f64, north: f64) -> InfraArrays {
+    fn get_infra_arrays_viewport(&self, west: f64, south: f64, east: f64, north: f64, min_level: u8) -> InfraArrays {
         let w = self.world.lock().unwrap();
-        gt_bridge::queries::build_infra_arrays_viewport(&w, west, south, east, north)
+        gt_bridge::queries::build_infra_arrays_viewport(&w, west, south, east, north, min_level)
     }
 
     fn get_edge_arrays(&self) -> EdgeArrays {
@@ -236,9 +241,9 @@ impl BridgeQuery for TauriBridge {
         gt_bridge::queries::build_edge_arrays(&w)
     }
 
-    fn get_edge_arrays_viewport(&self, west: f64, south: f64, east: f64, north: f64) -> EdgeArrays {
+    fn get_edge_arrays_viewport(&self, west: f64, south: f64, east: f64, north: f64, min_level: u8) -> EdgeArrays {
         let w = self.world.lock().unwrap();
-        gt_bridge::queries::build_edge_arrays_viewport(&w, west, south, east, north)
+        gt_bridge::queries::build_edge_arrays_viewport(&w, west, south, east, north, min_level)
     }
 
     fn get_satellite_arrays(&self) -> SatelliteArrays {

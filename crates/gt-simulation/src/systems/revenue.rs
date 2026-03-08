@@ -302,10 +302,18 @@ fn calculate_building_revenue(world: &GameWorld, corp_id: EntityId) -> i64 {
         let cos_lat = (nap_lat.to_radians()).cos().max(0.1);
         let lon_range = radius_km / (111.0 * cos_lat);
 
-        for (cell_idx, &(cell_lat, cell_lon)) in world.grid_cell_positions.iter().enumerate() {
-            if (cell_lat - nap_lat).abs() > lat_range || (cell_lon - nap_lon).abs() > lon_range {
+        // Optimization: Use spatial range query instead of scanning ALL cells
+        let candidate_cells = world.cells_in_range(nap_lat, nap_lon, lat_range, lon_range);
+
+        for cell_idx in candidate_cells {
+            let (cell_lat, cell_lon) = world.grid_cell_positions[cell_idx];
+            
+            // Calculate actual distance using haversine
+            let dist_km = haversine_km(nap_lat, nap_lon, cell_lat, cell_lon);
+            if dist_km > radius_km {
                 continue;
             }
+            
             // Only cells that belong to a city have buildings
             if !world.cell_to_city.contains_key(&cell_idx) {
                 continue;
@@ -394,6 +402,15 @@ fn calculate_building_revenue(world: &GameWorld, corp_id: EntityId) -> i64 {
     }
 }
 
+fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+    let dlat = (lat1 - lat2).to_radians();
+    let dlon = (lon1 - lon2).to_radians();
+    let a = (dlat / 2.0).sin().powi(2)
+        + lat1.to_radians().cos() * lat2.to_radians().cos() * (dlon / 2.0).sin().powi(2);
+    let c = 2.0 * a.sqrt().asin();
+    6371.0 * c
+}
+
 /// Legacy cell-based building revenue approximation.
 /// Used as fallback when no BuildingFootprint entities have been seeded.
 fn calculate_building_revenue_legacy(
@@ -446,10 +463,18 @@ fn calculate_building_revenue_legacy(
         let mut covered_demand: f64 = 0.0;
         let mut covered_cell_count: u32 = 0;
 
-        for (cell_idx, &(cell_lat, cell_lon)) in world.grid_cell_positions.iter().enumerate() {
-            if (cell_lat - nap_lat).abs() > lat_range || (cell_lon - nap_lon).abs() > lon_range {
+        // Optimization: Use spatial range query
+        let candidate_cells = world.cells_in_range(nap_lat, nap_lon, lat_range, lon_range);
+
+        for cell_idx in candidate_cells {
+            let (cell_lat, cell_lon) = world.grid_cell_positions[cell_idx];
+            
+            // Calculate actual distance using haversine
+            let dist_km = haversine_km(nap_lat, nap_lon, cell_lat, cell_lon);
+            if dist_km > radius_km {
                 continue;
             }
+
             let city = match world
                 .cell_to_city
                 .get(&cell_idx)

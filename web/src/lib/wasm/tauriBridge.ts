@@ -459,13 +459,13 @@ export function getCachedStaticDefinitions(): any {
 	return cachedStaticDefinitions;
 }
 
-export function getCachedInfraNodesTypedViewport(west: number, south: number, east: number, north: number): InfraNodesTyped {
+export function getCachedInfraNodesTypedViewport(west: number, south: number, east: number, north: number, minLevel: number): InfraNodesTyped {
 	// Tauri doesn't currently support partial viewport sync via IPC; return full cached set
 	// This maintains API compatibility with the worker bridge
 	return cachedInfraNodes;
 }
 
-export function getCachedInfraEdgesTypedViewport(west: number, south: number, east: number, north: number): InfraEdgesTyped {
+export function getCachedInfraEdgesTypedViewport(west: number, south: number, east: number, north: number, minLevel: number): InfraEdgesTyped {
 	return cachedInfraEdges;
 }
 
@@ -672,6 +672,12 @@ export function getCachedMaintenancePriorities(corpId: number): MaintenancePrior
 		invoke('sim_get_maintenance_priorities', { id: corpId }).then((json) => { cachedMaintenancePrioritiesList = JSON.parse(json as string); }).catch(() => {});
 	}
 	return cachedMaintenancePrioritiesList;
+}
+
+export function getCachedTerrainAt(lon: number, lat: number): string | null {
+	// For Tauri, we'll just do a one-shot async fetch for now as terrain lookups are low frequency
+	// (only when mouse moves in build mode)
+	return null; // Return null until we implement a better sync cache for this
 }
 
 export function getCachedNodeMetadata(id: number): any {

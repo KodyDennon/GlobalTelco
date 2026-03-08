@@ -34,7 +34,7 @@ class DataStore {
      * Synchronizes local typed array cache with WASM simulation.
      * Throttled to avoid blocking the main thread during high-frequency events (zoom/pan).
      */
-    sync() {
+    sync(minLevel: number = 0) {
         const now = performance.now();
         const v = get(viewport);
         const info = get(worldInfo);
@@ -57,8 +57,8 @@ class DataStore {
         }
 
         // 3. Perform sync
-        this.nodes = getInfraNodesTypedViewport(v.minX, v.minY, v.maxX, v.maxY);
-        this.edges = getInfraEdgesTypedViewport(v.minX, v.minY, v.maxX, v.maxY);
+        this.nodes = getInfraNodesTypedViewport(v.minX, v.minY, v.maxX, v.maxY, minLevel);
+        this.edges = getInfraEdgesTypedViewport(v.minX, v.minY, v.maxX, v.maxY, minLevel);
         
         this.lastSyncTick = info.tick;
         this.lastSyncViewport = { ...v };

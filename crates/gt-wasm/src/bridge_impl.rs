@@ -153,6 +153,10 @@ impl BridgeQuery for WasmBridge {
         gt_bridge::queries::query_maintenance_priorities(&self.world, corp_id)
     }
 
+    fn get_terrain_at(&self, lon: f64, lat: f64) -> String {
+        gt_bridge::queries::query_terrain_at(&self.world, lon, lat)
+    }
+
     fn get_node_metadata(&self, id: gt_common::types::EntityId) -> String {
         gt_bridge::queries::query_node_metadata(&self.world, id)
     }
@@ -189,16 +193,16 @@ impl BridgeQuery for WasmBridge {
         gt_bridge::queries::build_infra_arrays(&self.world)
     }
 
-    fn get_infra_arrays_viewport(&self, west: f64, south: f64, east: f64, north: f64) -> InfraArrays {
-        gt_bridge::queries::build_infra_arrays_viewport(&self.world, west, south, east, north)
+    fn get_infra_arrays_viewport(&self, west: f64, south: f64, east: f64, north: f64, min_level: u8) -> InfraArrays {
+        gt_bridge::queries::build_infra_arrays_viewport(&self.world, west, south, east, north, min_level)
     }
 
     fn get_edge_arrays(&self) -> EdgeArrays {
         gt_bridge::queries::build_edge_arrays(&self.world)
     }
 
-    fn get_edge_arrays_viewport(&self, west: f64, south: f64, east: f64, north: f64) -> EdgeArrays {
-        gt_bridge::queries::build_edge_arrays_viewport(&self.world, west, south, east, north)
+    fn get_edge_arrays_viewport(&self, west: f64, south: f64, east: f64, north: f64, min_level: u8) -> EdgeArrays {
+        gt_bridge::queries::build_edge_arrays_viewport(&self.world, west, south, east, north, min_level)
     }
 
     fn get_satellite_arrays(&self) -> SatelliteArrays {

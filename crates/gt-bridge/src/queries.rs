@@ -239,6 +239,12 @@ pub fn query_all_corporations(world: &GameWorld) -> String {
 
 // ── Infrastructure Queries ──────────────────────────────────────────────
 
+pub fn query_terrain_at(world: &GameWorld, lon: f64, lat: f64) -> String {
+    let cell_idx = world.nearest_cell_latlon(lat, lon);
+    let terrain = world.get_cell_terrain(cell_idx).unwrap_or(gt_common::types::TerrainType::Rural);
+    serde_json::to_string(&terrain).unwrap_or_default()
+}
+
 pub fn query_node_metadata(world: &GameWorld, id: EntityId) -> String {
     let node = match world.infra_nodes.get(&id) {
         Some(n) => n,
@@ -1738,11 +1744,19 @@ pub fn build_infra_arrays_viewport(
     south: f64,
     east: f64,
     north: f64,
+    min_level: u8,
 ) -> crate::InfraArrays {
     let aabb = rstar::AABB::from_corners([west, south], [east, north]);
     let ids: Vec<EntityId> = world
         .spatial_index
         .locate_in_envelope(&aabb)
+        .filter(|sn| {
+            if let Some(node) = world.infra_nodes.get(&sn.id) {
+                node.network_level as u8 >= min_level
+            } else {
+                false
+            }
+        })
         .map(|sn| sn.id)
         .collect();
     build_infra_arrays_from_ids(world, &ids)
@@ -1812,8 +1826,9 @@ pub fn build_edge_arrays_viewport(
     south: f64,
     east: f64,
     north: f64,
+    min_level: u8,
 ) -> crate::EdgeArrays {
-    // Find edges where either endpoint is in the viewport
+    // Find edges where either endpoint is in the viewport AND tier is sufficient
     let aabb = rstar::AABB::from_corners([west, south], [east, north]);
     let visible_node_ids: std::collections::HashSet<EntityId> = world
         .spatial_index
@@ -1825,6 +1840,15 @@ pub fn build_edge_arrays_viewport(
         .infra_edges
         .iter()
         .filter(|(_, e)| {
+            // Tier check: at least one endpoint must meet the tier requirement
+            let node_a = world.infra_nodes.get(&e.source);
+            let node_b = world.infra_nodes.get(&e.target);
+            if let (Some(na), Some(nb)) = (node_a, node_b) {
+                if (na.network_level as u8) < min_level && (nb.network_level as u8) < min_level {
+                    return false;
+                }
+            }
+
             visible_node_ids.contains(&e.source) || visible_node_ids.contains(&e.target)
         })
         .map(|(&id, _)| id)

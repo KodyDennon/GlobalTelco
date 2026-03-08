@@ -701,11 +701,11 @@ export function getInfraNodesTyped(): InfraNodesTyped {
     return { count: 0, ids: EMPTY_U32, owners: EMPTY_U32, positions: EMPTY_F64, stats: EMPTY_F64, node_types: EMPTY_U8, network_levels: EMPTY_U32, construction_flags: EMPTY_U8, cell_indices: EMPTY_U32 };
 }
 
-export function getInfraNodesTypedViewport(west: number, south: number, east: number, north: number): InfraNodesTyped {
-    if (useNativeSim) return tauriBridge.getCachedInfraNodesTypedViewport(west, south, east, north);
+export function getInfraNodesTypedViewport(west: number, south: number, east: number, north: number, minLevel: number = 0): InfraNodesTyped {
+    if (useNativeSim) return tauriBridge.getCachedInfraNodesTypedViewport(west, south, east, north, minLevel);
     try {
         if (bridge && typeof bridge.get_infra_nodes_typed_viewport === 'function') {
-            const arr = bridge.get_infra_nodes_typed_viewport(west, south, east, north);
+            const arr = bridge.get_infra_nodes_typed_viewport(west, south, east, north, minLevel);
             if (arr && arr.length >= 9) {
                 return {
                     count: arr[0] as number,
@@ -766,11 +766,11 @@ export function getInfraEdgesTyped(): InfraEdgesTyped {
     };
 }
 
-export function getInfraEdgesTypedViewport(west: number, south: number, east: number, north: number): InfraEdgesTyped {
-    if (useNativeSim) return tauriBridge.getCachedInfraEdgesTypedViewport(west, south, east, north);
+export function getInfraEdgesTypedViewport(west: number, south: number, east: number, north: number, minLevel: number = 0): InfraEdgesTyped {
+    if (useNativeSim) return tauriBridge.getCachedInfraEdgesTypedViewport(west, south, east, north, minLevel);
     try {
         if (bridge && typeof bridge.get_infra_edges_typed_viewport === 'function') {
-            const arr = bridge.get_infra_edges_typed_viewport(west, south, east, north);
+            const arr = bridge.get_infra_edges_typed_viewport(west, south, east, north, minLevel);
             if (arr && arr.length >= 10) {
                 return {
                     count: arr[0] as number,
@@ -1215,6 +1215,17 @@ export function getMaintenancePriorities(corpId: number): MaintenancePriorityInf
 	} catch (e) {
 		onBridgeError(e, 'getMaintenancePriorities');
 		return [];
+	}
+}
+
+export function getTerrainAt(lon: number, lat: number): string | null {
+	if (useNativeSim) return tauriBridge.getCachedTerrainAt(lon, lat);
+	try {
+		const json = bridge?.get_terrain_at(lon, lat) ?? 'null';
+		return JSON.parse(json);
+	} catch (e) {
+		onBridgeError(e, 'getTerrainAt');
+		return null;
 	}
 }
 

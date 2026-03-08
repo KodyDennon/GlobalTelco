@@ -248,6 +248,10 @@ impl WasmBridge {
         gt_bridge::queries::query_maintenance_priorities(&self.world, corp_id)
     }
 
+    pub fn get_terrain_at(&self, lon: f64, lat: f64) -> String {
+        gt_bridge::queries::query_terrain_at(&self.world, lon, lat)
+    }
+
     pub fn get_node_metadata(&self, id: u64) -> String {
         gt_bridge::queries::query_node_metadata(&self.world, id)
     }

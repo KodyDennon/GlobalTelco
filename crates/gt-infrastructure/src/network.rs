@@ -178,7 +178,16 @@ impl NetworkGraph {
         // Compute on demand
         let path = self.shortest_path_with_map(from, to, edge_weights)?;
         
-        // Cache it (LRU-ish: we just insert, the simulation tick clears dirty sources)
+        // Memory safety: Clear cache if it gets too large (> 100,000 entries total)
+        // This prevents WASM heap exhaustion in long sessions with massive networks.
+        if self.cached_paths.len() > 1000 { // 1000 source nodes
+             let total_paths: usize = self.cached_paths.values().map(|m| m.len()).sum();
+             if total_paths > 100_000 {
+                 self.cached_paths.clear();
+             }
+        }
+
+        // Cache it
         self.cached_paths
             .entry(from)
             .or_default()

@@ -22,9 +22,10 @@ impl WasmBridge {
         south: f64,
         east: f64,
         north: f64,
+        min_level: u8,
     ) -> js_sys::Array {
         let arrays =
-            gt_bridge::queries::build_infra_arrays_viewport(&self.world, west, south, east, north);
+            gt_bridge::queries::build_infra_arrays_viewport(&self.world, west, south, east, north, min_level);
         self.pack_infra_arrays(arrays)
     }
 
@@ -57,9 +58,10 @@ impl WasmBridge {
         south: f64,
         east: f64,
         north: f64,
+        min_level: u8,
     ) -> js_sys::Array {
         let arrays =
-            gt_bridge::queries::build_edge_arrays_viewport(&self.world, west, south, east, north);
+            gt_bridge::queries::build_edge_arrays_viewport(&self.world, west, south, east, north, min_level);
         self.pack_edge_arrays(arrays)
     }
 

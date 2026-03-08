@@ -169,54 +169,51 @@ fn build_downlinks(
     world: &mut GameWorld,
     sats: &[(EntityId, f64, f64, f64, EntityId, u32, u32)],
 ) {
-    // Collect ground stations
-    let ground_stations: Vec<(EntityId, f64, f64, EntityId)> = world
-        .infra_nodes
-        .iter()
-        .filter(|(_, node)| node.node_type.is_satellite_ground_station())
-        .map(|(id, _node)| {
-            let pos = world.positions.get(id).cloned().unwrap_or_default();
-            let owner = world.ownerships.get(id).map(|o| o.owner).unwrap_or(0);
-            (*id, pos.x, pos.y, owner)
-        })
-        .collect();
-
-    if ground_stations.is_empty() {
+    if world.spatial_index.size() == 0 {
         return;
     }
 
     for (sat_id, sat_lon, sat_lat, sat_alt, _, _, _) in sats {
+
         let sat_owner = world.ownerships.get(sat_id).map(|o| o.owner).unwrap_or(0);
 
         // Find nearest owned or allied ground station within line-of-sight
         let max_downlink_range = footprint_range_km(*sat_alt);
 
+        // Optimization: Use spatial index to find nearby ground stations
+        let deg_range = max_downlink_range / 111.0;
+        let envelope = rstar::AABB::from_corners(
+            [*sat_lon - deg_range * 2.0, *sat_lat - deg_range],
+            [*sat_lon + deg_range * 2.0, *sat_lat + deg_range]
+        );
+
         let mut best_dist = f64::MAX;
         let mut best_gs = None;
 
-        for (gs_id, gs_lon, gs_lat, gs_owner) in &ground_stations {
+        for spatial_node in world.spatial_index.locate_in_envelope(&envelope) {
+            let gs_id = spatial_node.id;
+
+            // Look up ground station data
+            let node = match world.infra_nodes.get(&gs_id) {
+                Some(n) if n.node_type.is_satellite_ground_station() => n,
+                _ => continue,
+            };
+
             // Must be owned by same corp or allied
-            if *gs_owner != sat_owner && !are_allied(world, sat_owner, *gs_owner) {
+            if node.owner != sat_owner && !are_allied(world, sat_owner, node.owner) {
                 continue;
             }
 
-            let dist = haversine_distance_km(*sat_lon, *sat_lat, *gs_lon, *gs_lat);
-            if dist < max_downlink_range && dist < best_dist {
+            // Precise distance check
+            let dist = haversine_distance_km(*sat_lon, *sat_lat, spatial_node.pos[0], spatial_node.pos[1]);
+            if dist <= max_downlink_range && dist < best_dist {
                 best_dist = dist;
-                best_gs = Some(*gs_id);
+                best_gs = Some(gs_id);
             }
         }
 
         if let Some(gs_id) = best_gs {
-            let edge_type = match world.satellites.get(sat_id) {
-                Some(s) => match s.orbit_type {
-                    gt_common::types::OrbitType::GEO => EdgeType::GEO_GroundLink,
-                    gt_common::types::OrbitType::MEO => EdgeType::MEO_GroundLink,
-                    _ => EdgeType::SatelliteDownlink,
-                },
-                None => EdgeType::SatelliteDownlink,
-            };
-            create_dynamic_edge(world, *sat_id, gs_id, edge_type);
+            create_dynamic_edge(world, *sat_id, gs_id, EdgeType::SatelliteDownlink);
         }
     }
 }

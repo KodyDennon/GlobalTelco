@@ -451,7 +451,7 @@ fn dispatch_binary_query(bridge: &crate::TauriBridge, kind: BinaryQueryKind) -> 
             binary::pack_infra_arrays(&arrays)
         }
         BinaryQueryKind::InfraNodesViewport(w, s, e, n) => {
-            let arrays = bridge.get_infra_arrays_viewport(w, s, e, n);
+            let arrays = bridge.get_infra_arrays_viewport(w, s, e, n, 0);
             binary::pack_infra_arrays(&arrays)
         }
         BinaryQueryKind::InfraEdges => {
@@ -459,7 +459,7 @@ fn dispatch_binary_query(bridge: &crate::TauriBridge, kind: BinaryQueryKind) -> 
             binary::pack_edge_arrays(&arrays)
         }
         BinaryQueryKind::InfraEdgesViewport(w, s, e, n) => {
-            let arrays = bridge.get_edge_arrays_viewport(w, s, e, n);
+            let arrays = bridge.get_edge_arrays_viewport(w, s, e, n, 0);
             binary::pack_edge_arrays(&arrays)
         }
         BinaryQueryKind::Satellites => {

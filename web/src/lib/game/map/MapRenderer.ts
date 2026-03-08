@@ -464,7 +464,14 @@ export class MapRenderer {
                 this.currentZoom,
             ),
             // Sync binary data before rendering infra layers
-            (() => { dataStore.sync(); return []; })(),
+            (() => { 
+                let minLevel = 0;
+                if (this.currentZoom < 3) minLevel = 3;
+                else if (this.currentZoom < 5) minLevel = 2;
+                else if (this.currentZoom < 7) minLevel = 1;
+                dataStore.sync(minLevel); 
+                return []; 
+            })(),
             // 8. Infrastructure (nodes, edges — above cities)
             ...createInfraLayers({
                 iconAtlas: this.iconAtlas,
@@ -1352,24 +1359,8 @@ export class MapRenderer {
 
     /** Find the terrain type of the cell nearest to the cursor position. */
     private getTerrainAtCursor(): string | null {
-        if (this.cachedCells.length === 0) return null;
-
-        let minDist = Infinity;
-        let nearestTerrain: string | null = null;
-        const cLon = this.cursorLon;
-        const cLat = this.cursorLat;
-
-        for (const cell of this.cachedCells) {
-            const dLon = cell.lon - cLon;
-            const dLat = cell.lat - cLat;
-            const dist = dLon * dLon + dLat * dLat;
-            if (dist < minDist) {
-                minDist = dist;
-                nearestTerrain = cell.terrain;
-            }
-        }
-
-        return nearestTerrain;
+        // Optimization: Use targeted bridge query instead of scanning all cells in JS
+        return bridge.getTerrainAt(this.cursorLon, this.cursorLat);
     }
 
     /** Validate whether a node type can be placed on the given terrain. */
