@@ -240,7 +240,7 @@ export function createInfraLayers(opts: {
         // This avoids calling getPosition/getIcon/getColor for thousands of nodes in JS.
         const nodeCount = visibleNodeIndices.length;
         const positions = new Float32Array(nodeCount * 3);
-        const colors = new Uint8Array(nodeCount * 4);
+        const colors = new Uint8ClampedArray(nodeCount * 4);
         const sizes = new Float32Array(nodeCount);
         const iconIndices = new Uint32Array(nodeCount);
 

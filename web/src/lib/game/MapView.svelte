@@ -187,6 +187,7 @@
 						minY: bounds.getSouth(),
 						maxX: bounds.getEast(),
 						maxY: bounds.getNorth(),
+						zoom: map.getZoom(),
 					});
 					zoomLevel.set(map.getZoom());
 				};

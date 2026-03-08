@@ -18,6 +18,7 @@ class DataStore {
     private lastSyncTick = -1;
     private lastSyncViewport = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
     private lastSyncTime = 0;
+    private lastSyncZoom = 0;
 
     constructor() {
         // Initialize with safe empty defaults from bridge
@@ -38,17 +39,19 @@ class DataStore {
         const now = performance.now();
         const v = get(viewport);
         const info = get(worldInfo);
+        const zoom = Math.round((get(viewport) as any).zoom || 0); // Need to add zoom to viewport store or use a helper
         
         // 1. Skip if no viewport or simulation not ready
         if (!v || v.maxX === 180) return;
 
         // 2. Throttling logic
         const tickChanged = info.tick !== this.lastSyncTick;
+        const zoomChanged = Math.abs(zoom - this.lastSyncZoom) >= 1;
         
         // Calculate viewport movement delta
         const dx = Math.abs(v.minX - this.lastSyncViewport.minX) + Math.abs(v.maxX - this.lastSyncViewport.maxX);
         const dy = Math.abs(v.minY - this.lastSyncViewport.minY) + Math.abs(v.maxY - this.lastSyncViewport.maxY);
-        const movedSignificantly = dx > 0.5 || dy > 0.5; // Roughly half a degree
+        const movedSignificantly = dx > 0.5 || dy > 0.5 || zoomChanged;
 
         // Rate limit: Max 10 syncs per second unless tick changed
         const timeSinceLastSync = now - this.lastSyncTime;
@@ -63,6 +66,7 @@ class DataStore {
         this.lastSyncTick = info.tick;
         this.lastSyncViewport = { ...v };
         this.lastSyncTime = now;
+        this.lastSyncZoom = zoom;
     }
 
     // ── Helper Accessors ────────────────────────────────────────────────

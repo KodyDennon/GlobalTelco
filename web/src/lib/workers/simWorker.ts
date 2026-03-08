@@ -9,10 +9,19 @@ self.onmessage = async (e: MessageEvent) => {
         case 'init':
             await initWasm();
             bridge = new WasmBridge();
-            if (payload?.config) {
-                // bridge.new_game(JSON.stringify(payload.config));
-            }
             self.postMessage({ type: 'initComplete' });
+            break;
+
+        case 'newGame':
+            if (!bridge) return;
+            try {
+                const { config } = e.data;
+                // new_game is a static method that re-initializes the internal world
+                (bridge as any).constructor.new_game(config ? JSON.stringify(config) : undefined);
+                self.postMessage({ type: 'newGameComplete' });
+            } catch (err) {
+                console.error('Worker newGame failed:', err);
+            }
             break;
 
         case 'tick':

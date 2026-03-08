@@ -118,6 +118,7 @@ export class MapRenderer {
     private ghostValid: boolean = true;
     private ghostCost: number | null = null;
     private ghostBuildOptions: BuildOption[] = [];
+    private lastTerrainLookupTime = 0;
 
     // Custom event listener references (for cleanup)
     private mapPanHandler: ((e: Event) => void) | null = null;
@@ -179,7 +180,8 @@ export class MapRenderer {
                 minX: b.getWest(),
                 minY: b.getSouth(),
                 maxX: b.getEast(),
-                maxY: b.getNorth()
+                maxY: b.getNorth(),
+                zoom: this.map.getZoom()
             });
         });
 
@@ -1244,8 +1246,12 @@ export class MapRenderer {
             : [16, 185, 129];
 
         // Find terrain at cursor position from cached cells
-        const cursorTerrain = this.getTerrainAtCursor();
-        this.ghostTerrainType = cursorTerrain;
+        const now = performance.now();
+        if (now - this.lastTerrainLookupTime > 100) {
+            this.ghostTerrainType = this.getTerrainAtCursor();
+            this.lastTerrainLookupTime = now;
+        }
+        const cursorTerrain = this.ghostTerrainType;
 
         // Validate placement based on terrain
         const isValid = this.validateNodePlacement(currentBuildItem, cursorTerrain);

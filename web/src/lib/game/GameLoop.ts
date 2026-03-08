@@ -486,13 +486,37 @@ function yieldToUI(): Promise<void> {
 export async function initGame(config?: Partial<import('$lib/wasm/types').WorldConfig>) {
 	loadingStage.set(0);
 	mapReady.set(false);
-	await bridge.initWasm();
-	loadingStage.set(1);
+	
+	const canUseWorker = workerBridge.isSupported() && !bridge.isNativeSim();
 
-	// Yield so the loading screen renders "Generating World..."
+	if (canUseWorker) {
+		loadingStage.set(1);
+		await yieldToUI();
+		try {
+			await workerBridge.init();
+			await workerBridge.newGame(config);
+			workerBridge.setTickResultHandler(handleWorkerTickResult);
+			
+			bridge.setCommandProxy((json) => workerBridge.sendCommand(json));
+			useWorker = true;
+			console.log('[GameLoop] Pure Worker mode initialized');
+		} catch (e) {
+			console.warn('[GameLoop] Worker init failed, falling back to main thread:', e);
+			await bridge.initWasm();
+			await bridge.newGame(config);
+			useWorker = false;
+		}
+	} else {
+		await bridge.initWasm();
+		loadingStage.set(1);
+		await yieldToUI();
+		await bridge.newGame(config);
+		useWorker = false;
+	}
+
+	loadingStage.set(2);
 	await yieldToUI();
 
-	// Register handlers before any commands can be issued
 	bridge.setErrorHandler((error, context) => {
 		console.error(`WASM error in ${context}: ${error}`);
 		if (context === 'tick') {
@@ -510,50 +534,20 @@ export async function initGame(config?: Partial<import('$lib/wasm/types').WorldC
 		}
 	});
 
-	await bridge.newGame(config);
-	loadingStage.set(2);
-
-	// Yield so the loading screen renders "Initializing Audio..."
-	await yieldToUI();
-
 	await audioManager.init();
-
-	// Start era-appropriate ambient music
 	const startingEra = (config as Record<string, unknown> | undefined)?.starting_era as string | undefined;
 	audioManager.playMusic(configEraToAudioEra(startingEra));
 
-	// Read initial store values from main-thread WASM BEFORE handing off to worker.
-	updateStores();
-	await bridge.fetchGridCells();
-
-	// Try to offload simulation to a Web Worker (Mandatory for browser performance)
-	if (!bridge.isNativeSim()) {
-		if (workerBridge.isSupported()) {
-			try {
-				// Save initial state from main thread, then load into worker
-				const initialState = await bridge.saveGame();
-				await workerBridge.init();
-				await workerBridge.loadGame(initialState);
-				workerBridge.setTickResultHandler(handleWorkerTickResult);
-				// Route all commands through the worker (it owns the authoritative state)
-				bridge.setCommandProxy((json) => workerBridge.sendCommand(json));
-				useWorker = true;
-				console.log('[GameLoop] Sim offloaded to Web Worker');
-			} catch (e) {
-				console.error('[GameLoop] Worker initialization failed:', e);
-				throw new Error('Failed to initialize simulation worker. Please check browser compatibility.');
-			}
-		} else {
-			throw new Error('Web Workers are not supported in this browser. GlobalTelco requires Web Workers for simulation.');
-		}
+	if (useWorker) {
+		workerBridge.requestTick();
+	} else {
+		updateStores();
 	}
-
+	
+	await bridge.fetchGridCells();
 	loadingStage.set(3);
-
-	// Yield so the loading screen renders "Preparing Map..."
 	await yieldToUI();
 
-	// Start paused so player can orient
 	setSpeed(0);
 	showWelcome.set(true);
 	initialized.set(true);

@@ -118,13 +118,31 @@ export async function sendCommand(json: string): Promise<string> {
 }
 
 export async function loadGame(json: string): Promise<void> {
-    // We send a command to load game? Or specific message?
-    // bridge.load_game is a query/command? It's a method on WasmBridge.
-    // Let's assume we can use sendCommand with a special "LoadGame" command if supported,
-    // or add a 'load' message type.
-    // SimWorker needs to handle 'load'.
     if (!worker) return;
-    worker.postMessage({ type: 'load', data: json });
+    return new Promise<void>((resolve) => {
+        const handler = (e: MessageEvent) => {
+            if (e.data.type === 'loadComplete') {
+                worker?.removeEventListener('message', handler);
+                resolve();
+            }
+        };
+        worker?.addEventListener('message', handler);
+        worker?.postMessage({ type: 'load', data: json });
+    });
+}
+
+export async function newGame(config?: any): Promise<void> {
+    if (!worker) return;
+    return new Promise<void>((resolve) => {
+        const handler = (e: MessageEvent) => {
+            if (e.data.type === 'newGameComplete') {
+                worker?.removeEventListener('message', handler);
+                resolve();
+            }
+        };
+        worker?.addEventListener('message', handler);
+        worker?.postMessage({ type: 'newGame', config });
+    });
 }
 
 export async function query(name: string, ...args: any[]): Promise<string> {
