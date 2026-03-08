@@ -216,7 +216,7 @@
 				terrain_roughness: roughness / 100,
 				climate_variation: climate / 100,
 				city_density: density / 100,
-				disaster_frequency: disasterFrequency,
+				disaster_frequency: 0.0,
 				sandbox,
 			};
 			const result = await createWorldDirect(
@@ -413,19 +413,6 @@
 						bind:value={aiCorps}
 					/>
 				</div>
-			</div>
-
-			<div class="form-field">
-				<label for="cw-disaster"
-					>Disaster Severity: {disasterSeverity}</label
-				>
-				<input
-					id="cw-disaster"
-					type="range"
-					min="1"
-					max="10"
-					bind:value={disasterSeverity}
-				/>
 			</div>
 
 			<div class="form-field">

@@ -101,7 +101,6 @@
 		population: 'Show population density — dark (sparse) to bright yellow (dense). Build near population!',
 		demand: 'Show telecom demand intensity — blue (low) to red (high)',
 		coverage: 'Show network coverage — red (none) to green (full)',
-		disaster: 'Show disaster risk — green (safe) to red (dangerous)',
 		congestion: 'Show network congestion — green (free) to red (full)',
 		traffic: 'Show traffic flow — blue (low) to white (high)',
 		market_share: 'Show market share — regions colored by dominant corporation',
@@ -121,7 +120,6 @@
 		{ key: 'demand', label: 'Demand' },
 		{ key: 'coverage', label: 'Cover' },
 		{ key: 'coverage_overlap', label: 'Overlap', cls: 'overlap' },
-		{ key: 'disaster', label: 'Risk', cls: 'disaster' },
 		{ key: 'congestion', label: 'Congest', cls: 'congestion' },
 		{ key: 'traffic', label: 'Traffic', cls: 'traffic' },
 		{ key: 'market_share', label: 'Market', cls: 'market-share' },
@@ -547,16 +545,6 @@
 	.overlay-btn.population.active {
 		background: rgba(245, 208, 96, 0.2);
 		color: #f5d060;
-	}
-
-	.overlay-btn.disaster {
-		color: var(--red);
-		font-weight: 900;
-	}
-
-	.overlay-btn.disaster.active {
-		background: rgba(239, 68, 68, 0.2);
-		color: var(--red);
 	}
 
 	.overlay-btn.congestion {

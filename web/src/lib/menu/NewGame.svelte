@@ -150,7 +150,7 @@
 			difficulty,
 			map_size: mapSize,
 			ai_corporations: aiCount,
-			disaster_frequency: disasterFrequency,
+			disaster_frequency: 0.0,
 			sandbox: sandboxMode,
 			use_real_earth: isRealEarth,
 			corp_name: corpName || 'Player Corp',
@@ -267,23 +267,6 @@
 						/>
 						<span class="slider-value">{aiCount}</span>
 					</div>
-				</div>
-			</div>
-
-			<div class="form-group">
-				<label for="disaster-severity">
-					{$tr('menu.disaster_severity')}: {disasterSeverity}
-					<span class="disaster-label">{disasterLabel}</span>
-				</label>
-				<div class="slider-row">
-					<input
-						id="disaster-severity"
-						type="range"
-						min="1"
-						max="10"
-						bind:value={disasterSeverity}
-					/>
-					<span class="slider-value">{disasterSeverity}</span>
 				</div>
 			</div>
 

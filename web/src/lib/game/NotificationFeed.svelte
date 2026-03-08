@@ -12,8 +12,6 @@
 
 	// Event categories mapped from GameEvent variant names
 	const CATEGORY_MAP: Record<string, string> = {
-		DisasterStruck: 'disaster',
-		InfrastructureDamaged: 'disaster',
 		ConstructionStarted: 'infra',
 		ConstructionCompleted: 'infra',
 		NodeBuilt: 'infra',
@@ -78,8 +76,6 @@
 
 	function getCategoryColor(cat: string): string {
 		switch (cat) {
-			case "disaster":
-				return "var(--red)";
 			case "command-error":
 				return "#f87171";
 			case "infra":
@@ -119,8 +115,6 @@
 		ContractExpired: 'Contract expired',
 		ResearchStarted: 'Research started',
 		ResearchCompleted: 'Research completed',
-		DisasterStruck: 'Disaster struck',
-		InfrastructureDamaged: 'Infrastructure damaged',
 		RepairStarted: 'Repair started',
 		RepairCompleted: 'Repair completed',
 		InsurancePurchased: 'Insurance purchased',
@@ -192,7 +186,7 @@
 		const latest = $notifications[0];
 		if (!latest) return;
 		const cat = getCategory(latest.event);
-		if (cat === "command-error" || cat === "disaster") {
+		if (cat === "command-error") {
 			const text = formatEvent(latest.event);
 			const id = ++toastId;
 			const type = eventType(latest.event);

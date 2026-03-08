@@ -26,10 +26,7 @@
 	import ComingSoon from "$lib/ui/ComingSoon.svelte";
 	import { initialized, playerCorp, regions, notifications, worldInfo } from "$lib/stores/gameState";
 	import { eventType, eventData } from "$lib/wasm/types";
-	import type { ActiveDisaster, ForecastDisaster } from "./WeatherLayer";
-	import { DISASTER_DISPLAY_DURATION, computeDisasterForecasts, convertWeatherForecasts } from "./WeatherLayer";
 	import * as bridge from "$lib/wasm/bridge";
-	import DisasterAlert from "./DisasterAlert.svelte";
 	import {
 		activePanelGroup,
 		activeGroupTab,
@@ -62,126 +59,6 @@
 	let screenshotManager: ScreenshotManager | null = null;
 	let audioManager: AudioManager | null = null;
 	let spatialAudio: SpatialAudioController | null = null;
-
-	// ── Active disaster + weather tracking ───────────────────────────────────
-	// Disasters and weather events are extracted from notifications and kept
-	// alive for DISASTER_DISPLAY_DURATION ticks.
-	let activeDisasters: ActiveDisaster[] = $state([]);
-	let processedDisasterIds = new Set<string>();
-
-	// Derive active disasters from notifications: scan for DisasterStruck + WeatherStarted events
-	$effect(() => {
-		const notifs = $notifications;
-		const currentTick = $worldInfo.tick;
-		const regionList = $regions;
-		let updated = false;
-		let currentDisasters = untrack(() => activeDisasters);
-
-		// Add new disasters and weather events from recent notifications
-		for (const notif of notifs) {
-			const type = eventType(notif.event);
-			const data = eventData(notif.event);
-
-			if (type === 'DisasterStruck') {
-				const id = `disaster-${notif.tick}-${data.region}`;
-				if (processedDisasterIds.has(id)) continue;
-				processedDisasterIds.add(id);
-
-				const region = regionList.find(r => r.id === (data.region as number));
-				const lon = region?.center_lon ?? 0;
-				const lat = region?.center_lat ?? 0;
-				const regionName = region?.name ?? `Region ${data.region}`;
-
-				currentDisasters = [...currentDisasters, {
-					id,
-					disasterType: (data.disaster_type as string) ?? 'Unknown',
-					lon,
-					lat,
-					severity: (data.severity as number) ?? 0.3,
-					startTick: notif.tick,
-					regionName,
-					regionId: (data.region as number) ?? 0,
-					affectedCount: (data.affected_nodes as number) ?? 0,
-				}];
-				updated = true;
-			} else if (type === 'WeatherStarted') {
-				const id = `weather-${notif.tick}-${data.region}`;
-				if (processedDisasterIds.has(id)) continue;
-				processedDisasterIds.add(id);
-
-				const region = regionList.find(r => r.id === (data.region as number));
-				const lon = region?.center_lon ?? 0;
-				const lat = region?.center_lat ?? 0;
-				const regionName = region?.name ?? `Region ${data.region}`;
-
-				currentDisasters = [...currentDisasters, {
-					id,
-					disasterType: (data.weather_type as string) ?? 'Weather',
-					lon,
-					lat,
-					severity: (data.severity as number) ?? 0.2,
-					startTick: notif.tick,
-					regionName,
-					regionId: (data.region as number) ?? 0,
-					affectedCount: 0, // weather doesn't have instant damage count
-				}];
-				updated = true;
-			}
-		}
-
-		// Prune expired disasters
-		const initialCount = currentDisasters.length;
-		currentDisasters = currentDisasters.filter(
-			d => (currentTick - d.startTick) < DISASTER_DISPLAY_DURATION
-		);
-		if (currentDisasters.length !== initialCount) updated = true;
-
-		if (updated) {
-			activeDisasters = currentDisasters;
-
-			// Dispatch to MapView for weather layer + infra layer visualization
-			window.dispatchEvent(new CustomEvent('active-disasters-update', {
-				detail: activeDisasters,
-			}));
-		}
-	});
-
-	// ── Weather + disaster forecast tracking ─────────────────────────────────
-	// Recompute forecasts every 10 ticks. Uses server-side weather forecasts
-	// (deterministic RNG look-ahead) merged with client-side disaster risk heuristic.
-	let disasterForecasts: ForecastDisaster[] = $state([]);
-	let lastForecastBucket = -1;
-
-	$effect(() => {
-		const currentTick = $worldInfo.tick;
-		const regionList = $regions;
-		const bucket = Math.floor(currentTick / 10);
-		if (bucket === lastForecastBucket) return;
-		lastForecastBucket = bucket;
-
-		// Server-side weather forecasts (authoritative, based on deterministic RNG)
-		let serverForecasts: ForecastDisaster[] = [];
-		if (bridge.isInitialized()) {
-			try {
-				const weatherData = bridge.getWeatherForecasts();
-				serverForecasts = convertWeatherForecasts(weatherData, regionList, currentTick);
-			} catch {
-				// Fall through to client-side fallback
-			}
-		}
-
-		// Client-side disaster risk heuristic (fallback / supplement)
-		const clientForecasts = computeDisasterForecasts(regionList, bucket);
-
-		// Merge: server forecasts take priority, add client forecasts for regions
-		// not already covered by server-side predictions
-		const coveredRegions = new Set(serverForecasts.map(f => f.regionId));
-		const supplemental = clientForecasts.filter(f => !coveredRegions.has(f.regionId));
-
-		disasterForecasts = [...serverForecasts, ...supplemental]
-			.sort((a, b) => b.probability - a.probability)
-			.slice(0, 8); // limit to top 8 forecasts
-	});
 
 	onMount(() => {
 		// Keyboard shortcuts
@@ -231,15 +108,7 @@
 				effectManager?.triggerEffect(detail.event);
 				// Play SFX for specific events
 				const type = detail.event.type ?? '';
-				if (type === 'EarthquakeStruck' || type === 'Earthquake') {
-					audioManager?.playSfx('earthquake');
-				} else if (type === 'StormStruck' || type === 'Storm') {
-					audioManager?.playSfx('storm');
-				} else if (type === 'FloodStruck' || type === 'Flood') {
-					audioManager?.playSfx('flood');
-				} else if (type === 'CyberAttack' || type === 'CyberAttackStruck') {
-					audioManager?.playSfx('cyber_glitch');
-				} else if (type === 'ConstructionComplete') {
+				if (type === 'ConstructionComplete') {
 					audioManager?.playSfx('build');
 				} else if (type === 'ResearchComplete') {
 					audioManager?.playSfx('research_complete');
@@ -350,14 +219,6 @@
 				{ color: '#22c55e', label: '100%' },
 			]
 		},
-		disaster: {
-			title: 'Disaster Risk',
-			gradient: [
-				{ color: '#22c55e', label: 'Low' },
-				{ color: '#eab308', label: 'Med' },
-				{ color: '#ef4444', label: 'High' },
-			]
-		},
 		congestion: {
 			title: 'Congestion',
 			gradient: [
@@ -399,7 +260,6 @@
 			</div>
 		{/if}
 		<HUD />
-		<DisasterAlert disasters={activeDisasters} forecasts={disasterForecasts} />
 		<CableDrawingMode />
 		<DiplomaticContextMenu />
 		<InfoPanel />
@@ -509,7 +369,6 @@
 							<div class="hk"><kbd>O</kbd> Ownership</div>
 							<div class="hk"><kbd>D</kbd> Demand</div>
 							<div class="hk"><kbd>C</kbd> Coverage</div>
-							<div class="hk"><kbd>R</kbd> Risk</div>
 							<div class="hk"><kbd>G</kbd> Congestion</div>
 							<div class="hk"><kbd>F</kbd> Traffic Flow</div>
 						</div>

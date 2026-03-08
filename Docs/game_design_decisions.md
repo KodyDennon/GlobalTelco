@@ -6,30 +6,11 @@ Concrete design decisions for the GlobalTelco infrastructure empire builder. Thi
 
 ## Current Implementation Status
 
-### Implemented
-- World/map system (terrain, procedural generation, Real Earth mode)
-- All 6 eras with 41 NodeTypes and 26 EdgeTypes
-- Build menu (radial + hotbar), free placement on map
-- Contracts, mergers, bankruptcy
-- Patents (filing, licensing), independent research (standard + premium tiers)
-- AI archetypes (4 types, 4 strategies), dynamic spawning, mergers, bankruptcy
-- Disasters, insurance, repair
-- Co-ownership proposals and voting
-- Spectrum allocation system
-- Espionage/sabotage (covert ops), lobbying
-- Stock market (IPO, share pricing, dividends)
-- Sandbox mode (infinite money, all tech unlocked, 32x speed)
-- Management scaling (small/medium/large company tiers)
-- Regional pricing (Budget/Standard/Premium/Custom per region)
-- Maintenance priority system (Critical/Standard/Low/Deferred)
-- Government grants
-- Alliance system (formation, shared routing, trust scores)
-- Legal system (lawsuits: sabotage, ownership, patent, regulatory)
-- Multiplayer (WebSocket, delta sync, ghost entities, speed voting, admin)
+### Suspended (Performance Optimized)
+- **Disasters & Weather** — Currently disabled in both simulation and rendering to ensure maximum performance and stability. All disaster-related UI (severity sliders, alerts, overlays) has been removed to streamline the experience.
 
 ### Not Yet Implemented
 - Submarine cable mechanics (partial — nodes exist but no ship/waypoint system)
-- Weather system (partial — disasters exist but no weather forecast/patterns)
 - Spectrum interference modeling (not started)
 
 ### Recently Completed
@@ -249,15 +230,11 @@ Complexity scales with company size:
 
 ---
 
-## 11. Disasters & World Events
+## 11. Disasters & World Events (Currently Disabled)
 
 - **Realistic simulation:** Earthquakes, hurricanes, flooding, political instability, regulation changes, market crashes.
-- **Severity slider:** Player-controlled, scale 1-10.
-  - 1 = Almost no disasters, stable world
-  - 5 = Realistic probability of natural and political events
-  - 10 = Constant crises, maximum chaos
-- **Effects:** Infrastructure damage/destruction, service disruption, population displacement, economic impact.
-- **Response:** Repair crews (if you have them staffed), insurance payouts, emergency contracts.
+- **Status:** This system is currently **OFF** to optimize simulation tick times and GPU rendering performance.
+- **Effects (when enabled):** Infrastructure damage/destruction, service disruption, population displacement, economic impact.
 
 ---
 
