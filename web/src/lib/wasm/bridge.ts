@@ -702,6 +702,9 @@ export function getInfraNodesTyped(): InfraNodesTyped {
 }
 
 export function getInfraNodesTypedViewport(west: number, south: number, east: number, north: number, minLevel: number = 0): InfraNodesTyped {
+    if (_latestTickResult?.infraNodes) {
+        return _latestTickResult.infraNodes;
+    }
     if (useNativeSim) return tauriBridge.getCachedInfraNodesTypedViewport(west, south, east, north, minLevel);
     try {
         if (bridge && typeof bridge.get_infra_nodes_typed_viewport === 'function') {
@@ -767,6 +770,9 @@ export function getInfraEdgesTyped(): InfraEdgesTyped {
 }
 
 export function getInfraEdgesTypedViewport(west: number, south: number, east: number, north: number, minLevel: number = 0): InfraEdgesTyped {
+    if (_latestTickResult?.infraEdges) {
+        return _latestTickResult.infraEdges;
+    }
     if (useNativeSim) return tauriBridge.getCachedInfraEdgesTypedViewport(west, south, east, north, minLevel);
     try {
         if (bridge && typeof bridge.get_infra_edges_typed_viewport === 'function') {

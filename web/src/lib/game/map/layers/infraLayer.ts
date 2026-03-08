@@ -207,7 +207,10 @@ export function createInfraLayers(opts: {
     
     const layers: Layer[] = [];
 
-    // Edges
+    // Edges (Binary Layer)
+    // For edges, we use the binary format for attributes.
+    // Note: PathLayer with waypoints is tricky in binary mode (requires flattened path indices).
+    // For now, we keep PathLayer with data mapping but optimize update triggers.
     layers.push(new PathLayer({
         id: 'infra-edges',
         data: visibleEdgeIndices,
@@ -226,38 +229,74 @@ export function createInfraLayers(opts: {
         autoHighlight: true,
         // Update triggers are important since we use external dataStore
         updateTriggers: {
-            getPath: [edges.ids, edges.waypoints_data], // Re-eval if data changes
+            getPath: [edges.count, edges.ids], // Only re-eval if data count changes
             getColor: [edges.owners, playerCorpId],
         }
     }));
 
-    // Nodes (Icon or Scatterplot)
+    // Nodes (Binary Icon Layer)
     if (iconAtlasReady && iconAtlas) {
+        // Optimized: Construct binary attributes for the IconLayer
+        // This avoids calling getPosition/getIcon/getColor for thousands of nodes in JS.
+        const nodeCount = visibleNodeIndices.length;
+        const positions = new Float32Array(nodeCount * 3);
+        const colors = new Uint8Array(nodeCount * 4);
+        const sizes = new Float32Array(nodeCount);
+        const iconIndices = new Uint32Array(nodeCount);
+
+        const nodeTypes = bridge.getStaticDefinitions().node_types;
+
+        for (let j = 0; j < nodeCount; j++) {
+            const i = visibleNodeIndices[j];
+            
+            // Position (X, Y, Z=0)
+            positions[j * 3] = nodes.positions[i * 2];
+            positions[j * 3 + 1] = nodes.positions[i * 2 + 1];
+            positions[j * 3 + 2] = 0;
+
+            // Color
+            const color = getNodeColor(i);
+            colors[j * 4] = color[0];
+            colors[j * 4 + 1] = color[1];
+            colors[j * 4 + 2] = color[2];
+            colors[j * 4 + 3] = color[3];
+
+            // Size
+            const lvl = nodes.network_levels[i];
+            const sizeValues = [20, 28, 36, 48, 64];
+            sizes[j] = sizeValues[Math.min(lvl, 4)];
+
+            // Icon Index
+            // Note: IconLayer in binary mode expects icon indices into the atlas
+            // We'll approximate with the node_type index for now or mapping if available
+            iconIndices[j] = nodes.node_types[i];
+        }
+
         layers.push(new IconLayer({
             id: 'infra-nodes',
-            data: visibleNodeIndices,
-            getPosition: (i: number): [number, number] => getNodePosition(i),
-            getIcon: (i: number): string => toIconKey(dataStore.getNodeType(nodes.node_types[i])),
+            data: {
+                length: nodeCount,
+                attributes: {
+                    getPosition: { value: positions, size: 3 },
+                    getColor: { value: colors, size: 4 },
+                    getSize: { value: sizes, size: 1 },
+                    // Mapping icon index to the atlas key
+                    getIcon: { value: iconIndices, size: 1 }
+                }
+            },
             iconAtlas: iconAtlas as any,
             iconMapping: iconMapping,
-            getSize: (i: number): number => {
-                const lvl = nodes.network_levels[i];
-                // Map level 0-4 to size. 
-                // Local=20, Regional=28, National=36, Continental=48, Backbone=64
-                const sizes = [20, 28, 36, 48, 64];
-                return sizes[Math.min(lvl, 4)];
+            // Custom accessor for binary icon mapping
+            getIcon: (d: any) => {
+                const typeId = d.index !== undefined ? iconIndices[d.index] : 0;
+                return toIconKey(nodeTypes[typeId]);
             },
             sizeMinPixels: 10,
             sizeMaxPixels: 64,
-            getColor: (i: number): [number, number, number, number] => getNodeColor(i),
             pickable: true,
             autoHighlight: true,
-            updateTriggers: {
-                getPosition: [nodes.positions],
-                getColor: [nodes.owners, nodes.stats, playerCorpId],
-                getIcon: [nodes.node_types],
-            }
-        }));
+            parameters: { depthTest: false }
+        } as any));
     } else {
         layers.push(new ScatterplotLayer({
             id: 'infra-nodes-fallback',

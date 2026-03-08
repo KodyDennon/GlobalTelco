@@ -418,6 +418,13 @@ export class MapRenderer {
     private renderLayers(): void {
         if (!this.overlay || !this.mapBuilt) return;
 
+        // Optimization: Sync binary data once per render cycle with zoom-aware filtering
+        let minLevel = 0;
+        if (this.currentZoom < 3) minLevel = 3;
+        else if (this.currentZoom < 5) minLevel = 2;
+        else if (this.currentZoom < 7) minLevel = 1;
+        dataStore.sync(minLevel);
+
         // Terrain base: vector polygons for procgen, bitmap for real earth
         const terrainLayers: (Layer | Layer[] | null)[] = this.isRealEarth
             ? [createLandLayer(this.terrainCanvas, this.isRealEarth)]
@@ -463,15 +470,6 @@ export class MapRenderer {
                 [], // Legacy argument, now using DataStore internally
                 this.currentZoom,
             ),
-            // Sync binary data before rendering infra layers
-            (() => { 
-                let minLevel = 0;
-                if (this.currentZoom < 3) minLevel = 3;
-                else if (this.currentZoom < 5) minLevel = 2;
-                else if (this.currentZoom < 7) minLevel = 1;
-                dataStore.sync(minLevel); 
-                return []; 
-            })(),
             // 8. Infrastructure (nodes, edges — above cities)
             ...createInfraLayers({
                 iconAtlas: this.iconAtlas,
