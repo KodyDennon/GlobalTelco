@@ -37,8 +37,8 @@ import { buildIconAtlas } from './iconAtlas';
 import { buildTerrainBitmapAsync, disposeTerrainWorker } from './terrainBitmap';
 import { CORP_COLORS, SATELLITE_COLORS, TERRAIN_OVERLAY_COLORS, NODE_TIER_SIZE } from './constants';
 import { satelliteMapStyle, procgenMapStyle } from './tileConfig';
-import { handleMapMouseMove, setTooltipDisasters, type TooltipHit } from './tooltip';
-import { createWeatherLayers, computeDisasterForecasts, convertWeatherForecasts, type ActiveDisaster, type ForecastDisaster } from '../WeatherLayer';
+import { handleMapMouseMove, type TooltipHit } from './tooltip';
+import { createWeatherLayers } from '../WeatherLayer';
 import { createCablePreviewLayers, type CableDrawingState } from './layers/cablePreviewLayer';
 import { createWaypointEditorLayers, type WaypointEditorState } from './layers/waypointEditorLayer';
 import { createOverlayLayers as createSpectrumAndOtherOverlays, createDensityOverlayLayers } from './layers/overlayLayers';
@@ -84,9 +84,6 @@ export class MapRenderer {
     private gameTick: number = 0;
     private weatherEnabled: boolean = true;
     private dayNightCycle: boolean = true;
-    private activeDisasters: ActiveDisaster[] = [];
-    private forecastDisasters: ForecastDisaster[] = [];
-    private lastForecastTick: number = -1;
 
     // Cable drawing preview state
     private cableDrawingState: CableDrawingState = {
@@ -454,7 +451,6 @@ export class MapRenderer {
                 pitch: this.pitch,
                 hoveredNodeId: this.hoveredNodeId,
                 playerCorpId: bridge.isInitialized() ? bridge.getPlayerCorpId() : undefined,
-                activeDisasters: this.activeDisasters,
                 bounds: (() => {
                     if (!this.map) return undefined;
                     const b = this.map.getBounds();
@@ -528,7 +524,7 @@ export class MapRenderer {
                 dayNightCycle: this.dayNightCycle,
                 gameTick: this.gameTick,
                 currentZoom: this.currentZoom,
-            }, this.activeDisasters, this.forecastDisasters),
+            }),
             */
             // 11. Selection/hover highlights
             this.createSelectionLayer(),
@@ -1580,33 +1576,6 @@ export class MapRenderer {
     setDayNightCycle(enabled: boolean): void {
         this.dayNightCycle = enabled;
         this.renderLayers();
-    }
-
-    /** Update active disaster events for weather and vulnerability visualization. */
-    setActiveDisasters(disasters: ActiveDisaster[]): void {
-        this.activeDisasters = disasters;
-        setTooltipDisasters(disasters);
-        // No explicit renderLayers() call needed — the animation loop handles it
-    }
-
-    /** Update forecast disasters (recomputed every 10 ticks for stability).
-     *  Uses server-side weather forecasts when available, falls back to client-side heuristic. */
-    updateForecasts(regions: import('$lib/wasm/types').Region[], currentTick: number): void {
-        // Disabled for performance
-        return;
-        /*
-        // Only recompute every 10 ticks to avoid flicker (seed includes tick)
-        const bucket = Math.floor(currentTick / 10);
-...
-        this.forecastDisasters = [...serverForecasts, ...supplemental]
-            .sort((a, b) => b.probability - a.probability)
-            .slice(0, 8);
-        */
-    }
-
-    /** Get the current forecast disasters (for use by parent components). */
-    getForecasts(): ForecastDisaster[] {
-        return this.forecastDisasters;
     }
 
     /** Update the cable drawing preview state and re-render. */

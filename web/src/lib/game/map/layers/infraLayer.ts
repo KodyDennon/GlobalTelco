@@ -5,7 +5,6 @@ import type { Layer } from '@deck.gl/core';
 import * as bridge from '$lib/wasm/bridge';
 import { dataStore } from '../DataStore';
 import { CORP_COLORS, EDGE_STYLES, NODE_TIER_SIZE, NETWORK_TIER_LABEL, toIconKey } from '../constants';
-import type { ActiveDisaster } from '../../WeatherLayer';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -92,7 +91,6 @@ export function createInfraLayers(opts: {
     pitch: number;
     hoveredNodeId: number | null;
     playerCorpId?: number;
-    activeDisasters?: ActiveDisaster[];
     bounds?: [number, number, number, number];
 }): Layer[] {
     const {
@@ -105,7 +103,6 @@ export function createInfraLayers(opts: {
         pitch,
         hoveredNodeId,
         playerCorpId,
-        activeDisasters,
         bounds,
     } = opts;
 

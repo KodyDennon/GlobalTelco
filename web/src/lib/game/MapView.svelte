@@ -329,13 +329,6 @@
 				};
 				window.addEventListener('cable-drawing-update', handleCableDrawingUpdate);
 
-				// Active disasters relay for weather + vulnerability visualization
-				const handleDisasterUpdate = (e: Event) => {
-					const disasters = (e as CustomEvent).detail;
-					renderer?.setActiveDisasters(disasters);
-				};
-				window.addEventListener('active-disasters-update', handleDisasterUpdate);
-
 				// Mouse move for tooltips
 				container.addEventListener("mousemove", handleMouseMove);
 				container.addEventListener("mouseleave", handleMouseLeave);
@@ -366,7 +359,6 @@
 					window.removeEventListener('minimap-navigate', handleMinimapNavigate);
 					window.removeEventListener('map-fly-to', handleMapFlyTo);
 					window.removeEventListener('cable-drawing-update', handleCableDrawingUpdate);
-					window.removeEventListener('active-disasters-update', handleDisasterUpdate);
 					container?.removeEventListener("mousemove", handleMouseMove);
 					container?.removeEventListener(
 						"mouseleave",

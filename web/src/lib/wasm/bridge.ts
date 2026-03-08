@@ -167,11 +167,11 @@ export function currentTick(): number {
 	}
 }
 
-/** Parse command result JSON for failure notifications. */
-function parseCommandResult(result: string | null | undefined): boolean {
-	if (!result || result.length === 0) return false;
+/** Parse command result for failure notifications. */
+function parseCommandResult(result: any): boolean {
+	if (!result) return false;
 	try {
-		const notifs = JSON.parse(result);
+		const notifs = typeof result === 'string' ? JSON.parse(result) : result;
 		if (Array.isArray(notifs) && notifs.length > 0) {
 			onCommandNotifications(notifs);
 			return notifs.some((n: any) => {
@@ -240,14 +240,28 @@ export async function applyBatch(ops: unknown[]): Promise<void> {
 	}
 }
 
+/** Helper to parse JSON only if it's a string. */
+function parseJsonIfNeeded(data: any, fallback: any): any {
+	if (data === undefined || data === null) return fallback;
+	if (typeof data === 'string') {
+		try {
+			return JSON.parse(data);
+		} catch (e) {
+			console.error('[Bridge] JSON parse failed:', e, data.substring(0, 100));
+			return fallback;
+		}
+	}
+	return data;
+}
+
 export function getWorldInfo(): WorldInfo {
 	if (_latestTickResult?.info) {
 		return _latestTickResult.info;
 	}
 	if (useNativeSim) return tauriBridge.getCachedWorldInfo();
 	try {
-		const json = bridge?.get_world_info() ?? '{}';
-		return JSON.parse(json);
+		const res = bridge?.get_world_info();
+		return parseJsonIfNeeded(res, {} as WorldInfo);
 	} catch (e) {
 		onBridgeError(e, 'getWorldInfo');
 		return {} as WorldInfo;
@@ -261,8 +275,8 @@ export function getCorporationData(corpId: number): CorporationData {
 	}
 	if (useNativeSim) return tauriBridge.getCachedCorporationData(corpId);
 	try {
-		const json = bridge?.get_corporation_data(BigInt(corpId)) ?? '{}';
-		return JSON.parse(json);
+		const res = bridge?.get_corporation_data(BigInt(corpId));
+		return parseJsonIfNeeded(res, {} as CorporationData);
 	} catch (e) {
 		onBridgeError(e, 'getCorporationData');
 		return {} as CorporationData;
@@ -274,8 +288,8 @@ export function getCorporationData(corpId: number): CorporationData {
 export function getRegions(): Region[] {
 	if (useNativeSim) return tauriBridge.getCachedRegions();
 	try {
-		const json = bridge?.get_regions() ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_regions();
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getRegions');
 		return [];
@@ -293,8 +307,8 @@ export function isRealEarth(): boolean {
 export function getCities(): City[] {
 	if (useNativeSim) return tauriBridge.getCachedCities();
 	try {
-		const json = bridge?.get_cities() ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_cities();
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getCities');
 		return [];
@@ -304,8 +318,8 @@ export function getCities(): City[] {
 export function getInfrastructureList(corpId: number): InfrastructureList {
 	if (useNativeSim) return tauriBridge.getCachedInfrastructureList(corpId);
 	try {
-		const json = bridge?.get_infrastructure_list(BigInt(corpId)) ?? '{"nodes":[],"edges":[]}';
-		return JSON.parse(json);
+		const res = bridge?.get_infrastructure_list(BigInt(corpId));
+		return parseJsonIfNeeded(res, { nodes: [], edges: [] });
 	} catch (e) {
 		onBridgeError(e, 'getInfrastructureList');
 		return { nodes: [], edges: [] };
@@ -320,8 +334,8 @@ export function getVisibleEntities(
 ): VisibleEntities {
 	if (useNativeSim) return { nodes: [], cities: [] };
 	try {
-		const json = bridge?.get_visible_entities(minX, minY, maxX, maxY) ?? '{"nodes":[],"cities":[]}';
-		return JSON.parse(json);
+		const res = bridge?.get_visible_entities(minX, minY, maxX, maxY);
+		return parseJsonIfNeeded(res, { nodes: [], cities: [] });
 	} catch (e) {
 		onBridgeError(e, 'getVisibleEntities');
 		return { nodes: [], cities: [] };
@@ -337,8 +351,8 @@ export function getNotifications(): Notification[] {
 
 	if (useNativeSim) return tauriBridge.getCachedNotifications();
 	try {
-		const json = bridge?.get_notifications() ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_notifications();
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getNotifications');
 		return [];
@@ -371,8 +385,8 @@ export function setPlayerCorpId(id: number): void {
 export function getAllCorporations(): CorpSummary[] {
 	if (useNativeSim) return tauriBridge.getCachedAllCorporations();
 	try {
-		const json = bridge?.get_all_corporations() ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_all_corporations();
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getAllCorporations');
 		return [];
@@ -381,12 +395,12 @@ export function getAllCorporations(): CorpSummary[] {
 
 export function getCellCoverage(): CellCoverage[] {
 	if (_latestTickResult?.cellCoverage) {
-		try { return JSON.parse(_latestTickResult.cellCoverage); } catch { }
+		return parseJsonIfNeeded(_latestTickResult.cellCoverage, []);
 	}
 	if (useNativeSim) return tauriBridge.getCachedCellCoverage();
 	try {
-		const json = bridge?.get_cell_coverage() ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_cell_coverage();
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getCellCoverage');
 		return [];
@@ -395,12 +409,12 @@ export function getCellCoverage(): CellCoverage[] {
 
 export function getAllInfrastructure(): AllInfrastructure {
 	if (_latestTickResult?.allInfra) {
-		try { return JSON.parse(_latestTickResult.allInfra); } catch { }
+		return parseJsonIfNeeded(_latestTickResult.allInfra, { nodes: [], edges: [] });
 	}
 	if (useNativeSim) return tauriBridge.getCachedAllInfrastructure();
 	try {
-		const json = bridge?.get_all_infrastructure() ?? '{"nodes":[],"edges":[]}';
-		return JSON.parse(json);
+		const res = bridge?.get_all_infrastructure();
+		return parseJsonIfNeeded(res, { nodes: [], edges: [] });
 	} catch (e) {
 		onBridgeError(e, 'getAllInfrastructure');
 		return { nodes: [], edges: [] };
@@ -417,19 +431,18 @@ export async function fetchGridCells(): Promise<GridCell[]> {
 	}
 	if (_commandProxy) { // Worker mode
 		try {
-			const json = await workerBridge.query('get_grid_cells');
-			const data = JSON.parse(json);
-			if (data.length > 0) _cachedGridCells = data;
-			return data;
+			const data = await workerBridge.query('get_grid_cells');
+			if (data && data.length > 0) _cachedGridCells = data;
+			return data || [];
 		} catch (e) {
 			onBridgeError(e, 'fetchGridCells');
 			return [];
 		}
 	}
 	try {
-		const json = bridge?.get_grid_cells() ?? '[]';
-		const data = JSON.parse(json);
-		if (data.length > 0) _cachedGridCells = data;
+		const res = bridge?.get_grid_cells();
+		const data = parseJsonIfNeeded(res, []);
+		if (data && data.length > 0) _cachedGridCells = data;
 		return data;
 	} catch (e) {
 		onBridgeError(e, 'getGridCells');
@@ -444,8 +457,8 @@ export function getGridCells(): GridCell[] {
 export function getContracts(corpId: number): ContractInfo[] {
 	if (useNativeSim) return tauriBridge.getCachedContracts(corpId);
 	try {
-		const json = bridge?.get_contracts(BigInt(corpId)) ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_contracts(BigInt(corpId));
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getContracts');
 		return [];
@@ -455,8 +468,8 @@ export function getContracts(corpId: number): ContractInfo[] {
 export function getGrants(corpId: number): GrantInfo[] {
 	if (useNativeSim) return tauriBridge.getCachedGrants(corpId);
 	try {
-		const json = bridge?.get_grants(BigInt(corpId)) ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_grants(BigInt(corpId));
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getGrants');
 		return [];
@@ -466,8 +479,8 @@ export function getGrants(corpId: number): GrantInfo[] {
 export function getDebtInstruments(corpId: number): DebtInfo[] {
 	if (useNativeSim) return tauriBridge.getCachedDebtInstruments(corpId);
 	try {
-		const json = bridge?.get_debt_instruments(BigInt(corpId)) ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_debt_instruments(BigInt(corpId));
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getDebtInstruments');
 		return [];
@@ -477,8 +490,8 @@ export function getDebtInstruments(corpId: number): DebtInfo[] {
 export function getResearchState(): ResearchInfo[] {
 	if (useNativeSim) return tauriBridge.getCachedResearchState();
 	try {
-		const json = bridge?.get_research_state() ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_research_state();
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getResearchState');
 		return [];
@@ -488,8 +501,8 @@ export function getResearchState(): ResearchInfo[] {
 export function getBuildableNodes(lon: number, lat: number): BuildOption[] {
 	if (useNativeSim) return tauriBridge.getCachedBuildableNodes(lon, lat);
 	try {
-		const json = bridge?.get_buildable_nodes(lon, lat) ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_buildable_nodes(lon, lat);
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getBuildableNodes');
 		return [];
@@ -499,8 +512,8 @@ export function getBuildableNodes(lon: number, lat: number): BuildOption[] {
 export function getBuildableEdges(sourceId: number): EdgeTarget[] {
 	if (useNativeSim) return tauriBridge.getCachedBuildableEdges(sourceId);
 	try {
-		const json = bridge?.get_buildable_edges(BigInt(sourceId)) ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_buildable_edges(BigInt(sourceId));
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getBuildableEdges');
 		return [];
@@ -537,8 +550,8 @@ export async function loadGame(data: string): Promise<void> {
 export function getAuctions(): AuctionInfo[] {
 	if (useNativeSim) return tauriBridge.getCachedAuctions();
 	try {
-		const json = bridge?.get_auctions() ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_auctions();
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getAuctions');
 		return [];
@@ -548,8 +561,8 @@ export function getAuctions(): AuctionInfo[] {
 export function getAcquisitionProposals(): AcquisitionInfo[] {
 	if (useNativeSim) return tauriBridge.getCachedAcquisitionProposals();
 	try {
-		const json = bridge?.get_acquisition_proposals() ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_acquisition_proposals();
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getAcquisitionProposals');
 		return [];
@@ -559,8 +572,8 @@ export function getAcquisitionProposals(): AcquisitionInfo[] {
 export function getCovertOps(corpId: number): CovertOpsInfo {
 	if (useNativeSim) return tauriBridge.getCachedCovertOps(corpId);
 	try {
-		const json = bridge?.get_covert_ops(BigInt(corpId)) ?? '{}';
-		return JSON.parse(json);
+		const res = bridge?.get_covert_ops(BigInt(corpId));
+		return parseJsonIfNeeded(res, { security_level: 0, active_missions: 0, detection_count: 0 });
 	} catch (e) {
 		onBridgeError(e, 'getCovertOps');
 		return { security_level: 0, active_missions: 0, detection_count: 0 };
@@ -570,8 +583,8 @@ export function getCovertOps(corpId: number): CovertOpsInfo {
 export function getLobbyingCampaigns(corpId: number): LobbyingInfo[] {
 	if (useNativeSim) return tauriBridge.getCachedLobbyingCampaigns(corpId);
 	try {
-		const json = bridge?.get_lobbying_campaigns(BigInt(corpId)) ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_lobbying_campaigns(BigInt(corpId));
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getLobbyingCampaigns');
 		return [];
@@ -581,8 +594,8 @@ export function getLobbyingCampaigns(corpId: number): LobbyingInfo[] {
 export function getAchievements(corpId: number): AchievementsInfo {
 	if (useNativeSim) return tauriBridge.getCachedAchievements(corpId);
 	try {
-		const json = bridge?.get_achievements(BigInt(corpId)) ?? '{"unlocked":[],"progress":{}}';
-		return JSON.parse(json);
+		const res = bridge?.get_achievements(BigInt(corpId));
+		return parseJsonIfNeeded(res, { unlocked: [], progress: {} });
 	} catch (e) {
 		onBridgeError(e, 'getAchievements');
 		return { unlocked: [], progress: {} };
@@ -592,8 +605,8 @@ export function getAchievements(corpId: number): AchievementsInfo {
 export function getVictoryState(): VictoryInfo {
 	if (useNativeSim) return tauriBridge.getCachedVictoryState();
 	try {
-		const json = bridge?.get_victory_state() ?? '{}';
-		return JSON.parse(json);
+		const res = bridge?.get_victory_state();
+		return parseJsonIfNeeded(res, {} as VictoryInfo);
 	} catch (e) {
 		onBridgeError(e, 'getVictoryState');
 		return {} as VictoryInfo;
@@ -602,12 +615,12 @@ export function getVictoryState(): VictoryInfo {
 
 export function getTrafficFlows(): TrafficFlows {
 	if (_latestTickResult?.trafficFlows) {
-		try { return JSON.parse(_latestTickResult.trafficFlows); } catch { }
+		return parseJsonIfNeeded(_latestTickResult.trafficFlows, { edge_flows: [], node_flows: [], total_served: 0, total_dropped: 0, total_demand: 0, player_served: 0, player_dropped: 0, top_congested: [] });
 	}
 	if (useNativeSim) return tauriBridge.getCachedTrafficFlows();
 	try {
-		const json = bridge?.get_traffic_flows() ?? '{"edge_flows":[],"node_flows":[],"total_served":0,"total_dropped":0,"total_demand":0,"player_served":0,"player_dropped":0,"top_congested":[]}';
-		return JSON.parse(json);
+		const res = bridge?.get_traffic_flows();
+		return parseJsonIfNeeded(res, { edge_flows: [], node_flows: [], total_served: 0, total_dropped: 0, total_demand: 0, player_served: 0, player_dropped: 0, top_congested: [] });
 	} catch (e) {
 		onBridgeError(e, 'getTrafficFlows');
 		return { edge_flows: [], node_flows: [], total_served: 0, total_dropped: 0, total_demand: 0, player_served: 0, player_dropped: 0, top_congested: [] };
@@ -622,8 +635,8 @@ export function createWorldPreview(config: Partial<WorldConfig>): WorldPreviewDa
 	try {
 		if (typeof wasmModule.WasmBridge.create_world_preview === 'function') {
 			const configJson = JSON.stringify(config);
-			const json = wasmModule.WasmBridge.create_world_preview(configJson);
-			return JSON.parse(json);
+			const res = wasmModule.WasmBridge.create_world_preview(configJson);
+			return parseJsonIfNeeded(res, null);
 		}
 	} catch (e) {
 		onBridgeError(e, 'createWorldPreview');
@@ -635,8 +648,8 @@ export function getWorldGeoJSON(): any {
 	if (useNativeSim) return tauriBridge.getCachedWorldGeoJSON();
 	try {
 		if (bridge && typeof bridge.get_world_geojson === 'function') {
-			const json = bridge.get_world_geojson();
-			return JSON.parse(json);
+			const res = bridge.get_world_geojson();
+			return parseJsonIfNeeded(res, null);
 		}
 	} catch (e) {
 		onBridgeError(e, 'getWorldGeoJSON');
@@ -653,8 +666,8 @@ const EMPTY_U8 = new Uint8Array(0);
 export function getStaticDefinitions(): any {
     if (useNativeSim) return tauriBridge.getCachedStaticDefinitions();
     try {
-        const json = bridge?.get_static_definitions() ?? '{}';
-        return JSON.parse(json);
+        const res = bridge?.get_static_definitions();
+        return parseJsonIfNeeded(res, {});
     } catch (e) {
         onBridgeError(e, 'getStaticDefinitions');
         return {};
@@ -815,12 +828,12 @@ export function getCorporationsTyped(): CorporationsTyped {
 
 export function getSpectrumLicenses(): SpectrumLicense[] {
 	if (_latestTickResult?.spectrumLicenses) {
-		try { return JSON.parse(_latestTickResult.spectrumLicenses); } catch { }
+		return parseJsonIfNeeded(_latestTickResult.spectrumLicenses, []);
 	}
 	if (useNativeSim) return tauriBridge.getCachedSpectrumLicenses();
 	try {
-		const json = bridge?.get_spectrum_licenses() ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_spectrum_licenses();
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getSpectrumLicenses');
 		return [];
@@ -830,8 +843,8 @@ export function getSpectrumLicenses(): SpectrumLicense[] {
 export function getSpectrumAuctions(): SpectrumAuction[] {
 	if (useNativeSim) return tauriBridge.getCachedSpectrumAuctions();
 	try {
-		const json = bridge?.get_spectrum_auctions() ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_spectrum_auctions();
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getSpectrumAuctions');
 		return [];
@@ -841,8 +854,8 @@ export function getSpectrumAuctions(): SpectrumAuction[] {
 export function getAvailableSpectrum(regionId: number): AvailableSpectrum[] {
 	if (useNativeSim) return tauriBridge.getCachedAvailableSpectrum(regionId);
 	try {
-		const json = bridge?.get_available_spectrum(BigInt(regionId)) ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_available_spectrum(BigInt(regionId));
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getAvailableSpectrum');
 		return [];
@@ -864,8 +877,8 @@ export interface RoadSegmentInfo {
 export function roadPathfind(fromLon: number, fromLat: number, toLon: number, toLat: number): [number, number][] {
 	if (useNativeSim) return tauriBridge.getCachedRoadPathfind(fromLon, fromLat, toLon, toLat);
 	try {
-		const json = bridge?.road_pathfind(fromLon, fromLat, toLon, toLat) ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.road_pathfind(fromLon, fromLat, toLon, toLat);
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'roadPathfind');
 		return [];
@@ -887,8 +900,8 @@ export function roadFiberRouteCost(fromLon: number, fromLat: number, toLon: numb
 export function getRoadSegments(): RoadSegmentInfo[] {
 	if (useNativeSim) return tauriBridge.getCachedRoadSegments();
 	try {
-		const json = bridge?.get_road_segments() ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_road_segments();
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getRoadSegments');
 		return [];
@@ -948,8 +961,8 @@ export interface OrbitalShellStatus {
 export function getConstellationData(corpId: number): ConstellationData[] {
 	if (useNativeSim) return tauriBridge.getCachedConstellationData(corpId);
 	try {
-		const json = bridge?.get_constellation_data(BigInt(corpId)) ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_constellation_data(BigInt(corpId));
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getConstellationData');
 		return [];
@@ -959,8 +972,8 @@ export function getConstellationData(corpId: number): ConstellationData[] {
 export function getOrbitalView(): OrbitalSatellite[] {
 	if (useNativeSim) return tauriBridge.getCachedOrbitalView();
 	try {
-		const json = bridge?.get_orbital_view() ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_orbital_view();
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getOrbitalView');
 		return [];
@@ -970,8 +983,8 @@ export function getOrbitalView(): OrbitalSatellite[] {
 export function getSatelliteInventory(corpId: number): SatelliteInventoryItem[] {
 	if (useNativeSim) return tauriBridge.getCachedSatelliteInventory(corpId);
 	try {
-		const json = bridge?.get_satellite_inventory(BigInt(corpId)) ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_satellite_inventory(BigInt(corpId));
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getSatelliteInventory');
 		return [];
@@ -981,8 +994,8 @@ export function getSatelliteInventory(corpId: number): SatelliteInventoryItem[] 
 export function getLaunchSchedule(corpId: number): LaunchPadInfo[] {
 	if (useNativeSim) return tauriBridge.getCachedLaunchSchedule(corpId);
 	try {
-		const json = bridge?.get_launch_schedule(BigInt(corpId)) ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_launch_schedule(BigInt(corpId));
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getLaunchSchedule');
 		return [];
@@ -992,8 +1005,8 @@ export function getLaunchSchedule(corpId: number): LaunchPadInfo[] {
 export function getTerminalInventory(corpId: number): TerminalInventory {
 	if (useNativeSim) return tauriBridge.getCachedTerminalInventory(corpId);
 	try {
-		const json = bridge?.get_terminal_inventory(BigInt(corpId)) ?? '{"factories":[],"warehouses":[]}';
-		return JSON.parse(json);
+		const res = bridge?.get_terminal_inventory(BigInt(corpId));
+		return parseJsonIfNeeded(res, { factories: [], warehouses: [] });
 	} catch (e) {
 		onBridgeError(e, 'getTerminalInventory');
 		return { factories: [], warehouses: [] };
@@ -1003,8 +1016,8 @@ export function getTerminalInventory(corpId: number): TerminalInventory {
 export function getDebrisStatus(): OrbitalShellStatus[] {
 	if (useNativeSim) return tauriBridge.getCachedDebrisStatus();
 	try {
-		const json = bridge?.get_debris_status() ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_debris_status();
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getDebrisStatus');
 		return [];
@@ -1056,8 +1069,8 @@ export interface AllianceInfo {
 export function getAlliances(corpId: number): AllianceInfo[] {
 	if (useNativeSim) return tauriBridge.getCachedAlliances(corpId);
 	try {
-		const json = bridge?.get_alliances(BigInt(corpId)) ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_alliances(BigInt(corpId));
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getAlliances');
 		return [];
@@ -1082,8 +1095,8 @@ export interface LawsuitInfo {
 export function getLawsuits(corpId: number): LawsuitInfo[] {
 	if (useNativeSim) return tauriBridge.getCachedLawsuits(corpId);
 	try {
-		const json = bridge?.get_lawsuits(BigInt(corpId)) ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_lawsuits(BigInt(corpId));
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getLawsuits');
 		return [];
@@ -1093,8 +1106,8 @@ export function getLawsuits(corpId: number): LawsuitInfo[] {
 export function getCoOwnershipProposals(corpId: number): CoOwnershipProposal[] {
 	if (useNativeSim) return tauriBridge.getCachedCoOwnershipProposals(corpId);
 	try {
-		const json = bridge?.get_co_ownership_proposals(BigInt(corpId)) ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_co_ownership_proposals(BigInt(corpId));
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getCoOwnershipProposals');
 		return [];
@@ -1104,8 +1117,8 @@ export function getCoOwnershipProposals(corpId: number): CoOwnershipProposal[] {
 export function getPendingUpgradeVotes(corpId: number): UpgradeVote[] {
 	if (useNativeSim) return tauriBridge.getCachedPendingUpgradeVotes(corpId);
 	try {
-		const json = bridge?.get_pending_upgrade_votes(BigInt(corpId)) ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_pending_upgrade_votes(BigInt(corpId));
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getPendingUpgradeVotes');
 		return [];
@@ -1126,8 +1139,8 @@ export interface StockMarketInfo {
 export function getStockMarket(corpId: number): StockMarketInfo {
 	if (useNativeSim) return tauriBridge.getCachedStockMarket(corpId);
 	try {
-		const json = bridge?.get_stock_market(BigInt(corpId)) ?? '{}';
-		return JSON.parse(json);
+		const res = bridge?.get_stock_market(BigInt(corpId));
+		return parseJsonIfNeeded(res, { public: false, total_shares: 0, share_price: 0, dividends_per_share: 0, ipo_tick: null, shareholder_satisfaction: 0, board_votes: [], shareholders: {} });
 	} catch (e) {
 		onBridgeError(e, 'getStockMarket');
 		return { public: false, total_shares: 0, share_price: 0, dividends_per_share: 0, ipo_tick: null, shareholder_satisfaction: 0, board_votes: [], shareholders: {} };
@@ -1144,8 +1157,8 @@ export interface RegionPricingInfo {
 export function getRegionPricing(corpId: number): RegionPricingInfo[] {
 	if (useNativeSim) return tauriBridge.getCachedRegionPricing(corpId);
 	try {
-		const json = bridge?.get_region_pricing(BigInt(corpId)) ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_region_pricing(BigInt(corpId));
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getRegionPricing');
 		return [];
@@ -1161,8 +1174,8 @@ export interface MaintenancePriorityInfo {
 export function getMaintenancePriorities(corpId: number): MaintenancePriorityInfo[] {
 	if (useNativeSim) return tauriBridge.getCachedMaintenancePriorities(corpId);
 	try {
-		const json = bridge?.get_maintenance_priorities(BigInt(corpId)) ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_maintenance_priorities(BigInt(corpId));
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getMaintenancePriorities');
 		return [];
@@ -1172,8 +1185,8 @@ export function getMaintenancePriorities(corpId: number): MaintenancePriorityInf
 export function getTerrainAt(lon: number, lat: number): string | null {
 	if (useNativeSim) return tauriBridge.getCachedTerrainAt(lon, lat);
 	try {
-		const json = bridge?.get_terrain_at(lon, lat) ?? 'null';
-		return JSON.parse(json);
+		const res = bridge?.get_terrain_at(lon, lat);
+		return parseJsonIfNeeded(res, null);
 	} catch (e) {
 		onBridgeError(e, 'getTerrainAt');
 		return null;
@@ -1183,8 +1196,8 @@ export function getTerrainAt(lon: number, lat: number): string | null {
 export function getNodeMetadata(id: number): any {
 	if (useNativeSim) return tauriBridge.getCachedNodeMetadata(id);
 	try {
-		const json = bridge?.get_node_metadata(BigInt(id)) ?? '{}';
-		return JSON.parse(json);
+		const res = bridge?.get_node_metadata(BigInt(id));
+		return parseJsonIfNeeded(res, {});
 	} catch (e) {
 		onBridgeError(e, 'getNodeMetadata');
 		return {};
@@ -1195,8 +1208,8 @@ export function getNodesMetadata(ids: number[]): any[] {
 	if (useNativeSim) return tauriBridge.getCachedNodesMetadata(ids);
 	try {
 		const bigIds = ids.map(id => BigInt(id));
-		const json = bridge?.get_nodes_metadata(bigIds) ?? '[]';
-		return JSON.parse(json);
+		const res = bridge?.get_nodes_metadata(bigIds);
+		return parseJsonIfNeeded(res, []);
 	} catch (e) {
 		onBridgeError(e, 'getNodesMetadata');
 		return [];
@@ -1206,8 +1219,8 @@ export function getNodesMetadata(ids: number[]): any[] {
 export function getEdgeMetadata(id: number): any {
 	if (useNativeSim) return tauriBridge.getCachedEdgeMetadata(id);
 	try {
-		const json = bridge?.get_edge_metadata(BigInt(id)) ?? '{}';
-		return JSON.parse(json);
+		const res = bridge?.get_edge_metadata(BigInt(id));
+		return parseJsonIfNeeded(res, {});
 	} catch (e) {
 		onBridgeError(e, 'getEdgeMetadata');
 		return {};
