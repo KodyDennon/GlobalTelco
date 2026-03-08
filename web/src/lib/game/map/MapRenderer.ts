@@ -516,14 +516,16 @@ export class MapRenderer {
             ...createSatelliteLayers(this.activeOverlay === 'satellite', this.currentZoom),
             // 9. Cable drawing preview
             ...createCablePreviewLayers(this.cableDrawingState),
-            // 10. Annotations and weather
+            // 10. Annotations
             ...createAnnotationLayers(get(annotations), get(routePlans)),
+            /* 
             ...createWeatherLayers({
                 enabled: this.weatherEnabled,
                 dayNightCycle: this.dayNightCycle,
                 gameTick: this.gameTick,
                 currentZoom: this.currentZoom,
             }, this.activeDisasters, this.forecastDisasters),
+            */
             // 11. Selection/hover highlights
             this.createSelectionLayer(),
             ...this.createEdgeBuildHighlights(),
@@ -1586,32 +1588,16 @@ export class MapRenderer {
     /** Update forecast disasters (recomputed every 10 ticks for stability).
      *  Uses server-side weather forecasts when available, falls back to client-side heuristic. */
     updateForecasts(regions: import('$lib/wasm/types').Region[], currentTick: number): void {
+        // Disabled for performance
+        return;
+        /*
         // Only recompute every 10 ticks to avoid flicker (seed includes tick)
         const bucket = Math.floor(currentTick / 10);
-        if (bucket === this.lastForecastTick) return;
-        this.lastForecastTick = bucket;
-
-        // Try server-side weather forecasts first (authoritative)
-        let serverForecasts: ForecastDisaster[] = [];
-        try {
-            const weatherData = bridge.getWeatherForecasts();
-            if (weatherData.length > 0) {
-                serverForecasts = convertWeatherForecasts(weatherData, regions, currentTick);
-            }
-        } catch {
-            // Fall through to client-side
-        }
-
-        // Client-side disaster risk heuristic (supplement)
-        const clientForecasts = computeDisasterForecasts(regions, bucket);
-
-        // Merge: server forecasts take priority
-        const coveredRegions = new Set(serverForecasts.map(f => f.regionId));
-        const supplemental = clientForecasts.filter(f => !coveredRegions.has(f.regionId));
-
+...
         this.forecastDisasters = [...serverForecasts, ...supplemental]
             .sort((a, b) => b.probability - a.probability)
             .slice(0, 8);
+        */
     }
 
     /** Get the current forecast disasters (for use by parent components). */

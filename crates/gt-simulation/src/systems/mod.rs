@@ -161,10 +161,9 @@ pub fn run_all_systems(world: &mut GameWorld) {
     finance::run(world);
     contract::run(world);
     ai::run(world);
-    // Weather and disaster always run — weather generates new conditions
-    // probabilistically, so it must run even when no active conditions exist.
-    weather::run(world);
-    disaster::run(world);
+    // Weather and disaster disabled for performance/annoyance
+    // weather::run(world);
+    // disaster::run(world);
     if should_run_debris(world) {
         debris::run(world);
     }
@@ -263,8 +262,8 @@ pub fn run_all_systems_timed(world: &mut GameWorld) {
     timed!("finance", finance::run(world));
     timed!("contract", contract::run(world));
     timed!("ai", ai::run(world));
-    timed!("weather", weather::run(world));
-    timed!("disaster", disaster::run(world));
+    // timed!("weather", weather::run(world));
+    // timed!("disaster", disaster::run(world));
     timed_if!("debris", should_run_debris(world), debris::run(world));
     timed_if!(
         "servicing",
