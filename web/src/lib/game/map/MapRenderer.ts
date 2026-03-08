@@ -147,12 +147,16 @@ export class MapRenderer {
     private lastCityUpdateTick = -1;
     private lastInfraZoom = -1;
 
-    constructor(container: HTMLElement, quality: 'low' | 'medium' | 'high' = 'medium') {
+    constructor(container: HTMLElement, quality: 'low' | 'medium' | 'high' = 'medium', isRealEarth?: boolean) {
         this.quality = quality;
         this.container = container;
 
         // Determine world type before creating map
-        this.isRealEarth = bridge.isInitialized() && bridge.isRealEarth();
+        if (isRealEarth !== undefined) {
+            this.isRealEarth = isRealEarth;
+        } else {
+            this.isRealEarth = bridge.isInitialized() && bridge.isRealEarth();
+        }
         setRealEarthMode(this.isRealEarth);
 
         // Create MapLibre GL map

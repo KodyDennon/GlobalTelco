@@ -3,6 +3,7 @@
 	import { onMount, onDestroy } from "svelte";
 	import { MapRenderer } from "./map";
 	import { initialized } from "$lib/stores/gameState";
+	import { worldInfo } from "$lib/stores/gameState";
 	import { mapQuality } from "$lib/stores/settings";
 	import { get } from "svelte/store";
 	import {
@@ -172,7 +173,8 @@
 
 		const unsub = initialized.subscribe(async (init) => {
 			if (init && container && !renderer) {
-				renderer = new MapRenderer(container, get(mapQuality));
+				const info = get(worldInfo);
+				renderer = new MapRenderer(container, get(mapQuality), info?.is_real_earth);
 				await renderer.buildMap();
 				mapReady.set(true);
 				renderer.updateInfrastructure();

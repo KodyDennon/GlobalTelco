@@ -9,6 +9,7 @@ export interface WorldInfo {
 	infra_edge_count: number;
 	player_corp_id: number;
 	cell_spacing_km: number;
+	is_real_earth: boolean;
 	sandbox: boolean;
 }
 

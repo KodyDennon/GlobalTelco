@@ -13,8 +13,10 @@ export const worldInfo = writable<WorldInfo>({
 	infra_edge_count: 0,
 	player_corp_id: 0,
 	cell_spacing_km: 100,
+	is_real_earth: false,
 	sandbox: false
-});
+	});
+
 export const playerCorp = writable<CorporationData | null>(null);
 export const regions = writable<Region[]>([]);
 export const cities = writable<City[]>([]);

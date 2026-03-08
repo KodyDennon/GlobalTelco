@@ -283,6 +283,9 @@ export function getRegions(): Region[] {
 }
 
 export function isRealEarth(): boolean {
+	if (_latestTickResult?.info) {
+		return _latestTickResult.info.is_real_earth;
+	}
 	if (useNativeSim) return tauriBridge.getCachedIsRealEarth();
 	return bridge?.is_real_earth() ?? false;
 }
