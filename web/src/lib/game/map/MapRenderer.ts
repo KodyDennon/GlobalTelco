@@ -13,6 +13,7 @@ import { get } from 'svelte/store';
 import * as bridge from '$lib/wasm/bridge';
 import type { City, Region, GridCell, CellCoverage } from '$lib/wasm/types';
 import { dataStore } from './DataStore';
+import { worldInfo } from '$lib/stores/gameState';
 
 import { GridPathfinder, needsTerrainRouting } from '../GridPathfinder';
 import { selectedEdgeType } from '$lib/stores/uiState';
@@ -138,6 +139,13 @@ export class MapRenderer {
 
     // Whether buildMap has completed
     private mapBuilt = false;
+
+    // Layer memoization (Phase 6 Performance)
+    private memoizedInfraLayers: Layer[] = [];
+    private memoizedCitiesLayer: Layer[] = [];
+    private lastInfraUpdateTick = -1;
+    private lastCityUpdateTick = -1;
+    private lastInfraZoom = -1;
 
     constructor(container: HTMLElement, quality: 'low' | 'medium' | 'high' = 'medium') {
         this.quality = quality;
@@ -427,53 +435,12 @@ export class MapRenderer {
         else if (this.currentZoom < 7) minLevel = 1;
         dataStore.sync(minLevel);
 
-        // Terrain base: vector polygons for procgen, bitmap for real earth
-        const terrainLayers: (Layer | Layer[] | null)[] = this.isRealEarth
-            ? [createLandLayer(this.terrainCanvas, this.isRealEarth)]
-            : [createVectorTerrainLayers()];
+        const currentTick = get(worldInfo)?.tick ?? 0;
+        const zoomInt = Math.floor(this.currentZoom);
 
-        const layers: (Layer | Layer[] | null)[] = [
-            // 1. Terrain (bitmap or vector polygons + coastlines)
-            ...terrainLayers,
-            // 2. Ocean depth (procgen)
-            ...this.createOceanDepthLayers(),
-            // 2b. Terrain detail patterns (mountain contours, desert bands, urban grid — procgen zoom 4+)
-            ...createTerrainDetailLayers(this.currentZoom, this.isRealEarth),
-            // 2c. Elevation contour overlay (procgen zoom 3+, toggle-able)
-            ...createElevationContourLayers(
-                this.activeOverlay === 'elevation_contour',
-                this.currentZoom,
-                this.isRealEarth,
-            ),
-            // 2d. Rivers, lakes, and coastline glow (procgen zoom 3+)
-            ...createRiversLayers(this.currentZoom, this.isRealEarth),
-            // 3. Roads (procgen PathLayer — real earth roads come from MapLibre vector tiles)
-            ...createRoadsLayers(this.isRealEarth, this.currentZoom),
-            // 4. Buildings (procedural footprints around cities, demand overlay at zoom 7+)
-            ...createBuildingsLayers(this.currentZoom, this.activeOverlay === 'demand' && this.currentZoom >= 7),
-            // 5. Borders
-            createBordersLayer(this.cachedRegions, this.isRealEarth),
-            // 6. Overlays (population, demand, terrain, etc.)
-            ...this.createOverlayLayers(),
-            // 6a. Submarine cable reference (real earth mode only, zoom 0-7)
-            ...createSubmarineCableRefLayers(
-                this.activeOverlay === 'submarine_reference',
-                this.isRealEarth,
-                this.currentZoom,
-            ),
-            // 6b. City ambient glow (population-proportional warm glow — rendered before city icons)
-            ...createCityGlowLayer(this.cachedCities, this.currentZoom),
-            // 7. Cities (glow, icons, labels)
-            this.createCitiesLayer(),
-            this.createLabelsLayer(),
-            this.createRegionLabelsLayer(),
-            // 7b. Cable glow (low zoom) + pole dots (high zoom aerial) — below main infra
-            ...createCableGlowLayers(
-                [], // Legacy argument, now using DataStore internally
-                this.currentZoom,
-            ),
-            // 8. Infrastructure (nodes, edges — above cities)
-            ...createInfraLayers({
+        // Update memoized infra layers if tick or zoom threshold changed
+        if (currentTick !== this.lastInfraUpdateTick || Math.abs(this.currentZoom - this.lastInfraZoom) > 0.5) {
+            this.memoizedInfraLayers = createInfraLayers({
                 iconAtlas: this.iconAtlas,
                 iconMapping: this.iconMapping,
                 iconAtlasReady: this.iconAtlasReady,
@@ -489,10 +456,65 @@ export class MapRenderer {
                     const b = this.map.getBounds();
                     return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()] as [number, number, number, number];
                 })(),
-            }),
-            // 8b. Satellite overlay (orbital positions, ISL links, coverage footprints)
+            });
+            this.lastInfraUpdateTick = currentTick;
+            this.lastInfraZoom = this.currentZoom;
+        }
+
+        // Update memoized city layers
+        if (currentTick !== this.lastCityUpdateTick || this.memoizedCitiesLayer.length === 0) {
+            const citiesLayer = this.createCitiesLayer();
+            this.memoizedCitiesLayer = citiesLayer ? citiesLayer : [];
+            this.lastCityUpdateTick = currentTick;
+        }
+
+        // Terrain base: vector polygons for procgen, bitmap for real earth
+        const terrainLayers: (Layer | Layer[] | null)[] = this.isRealEarth
+            ? [createLandLayer(this.terrainCanvas, this.isRealEarth)]
+            : [createVectorTerrainLayers()];
+
+        const layers: (Layer | Layer[] | null)[] = [
+            // 1. Terrain (bitmap or vector polygons + coastlines)
+            ...terrainLayers,
+            // 2. Ocean depth (procgen)
+            ...this.createOceanDepthLayers(),
+            // 2b. Terrain detail patterns
+            ...createTerrainDetailLayers(this.currentZoom, this.isRealEarth),
+            // 2c. Elevation contour
+            ...createElevationContourLayers(
+                this.activeOverlay === 'elevation_contour',
+                this.currentZoom,
+                this.isRealEarth,
+            ),
+            // 2d. Rivers
+            ...createRiversLayers(this.currentZoom, this.isRealEarth),
+            // 3. Roads
+            ...createRoadsLayers(this.isRealEarth, this.currentZoom),
+            // 4. Buildings
+            ...createBuildingsLayers(this.currentZoom, this.activeOverlay === 'demand' && this.currentZoom >= 7),
+            // 5. Borders
+            createBordersLayer(this.cachedRegions, this.isRealEarth),
+            // 6. Overlays
+            ...this.createOverlayLayers(),
+            // 6a. Submarine cable reference
+            ...createSubmarineCableRefLayers(
+                this.activeOverlay === 'submarine_reference',
+                this.isRealEarth,
+                this.currentZoom,
+            ),
+            // 6b. City ambient glow
+            ...createCityGlowLayer(this.cachedCities, this.currentZoom),
+            // 7. Cities
+            ...this.memoizedCitiesLayer,
+            this.createLabelsLayer(),
+            this.createRegionLabelsLayer(),
+            // 7b. Cable glow
+            ...createCableGlowLayers([], this.currentZoom),
+            // 8. Infrastructure (memoized)
+            ...this.memoizedInfraLayers,
+            // 8b. Satellite overlay
             ...createSatelliteLayers(this.activeOverlay === 'satellite', this.currentZoom),
-            // 9. Cable drawing preview (between infra and selection)
+            // 9. Cable drawing preview
             ...createCablePreviewLayers(this.cableDrawingState),
             // 10. Annotations and weather
             ...createAnnotationLayers(get(annotations), get(routePlans)),
@@ -502,11 +524,11 @@ export class MapRenderer {
                 gameTick: this.gameTick,
                 currentZoom: this.currentZoom,
             }, this.activeDisasters, this.forecastDisasters),
-            // 11. Selection/hover highlights (topmost)
+            // 11. Selection/hover highlights
             this.createSelectionLayer(),
             ...this.createEdgeBuildHighlights(),
             this.createPathfindingPreviewLayer(),
-            // 12. Ghost preview for node placement (above everything)
+            // 12. Ghost preview for node placement
             ...this.createGhostPreviewLayer(),
         ];
 

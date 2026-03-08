@@ -1,11 +1,19 @@
 import SimWorker from '$lib/workers/simWorker?worker';
-import type { TickResult } from './bridge';
 import { setLatestTickResult, setCommandProxy } from './bridge';
 import type { InfraNodesTyped, InfraEdgesTyped } from './types';
 
+export interface TickResult {
+    infraNodes: InfraNodesTyped;
+    infraEdges: InfraEdgesTyped;
+    tick: number;
+    info: any;
+    playerCorp: any;
+    notifications: any[];
+}
+
 let worker: Worker | null = null;
 let commandId = 0;
-const commandResolvers = new Map<number, (res: string) => void>();
+const commandResolvers = new Map<number, (res: any) => void>();
 let tickResultHandler: ((res: TickResult) => void) | null = null;
 
 export function isSupported(): boolean {
@@ -16,7 +24,7 @@ export async function init(): Promise<void> {
     worker = new SimWorker();
     
     worker.onmessage = (e) => {
-        const { type, nodes, edges, corps, tick, id, result, info, playerCorp, notifications } = e.data;
+        const { type, nodes, edges, tick, id, result, info, playerCorp, notifications } = e.data;
         
         if (type === 'initComplete') {
             console.log('[WorkerBridge] Worker initialized');
@@ -51,40 +59,23 @@ export async function init(): Promise<void> {
                 infraNodes, 
                 infraEdges, 
                 tick,
-                // These are passed as JSON strings for compatibility with GameLoop expectations
-                // GameLoop expects 'info', 'playerCorp', 'notifications' in the result object
-                // But TickResult interface in bridge.ts might be strictly typed arrays?
-                // bridge.ts TickResult: { infraNodes?, infraEdges?, corporations?, tick? }
-                // GameLoop casts result to 'any' or workerBridge.TickResult?
-                // Let's check GameLoop again. It says `result: workerBridge.TickResult`.
-                // So I should define TickResult here to include JSON fields.
+                info,
+                playerCorp,
+                notifications
             };
             
-            // Attach JSON fields for GameLoop to parse
-            (res as any).info = info; // from worker
-            (res as any).playerCorp = playerCorp;
-            (res as any).notifications = notifications;
-
             if (tickResultHandler) {
                 tickResultHandler(res);
             } else {
-                // If no handler (e.g. initial load), just set it
-                setLatestTickResult(res);
+                setLatestTickResult(res as any);
             }
         }
-        else if (type === 'commandResult') {
+        else if (type === 'commandResult' || type === 'queryResult') {
             const resolve = commandResolvers.get(id);
             if (resolve) {
                 resolve(result);
                 commandResolvers.delete(id);
             }
-        }
-        else if (type === 'queryResult') {
-             const resolve = commandResolvers.get(id);
-             if (resolve) {
-                 resolve(result);
-                 commandResolvers.delete(id);
-             }
         }
     };
 
@@ -108,9 +99,9 @@ export function requestTick(bounds?: [number, number, number, number]) {
     worker?.postMessage({ type: 'tick', bounds });
 }
 
-export async function sendCommand(json: string): Promise<string> {
-    if (!worker) return "";
-    return new Promise<string>((resolve) => {
+export async function sendCommand(json: string): Promise<any> {
+    if (!worker) return null;
+    return new Promise<any>((resolve) => {
         const id = ++commandId;
         commandResolvers.set(id, resolve);
         worker?.postMessage({ type: 'command', id, cmd: json });
@@ -145,9 +136,9 @@ export async function newGame(config?: any): Promise<void> {
     });
 }
 
-export async function query(name: string, ...args: any[]): Promise<string> {
-    if (!worker) return "";
-    return new Promise<string>((resolve) => {
+export async function query(name: string, ...args: any[]): Promise<any> {
+    if (!worker) return null;
+    return new Promise<any>((resolve) => {
         const id = ++commandId;
         commandResolvers.set(id, resolve);
         worker?.postMessage({ type: 'query', id, name, args });
@@ -158,6 +149,3 @@ export function terminate() {
     worker?.terminate();
     worker = null;
 }
-
-// Re-export TickResult to satisfy GameLoop import
-export type { TickResult } from './bridge';

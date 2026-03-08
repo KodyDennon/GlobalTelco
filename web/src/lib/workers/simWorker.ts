@@ -40,14 +40,16 @@ self.onmessage = async (e: MessageEvent) => {
                 edgesArr = bridge.get_infra_edges_typed();
             }
             
-            // const corpsArr = bridge.get_corporations_typed(); 
-
             // Extract JSON data for UI (WorldInfo, PlayerCorp, Notifications)
-            const info = bridge.get_world_info();
-            // Parse info to get player_corp_id for next query
-            const infoObj = JSON.parse(info);
-            const playerCorp = infoObj.player_corp_id ? bridge.get_corporation_data(BigInt(infoObj.player_corp_id)) : "{}";
-            const notifications = bridge.get_notifications();
+            const infoStr = bridge.get_world_info();
+            const info = JSON.parse(infoStr);
+            
+            // Parse data in worker to avoid blocking main thread
+            const playerCorpStr = info.player_corp_id ? bridge.get_corporation_data(BigInt(info.player_corp_id)) : "{}";
+            const playerCorp = JSON.parse(playerCorpStr);
+            
+            const notificationsStr = bridge.get_notifications();
+            const notifications = JSON.parse(notificationsStr);
 
             // Helper to get buffers
             const transferables: Transferable[] = [];
@@ -76,9 +78,9 @@ self.onmessage = async (e: MessageEvent) => {
         case 'command':
             if (!bridge) return;
             try {
-                // e.data has { type, id, cmd }
                 const { id, cmd } = e.data;
-                const result = bridge.process_command(cmd);
+                const resultStr = bridge.process_command(cmd);
+                const result = JSON.parse(resultStr);
                 self.postMessage({ type: 'commandResult', id, result });
             } catch (err) {
                 console.error(err);
@@ -87,7 +89,6 @@ self.onmessage = async (e: MessageEvent) => {
 
         case 'load':
             try {
-                // load_game is static and returns a new bridge instance
                 bridge = WasmBridge.load_game(e.data.data);
                 self.postMessage({ type: 'loadComplete' });
             } catch (err) {
@@ -100,26 +101,18 @@ self.onmessage = async (e: MessageEvent) => {
             try {
                 const { id, name, args } = e.data;
                 let result;
-                // Safe lookup?
-                // Note: args is Array. WasmBridge methods expect spread? Or specific args?
-                // Example: get_corporation_data(id). args=[id].
-                // bridge.get_corporation_data(...args) works.
-                
-                // Need to cast bridge to any to access dynamic method
                 if (typeof (bridge as any)[name] === 'function') {
-                    // Convert args if necessary (e.g. string to BigInt?)
-                    // JS BigInt is transferable via postMessage, so args can contain BigInt.
-                    // But if they came from JSON, they are strings/numbers.
-                    // Rust bindgen expects BigInt for u64.
-                    
-                    const castArgs = args.map((a: any) => {
-                        // Heuristic: if method expects u64, and we got number/string, cast to BigInt?
-                        // Hard to know method signature here.
-                        // For now, rely on caller passing correct types or Rust bindgen handling it.
-                        return a;
-                    });
-                    
-                    result = (bridge as any)[name](...castArgs);
+                    const rawResult = (bridge as any)[name](...args);
+                    // If result is a string that looks like JSON, parse it here
+                    if (typeof rawResult === 'string' && (rawResult.startsWith('{') || rawResult.startsWith('['))) {
+                        try {
+                            result = JSON.parse(rawResult);
+                        } catch {
+                            result = rawResult;
+                        }
+                    } else {
+                        result = rawResult;
+                    }
                 } else {
                     console.error(`Unknown query: ${name}`);
                     result = null;

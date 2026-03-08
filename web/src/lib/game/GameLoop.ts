@@ -201,87 +201,83 @@ function handleWorkerTickResult(result: workerBridge.TickResult) {
 	// Sync worker's latest state with the bridge for UI consumers (prevents staleness)
 	bridge.setLatestTickResult(result);
 
-	const info = result.info ? JSON.parse(result.info) : null;
+	const info = result.info;
 
 	try {
 		if (info) {
 			worldInfo.set(info);
 		}
-		// Update player corp from worker result
+		// Update player corp from worker result (now pre-parsed)
 		if (result.playerCorp) {
-			try {
-				const corpData = JSON.parse(result.playerCorp);
-				playerCorp.set(corpData);
+			const corpData = result.playerCorp;
+			playerCorp.set(corpData);
 
-				if (info) {
-					// Record finance snapshot every 10 ticks
-					if (info.tick % 10 === 0) {
-						recordSnapshot(info.tick, corpData.revenue_per_tick, corpData.cost_per_tick, corpData.cash);
-					}
+			if (info) {
+				// Record finance snapshot every 10 ticks
+				if (info.tick % 10 === 0) {
+					recordSnapshot(info.tick, corpData.revenue_per_tick, corpData.cost_per_tick, corpData.cash);
 				}
+			}
 
-				// Update ambient music intensity based on game state
-				if (corpData.cash !== undefined) {
-					const profitRatio = corpData.profit_per_tick / Math.max(1, corpData.revenue_per_tick || 1);
-					const cashHealth = Math.min(1, corpData.cash / 1_000_000);
-					const intensity = Math.max(0, Math.min(1, 0.5 - profitRatio * 0.3 - cashHealth * 0.2));
-					audioManager.setIntensity(intensity);
-				}
-			} catch { /* ignore corp parse errors */ }
+			// Update ambient music intensity based on game state
+			if (corpData.cash !== undefined) {
+				const profitRatio = corpData.profit_per_tick / Math.max(1, corpData.revenue_per_tick || 1);
+				const cashHealth = Math.min(1, corpData.cash / 1_000_000);
+				const intensity = Math.max(0, Math.min(1, 0.5 - profitRatio * 0.3 - cashHealth * 0.2));
+				audioManager.setIntensity(intensity);
+			}
 		}
 
-		// Record network snapshot every 10 ticks (same frequency as direct mode)
+		// Record network snapshot every 10 ticks
 		if (info && info.tick % 10 === 0) {
 			const trafficPromise = workerBridge.query('get_traffic_flows');
 			const infraPromise = workerBridge.query('get_infrastructure_list', BigInt(info.player_corp_id));
 			Promise.all([
 				trafficPromise,
 				infraPromise,
-			]).then(([trafficJson, infraJson]) => {
-				if (trafficJson && infraJson) {
-					try {
-						recordNetworkSnapshot(info.tick, JSON.parse(trafficJson), JSON.parse(infraJson));
-					} catch { }
+			]).then(([traffic, infra]) => {
+				if (traffic && infra) {
+					recordNetworkSnapshot(info.tick, traffic, infra);
 				}
 			}).catch(() => { });
 		}
 
-		// Update less frequently (every 5th tick) via async worker queries
-		const shouldUpdateFullAsync = info && (info.tick % 5 === 0 || info.tick === 0 || get(allCorporations).length === 0);
-		if (shouldUpdateFullAsync) {
-			workerBridge.query('get_regions').then(json => {
-				if (json) { try { regions.set(JSON.parse(json)); } catch { } }
+		// Panel Guard: Only update heavy stores if a panel is open or first tick
+		const panelOpen = get(activePanelGroup) !== 'none';
+		const shouldUpdateFullAsync = info && (info.tick % 10 === 0 || info.tick === 0 || get(allCorporations).length === 0);
+		
+		if (shouldUpdateFullAsync && (panelOpen || info.tick === 0)) {
+			workerBridge.query('get_regions').then(data => {
+				if (data) { regions.set(data); }
 			}).catch(() => { });
-			workerBridge.query('get_cities').then(json => {
-				if (json) { try { cities.set(JSON.parse(json)); } catch { } }
+			workerBridge.query('get_cities').then(data => {
+				if (data) { cities.set(data); }
 			}).catch(() => { });
-			workerBridge.query('get_all_corporations').then(json => {
-				if (json) { try { allCorporations.set(JSON.parse(json)); } catch { } }
+			workerBridge.query('get_all_corporations').then(data => {
+				if (data) { allCorporations.set(data); }
 			}).catch(() => { });
 		}
 
-		// Process notifications from worker
+		// Process notifications from worker (now pre-parsed)
 		if (result.notifications) {
-			try {
-				const notifs = JSON.parse(result.notifications);
-				if (Array.isArray(notifs) && notifs.length > 0) {
-					notifications.update((n) => [...notifs, ...n].slice(0, 50));
-					for (const notif of notifs) {
-						audioManager.playEventSound(notif.event);
-					}
+			const notifs = result.notifications;
+			if (Array.isArray(notifs) && notifs.length > 0) {
+				notifications.update((n) => [...notifs, ...n].slice(0, 50));
+				for (const notif of notifs) {
+					audioManager.playEventSound(notif.event);
+				}
 
-					// Auto-pause on critical events
-					if (get(autoPauseOnCritical) && currentSpeed > 0) {
-						for (const notif of notifs) {
-							const reason = checkCriticalEvent(notif.event);
-							if (reason) {
-								autoPauseReason.set(reason);
-								break;
-							}
+				// Auto-pause on critical events
+				if (get(autoPauseOnCritical) && currentSpeed > 0) {
+					for (const notif of notifs) {
+						const reason = checkCriticalEvent(notif.event);
+						if (reason) {
+							autoPauseReason.set(reason);
+							break;
 						}
 					}
 				}
-			} catch { /* ignore notification parse errors */ }
+			}
 		}
 
 		// Auto-save check (scheduled as background priority)

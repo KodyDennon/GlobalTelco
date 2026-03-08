@@ -74,13 +74,13 @@ export interface TickResult {
     infraEdges?: InfraEdgesTyped;
     corporations?: CorporationsTyped;
     tick?: number;
-    info?: string;
-    playerCorp?: string;
-    notifications?: string;
-    cellCoverage?: string;
-    allInfra?: string;
-    trafficFlows?: string;
-    spectrumLicenses?: string;
+    info?: any;
+    playerCorp?: any;
+    notifications?: any[];
+    cellCoverage?: any;
+    allInfra?: any;
+    trafficFlows?: any;
+    spectrumLicenses?: any;
 }
 
 let _latestTickResult: TickResult | null = null;
@@ -242,7 +242,7 @@ export async function applyBatch(ops: unknown[]): Promise<void> {
 
 export function getWorldInfo(): WorldInfo {
 	if (_latestTickResult?.info) {
-		try { return JSON.parse(_latestTickResult.info); } catch { }
+		return _latestTickResult.info;
 	}
 	if (useNativeSim) return tauriBridge.getCachedWorldInfo();
 	try {
@@ -256,10 +256,8 @@ export function getWorldInfo(): WorldInfo {
 
 export function getCorporationData(corpId: number): CorporationData {
 	if (_latestTickResult?.playerCorp) {
-		try {
-			const data = JSON.parse(_latestTickResult.playerCorp);
-			if (data.id === corpId) return data;
-		} catch { }
+		const data = _latestTickResult.playerCorp;
+		if (data.id === corpId) return data;
 	}
 	if (useNativeSim) return tauriBridge.getCachedCorporationData(corpId);
 	try {
@@ -329,11 +327,9 @@ export function getVisibleEntities(
 
 export function getNotifications(): Notification[] {
 	if (_latestTickResult && _latestTickResult.notifications) {
-		try {
-			const notifs = JSON.parse(_latestTickResult.notifications);
-			_latestTickResult.notifications = undefined; // Clear cache after reading
-			return notifs;
-		} catch { }
+		const notifs = _latestTickResult.notifications;
+		_latestTickResult.notifications = undefined; // Clear cache after reading
+		return notifs;
 	}
 
 	if (useNativeSim) return tauriBridge.getCachedNotifications();
