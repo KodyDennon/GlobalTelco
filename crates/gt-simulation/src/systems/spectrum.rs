@@ -165,15 +165,7 @@ fn is_wireless_node(node_type: NodeType) -> bool {
     )
 }
 
-/// Haversine distance between two lat/lon points in km.
-fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
-    let dlat = (lat1 - lat2).to_radians();
-    let dlon = (lon1 - lon2).to_radians();
-    let a = (dlat / 2.0).sin().powi(2)
-        + lat1.to_radians().cos() * lat2.to_radians().cos() * (dlon / 2.0).sin().powi(2);
-    let c = 2.0 * a.sqrt().asin();
-    6371.0 * c
-}
+use gt_common::geo::haversine_km;
 
 #[cfg(test)]
 mod tests {

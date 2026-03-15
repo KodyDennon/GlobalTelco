@@ -686,7 +686,7 @@ fn find_city_access_nodes(world: &GameWorld) -> HashMap<EntityId, (EntityId, Ent
                     let tier_penalty = node.node_type.tier().value() as f64 * 10.0;
                     let effective_dist = dist + tier_penalty;
 
-                    if best.is_none() || effective_dist < best.unwrap().2 {
+                    if best.map_or(true, |b: (u64, u64, f64)| effective_dist < b.2) {
                         best = Some((nid, node.owner, effective_dist));
                     }
                 }
@@ -787,7 +787,7 @@ fn route_external_traffic(
 
     for &bb in &ctx.backbone_nodes {
         if let Some(path) = world.network.get_or_compute_path(access_node, bb, &ctx.edge_cap) {
-            if best_path.is_none() || path.len() < best_path.as_ref().unwrap().len() {
+            if best_path.as_ref().map_or(true, |bp| path.len() < bp.len()) {
                 best_path = Some(path);
             }
         }
@@ -992,11 +992,4 @@ fn scaled_coverage_radius(node_type: NodeType, cell_spacing: f64) -> f64 {
     base_radius.max(cell_spacing * min_cells)
 }
 
-fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
-    let dlat = (lat1 - lat2).to_radians();
-    let dlon = (lon1 - lon2).to_radians();
-    let a = (dlat / 2.0).sin().powi(2)
-        + lat1.to_radians().cos() * lat2.to_radians().cos() * (dlon / 2.0).sin().powi(2);
-    let c = 2.0 * a.sqrt().asin();
-    6371.0 * c
-}
+use gt_common::geo::haversine_km;

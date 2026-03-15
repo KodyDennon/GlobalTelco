@@ -34,19 +34,23 @@ pub fn run(world: &mut GameWorld) {
         let outcome_roll =
             ((tick.wrapping_mul(lawsuit_id) >> 8) % 100) as f64 / 100.0;
 
+        // Defended lawsuits get 20% damage reduction and higher dismissal chance
+        let defense_modifier = if lawsuit.defended { 0.8 } else { 1.0 };
+        let dismiss_threshold = if lawsuit.defended { 0.65 } else { 0.7 };
+
         let outcome = if outcome_roll < 0.4 {
-            // 40% chance: Damages awarded (50-100% of claimed)
+            // 40% chance: Damages awarded (50-100% of claimed, reduced if defended)
             let damage_pct = 0.5 + (outcome_roll / 0.4) * 0.5; // Scale 0.0-1.0 within this range
-            let damages = (lawsuit.damages_claimed as f64 * damage_pct) as i64;
+            let damages = (lawsuit.damages_claimed as f64 * damage_pct * defense_modifier) as i64;
             LawsuitOutcome::DamagesAwarded(damages as f64)
         } else if outcome_roll < 0.6 {
             // 20% chance: Forced licensing
             LawsuitOutcome::ForcedLicensing
-        } else if outcome_roll < 0.7 {
-            // 10% chance: Asset forfeiture (forfeit defendant's entity)
+        } else if outcome_roll < dismiss_threshold {
+            // 10% (5% if defended) chance: Asset forfeiture (forfeit defendant's entity)
             LawsuitOutcome::AssetForfeiture(lawsuit.defendant)
         } else {
-            // 30% chance: Dismissed
+            // 30% (35% if defended) chance: Dismissed
             LawsuitOutcome::Dismissed
         };
 

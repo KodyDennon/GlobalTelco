@@ -76,13 +76,6 @@ impl ServerConfig {
         format!("{}:{}", self.host, self.port)
     }
 
-    /// Returns true if all R2 configuration is present.
-    pub fn r2_enabled(&self) -> bool {
-        self.r2_account_id.is_some()
-            && self.r2_access_key_id.is_some()
-            && self.r2_secret_access_key.is_some()
-            && self.r2_bucket_name.is_some()
-    }
 }
 
 fn env_or(key: &str, default: &str) -> String {

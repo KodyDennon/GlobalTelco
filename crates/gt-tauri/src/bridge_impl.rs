@@ -7,17 +7,17 @@ use crate::TauriBridge;
 
 impl BridgeQuery for TauriBridge {
     fn tick(&mut self) {
-        self.world.lock().unwrap().tick();
+        self.world.lock().expect("GameWorld mutex poisoned").tick();
     }
 
     fn current_tick(&self) -> u64 {
-        self.world.lock().unwrap().current_tick()
+        self.world.lock().expect("GameWorld mutex poisoned").current_tick()
     }
 
     fn process_command(&mut self, command_json: &str) -> Result<String, String> {
         let cmd: gt_common::commands::Command = serde_json::from_str(command_json)
             .map_err(|e| format!("Invalid command: {e}"))?;
-        let mut w = self.world.lock().unwrap();
+        let mut w = self.world.lock().expect("GameWorld mutex poisoned");
         w.process_command(cmd);
         let events = w.event_queue.drain();
         if events.is_empty() {
@@ -39,12 +39,12 @@ impl BridgeQuery for TauriBridge {
     fn apply_batch(&mut self, ops_json: &str) -> Result<(), String> {
         let ops: Vec<gt_common::protocol::DeltaOp> = serde_json::from_str(ops_json)
             .map_err(|e| format!("Invalid delta ops: {e}"))?;
-        self.world.lock().unwrap().apply_delta(&ops);
+        self.world.lock().expect("GameWorld mutex poisoned").apply_delta(&ops);
         Ok(())
     }
 
     fn get_world_info(&self) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_world_info(&w)
     }
 
@@ -53,201 +53,196 @@ impl BridgeQuery for TauriBridge {
     }
 
     fn get_corporation_data(&self, corp_id: gt_common::types::EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_corporation_data(&w, corp_id)
     }
 
     fn get_regions(&self) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_regions(&w)
     }
 
     fn get_cities(&self) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_cities(&w)
     }
 
     fn get_all_corporations(&self) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_all_corporations(&w)
     }
 
     fn get_research_state(&self) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_research_state(&w)
     }
 
     fn get_contracts(&self, corp_id: gt_common::types::EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_contracts(&w, corp_id)
     }
 
     fn get_debt_instruments(&self, corp_id: gt_common::types::EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_debt_instruments(&w, corp_id)
     }
 
     fn get_notifications(&mut self) -> String {
-        let mut w = self.world.lock().unwrap();
+        let mut w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_notifications(&mut w)
     }
 
     fn get_buildable_nodes(&self, lon: f64, lat: f64) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_buildable_nodes(&w, lon, lat)
     }
 
     fn get_buildable_edges(&self, source_id: gt_common::types::EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_buildable_edges(&w, source_id)
     }
 
     fn get_damaged_nodes(&self, corp_id: gt_common::types::EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_damaged_nodes(&w, corp_id)
     }
 
     fn get_auctions(&self) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_auctions(&w)
     }
 
     fn get_covert_ops(&self, corp_id: gt_common::types::EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_covert_ops(&w, corp_id)
     }
 
     fn get_lobbying_campaigns(&self, corp_id: gt_common::types::EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_lobbying_campaigns(&w, corp_id)
     }
 
     fn get_achievements(&self, corp_id: gt_common::types::EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_achievements(&w, corp_id)
     }
 
     fn get_victory_state(&self) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_victory_state(&w)
     }
 
     fn get_traffic_flows(&self) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_traffic_flows(&w)
-    }
-
-    fn get_weather_forecasts(&self) -> String {
-        let w = self.world.lock().unwrap();
-        gt_bridge::queries::query_weather_forecasts(&w)
     }
 
     fn save_game(&self) -> Result<String, String> {
         self.world
             .lock()
-            .unwrap()
+            .expect("GameWorld mutex poisoned")
             .save_game()
             .map_err(|e| format!("Save failed: {e}"))
     }
 
     fn load_game(&mut self, data: &str) -> Result<(), String> {
         let world = GameWorld::load_game(data).map_err(|e| format!("Load failed: {e}"))?;
-        *self.world.lock().unwrap() = world;
+        *self.world.lock().expect("GameWorld mutex poisoned") = world;
         Ok(())
     }
 
     fn get_alliances(&self, corp_id: gt_common::types::EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_alliances(&w, corp_id)
     }
 
     fn get_lawsuits(&self, corp_id: gt_common::types::EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_lawsuits(&w, corp_id)
     }
 
     fn get_stock_market(&self, corp_id: gt_common::types::EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_stock_market(&w, corp_id)
     }
 
     fn get_region_pricing(&self, corp_id: gt_common::types::EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_region_pricing(&w, corp_id)
     }
 
     fn get_maintenance_priorities(&self, corp_id: gt_common::types::EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_maintenance_priorities(&w, corp_id)
     }
 
     fn get_terrain_at(&self, lon: f64, lat: f64) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_terrain_at(&w, lon, lat)
     }
 
     fn get_node_metadata(&self, id: gt_common::types::EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_node_metadata(&w, id)
     }
 
     fn get_nodes_metadata(&self, ids: &[gt_common::types::EntityId]) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_nodes_metadata(&w, ids)
     }
 
     fn get_edge_metadata(&self, id: gt_common::types::EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_edge_metadata(&w, id)
     }
 
     fn get_constellation_data(&self, corp_id: gt_common::types::EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_constellation_data(&w, corp_id)
     }
 
     fn get_orbital_view(&self) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_orbital_view(&w)
     }
 
     fn get_launch_schedule(&self, corp_id: gt_common::types::EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_launch_schedule(&w, corp_id)
     }
 
     fn get_terminal_inventory(&self, corp_id: gt_common::types::EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_terminal_inventory(&w, corp_id)
     }
 
     fn get_debris_status(&self) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_debris_status(&w)
     }
 
     fn get_infra_arrays(&self) -> InfraArrays {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::build_infra_arrays(&w)
     }
 
     fn get_infra_arrays_viewport(&self, west: f64, south: f64, east: f64, north: f64, min_level: u8) -> InfraArrays {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::build_infra_arrays_viewport(&w, west, south, east, north, min_level)
     }
 
     fn get_edge_arrays(&self) -> EdgeArrays {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::build_edge_arrays(&w)
     }
 
     fn get_edge_arrays_viewport(&self, west: f64, south: f64, east: f64, north: f64, min_level: u8) -> EdgeArrays {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::build_edge_arrays_viewport(&w, west, south, east, north, min_level)
     }
 
     fn get_satellite_arrays(&self) -> SatelliteArrays {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::build_satellite_arrays(&w)
     }
 }

@@ -162,7 +162,7 @@ export interface VisibleCity {
 }
 
 // GameEvent is a serde-serialized Rust enum: { "VariantName": { ...fields } }
-// e.g. { "DisasterStruck": { region: 5, severity: 0.7, disaster_type: "Earthquake", affected_nodes: 3 } }
+// e.g. { "ResearchCompleted": { tech: "5G Networks", researcher: 1 } }
 export type GameEvent = Record<string, Record<string, unknown>>;
 
 export interface Notification {

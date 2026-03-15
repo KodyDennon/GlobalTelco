@@ -172,7 +172,7 @@ fn maintenance_degrades_infrastructure() {
     let initial_healths: Vec<(u64, f64)> = world
         .healths
         .iter()
-        .filter(|(id, _)| world.infra_nodes.contains_key(id))
+        .filter(|(&id, _)| world.infra_nodes.contains_key(&id))
         .map(|(&id, h)| (id, h.condition))
         .collect();
 
@@ -333,7 +333,7 @@ fn ai_takes_loans_when_needed() {
     let corps_with_debt: Vec<u64> = world
         .financials
         .iter()
-        .filter(|(id, f)| f.debt > 0 && world.ai_states.contains_key(id))
+        .filter(|(&id, f)| f.debt > 0 && world.ai_states.contains_key(&id))
         .map(|(&id, _)| id)
         .collect();
 

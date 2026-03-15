@@ -212,8 +212,15 @@ impl GameWorld {
             return;
         }
 
-        // Settlement: defendant pays 60% of claimed damages
-        let settlement_amount = (lawsuit.damages_claimed as f64 * 0.6) as Money;
+        // Settlement: defendant pays 60% of claimed damages, capped at available cash
+        let mut settlement_amount = (lawsuit.damages_claimed as f64 * 0.6) as Money;
+
+        // Cap at defendant's available cash to prevent negative balance
+        if let Some(fin) = self.financials.get(&lawsuit.defendant) {
+            if fin.cash < settlement_amount {
+                settlement_amount = fin.cash.max(0);
+            }
+        }
 
         // Deduct from defendant, credit plaintiff
         if let Some(fin) = self.financials.get_mut(&lawsuit.defendant) {
@@ -498,14 +505,9 @@ impl GameWorld {
             health.condition = 1.0;
         }
 
-        let _node_type = self.infra_nodes.get(&node_id).map(|n| n.node_type).unwrap();
         self.event_queue.push(
             self.tick,
-            gt_common::events::GameEvent::InfrastructureDamaged { // Re-using damaged event for condition reset? 
-                // Better use NodeBuilt or similar if no NodeUpgraded exists in GameEvent
-                entity: node_id,
-                damage: -1.0, // Negative damage = repair/upgrade
-            }
+            gt_common::events::GameEvent::UpgradeVotePassed { node: node_id },
         );
     }
 }

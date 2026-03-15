@@ -231,8 +231,9 @@ fn manage_satellite_production(
         return;
     }
 
-    let factory_id = factory_id.unwrap();
-    let launch_pad_id = launch_pad_id.unwrap();
+    let (Some(factory_id), Some(launch_pad_id)) = (factory_id, launch_pad_id) else {
+        return;
+    };
 
     // Check if we have a constellation to build for
     let has_constellation = world
@@ -395,7 +396,7 @@ fn manage_satellite_servicing(
             if sat.status == SatelliteStatus::Operational && sat.fuel_remaining < sat.fuel_capacity * 0.2 {
                 Some((*sat_id, ServiceType::Refuel))
             } else if sat.status == SatelliteStatus::Decaying {
-                Some((*sat_id, ServiceType::Refuel))
+                Some((*sat_id, ServiceType::Repair))
             } else {
                 // Check health
                 let low_health = world

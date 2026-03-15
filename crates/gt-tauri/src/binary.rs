@@ -18,11 +18,12 @@ use gt_bridge::{EdgeArrays, InfraArrays, SatelliteArrays};
 /// [count*1: node_types as u8]
 /// [count*4: network_levels as u32 LE]
 /// [count*1: construction_flags as u8]
+/// [count*4: cell_indices as u32 LE]
 /// ```
 pub fn pack_infra_arrays(arrays: &InfraArrays) -> Vec<u8> {
     let count = arrays.ids.len();
-    // Total size: 4 + count*(4+4+16+24+1+4+1) = 4 + count*54
-    let total = 4 + count * 54;
+    // Total size: 4 + count*(4+4+16+24+1+4+1+4) = 4 + count*58
+    let total = 4 + count * 58;
     let mut buf = Vec::with_capacity(total);
 
     buf.extend_from_slice(&(count as u32).to_le_bytes());
@@ -44,6 +45,9 @@ pub fn pack_infra_arrays(arrays: &InfraArrays) -> Vec<u8> {
         buf.extend_from_slice(&nl.to_le_bytes());
     }
     buf.extend_from_slice(&arrays.construction_flags);
+    for &ci in &arrays.cell_indices {
+        buf.extend_from_slice(&ci.to_le_bytes());
+    }
 
     buf
 }
@@ -198,6 +202,7 @@ mod tests {
             node_types: vec![5, 6],
             network_levels: vec![0, 1],
             construction_flags: vec![0, 1],
+            cell_indices: vec![0, 0],
         };
         let buf = pack_infra_arrays(&arrays);
 

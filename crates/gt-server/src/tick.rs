@@ -321,7 +321,6 @@ pub fn spawn_world_tick_loop(
                             gt_common::events::GameEvent::BankruptcyDeclared { .. } => "BankruptcyDeclared",
                             gt_common::events::GameEvent::ResearchStarted { .. } => "ResearchStarted",
                             gt_common::events::GameEvent::ResearchCompleted { .. } => "ResearchCompleted",
-                            gt_common::events::GameEvent::DisasterStruck { .. } => "DisasterStruck",
                             gt_common::events::GameEvent::RepairCompleted { .. } => "RepairCompleted",
                             gt_common::events::GameEvent::CorporationFounded { .. } => "CorporationFounded",
                             _ => "Other",

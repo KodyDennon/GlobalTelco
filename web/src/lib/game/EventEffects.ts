@@ -50,10 +50,6 @@ export class EventEffectManager {
 			case 'NodeBuilt':
 				this.flashEffect(event.x, event.y, [34, 197, 94], 300);
 				break;
-			case 'DisasterStruck':
-			case 'DisasterStrike':
-				this.flashEffect(event.x, event.y, [239, 68, 68], 1000);
-				break;
 			case 'ResearchComplete':
 			case 'ResearchCompleted':
 			case 'TechResearched':
@@ -272,7 +268,7 @@ export function injectEventEffectStyles(): void {
 			100% { opacity: 0; }
 		}
 
-		/* Generic flash (construction complete, disaster strike) */
+		/* Generic flash (construction complete) */
 		@keyframes gt-flash {
 			0%   { opacity: 1; }
 			100% { opacity: 0; }

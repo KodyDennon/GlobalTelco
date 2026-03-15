@@ -38,7 +38,6 @@ import { buildTerrainBitmapAsync, disposeTerrainWorker } from './terrainBitmap';
 import { CORP_COLORS, SATELLITE_COLORS, TERRAIN_OVERLAY_COLORS, NODE_TIER_SIZE } from './constants';
 import { satelliteMapStyle, procgenMapStyle } from './tileConfig';
 import { handleMapMouseMove, type TooltipHit } from './tooltip';
-import { createWeatherLayers } from '../WeatherLayer';
 import { createCablePreviewLayers, type CableDrawingState } from './layers/cablePreviewLayer';
 import { createWaypointEditorLayers, type WaypointEditorState } from './layers/waypointEditorLayer';
 import { createOverlayLayers as createSpectrumAndOtherOverlays, createDensityOverlayLayers } from './layers/overlayLayers';
@@ -79,11 +78,6 @@ export class MapRenderer {
 
     // Hovered node tracking
     private hoveredNodeId: number | null = null;
-
-    // Weather/atmosphere state
-    private gameTick: number = 0;
-    private weatherEnabled: boolean = true;
-    private dayNightCycle: boolean = true;
 
     // Cable drawing preview state
     private cableDrawingState: CableDrawingState = {
@@ -518,14 +512,6 @@ export class MapRenderer {
             ...createCablePreviewLayers(this.cableDrawingState),
             // 10. Annotations
             ...createAnnotationLayers(get(annotations), get(routePlans)),
-            /* 
-            ...createWeatherLayers({
-                enabled: this.weatherEnabled,
-                dayNightCycle: this.dayNightCycle,
-                gameTick: this.gameTick,
-                currentZoom: this.currentZoom,
-            }),
-            */
             // 11. Selection/hover highlights
             this.createSelectionLayer(),
             ...this.createEdgeBuildHighlights(),
@@ -1561,20 +1547,6 @@ export class MapRenderer {
             });
         }
 
-        this.renderLayers();
-    }
-
-    setGameTick(tick: number): void {
-        this.gameTick = tick;
-    }
-
-    setWeatherEnabled(enabled: boolean): void {
-        this.weatherEnabled = enabled;
-        this.renderLayers();
-    }
-
-    setDayNightCycle(enabled: boolean): void {
-        this.dayNightCycle = enabled;
         this.renderLayers();
     }
 

@@ -32,7 +32,9 @@ pub fn run(world: &mut GameWorld) {
         let (constellation_id, _remaining) = factory.queue[0];
         let production_rate = factory.tier.satellite_production_rate();
 
-        let factory_mut = world.satellite_factories.get_mut(&factory_id).unwrap();
+        let Some(factory_mut) = world.satellite_factories.get_mut(&factory_id) else {
+            continue;
+        };
         factory_mut.production_progress += production_rate;
 
         if factory_mut.production_progress >= 1.0 {
@@ -131,7 +133,9 @@ pub fn run(world: &mut GameWorld) {
             }
 
             // Decrement queue
-            let factory_mut = world.satellite_factories.get_mut(&factory_id).unwrap();
+            let Some(factory_mut) = world.satellite_factories.get_mut(&factory_id) else {
+                continue;
+            };
             if let Some(first) = factory_mut.queue.first_mut() {
                 first.1 = first.1.saturating_sub(1);
                 if first.1 == 0 {
@@ -164,6 +168,13 @@ pub fn run(world: &mut GameWorld) {
             Some(f) => f,
             None => continue,
         };
+
+        // Respect production target if set
+        if let Some(target) = factory.production_target {
+            if factory.produced_stored >= target {
+                continue;
+            }
+        }
 
         let rate = factory.tier.terminal_production_rate();
         factory.produced_stored += rate;

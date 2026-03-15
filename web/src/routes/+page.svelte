@@ -52,7 +52,7 @@
 		'Tip: Keep infrastructure health above 50% to avoid outages',
 		'Tip: Contracts provide steady income — propose them to AI corps',
 		'Tip: Use the Coverage overlay to find underserved areas',
-		'Tip: Insure your expensive infrastructure against disasters',
+		'Tip: Insure your expensive infrastructure against damage',
 		'Tip: AI corporations will compete — watch their expansion patterns',
 		'Tip: Overlays help you make strategic decisions about where to build',
 	];

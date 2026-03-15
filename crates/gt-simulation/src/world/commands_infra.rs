@@ -822,7 +822,10 @@ impl GameWorld {
             health.condition = 1.0;
         }
 
-        let node_type = self.infra_nodes.get(&entity).map(|n| n.node_type).unwrap();
+        let node_type = match self.infra_nodes.get(&entity).map(|n| n.node_type) {
+            Some(nt) => nt,
+            None => return CommandResult::fail("Node not found after upgrade"),
+        };
         CommandResult::ok_with_entity(entity).with_op(DeltaOp::NodeUpgraded {
             entity_id: entity,
             node_type,

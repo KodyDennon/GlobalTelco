@@ -54,7 +54,6 @@ pub const ACHIEVEMENTS: &[(&str, &str, &str)] = &[
     ("espionage_success", "Spy Master", "Successfully complete an espionage mission"),
     ("lobbyist", "Political Player", "Successfully lobby for a policy change"),
     ("co_owner", "Partnership", "Establish co-ownership of infrastructure"),
-    ("disaster_survivor", "Storm Weatherer", "Survive a major disaster with no losses"),
     // Satellite achievements
     ("first_satellite", "Space Pioneer", "Launch your first satellite into orbit"),
     ("constellation", "Constellation Operator", "Have 50 operational satellites"),

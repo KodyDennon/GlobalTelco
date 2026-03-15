@@ -163,7 +163,6 @@
 
 		// Add context from event data
 		if (data.tech) return `${label}: ${data.tech}`;
-		if (data.disaster_type) return `${label}: ${data.disaster_type}`;
 		if (data.description) return `${label}: ${data.description}`;
 		if (data.name) return `${label}: ${data.name}`;
 		if (data.achievement) return `${label}: ${data.achievement}`;

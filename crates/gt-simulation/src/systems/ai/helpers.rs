@@ -28,7 +28,7 @@ pub fn find_nearest_node(
             None => continue,
         };
         let dist = sq_distance(target_pos, node_pos);
-        if best.is_none() || dist < best.unwrap().1 {
+        if best.map_or(true, |b| dist < b.1) {
             best = Some((nid, dist));
         }
     }
@@ -58,7 +58,7 @@ pub fn find_nearest_node_of_tier(
             None => continue,
         };
         let dist = sq_distance(target_pos, node_pos);
-        if best.is_none() || dist < best.unwrap().1 {
+        if best.map_or(true, |b| dist < b.1) {
             best = Some((nid, dist));
         }
     }
@@ -88,7 +88,7 @@ pub fn find_nearest_node_at_or_above_tier(
             None => continue,
         };
         let dist = sq_distance(target_pos, node_pos);
-        if best.is_none() || dist < best.unwrap().1 {
+        if best.map_or(true, |b| dist < b.1) {
             best = Some((nid, dist));
         }
     }
@@ -105,14 +105,9 @@ pub fn sq_distance(a: &(f64, f64), b: &(f64, f64)) -> f64 {
 }
 
 /// Haversine distance in kilometers between two (lat, lon) positions.
+/// Haversine distance in km between two (lat, lon) tuples.
 pub fn haversine_km(a: &(f64, f64), b: &(f64, f64)) -> f64 {
-    let dlat = (a.0 - b.0).to_radians();
-    let dlon = (a.1 - b.1).to_radians();
-    let lat1 = a.0.to_radians();
-    let lat2 = b.0.to_radians();
-    let a_val = (dlat / 2.0).sin().powi(2) + lat1.cos() * lat2.cos() * (dlon / 2.0).sin().powi(2);
-    let c = 2.0 * a_val.sqrt().asin();
-    6371.0 * c
+    gt_common::geo::haversine_km_points(a, b)
 }
 
 // ─── Tier-Aware Edge Type Selection ──────────────────────────────────────────

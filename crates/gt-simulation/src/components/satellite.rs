@@ -224,6 +224,10 @@ pub struct TerminalFactoryComponent {
     /// Terminals produced and stored at the factory, ready to ship.
     pub produced_stored: u32,
     pub owner: EntityId,
+    /// Optional production target. Factory stops when produced_stored >= target.
+    /// None = unlimited production.
+    #[serde(default)]
+    pub production_target: Option<u32>,
 }
 
 /// Regional warehouse for terminal distribution.

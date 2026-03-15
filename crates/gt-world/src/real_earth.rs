@@ -347,32 +347,6 @@ fn disaster_risk_for_terrain(terrain: &TerrainType, lat: f64) -> f64 {
     result.min(1.0)
 }
 
-#[allow(dead_code)]
-fn continent_disaster_risk(continent: &str) -> f64 {
-    match continent {
-        "Asia" => 0.5,
-        "Africa" => 0.4,
-        "SouthAmerica" => 0.4,
-        "NorthAmerica" => 0.35,
-        "Europe" => 0.2,
-        "Oceania" => 0.35,
-        _ => 0.3,
-    }
-}
-
-#[allow(dead_code)]
-fn continent_regulatory_strictness(continent: &str) -> f64 {
-    match continent {
-        "Europe" => 0.7,
-        "NorthAmerica" => 0.5,
-        "Asia" => 0.5,
-        "Oceania" => 0.6,
-        "SouthAmerica" => 0.4,
-        "Africa" => 0.3,
-        _ => 0.5,
-    }
-}
-
 fn simple_hash(seed: u64, index: u64) -> f64 {
     let mut h = seed
         .wrapping_mul(6364136223846793005)

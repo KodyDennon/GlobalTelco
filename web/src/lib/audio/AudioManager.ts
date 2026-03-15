@@ -632,7 +632,7 @@ export class AudioManager {
 	/**
 	 * Adjust overall audio intensity (0 = calm, 1 = tense).
 	 * Scales ambience volume and can be driven by game state
-	 * (e.g. low cash, disasters, competition pressure).
+	 * (e.g. low cash, competition pressure).
 	 */
 	setIntensity(level: number): void {
 		const clamped = Math.max(0, Math.min(1, level));

@@ -210,14 +210,6 @@ impl WasmBridge {
         gt_bridge::queries::query_available_spectrum(&self.world, region_id)
     }
 
-    pub fn get_disaster_forecasts(&self) -> String {
-        gt_bridge::queries::query_disaster_forecasts(&self.world)
-    }
-
-    pub fn get_weather_forecasts(&self) -> String {
-        gt_bridge::queries::query_weather_forecasts(&self.world)
-    }
-
     // ── Alliance / Legal / Stock Market Queries ─────────────────────────
 
     pub fn get_alliances(&self, corp_id: u64) -> String {

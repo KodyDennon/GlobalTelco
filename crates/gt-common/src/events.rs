@@ -77,7 +77,7 @@ pub enum GameEvent {
         tech: String,
     },
 
-    // Disaster
+    // Disaster (DEPRECATED — disaster system removed; kept for save file backwards compatibility)
     DisasterStruck {
         region: EntityId,
         severity: f64,
@@ -96,7 +96,7 @@ pub enum GameEvent {
         entity: EntityId,
     },
 
-    // Weather (Phase 7.5)
+    // Weather (DEPRECATED — weather system removed; kept for save file backwards compatibility)
     WeatherStarted {
         region: EntityId,
         weather_type: String,

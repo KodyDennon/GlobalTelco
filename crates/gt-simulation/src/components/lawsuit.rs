@@ -36,6 +36,10 @@ pub struct Lawsuit {
     pub resolution_tick: Tick, // filed_tick + 20-50
     pub status: LawsuitStatus,
     pub outcome: Option<LawsuitOutcome>,
+    /// Whether the defendant has actively defended this lawsuit.
+    /// Defended lawsuits have reduced damages (20% reduction).
+    #[serde(default)]
+    pub defended: bool,
 }
 
 impl Lawsuit {
@@ -62,6 +66,7 @@ impl Lawsuit {
             resolution_tick: filed_tick + resolution_ticks,
             status: LawsuitStatus::Active,
             outcome: None,
+            defended: false,
         }
     }
 

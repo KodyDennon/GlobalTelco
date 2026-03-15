@@ -1,7 +1,9 @@
 mod chat;
+mod commands;
 mod filtering;
 mod handler;
 mod rate_limit;
+mod sync;
 mod validation;
 
 use std::net::IpAddr;

@@ -19,7 +19,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
 	{ id: 'panels', title: 'Management Panels', text: 'Use the panel buttons in the toolbar to manage your company. Check finances, view infrastructure, negotiate contracts, and research new tech.', highlightSelector: '.panel-buttons', position: 'bottom-left' },
 	{ id: 'speed', title: 'Speed Controls', text: 'Use the speed controls or press Space to pause. Press 1-4 to change game speed. Pause to plan your strategy without time pressure.', position: 'center' },
 	{ id: 'save', title: 'Save Your Progress', text: 'Press F5 to quick save and F9 to quick load. Auto-save runs periodically. Your progress is stored locally in the browser.', position: 'center' },
-	{ id: 'ready', title: "You're Ready!", text: 'Build your network, outcompete rivals, survive disasters, and dominate the global telecom market. Good luck, CEO!', position: 'center' }
+	{ id: 'ready', title: "You're Ready!", text: 'Build your network, outcompete rivals, and dominate the global telecom market. Good luck, CEO!', position: 'center' }
 ];
 
 const completed = browser ? localStorage.getItem('gt_tutorial_completed') === 'true' : false;

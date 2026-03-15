@@ -8,75 +8,70 @@ use crate::TauriBridge;
 
 impl TauriBridge {
     pub fn get_player_corp_id(&self) -> u64 {
-        self.world.lock().unwrap().player_corp_id().unwrap_or(0)
+        self.world.lock().expect("GameWorld mutex poisoned").player_corp_id().unwrap_or(0)
     }
 
     pub fn is_real_earth(&self) -> bool {
-        self.world.lock().unwrap().config().use_real_earth
+        self.world.lock().expect("GameWorld mutex poisoned").config().use_real_earth
     }
 
     pub fn get_infrastructure_list(&self, corp_id: EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_infrastructure_list(&w, corp_id)
     }
 
     pub fn get_visible_entities(&self, min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_visible_entities(&w, min_x, min_y, max_x, max_y)
     }
 
     pub fn get_parcels_in_view(&self, min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_parcels_in_view(&w, min_x, min_y, max_x, max_y)
     }
 
     pub fn get_cell_coverage(&self) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_cell_coverage(&w)
     }
 
     pub fn get_all_infrastructure(&self) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_all_infrastructure(&w)
     }
 
     pub fn get_grid_cells(&self) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_grid_cells(&w)
     }
 
     pub fn get_world_geojson(&self) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_world_geojson(&w)
     }
 
     pub fn get_spectrum_licenses(&self) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_spectrum_licenses(&w)
     }
 
     pub fn get_spectrum_auctions(&self) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_spectrum_auctions(&w)
     }
 
     pub fn get_available_spectrum(&self, region_id: EntityId) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_available_spectrum(&w, region_id)
     }
 
-    pub fn get_disaster_forecasts(&self) -> String {
-        let w = self.world.lock().unwrap();
-        gt_bridge::queries::query_disaster_forecasts(&w)
-    }
-
     pub fn get_acquisition_proposals(&self) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_acquisition_proposals(&w)
     }
 
     pub fn road_pathfind(&self, from_lon: f64, from_lat: f64, to_lon: f64, to_lat: f64) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_road_pathfind(&w, from_lon, from_lat, to_lon, to_lat)
     }
 
@@ -87,13 +82,13 @@ impl TauriBridge {
         to_lon: f64,
         to_lat: f64,
     ) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         let cost = w.road_fiber_route_cost(from_lon, from_lat, to_lon, to_lat);
         serde_json::to_string(&cost).unwrap_or_default()
     }
 
     pub fn get_road_segments(&self) -> String {
-        let w = self.world.lock().unwrap();
+        let w = self.world.lock().expect("GameWorld mutex poisoned");
         gt_bridge::queries::query_road_segments(&w)
     }
 

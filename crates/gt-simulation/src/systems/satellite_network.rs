@@ -145,7 +145,7 @@ fn build_crossplane_isl(
                                 continue;
                             }
 
-                            let dist = haversine_distance_km(lon_a, lat_a, lon_b, lat_b);
+                            let dist = gt_common::geo::haversine_km(lat_a, lon_a, lat_b, lon_b);
                             if dist < best_dist {
                                 best_dist = dist;
                                 best_id = Some(sat_b);
@@ -205,7 +205,7 @@ fn build_downlinks(
             }
 
             // Precise distance check
-            let dist = haversine_distance_km(*sat_lon, *sat_lat, spatial_node.pos[0], spatial_node.pos[1]);
+            let dist = gt_common::geo::haversine_km(*sat_lat, *sat_lon, spatial_node.pos[1], spatial_node.pos[0]);
             if dist <= max_downlink_range && dist < best_dist {
                 best_dist = dist;
                 best_gs = Some(gs_id);
@@ -273,15 +273,6 @@ fn footprint_range_km(altitude_km: f64) -> f64 {
     lambda * r_e
 }
 
-fn haversine_distance_km(lon1: f64, lat1: f64, lon2: f64, lat2: f64) -> f64 {
-    let r = 6371.0;
-    let dlat = (lat2 - lat1).to_radians();
-    let dlon = (lon2 - lon1).to_radians();
-    let a = (dlat / 2.0).sin().powi(2)
-        + lat1.to_radians().cos() * lat2.to_radians().cos() * (dlon / 2.0).sin().powi(2);
-    let c = 2.0 * a.sqrt().asin();
-    r * c
-}
 
 fn are_allied(world: &GameWorld, corp_a: EntityId, corp_b: EntityId) -> bool {
     world.alliances.values().any(|alliance| {

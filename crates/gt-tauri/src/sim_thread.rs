@@ -61,7 +61,6 @@ pub enum QueryKind {
     Achievements(EntityId),
     VictoryState,
     TrafficFlows,
-    WeatherForecasts,
     ConstellationData(EntityId),
     OrbitalView,
     LaunchSchedule(EntityId),
@@ -77,7 +76,6 @@ pub enum QueryKind {
     SpectrumLicenses,
     SpectrumAuctions,
     AvailableSpectrum(EntityId),
-    DisasterForecasts,
     AcquisitionProposals,
     RoadPathfind(f64, f64, f64, f64),
     RoadFiberRouteCost(f64, f64, f64, f64),
@@ -353,7 +351,7 @@ fn update_render_snapshot(bridge: &crate::TauriBridge, snapshot: &Arc<RwLock<Ren
     let satellite_bytes = binary::pack_satellite_arrays(&sats);
 
     // Build corporation typed data
-    let w = bridge.world.lock().unwrap();
+    let w = bridge.world.lock().expect("GameWorld mutex poisoned");
     let count = w.corporations.len();
     let mut ids = Vec::with_capacity(count);
     let mut financials = Vec::with_capacity(count * 3);
@@ -406,7 +404,6 @@ fn dispatch_json_query(bridge: &mut crate::TauriBridge, kind: QueryKind) -> Stri
         QueryKind::Achievements(id) => bridge.get_achievements(id),
         QueryKind::VictoryState => bridge.get_victory_state(),
         QueryKind::TrafficFlows => bridge.get_traffic_flows(),
-        QueryKind::WeatherForecasts => bridge.get_weather_forecasts(),
         QueryKind::ConstellationData(id) => bridge.get_constellation_data(id),
         QueryKind::OrbitalView => bridge.get_orbital_view(),
         QueryKind::LaunchSchedule(id) => bridge.get_launch_schedule(id),
@@ -422,7 +419,6 @@ fn dispatch_json_query(bridge: &mut crate::TauriBridge, kind: QueryKind) -> Stri
         QueryKind::SpectrumLicenses => bridge.get_spectrum_licenses(),
         QueryKind::SpectrumAuctions => bridge.get_spectrum_auctions(),
         QueryKind::AvailableSpectrum(id) => bridge.get_available_spectrum(id),
-        QueryKind::DisasterForecasts => bridge.get_disaster_forecasts(),
         QueryKind::AcquisitionProposals => bridge.get_acquisition_proposals(),
         QueryKind::RoadPathfind(a, b, c, d) => bridge.road_pathfind(a, b, c, d),
         QueryKind::RoadFiberRouteCost(a, b, c, d) => bridge.road_fiber_route_cost(a, b, c, d),
@@ -467,7 +463,7 @@ fn dispatch_binary_query(bridge: &crate::TauriBridge, kind: BinaryQueryKind) -> 
             binary::pack_satellite_arrays(&arrays)
         }
         BinaryQueryKind::Corporations => {
-            let w = bridge.world.lock().unwrap();
+            let w = bridge.world.lock().expect("GameWorld mutex poisoned");
             let count = w.corporations.len();
             let mut ids = Vec::with_capacity(count);
             let mut financials = Vec::with_capacity(count * 3);

@@ -33,7 +33,6 @@ pub mod spectrum;
 pub mod stock_market;
 pub mod tech_research;
 pub mod victory;
-pub mod weather;
 pub mod workforce;
 
 pub use achievements::AchievementTracker;
@@ -75,5 +74,4 @@ pub use spectrum::{SpectrumAuction, SpectrumLicense};
 pub use stock_market::StockMarket;
 pub use tech_research::{PatentStatus, ResearchCategory, TechResearch};
 pub use victory::VictoryConditions;
-pub use weather::{WeatherCondition, WeatherForecast, WeatherType};
 pub use workforce::Workforce;

@@ -84,7 +84,9 @@ impl GameWorld {
 
         if let Some(auction_id) = existing_auction {
             // Update bid on existing auction
-            let auction = self.spectrum_auctions.get_mut(&auction_id).unwrap();
+            let Some(auction) = self.spectrum_auctions.get_mut(&auction_id) else {
+                return;
+            };
             let current_highest = auction.highest_bid().map(|(_, amt)| amt).unwrap_or(0);
             if bid <= current_highest {
                 self.event_queue.push(

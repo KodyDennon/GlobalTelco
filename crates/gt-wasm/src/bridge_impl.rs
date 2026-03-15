@@ -118,10 +118,6 @@ impl BridgeQuery for WasmBridge {
         gt_bridge::queries::query_traffic_flows(&self.world)
     }
 
-    fn get_weather_forecasts(&self) -> String {
-        gt_bridge::queries::query_weather_forecasts(&self.world)
-    }
-
     fn save_game(&self) -> Result<String, String> {
         self.world
             .save_game()

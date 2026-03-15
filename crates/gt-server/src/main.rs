@@ -76,15 +76,15 @@ async fn main() {
 
     // Initialize R2 storage if configured
     #[cfg(feature = "r2")]
-    let r2_storage = if config.r2_enabled() {
-        match r2::R2Storage::new(
-            config.r2_account_id.as_ref().unwrap(),
-            config.r2_access_key_id.as_ref().unwrap(),
-            config.r2_secret_access_key.as_ref().unwrap(),
-            config.r2_bucket_name.as_ref().unwrap(),
-        ) {
+    let r2_storage = if let (Some(acct), Some(key), Some(secret), Some(bucket)) = (
+        config.r2_account_id.as_ref(),
+        config.r2_access_key_id.as_ref(),
+        config.r2_secret_access_key.as_ref(),
+        config.r2_bucket_name.as_ref(),
+    ) {
+        match r2::R2Storage::new(acct, key, secret, bucket) {
             Ok(storage) => {
-                info!("R2 storage: connected (bucket: {})", config.r2_bucket_name.as_ref().unwrap());
+                info!("R2 storage: connected (bucket: {})", bucket);
                 Some(storage)
             }
             Err(e) => {
@@ -319,7 +319,9 @@ async fn main() {
         .layer(TraceLayer::new_for_http());
 
     let bind_addr = config.bind_addr();
-    let listener = tokio::net::TcpListener::bind(&bind_addr).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(&bind_addr)
+        .await
+        .unwrap_or_else(|e| panic!("Failed to bind to {}: {}", bind_addr, e));
     info!("Listening on http://{}", bind_addr);
     info!("WebSocket endpoint: ws://{}/ws", bind_addr);
     info!("REST API: http://{}/api", bind_addr);
@@ -330,5 +332,5 @@ async fn main() {
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
     .await
-    .unwrap();
+    .expect("Server terminated unexpectedly");
 }

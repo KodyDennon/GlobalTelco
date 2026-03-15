@@ -264,7 +264,6 @@
 					class="overlay-btn"
 					class:active={currentOverlay === overlay.key}
 					class:population={overlay.cls === 'population'}
-					class:disaster={overlay.cls === 'disaster'}
 					class:congestion={overlay.cls === 'congestion'}
 					class:traffic={overlay.cls === 'traffic'}
 					class:market-share={overlay.cls === 'market-share'}

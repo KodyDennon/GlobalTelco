@@ -9,7 +9,6 @@ pub mod coverage;
 pub mod covert_ops;
 pub mod debris;
 pub mod demand;
-pub mod disaster;
 pub mod finance;
 pub mod ftth;
 pub mod grants;
@@ -33,7 +32,6 @@ pub mod spectrum;
 pub mod stock_market;
 pub mod terminal_distribution;
 pub mod utilization;
-pub mod weather;
 
 #[cfg(not(target_family = "wasm"))]
 use indexmap::IndexMap;
@@ -45,8 +43,6 @@ use crate::world::GameWorld;
 // ── Dirty-bit constants (one bit per skippable system) ─────────────────────
 
 pub const DIRTY_CONSTRUCTION: u64 = 1 << 0;
-pub const DIRTY_WEATHER: u64 = 1 << 1;
-pub const DIRTY_DISASTER: u64 = 1 << 2;
 pub const DIRTY_DEBRIS: u64 = 1 << 3;
 pub const DIRTY_SERVICING: u64 = 1 << 4;
 pub const DIRTY_AUCTION: u64 = 1 << 5;
@@ -75,8 +71,7 @@ fn is_dirty(world: &GameWorld, flag: u64) -> bool {
 
 /// Check if a system should run based on its dirty flag and whether
 /// relevant data exists. Returns true if the system should run.
-// Weather, disaster, grants, and stock_market are always-run systems.
-
+/// Grants and stock_market are always-run systems.
 fn should_run_debris(world: &GameWorld) -> bool {
     is_dirty(world, DIRTY_DEBRIS) || !world.satellites.is_empty()
 }
@@ -161,9 +156,6 @@ pub fn run_all_systems(world: &mut GameWorld) {
     finance::run(world);
     contract::run(world);
     ai::run(world);
-    // Weather and disaster disabled for performance/annoyance
-    // weather::run(world);
-    // disaster::run(world);
     if should_run_debris(world) {
         debris::run(world);
     }
@@ -262,8 +254,6 @@ pub fn run_all_systems_timed(world: &mut GameWorld) {
     timed!("finance", finance::run(world));
     timed!("contract", contract::run(world));
     timed!("ai", ai::run(world));
-    // timed!("weather", weather::run(world));
-    // timed!("disaster", disaster::run(world));
     timed_if!("debris", should_run_debris(world), debris::run(world));
     timed_if!(
         "servicing",

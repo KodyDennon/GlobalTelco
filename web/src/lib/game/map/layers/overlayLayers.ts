@@ -42,14 +42,14 @@ const DEFAULT_COVERAGE_M = 5000;
 const WIRELESS_OVERLAY_TYPES = new Set(['MacroCell', 'SmallCell', 'CellTower', 'WirelessRelay']);
 
 /**
- * Creates overlay visualization layers: terrain, demand, disaster, coverage,
+ * Creates overlay visualization layers: terrain, demand, geographic risk, coverage,
  * ownership, market_share, spectrum, congestion, and traffic. Each uses ScatterplotLayer
  * with color gradients (except terrain which uses BitmapLayer, and market_share / spectrum
  * which use PolygonLayer).
  *
  * Note: congestion and traffic overlays are handled by infraLayer coloring.
- * This function handles terrain, demand, disaster, coverage, ownership, market_share,
- * and spectrum.
+ * This function handles terrain, demand, geographic risk, coverage, ownership,
+ * market_share, and spectrum.
  */
 export function createOverlayLayers(opts: {
     activeOverlay: string;

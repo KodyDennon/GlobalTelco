@@ -81,7 +81,9 @@ pub fn run(world: &mut GameWorld) {
         }
 
         // Deduct from warehouse
-        let wh_mut = world.warehouses.get_mut(&wh_id).unwrap();
+        let Some(wh_mut) = world.warehouses.get_mut(&wh_id) else {
+            continue;
+        };
         let used = warehouse.distribution_rate.min(warehouse.terminal_inventory) - terminals_remaining;
         wh_mut.terminal_inventory -= used;
 
@@ -152,7 +154,7 @@ fn city_has_satellite_coverage(world: &GameWorld, city_id: EntityId, owner: Enti
         }
 
         if let Some(sat_pos) = world.positions.get(sat_id) {
-            let dist = haversine_km(city_pos.x, city_pos.y, sat_pos.x, sat_pos.y);
+            let dist = gt_common::geo::haversine_km(city_pos.y, city_pos.x, sat_pos.y, sat_pos.x);
             let footprint = sat.footprint_radius_km(25.0); // 25 deg min elevation
             if dist < footprint {
                 return true;
@@ -163,12 +165,3 @@ fn city_has_satellite_coverage(world: &GameWorld, city_id: EntityId, owner: Enti
     false
 }
 
-fn haversine_km(lon1: f64, lat1: f64, lon2: f64, lat2: f64) -> f64 {
-    let r = 6371.0;
-    let dlat = (lat2 - lat1).to_radians();
-    let dlon = (lon2 - lon1).to_radians();
-    let a = (dlat / 2.0).sin().powi(2)
-        + lat1.to_radians().cos() * lat2.to_radians().cos() * (dlon / 2.0).sin().powi(2);
-    let c = 2.0 * a.sqrt().asin();
-    r * c
-}

@@ -241,9 +241,7 @@ fn point_to_segment_dist_sq(px: f64, py: f64, a: (f64, f64), b: (f64, f64)) -> f
     let dx2 = px - (a.0 + t * dx); let dy2 = py - (a.1 + t * dy);
     dx2 * dx2 + dy2 * dy2
 }
+/// Haversine distance in km between two (lon, lat) tuples.
 fn haversine_km_points(a: (f64, f64), b: (f64, f64)) -> f64 {
-    let dlat = (a.1 - b.1).to_radians(); let dlon = (a.0 - b.0).to_radians();
-    let lat1 = a.1.to_radians(); let lat2 = b.1.to_radians();
-    let a_val = (dlat / 2.0).sin().powi(2) + lat1.cos() * lat2.cos() * (dlon / 2.0).sin().powi(2);
-    2.0 * a_val.sqrt().asin() * 6371.0
+    gt_common::geo::haversine_km(a.1, a.0, b.1, b.0)
 }

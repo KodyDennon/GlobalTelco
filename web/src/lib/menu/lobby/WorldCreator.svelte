@@ -42,7 +42,6 @@
 	let roughness = $state(50);
 	let climate = $state(50);
 	let density = $state(50);
-	let disasterSeverity = $state(5);
 	let sandbox = $state(false);
 	let showAdvanced = $state(false);
 
@@ -56,13 +55,6 @@
 	];
 	const DIFFICULTIES = ["Easy", "Normal", "Hard", "Expert"];
 	const MAP_SIZES = ["Tiny", "Small", "Medium", "Large", "Huge"];
-	const DIFFICULTY_DISASTER: Record<string, number> = {
-		Easy: 3,
-		Normal: 5,
-		Hard: 7,
-		Expert: 9,
-	};
-
 	const PRESETS: Record<
 		WorldPreset,
 		{
@@ -115,12 +107,6 @@
 			density: 50,
 		},
 	};
-
-	let disasterFrequency = $derived(
-		+(
-			0.1 * Math.pow(10, ((disasterSeverity - 1) / 9) * Math.log10(30))
-		).toFixed(2),
-	);
 
 	function selectTemplate(t: WorldTemplate) {
 		selectedTemplate = t;
@@ -175,10 +161,6 @@
 			density = def.density;
 		}
 	}
-
-	$effect(() => {
-		disasterSeverity = DIFFICULTY_DISASTER[difficulty] ?? 5;
-	});
 
 	async function handleCreateFromTemplate() {
 		if (!selectedTemplate || !worldName.trim()) return;

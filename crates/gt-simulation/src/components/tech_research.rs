@@ -280,12 +280,12 @@ pub fn generate_tech_tree() -> Vec<TechResearch> {
             4_000_000, 0.05, 0.0, 0.12, vec!["Auto Failover".into()],
         ),
         TechResearch::with_details(
-            ResearchCategory::NetworkResilience, "Disaster Hardening", "Ruggedized infrastructure",
+            ResearchCategory::NetworkResilience, "Infrastructure Hardening", "Ruggedized infrastructure",
             6_000_000, 0.0, 0.0, 0.15, vec!["Redundant Paths".into()],
         ),
         TechResearch::with_details(
             ResearchCategory::NetworkResilience, "Self-Healing Network", "AI-driven auto-repair",
-            10_000_000, 0.05, 0.05, 0.20, vec!["Disaster Hardening".into()],
+            10_000_000, 0.05, 0.05, 0.20, vec!["Infrastructure Hardening".into()],
         ),
         TechResearch::with_details(
             ResearchCategory::NetworkResilience, "Cyber Defense Suite", "Advanced intrusion prevention",

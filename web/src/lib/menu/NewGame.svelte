@@ -15,7 +15,6 @@
 	let era = $state('Internet');
 	let difficulty = $state('Normal');
 	let aiCount = $state(4);
-	let disasterSeverity = $state(5);
 	let sandboxMode = $state(false);
 	let seed = $state(Math.floor(Math.random() * 999999));
 
@@ -33,30 +32,6 @@
 	let previewLoading = $state(false);
 
 	let isRealEarth = $derived(preset === 'real_earth');
-
-	/** Default disaster severity per difficulty preset. */
-	const DIFFICULTY_DISASTER: Record<string, number> = {
-		Easy: 3, Normal: 5, Hard: 7, Expert: 9,
-	};
-
-	// Sync disaster severity when difficulty changes
-	$effect(() => {
-		disasterSeverity = DIFFICULTY_DISASTER[difficulty] ?? 5;
-	});
-
-	/** Map slider value (1-10) to disaster_frequency for the sim engine.
-	 *  1=0.1 (rare), 5=1.0 (normal), 10=3.0 (extreme). Uses exponential curve. */
-	let disasterFrequency = $derived(
-		+(0.1 * Math.pow(10, (disasterSeverity - 1) / 9 * Math.log10(30))).toFixed(2)
-	);
-
-	/** Human-readable label for the current disaster severity. */
-	let disasterLabel = $derived(
-		disasterSeverity <= 2 ? $tr('menu.disaster_severity_low') :
-		disasterSeverity <= 5 ? $tr('menu.disaster_severity_moderate') :
-		disasterSeverity <= 8 ? $tr('menu.disaster_severity_high') :
-		$tr('menu.disaster_severity_extreme')
-	);
 
 	// ── Preset definitions ──────────────────────────────────────────────────
 	const PRESETS: Record<
@@ -467,10 +442,6 @@
 				<div class="summary-row">
 					<span class="summary-label">{$tr('menu.ai_corporations')}</span>
 					<span class="summary-value">{aiCount}</span>
-				</div>
-				<div class="summary-row">
-					<span class="summary-label">{$tr('menu.disaster_severity')}</span>
-					<span class="summary-value">{disasterSeverity}/10 ({disasterLabel})</span>
 				</div>
 				<div class="summary-row">
 					<span class="summary-label">{$tr('menu.world_seed')}</span>

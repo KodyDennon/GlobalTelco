@@ -238,11 +238,12 @@ impl GameWorld {
             fin.cash -= total_cost;
         }
 
-        let sm = self.stock_market.get_mut(&target_corp).unwrap();
-        *sm.shareholders.entry(buyer_id).or_insert(0) += count;
-        
-        // Increase price slightly on buy demand
-        sm.share_price = (sm.share_price as f64 * 1.01) as i64;
+        if let Some(sm) = self.stock_market.get_mut(&target_corp) {
+            *sm.shareholders.entry(buyer_id).or_insert(0) += count;
+
+            // Increase price slightly on buy demand
+            sm.share_price = (sm.share_price as f64 * 1.01) as i64;
+        }
 
         self.event_queue.push(
             self.tick,

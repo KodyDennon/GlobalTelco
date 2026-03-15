@@ -423,7 +423,7 @@ impl GameWorld {
                 for c1 in r1_cities {
                     for c2 in r2_cities {
                         let dist = haversine_km_deg(c1.1, c1.2, c2.1, c2.2);
-                        if best_pair.is_none() || dist < best_pair.unwrap().2 {
+                        if best_pair.map_or(true, |bp| dist < bp.2) {
                             best_pair = Some(((c1.1, c1.2), (c2.1, c2.2), dist));
                         }
                     }

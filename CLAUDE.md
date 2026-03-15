@@ -142,10 +142,10 @@ All game state is managed through an Entity Component System. Entities are IDs, 
 
 **Core entity types:** InfrastructureNode, InfrastructureEdge, Corporation, Subsidiary, Employee/Team, Region, City, Contract, LandParcel, TechResearch, DebtInstrument, Patent, LicenseAgreement, Alliance, Lawsuit, GovernmentGrant
 
-**Systems run in deterministic order each tick (36 systems):**
-1. construction → 2. orbital → 3. satellite_network → 4. maintenance → 5. population → 6. coverage → 7. demand → 8. routing → 9. utilization → 10. spectrum → 11. ftth → 12. manufacturing → 13. launch → 14. terminal_distribution → 15. satellite_revenue → 16. revenue → 17. cost → 18. finance → 19. contract → 20. ai → 21. weather → 22. disaster → 23. debris → 24. servicing → 25. regulation → 26. research → 27. patent → 28. market → 29. auction → 30. covert_ops → 31. lobbying → 32. alliance → 33. legal → 34. grants → 35. achievement → 36. stock_market
+**Systems run in deterministic order each tick (34 systems):**
+1. construction → 2. orbital → 3. satellite_network → 4. maintenance → 5. population → 6. coverage → 7. demand → 8. routing → 9. utilization → 10. spectrum → 11. ftth → 12. manufacturing → 13. launch → 14. terminal_distribution → 15. satellite_revenue → 16. revenue → 17. cost → 18. finance → 19. contract → 20. ai → 21. debris → 22. servicing → 23. regulation → 24. research → 25. patent → 26. market → 27. auction → 28. covert_ops → 29. lobbying → 30. alliance → 31. legal → 32. grants → 33. achievement → 34. stock_market
 
-*After all 36 systems, `resolve_spectrum_auctions()` runs to finalize spectrum auction results and expire licenses.*
+*After all 34 systems, `resolve_spectrum_auctions()` runs to finalize spectrum auction results and expire licenses.*
 
 ## Key Architecture Concepts
 
@@ -173,8 +173,8 @@ Desktop:       Same as single-player (WASM in Tauri webview), Tauri IPC for nati
 Commands (player → sim, 61 total): build_node, build_edge, update_edge_waypoints, upgrade_node, decommission_node, repair_node, repair_edge, emergency_repair, hire_employee, fire_employee, assign_team, take_loan, repay_loan, set_budget, propose_contract, accept_contract, reject_contract, start_research, cancel_research, set_policy, create_subsidiary, purchase_insurance, cancel_insurance, declare_bankruptcy, request_bailout, accept_bailout, place_bid, propose_acquisition, respond_to_acquisition, launch_espionage, launch_sabotage, upgrade_security, start_lobbying, cancel_lobbying, propose_alliance, accept_alliance, dissolve_alliance, file_lawsuit, settle_lawsuit, defend_lawsuit, file_patent, request_license, set_license_price, revoke_license, start_independent_research, bid_for_grant, complete_grant, propose_co_ownership, respond_co_ownership, propose_buyout, vote_upgrade, bid_spectrum, assign_spectrum, unassign_spectrum, purchase_cable_ship, set_region_pricing, set_maintenance_priority, set_speed, toggle_pause, save_game, load_game
 
 Queries (sim → UI):
-  JSON queries: get_visible_entities, get_corporation_data, get_region_data, get_infrastructure_list, get_workforce, get_contracts, get_research_state, get_notifications, get_advisor_suggestion, get_patents, get_licenses, get_alliances, get_lawsuits, get_grants, get_intel_levels, get_stock_market, get_weather, get_spectrum_licenses, get_pricing, get_maintenance_priorities
-  Typed array queries (hot-path): get_infra_nodes_typed, get_infra_edges_typed, get_corporations_typed
+  JSON queries: get_world_info, get_static_definitions, get_corporation_data, get_regions, get_cities, get_all_corporations, get_research_state, get_contracts, get_debt_instruments, get_notifications, get_buildable_nodes, get_buildable_edges, get_damaged_nodes, get_auctions, get_covert_ops, get_lobbying_campaigns, get_achievements, get_victory_state, get_traffic_flows, get_alliances, get_lawsuits, get_stock_market, get_region_pricing, get_maintenance_priorities, get_terrain_at, get_node_metadata, get_nodes_metadata, get_edge_metadata, get_constellation_data, get_orbital_view, get_launch_schedule, get_terminal_inventory, get_debris_status, get_spectrum_licenses
+  Typed array queries (hot-path): get_infra_nodes_typed, get_infra_edges_typed, get_corporations_typed, get_satellite_arrays
 
 Multiplayer protocol: CommandAck (with seq, entity_id, tick), CommandBroadcast (DeltaOps), SpeedVoteUpdate, applyBatch (incremental WASM state update)
 ```
@@ -298,21 +298,20 @@ Players ──► Cloudflare Workers (auth, matchmaking, APIs, CDN)
 ## Current Implementation Status
 
 **Codebase counts (verified from source):**
-- **36 ECS systems** (construction, orbital, satellite_network, maintenance, population, coverage, demand, routing, utilization, spectrum, ftth, manufacturing, launch, terminal_distribution, satellite_revenue, revenue, cost, finance, contract, ai, weather, disaster, debris, servicing, regulation, research, patent, market, auction, covert_ops, lobbying, alliance, legal, grants, achievement, stock_market)
-- **38 component modules** (achievements, acquisition, ai_state, alliance, auction, building, capacity, city, construction, contract, corporation, covert_ops, debt_instrument, demand, financial, grant, health, infra_edge, infra_node, land_parcel, lawsuit, lobbying, maintenance_priority, ownership, patent, policy, population, position, pricing, region, road_graph, spectrum, stock_market, tech_research, victory, weather, workforce)
+- **34 ECS systems** (construction, orbital, satellite_network, maintenance, population, coverage, demand, routing, utilization, spectrum, ftth, manufacturing, launch, terminal_distribution, satellite_revenue, revenue, cost, finance, contract, ai, debris, servicing, regulation, research, patent, market, auction, covert_ops, lobbying, alliance, legal, grants, achievement, stock_market)
+- **36 component modules** (achievements, acquisition, ai_state, alliance, auction, building, capacity, city, construction, contract, corporation, covert_ops, debt_instrument, demand, financial, grant, health, infra_edge, infra_node, land_parcel, lawsuit, lobbying, maintenance_priority, ownership, patent, policy, population, position, pricing, region, satellite, spectrum, stock_market, tech_research, victory, workforce)
 - **51 NodeType variants** across 6 eras (Telegraph through Near Future)
 - **28 EdgeType variants** across 6 eras
 - **61 commands** (infrastructure, workforce, finance, contracts, research, policy, subsidiary, insurance, bankruptcy/auctions, M&A, espionage/sabotage, lobbying, alliance, legal, patents/licensing, grants, co-ownership, spectrum, pricing, maintenance, game control)
 - **66+ event types** with per-corporation relevance filtering for multiplayer
 - **23 frontend panels** (Dashboard, Infra, Workforce, Contract, Research, Region, Auction, Merger, Achievement, Advisor, Intel, Spectrum, Insurance, Repair, Grant, Pricing, Maintenance, StockMarket, Alliance, Legal, Patent, CoOwnership, NetworkDashboard)
-- **Audio system:** AudioManager + SpatialAudio (ambient music, UI sounds, environmental audio, disaster cues)
+- **Audio system:** AudioManager + SpatialAudio (ambient music, UI sounds, environmental audio)
 
 **Implemented systems (beyond original 20):**
 - **Alliance system:** Trust scoring, revenue sharing, auto-dissolution below trust threshold, free routing between allies
 - **Legal system:** Lawsuit filing/resolution, settlement, multiple lawsuit types (sabotage claim, ownership dispute, patent infringement, regulatory complaint)
 - **Patent system:** Filing, licensing (Permanent/Royalty/PerUnit/Lease), royalty collection, independent research (150%/200% cost), patent enforcement
 - **Grants system:** Government grants per region, bidding, progress tracking, payouts
-- **Weather system:** Regional weather patterns (storms, ice storms, flooding, extreme heat, earthquakes, hurricanes), terrain-weighted generation, 15-40 tick duration, disaster severity amplification
 - **Stock market system:** Auto-IPO at 50+ nodes, share price calculation, dividends, shareholder satisfaction, board votes
 - **Spectrum system:** Carrier aggregation, interference penalties, spectrum auctions, license management, per-node band assignment
 - **FTTH system:** Central Office to NAP chain validation, active NAP marking, distribution fiber topology
