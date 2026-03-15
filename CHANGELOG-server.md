@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.3.0 (2026-03-15)
+
+### Features
+
+- **tools/gt:** add 'Force .env overwrite' option to deployer (1f88afa)
+
+### Bug Fixes
+
+- comprehensive codebase audit — crash fixes, logic bugs, dead code removal, and structural splits (92cf36e)
+- restore map in Pure Worker mode and finalize weather removal (d7a1ab3)
+
+### Performance
+
+- exhaustive end-to-end removal of disasters and weather (aa3e822)
+- exhaustive end-to-end removal of disasters, weather, and insurance (3e974dc)
+- complete end-to-end removal of disasters and weather (9f717c9)
+- disable weather and disaster systems for performance (a8ad21e)
+- implement zero-lag overhaul with worker-side parsing and layer memoization (526144a)
+- implement pure worker mode and throttled interactivity (872262f)
+- implement zero-copy binary rendering and worker-first data sync (d2f30a5)
+- finalize high-fidelity simulation and map rendering optimizations (5386082)
+
+### Other
+
+- Service file (dd72364)
+- **web:** v1.10.1 (3f8d6d6)
+- **engine:** v1.12.5 (07828ec)
+- crgo (f6ad014)
+- **web:** v1.10.0 (721271c)
+- **admin:** v1.2.1 (d666378)
+
+
 ## 1.1.0 (2026-03-07)
 
 ### Features
