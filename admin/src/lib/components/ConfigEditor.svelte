@@ -35,7 +35,6 @@
 		{ key: 'terrain_roughness', label: 'Terrain Roughness', type: 'number' },
 		{ key: 'climate_variation', label: 'Climate Variation', type: 'number' },
 		{ key: 'city_density', label: 'City Density', type: 'number' },
-		{ key: 'disaster_frequency', label: 'Disaster Frequency', type: 'number' },
 		{ key: 'use_real_earth', label: 'Real Earth Map', type: 'boolean' },
 		{ key: 'sandbox', label: 'Sandbox Mode', type: 'boolean' },
 	];

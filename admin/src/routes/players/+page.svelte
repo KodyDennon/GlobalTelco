@@ -3,6 +3,7 @@
 	import DataTable from '$lib/components/DataTable.svelte';
 	import Badge from '$lib/components/Badge.svelte';
 	import CopyButton from '$lib/components/CopyButton.svelte';
+	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import { toast } from '$lib/components/Toast.svelte';
 	import { confirm } from '$lib/components/ConfirmDialog.svelte';
 	import { fetchPlayers, kickPlayer, fetchAccounts, fetchBans, banPlayer, unbanPlayer } from '$lib/api/players.js';
@@ -17,6 +18,9 @@
 	let accountsSearch = $state('');
 	let bans = $state<Ban[]>([]);
 	let loading = $state(true);
+	let error = $state<string | null>(null);
+	let accountsLoading = $state(false);
+	let bansLoading = $state(false);
 
 	// Ban form
 	let showBanForm = $state(false);
@@ -24,6 +28,10 @@
 	let banReason = $state('');
 	let banWorldId = $state('');
 	let banExpiresAt = $state('');
+
+	// Track which tabs have been loaded
+	let accountsLoaded = $state(false);
+	let bansLoaded = $state(false);
 
 	const playerColumns = [
 		{ key: 'username', label: 'Username', sortable: true },
@@ -57,20 +65,30 @@
 		try {
 			const r = await fetchPlayers();
 			players = r.players;
+			error = null;
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load players';
+		} finally {
 			loading = false;
-		} catch { if (loading) loading = false; }
+		}
 	}
 
 	async function loadAccounts() {
+		accountsLoading = true;
 		try {
 			const r = await fetchAccounts(accountsSearch, accountsPage, 50);
 			accounts = r.accounts;
 			accountsTotal = r.total;
+			accountsLoaded = true;
 		} catch { /* ignore */ }
+		finally { accountsLoading = false; }
 	}
 
 	async function loadBans() {
-		try { bans = await fetchBans(); } catch { /* ignore */ }
+		bansLoading = true;
+		try { bans = await fetchBans(); bansLoaded = true; }
+		catch { /* ignore */ }
+		finally { bansLoading = false; }
 	}
 
 	async function handleKick(id: string, username: string) {
@@ -105,16 +123,20 @@
 		catch { toast('Unban failed', 'error'); }
 	}
 
-	onMount(() => {
-		startPolling('players', loadPlayers, 5000);
+	function handleAccountSearch() {
+		accountsPage = 0;
 		loadAccounts();
-		loadBans();
+	}
+
+	onMount(() => {
+		startPolling('players', loadPlayers);
 	});
 	onDestroy(() => stopPolling('players'));
 
+	// Load tab data on first visit to each tab
 	$effect(() => {
-		if (activeTab === 'accounts') loadAccounts();
-		if (activeTab === 'bans') loadBans();
+		if (activeTab === 'accounts' && !accountsLoaded) loadAccounts();
+		if (activeTab === 'bans' && !bansLoaded) loadBans();
 	});
 </script>
 
@@ -130,6 +152,12 @@
 	</div>
 
 	{#if activeTab === 'connected'}
+		{#if error && players.length === 0}
+			<div class="error-inline">
+				<span>{error}</span>
+				<button onclick={loadPlayers}>Retry</button>
+			</div>
+		{/if}
 		<DataTable columns={playerColumns} data={players as unknown as Record<string, unknown>[]} {loading} searchable searchPlaceholder="Search players..." emptyMessage="No players connected">
 			{#snippet actions(row)}
 				<div class="row-actions">
@@ -141,16 +169,20 @@
 
 	{:else if activeTab === 'accounts'}
 		<div class="account-search">
-			<input type="text" class="search-input" bind:value={accountsSearch} placeholder="Search accounts..." oninput={() => { accountsPage = 0; loadAccounts(); }} />
+			<input type="text" class="search-input" bind:value={accountsSearch} placeholder="Search accounts..." oninput={handleAccountSearch} />
 		</div>
-		<DataTable columns={accountColumns} data={accounts as unknown as Record<string, unknown>[]} paginated pageSize={50} emptyMessage="No accounts found">
-			{#snippet actions(row)}
-				<div class="row-actions">
-					<CopyButton text={row.id as string} label="ID" />
-					<button class="btn-sm btn-danger" onclick={() => handleQuickBan(row.id as string, row.username as string)}>Ban</button>
-				</div>
-			{/snippet}
-		</DataTable>
+		{#if accountsLoading && accounts.length === 0}
+			<LoadingSkeleton rows={5} height={20} />
+		{:else}
+			<DataTable columns={accountColumns} data={accounts as unknown as Record<string, unknown>[]} paginated pageSize={50} emptyMessage="No accounts found">
+				{#snippet actions(row)}
+					<div class="row-actions">
+						<CopyButton text={row.id as string} label="ID" />
+						<button class="btn-sm btn-danger" onclick={() => handleQuickBan(row.id as string, row.username as string)}>Ban</button>
+					</div>
+				{/snippet}
+			</DataTable>
+		{/if}
 
 	{:else if activeTab === 'bans'}
 		<div class="ban-header">
@@ -171,11 +203,15 @@
 			</div>
 		{/if}
 
-		<DataTable columns={banColumns} data={bans as unknown as Record<string, unknown>[]} searchable emptyMessage="No active bans">
-			{#snippet actions(row)}
-				<button class="btn-sm" onclick={() => handleUnban(row.account_id as string, row.world_id as string | null)}>Unban</button>
-			{/snippet}
-		</DataTable>
+		{#if bansLoading && bans.length === 0}
+			<LoadingSkeleton rows={3} height={20} />
+		{:else}
+			<DataTable columns={banColumns} data={bans as unknown as Record<string, unknown>[]} searchable emptyMessage="No active bans">
+				{#snippet actions(row)}
+					<button class="btn-sm" onclick={() => handleUnban(row.account_id as string, row.world_id as string | null)}>Unban</button>
+				{/snippet}
+			</DataTable>
+		{/if}
 	{/if}
 </div>
 
@@ -199,12 +235,10 @@
 	.form-field input { padding: 6px 10px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); font-size: 13px; font-family: inherit; }
 	.account-search { margin-bottom: 12px; }
 	.search-input { width: min(300px, 100%); padding: 6px 12px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-size: 13px; font-family: inherit; }
+	.error-inline { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; background: var(--red-bg); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-md); margin-bottom: 12px; font-size: 12px; color: var(--red-light); }
+	.error-inline button { padding: 2px 10px; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-sm); color: var(--red-light); font-size: 11px; cursor: pointer; }
 	@media (max-width: 768px) {
-		.tabs {
-			overflow-x: auto;
-			flex-wrap: nowrap;
-			scrollbar-width: none;
-		}
+		.tabs { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
 		.tabs::-webkit-scrollbar { display: none; }
 	}
 </style>

@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import Badge from '$lib/components/Badge.svelte';
+	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import { toast } from '$lib/components/Toast.svelte';
 	import { confirm } from '$lib/components/ConfirmDialog.svelte';
 	import { fetchConnections } from '$lib/api/multiplayer.js';
@@ -14,19 +15,23 @@
 	let connections = $state<ConnectionInfo[]>([]);
 	let worlds = $state<Record<string, unknown>[]>([]);
 	let loading = $state(true);
+	let error = $state<string | null>(null);
 
 	// Votes
 	let votesWorldId = $state('');
 	let votesData = $state<{ votes: Record<string, string>; current_speed: string; creator_id: string | null } | null>(null);
+	let votesLoading = $state(false);
 
 	// Transfer
 	let transferWorldId = $state('');
 	let transferNewOwner = $state('');
+	let transferring = $state(false);
 
 	// Assign
 	let assignWorldId = $state('');
 	let assignPlayerId = $state('');
 	let assignCorpId = $state(0);
+	let assigning = $state(false);
 
 	const connColumns = [
 		{ key: 'username', label: 'Username', sortable: true },
@@ -47,8 +52,12 @@
 			const [c, w] = await Promise.all([fetchConnections(), fetchWorlds()]);
 			connections = c.connections;
 			worlds = w as unknown as Record<string, unknown>[];
+			error = null;
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load data';
+		} finally {
 			loading = false;
-		} catch { if (loading) loading = false; }
+		}
 	}
 
 	async function handleDisconnect(id: string, username: string) {
@@ -60,8 +69,10 @@
 
 	async function loadVotes() {
 		if (!votesWorldId) return;
+		votesLoading = true;
 		try { votesData = await fetchWorldVotes(votesWorldId); }
 		catch { toast('Failed to load votes', 'error'); }
+		finally { votesLoading = false; }
 	}
 
 	async function handleOverrideSpeed(speed: string) {
@@ -74,17 +85,21 @@
 		if (!transferWorldId || !transferNewOwner) { toast('Select world and new owner', 'warning'); return; }
 		const ok = await confirm('Transfer Ownership', `Transfer world ownership to ${transferNewOwner}?`, { variant: 'warning' });
 		if (!ok) return;
+		transferring = true;
 		try { await transferWorld(transferWorldId, transferNewOwner); toast('Ownership transferred', 'success'); }
 		catch { toast('Failed', 'error'); }
+		finally { transferring = false; }
 	}
 
 	async function handleAssign() {
 		if (!assignWorldId || !assignPlayerId) { toast('Select world and player', 'warning'); return; }
+		assigning = true;
 		try { await assignPlayer(assignWorldId, assignPlayerId, assignCorpId); toast('Player assigned', 'success'); }
 		catch { toast('Failed', 'error'); }
+		finally { assigning = false; }
 	}
 
-	onMount(() => startPolling('multiplayer', loadData, 5000));
+	onMount(() => startPolling('multiplayer', loadData));
 	onDestroy(() => stopPolling('multiplayer'));
 </script>
 
@@ -100,6 +115,12 @@
 	</div>
 
 	{#if activeTab === 'connections'}
+		{#if error && connections.length === 0}
+			<div class="error-inline">
+				<span>{error}</span>
+				<button onclick={loadData}>Retry</button>
+			</div>
+		{/if}
 		<DataTable columns={connColumns} data={connections as unknown as Record<string, unknown>[]} {loading} searchable emptyMessage="No active connections">
 			{#snippet actions(row)}
 				<button class="btn-sm btn-danger" onclick={() => handleDisconnect(row.id as string, row.username as string)}>Disconnect</button>
@@ -117,7 +138,9 @@
 					{/each}
 				</select>
 			</div>
-			{#if votesData}
+			{#if votesLoading}
+				<LoadingSkeleton rows={2} height={20} />
+			{:else if votesData}
 				<p class="meta">Current: <strong>{votesData.current_speed}</strong> | Creator: {votesData.creator_id?.slice(0, 8) ?? 'None'}</p>
 				{#if Object.keys(votesData.votes).length > 0}
 					<div class="vote-list">
@@ -157,7 +180,9 @@
 				<label for="trans-owner">New Owner ID</label>
 				<input id="trans-owner" type="text" bind:value={transferNewOwner} placeholder="Player UUID" />
 			</div>
-			<button class="btn-primary" onclick={handleTransfer}>Transfer</button>
+			<button class="btn-primary" onclick={handleTransfer} disabled={transferring}>
+				{transferring ? 'Transferring...' : 'Transfer'}
+			</button>
 		</div>
 
 	{:else if activeTab === 'assign'}
@@ -179,7 +204,9 @@
 				<label for="assign-corp">Corp ID</label>
 				<input id="assign-corp" type="number" bind:value={assignCorpId} placeholder="Corporation entity ID" />
 			</div>
-			<button class="btn-primary" onclick={handleAssign}>Assign</button>
+			<button class="btn-primary" onclick={handleAssign} disabled={assigning}>
+				{assigning ? 'Assigning...' : 'Assign'}
+			</button>
 		</div>
 	{/if}
 </div>
@@ -196,6 +223,7 @@
 	.form-row label { font-size: 11px; color: var(--text-dim); font-weight: 600; text-transform: uppercase; }
 	.form-row select, .form-row input { padding: 6px 10px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); font-size: 13px; font-family: inherit; }
 	.btn-primary { padding: 6px 16px; background: var(--blue); color: white; border: none; border-radius: var(--radius-md); font-size: 13px; cursor: pointer; align-self: flex-start; }
+	.btn-primary:disabled { opacity: 0.5; cursor: default; }
 	.btn-sm { padding: 3px 10px; font-size: 11px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-muted); cursor: pointer; }
 	.btn-sm:hover { background: var(--bg-hover); }
 	.btn-sm.active { background: var(--blue); color: white; border-color: var(--blue); }
@@ -207,21 +235,13 @@
 	.vote-item { display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: var(--bg-surface); border-radius: var(--radius-sm); }
 	.vote-pid { font-size: 12px; font-family: var(--font-mono); color: var(--text-muted); }
 	.speed-btns { display: flex; gap: 4px; }
+	.error-inline { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; background: var(--red-bg); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-md); margin-bottom: 12px; font-size: 12px; color: var(--red-light); }
+	.error-inline button { padding: 2px 10px; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-sm); color: var(--red-light); font-size: 11px; cursor: pointer; }
 	@media (max-width: 768px) {
-		.tabs {
-			overflow-x: auto;
-			flex-wrap: nowrap;
-			scrollbar-width: none;
-		}
+		.tabs { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
 		.tabs::-webkit-scrollbar { display: none; }
-		.speed-btns {
-			flex-wrap: wrap;
-		}
-		.vote-item {
-			flex-wrap: wrap;
-		}
-		.control-form {
-			max-width: 100%;
-		}
+		.speed-btns { flex-wrap: wrap; }
+		.vote-item { flex-wrap: wrap; }
+		.control-form { max-width: 100%; }
 	}
 </style>

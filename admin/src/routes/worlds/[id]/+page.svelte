@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import DataTable from '$lib/components/DataTable.svelte';
 	import Badge from '$lib/components/Badge.svelte';
@@ -17,7 +17,10 @@
 	let chat = $state<ChatMessage[]>([]);
 	let votes = $state<SpeedVotes | null>(null);
 	let loading = $state(true);
+	let error = $state<string | null>(null);
 	let activeTab = $state<'corps' | 'players' | 'entities' | 'config' | 'chat' | 'votes'>('corps');
+	let chatLoading = $state(false);
+	let votesLoading = $state(false);
 
 	const corpColumns = [
 		{ key: 'name', label: 'Name', sortable: true },
@@ -32,17 +35,26 @@
 		try {
 			const d = await debugWorld(worldId);
 			world = d;
+			error = null;
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load world';
+		} finally {
 			loading = false;
-		} catch {
-			if (loading) loading = false;
 		}
 	}
 
 	async function loadChat() {
-		try { const r = await fetchWorldChat(worldId, 100); chat = r.messages; } catch { /* ignore */ }
+		chatLoading = true;
+		try { const r = await fetchWorldChat(worldId, 100); chat = r.messages; }
+		catch { /* ignore */ }
+		finally { chatLoading = false; }
 	}
+
 	async function loadVotes() {
-		try { votes = await fetchWorldVotes(worldId); } catch { /* ignore */ }
+		votesLoading = true;
+		try { votes = await fetchWorldVotes(worldId); }
+		catch { /* ignore */ }
+		finally { votesLoading = false; }
 	}
 
 	async function handleKick(playerId: string, username: string) {
@@ -64,22 +76,56 @@
 		catch { toast('Failed', 'error'); }
 	}
 
-	onMount(() => {
-		startPolling('world-detail', loadData, 5000);
+	// Restart polling when worldId changes
+	$effect(() => {
+		const id = worldId; // capture dependency
+		loading = true;
+		world = null;
+		error = null;
+		chat = [];
+		votes = null;
+		startPolling('world-detail', async () => {
+			try {
+				const d = await debugWorld(id);
+				world = d;
+				error = null;
+			} catch (e) {
+				error = e instanceof Error ? e.message : 'Failed to load world';
+			} finally {
+				loading = false;
+			}
+		}, 5000);
 	});
+
 	onDestroy(() => { stopPolling('world-detail'); });
 
+	// Load tab data when tab changes
 	$effect(() => {
-		if (activeTab === 'chat') loadChat();
-		if (activeTab === 'votes') loadVotes();
+		if (activeTab === 'chat' && chat.length === 0) loadChat();
+		if (activeTab === 'votes' && !votes) loadVotes();
 	});
 </script>
 
 <div class="page">
-	{#if loading}
+	{#if loading && !world}
 		<LoadingSkeleton rows={6} height={24} />
+	{:else if error && !world}
+		<a href="/worlds" class="back-link">Back to Worlds</a>
+		<div class="error-state">
+			<div class="error-icon">!</div>
+			<h2 class="error-title">Unable to load world</h2>
+			<p class="error-msg">{error}</p>
+			<button class="error-retry" onclick={loadData}>Retry</button>
+		</div>
 	{:else if world}
 		<a href="/worlds" class="back-link">Back to Worlds</a>
+
+		{#if error}
+			<div class="stale-banner">
+				<span>Data may be stale: {error}</span>
+				<button onclick={loadData}>Retry</button>
+			</div>
+		{/if}
 
 		<div class="world-header">
 			<h1 class="page-title">{world.world_name}</h1>
@@ -118,7 +164,7 @@
 			{#if world.connected_players.length === 0}
 				<p class="empty-text">No players connected</p>
 			{:else}
-				{#each world.connected_players as p}
+				{#each world.connected_players as p (p.id)}
 					<div class="player-row">
 						<span class="player-name">{p.username}</span>
 						<Badge color={p.is_guest ? 'gray' : 'blue'}>{p.is_guest ? 'Guest' : 'Registered'}</Badge>
@@ -145,11 +191,13 @@
 			<pre class="config-display">{JSON.stringify({ world_id: world.world_id, tick_rate_ms: world.tick_rate_ms, broadcast_subscribers: world.broadcast_subscribers }, null, 2)}</pre>
 
 		{:else if activeTab === 'chat'}
-			{#if chat.length === 0}
+			{#if chatLoading}
+				<LoadingSkeleton rows={5} height={20} />
+			{:else if chat.length === 0}
 				<p class="empty-text">No chat messages</p>
 			{:else}
 				<div class="chat-log">
-					{#each chat as msg}
+					{#each chat as msg (msg.id)}
 						<div class="chat-msg">
 							<span class="chat-user">{msg.username}</span>
 							<span class="chat-text">{msg.message}</span>
@@ -158,9 +206,12 @@
 					{/each}
 				</div>
 			{/if}
+			<button class="btn-sm refresh-tab-btn" onclick={loadChat}>Refresh Chat</button>
 
 		{:else if activeTab === 'votes'}
-			{#if votes}
+			{#if votesLoading}
+				<LoadingSkeleton rows={3} />
+			{:else if votes}
 				<p class="meta-text">Current speed: <strong>{votes.current_speed}</strong> | Creator: {votes.creator_id ?? 'None'}</p>
 				{#if Object.keys(votes.votes).length === 0}
 					<p class="empty-text">No active votes</p>
@@ -173,10 +224,12 @@
 					{/each}
 				{/if}
 			{:else}
-				<LoadingSkeleton rows={3} />
+				<p class="empty-text">No vote data available</p>
 			{/if}
+			<button class="btn-sm refresh-tab-btn" onclick={loadVotes}>Refresh Votes</button>
 		{/if}
 	{:else}
+		<a href="/worlds" class="back-link">Back to Worlds</a>
 		<p class="empty-text">World not found</p>
 	{/if}
 </div>
@@ -215,31 +268,25 @@
 	.chat-time { font-size: 11px; color: var(--text-faint); font-family: var(--font-mono); }
 	.vote-row { display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-md); margin-bottom: 4px; }
 	.vote-player { font-size: 12px; font-family: var(--font-mono); color: var(--text-muted); flex: 1; }
+	.refresh-tab-btn { margin-top: 12px; }
+
+	/* Error state */
+	.error-state { display: flex; flex-direction: column; align-items: center; padding: 60px 20px; text-align: center; }
+	.error-icon { width: 48px; height: 48px; border-radius: 50%; background: var(--red-bg); color: var(--red); font-size: 24px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+	.error-title { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+	.error-msg { font-size: 13px; color: var(--text-dim); margin-bottom: 16px; }
+	.error-retry { padding: 8px 20px; background: var(--blue); color: white; border: none; border-radius: var(--radius-md); font-size: 13px; cursor: pointer; }
+	.stale-banner { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; background: var(--amber-bg); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: var(--radius-md); margin-bottom: 16px; font-size: 12px; color: var(--amber); }
+	.stale-banner button { padding: 2px 10px; background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: var(--radius-sm); color: var(--amber); font-size: 11px; cursor: pointer; }
+
 	@media (max-width: 768px) {
-		.tabs {
-			overflow-x: auto;
-			flex-wrap: nowrap;
-			scrollbar-width: none;
-		}
+		.tabs { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
 		.tabs::-webkit-scrollbar { display: none; }
-		.world-header {
-			flex-wrap: wrap;
-			gap: 8px;
-		}
-		.header-meta {
-			flex-wrap: wrap;
-		}
-		.player-row {
-			flex-wrap: wrap;
-		}
-		.chat-user {
-			min-width: auto;
-		}
-		.entity-grid {
-			grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-		}
-		.vote-row {
-			flex-wrap: wrap;
-		}
+		.world-header { flex-wrap: wrap; gap: 8px; }
+		.header-meta { flex-wrap: wrap; }
+		.player-row { flex-wrap: wrap; }
+		.chat-user { min-width: auto; }
+		.entity-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+		.vote-row { flex-wrap: wrap; }
 	}
 </style>

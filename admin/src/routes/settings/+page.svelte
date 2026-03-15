@@ -8,6 +8,7 @@
 	import { confirm } from '$lib/components/ConfirmDialog.svelte';
 	import { fetchServerConfig, broadcast, fetchResetQueue, resolveReset } from '$lib/api/settings.js';
 	import { fetchAuditLog } from '$lib/api/audit.js';
+	import { fetchWorlds } from '$lib/api/worlds.js';
 	import { startPolling, stopPolling } from '$lib/stores/polling.js';
 	import { preferences } from '$lib/stores/preferences.js';
 	import type { ServerConfig, ResetRequest, AuditEntry } from '$lib/api/types.js';
@@ -16,20 +17,24 @@
 	let config = $state<ServerConfig | null>(null);
 	let resets = $state<ResetRequest[]>([]);
 	let loading = $state(true);
+	let error = $state<string | null>(null);
 
 	// Broadcast
 	let broadcastMessage = $state('');
 	let broadcastWorldId = $state('');
 	let broadcastHistory = $state<AuditEntry[]>([]);
 	let sendingBroadcast = $state(false);
+	let worlds = $state<Array<{ id: string; name: string }>>([]);
 
-	// Preferences
+	// Preferences — init from store
 	let refreshInterval = $state($preferences.refreshInterval);
 	let autoRefresh = $state($preferences.autoRefresh);
 	let sidebarCollapsed = $state($preferences.sidebarCollapsed);
 
 	// Reset queue
 	let generatedPasswords = $state<Record<string, string>>({});
+	let resetsLoading = $state(false);
+	let broadcastLoading = $state(false);
 
 	const resetColumns = [
 		{ key: 'username', label: 'Username', sortable: true },
@@ -55,21 +60,32 @@
 	async function loadConfig() {
 		try {
 			config = await fetchServerConfig();
+			error = null;
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load config';
+		} finally {
 			loading = false;
-		} catch { if (loading) loading = false; }
+		}
 	}
 
 	async function loadResets() {
-		try {
-			resets = await fetchResetQueue();
-		} catch { /* ignore */ }
+		resetsLoading = true;
+		try { resets = await fetchResetQueue(); }
+		catch { /* ignore */ }
+		finally { resetsLoading = false; }
 	}
 
-	async function loadBroadcastHistory() {
+	async function loadBroadcastData() {
+		broadcastLoading = true;
 		try {
-			const r = await fetchAuditLog(20, 0, undefined);
-			broadcastHistory = r.audit_log.filter(e => e.action === 'broadcast');
+			const [w, r] = await Promise.all([
+				fetchWorlds(),
+				fetchAuditLog(20, 0, undefined)
+			]);
+			worlds = w.map((w: any) => ({ id: w.id, name: w.name }));
+			broadcastHistory = r.audit_log.filter((e: AuditEntry) => e.action === 'broadcast');
 		} catch { /* ignore */ }
+		finally { broadcastLoading = false; }
 	}
 
 	async function handleBroadcast() {
@@ -81,7 +97,7 @@
 			await broadcast(broadcastMessage, broadcastWorldId || undefined);
 			toast('Broadcast sent', 'success');
 			broadcastMessage = '';
-			await loadBroadcastHistory();
+			await loadBroadcastData();
 		} catch { toast('Broadcast failed', 'error'); }
 		sendingBroadcast = false;
 	}
@@ -103,7 +119,7 @@
 			autoRefresh,
 			sidebarCollapsed,
 		};
-		toast('Preferences saved', 'success');
+		toast('Preferences saved and applied', 'success');
 	}
 
 	onMount(() => {
@@ -112,9 +128,13 @@
 	});
 	onDestroy(() => stopPolling('settings'));
 
+	// Load tab data on first visit
+	let resetsLoaded = $state(false);
+	let broadcastDataLoaded = $state(false);
+
 	$effect(() => {
-		if (activeTab === 'resets') loadResets();
-		if (activeTab === 'broadcast') loadBroadcastHistory();
+		if (activeTab === 'resets' && !resetsLoaded) { loadResets(); resetsLoaded = true; }
+		if (activeTab === 'broadcast' && !broadcastDataLoaded) { loadBroadcastData(); broadcastDataLoaded = true; }
 	});
 </script>
 
@@ -130,8 +150,15 @@
 	</div>
 
 	{#if activeTab === 'config'}
-		{#if loading}
+		{#if loading && !config}
 			<LoadingSkeleton rows={8} height={28} />
+		{:else if error && !config}
+			<div class="error-state">
+				<div class="error-icon">!</div>
+				<h2 class="error-title">Unable to load server config</h2>
+				<p class="error-msg">{error}</p>
+				<button class="error-retry" onclick={loadConfig}>Retry</button>
+			</div>
 		{:else if config}
 			<div class="config-section">
 				<h2 class="section-title">Environment Variables</h2>
@@ -175,65 +202,74 @@
 					</div>
 				</div>
 			</div>
-		{:else}
-			<p class="empty-text">Failed to load server config</p>
 		{/if}
 
 	{:else if activeTab === 'broadcast'}
 		<div class="broadcast-section">
-			<div class="broadcast-form">
-				<div class="form-row">
-					<label for="broadcast-msg">Message</label>
-					<textarea id="broadcast-msg" bind:value={broadcastMessage} placeholder="Enter message to broadcast..." rows={3} class="broadcast-input"></textarea>
-				</div>
-				<div class="form-row">
-					<label for="broadcast-target">Target</label>
-					<div class="target-row">
-						<select id="broadcast-target" bind:value={broadcastWorldId} class="target-select">
-							<option value="">All Players</option>
-						</select>
-						<button class="btn-primary" onclick={handleBroadcast} disabled={sendingBroadcast || !broadcastMessage.trim()}>
-							{sendingBroadcast ? 'Sending...' : 'Send Broadcast'}
-						</button>
+			{#if broadcastLoading && worlds.length === 0}
+				<LoadingSkeleton rows={3} height={24} />
+			{:else}
+				<div class="broadcast-form">
+					<div class="form-row">
+						<label for="broadcast-msg">Message</label>
+						<textarea id="broadcast-msg" bind:value={broadcastMessage} placeholder="Enter message to broadcast..." rows={3} class="broadcast-input"></textarea>
+					</div>
+					<div class="form-row">
+						<label for="broadcast-target">Target</label>
+						<div class="target-row">
+							<select id="broadcast-target" bind:value={broadcastWorldId} class="target-select">
+								<option value="">All Players</option>
+								{#each worlds as w (w.id)}
+									<option value={w.id}>{w.name}</option>
+								{/each}
+							</select>
+							<button class="btn-primary" onclick={handleBroadcast} disabled={sendingBroadcast || !broadcastMessage.trim()}>
+								{sendingBroadcast ? 'Sending...' : 'Send Broadcast'}
+							</button>
+						</div>
 					</div>
 				</div>
-			</div>
 
-			{#if broadcastHistory.length > 0}
-				<div class="history-section">
-					<h3 class="section-title">Recent Broadcasts</h3>
-					<div class="broadcast-history">
-						{#each broadcastHistory as entry}
-							<div class="history-item">
-								<div class="history-meta">
-									<span class="history-actor">{entry.actor}</span>
-									<span class="history-time">{entry.created_at ? new Date(entry.created_at).toLocaleString() : '--'}</span>
+				{#if broadcastHistory.length > 0}
+					<div class="history-section">
+						<h3 class="section-title">Recent Broadcasts</h3>
+						<div class="broadcast-history">
+							{#each broadcastHistory as entry (entry.id)}
+								<div class="history-item">
+									<div class="history-meta">
+										<span class="history-actor">{entry.actor}</span>
+										<span class="history-time">{entry.created_at ? new Date(entry.created_at).toLocaleString() : '--'}</span>
+									</div>
+									<span class="history-details">{entry.details ? (typeof entry.details === 'string' ? entry.details : JSON.stringify(entry.details)) : '--'}</span>
 								</div>
-								<span class="history-details">{entry.details ? (typeof entry.details === 'string' ? entry.details : JSON.stringify(entry.details)) : '--'}</span>
-							</div>
-						{/each}
+							{/each}
+						</div>
 					</div>
-				</div>
+				{/if}
 			{/if}
 		</div>
 
 	{:else if activeTab === 'resets'}
-		<DataTable columns={resetColumns} data={resets as unknown as Record<string, unknown>[]} searchable emptyMessage="No pending reset requests">
-			{#snippet actions(row)}
-				<div class="reset-actions">
-					{#if generatedPasswords[row.account_id as string]}
-						<div class="temp-password">
-							<code>{generatedPasswords[row.account_id as string]}</code>
-							<CopyButton text={generatedPasswords[row.account_id as string]} label="Password" />
-						</div>
-					{:else}
-						<button class="btn-sm btn-primary-sm" onclick={() => handleResolveReset(row.account_id as string, row.username as string)}>
-							Generate Temp Password
-						</button>
-					{/if}
-				</div>
-			{/snippet}
-		</DataTable>
+		{#if resetsLoading && resets.length === 0}
+			<LoadingSkeleton rows={3} height={20} />
+		{:else}
+			<DataTable columns={resetColumns} data={resets as unknown as Record<string, unknown>[]} searchable emptyMessage="No pending reset requests">
+				{#snippet actions(row)}
+					<div class="reset-actions">
+						{#if generatedPasswords[row.account_id as string]}
+							<div class="temp-password">
+								<code>{generatedPasswords[row.account_id as string]}</code>
+								<CopyButton text={generatedPasswords[row.account_id as string]} label="Password" />
+							</div>
+						{:else}
+							<button class="btn-sm btn-primary-sm" onclick={() => handleResolveReset(row.account_id as string, row.username as string)}>
+								Generate Temp Password
+							</button>
+						{/if}
+					</div>
+				{/snippet}
+			</DataTable>
+		{/if}
 
 	{:else if activeTab === 'preferences'}
 		<div class="prefs-form">
@@ -274,6 +310,7 @@
 			</div>
 
 			<button class="btn-primary" onclick={savePreferences}>Save Preferences</button>
+			<p class="pref-hint">Changes apply immediately to all active polling and layout.</p>
 		</div>
 	{/if}
 </div>
@@ -285,8 +322,6 @@
 	.tab { padding: 8px 16px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-dim); font-size: 13px; font-weight: 500; cursor: pointer; }
 	.tab:hover { color: var(--text-primary); }
 	.tab.active { color: var(--blue); border-bottom-color: var(--blue); }
-	.empty-text { font-size: 13px; color: var(--text-dim); font-style: italic; }
-
 	/* Config */
 	.config-section { margin-bottom: 24px; }
 	.section-title { font-size: 14px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 12px; }
@@ -332,6 +367,7 @@
 	.pref-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
 	.pref-row + .pref-row { border-top: 1px solid var(--border); }
 	.pref-label { font-size: 13px; color: var(--text-secondary); }
+	.pref-hint { font-size: 11px; color: var(--text-dim); font-style: italic; }
 	.toggle { position: relative; display: inline-block; cursor: pointer; }
 	.toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
 	.toggle-track { display: block; width: 36px; height: 20px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 10px; transition: background 0.2s; }
@@ -342,28 +378,21 @@
 	.interval-btn { padding: 4px 12px; font-size: 12px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-muted); cursor: pointer; }
 	.interval-btn:hover { background: var(--bg-hover); }
 	.interval-btn.active { background: var(--blue); color: white; border-color: var(--blue); }
+
+	/* Error state */
+	.error-state { display: flex; flex-direction: column; align-items: center; padding: 60px 20px; text-align: center; }
+	.error-icon { width: 48px; height: 48px; border-radius: 50%; background: var(--red-bg); color: var(--red); font-size: 24px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+	.error-title { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+	.error-msg { font-size: 13px; color: var(--text-dim); margin-bottom: 16px; }
+	.error-retry { padding: 8px 20px; background: var(--blue); color: white; border: none; border-radius: var(--radius-md); font-size: 13px; cursor: pointer; }
+
 	@media (max-width: 768px) {
-		.tabs {
-			overflow-x: auto;
-			flex-wrap: nowrap;
-			scrollbar-width: none;
-		}
+		.tabs { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
 		.tabs::-webkit-scrollbar { display: none; }
-		.broadcast-section {
-			max-width: 100%;
-		}
-		.target-row {
-			flex-wrap: wrap;
-		}
-		.prefs-form {
-			max-width: 100%;
-		}
-		.env-row {
-			flex-wrap: wrap;
-			gap: 4px;
-		}
-		.interval-options {
-			flex-wrap: wrap;
-		}
+		.broadcast-section { max-width: 100%; }
+		.target-row { flex-wrap: wrap; }
+		.prefs-form { max-width: 100%; }
+		.env-row { flex-wrap: wrap; gap: 4px; }
+		.interval-options { flex-wrap: wrap; }
 	}
 </style>

@@ -15,6 +15,7 @@
 	let worlds = $state<Record<string, unknown>[]>([]);
 	let templates = $state<WorldTemplate[]>([]);
 	let loading = $state(true);
+	let error = $state<string | null>(null);
 
 	// Server limits
 	let limits = $state<ServerLimits | null>(null);
@@ -67,9 +68,11 @@
 				limitsMaxWorlds = l.max_active_worlds;
 				limitsMaxPerPlayer = l.max_worlds_per_player;
 			}
+			error = null;
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load worlds';
+		} finally {
 			loading = false;
-		} catch {
-			if (loading) loading = false;
 		}
 	}
 
@@ -196,7 +199,7 @@
 		}
 	}
 
-	onMount(() => startPolling('worlds', loadData, 10000));
+	onMount(() => startPolling('worlds', loadData));
 	onDestroy(() => stopPolling('worlds'));
 </script>
 
@@ -212,6 +215,13 @@
 			</button>
 		</div>
 	</div>
+
+	{#if error && worlds.length === 0 && !loading}
+		<div class="error-inline">
+			<span>{error}</span>
+			<button onclick={loadData}>Retry</button>
+		</div>
+	{/if}
 
 	<!-- Server Limits -->
 	{#if limits}
@@ -398,6 +408,8 @@
 	.tpl-meta { font-size: 11px; color: var(--text-dim); }
 	.empty-text { font-size: 13px; color: var(--text-dim); font-style: italic; }
 	h3 { font-size: 14px; font-weight: 600; }
+	.error-inline { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; background: var(--red-bg); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-md); margin-bottom: 12px; font-size: 12px; color: var(--red-light); }
+	.error-inline button { padding: 2px 10px; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-sm); color: var(--red-light); font-size: 11px; cursor: pointer; }
 	@media (max-width: 768px) {
 		.template-row { flex-wrap: wrap; }
 		.page-header { flex-direction: column; align-items: flex-start; gap: 8px; }

@@ -82,7 +82,6 @@ export interface WorldConfig {
 	terrain_roughness?: number;
 	climate_variation?: number;
 	city_density?: number;
-	disaster_frequency?: number;
 	sandbox?: boolean;
 }
 

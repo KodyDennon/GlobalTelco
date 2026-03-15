@@ -23,8 +23,6 @@
 		random: { label: 'Random', desc: 'Randomize everything', continents: 4, ocean: 65, roughness: 50, climate: 50, density: 50 }
 	};
 
-	const DIFFICULTY_DISASTER: Record<string, number> = { Easy: 3, Normal: 5, Hard: 7, Expert: 9 };
-
 	let preset = $state<WorldPreset | null>(null);
 	let seed = $state(value.seed ?? Math.floor(Math.random() * 999999));
 	let era = $state(value.starting_era ?? 'Internet');
@@ -37,13 +35,7 @@
 	let roughness = $state(Math.round((value.terrain_roughness ?? 0.5) * 100));
 	let climate = $state(Math.round((value.climate_variation ?? 0.5) * 100));
 	let density = $state(Math.round((value.city_density ?? 0.5) * 100));
-	let disasterSeverity = $state(5);
 	let sandbox = $state(value.sandbox ?? false);
-
-	// Map disaster slider (1-10) to frequency (0.1-3.0) via exponential curve
-	let disasterFrequency = $derived(
-		+(0.1 * Math.pow(10, (disasterSeverity - 1) / 9 * Math.log10(30))).toFixed(2)
-	);
 
 	function emitChange() {
 		const config: WorldConfig = {
@@ -58,7 +50,6 @@
 			terrain_roughness: roughness / 100,
 			climate_variation: climate / 100,
 			city_density: density / 100,
-			disaster_frequency: disasterFrequency,
 			sandbox
 		};
 		value = config;
@@ -67,8 +58,7 @@
 
 	// Fire onchange whenever any value changes
 	$effect(() => {
-		// Touch all reactive vars
-		void [seed, era, difficulty, mapSize, aiCorps, useRealEarth, continentCount, oceanPct, roughness, climate, density, disasterSeverity, sandbox];
+		void [seed, era, difficulty, mapSize, aiCorps, useRealEarth, continentCount, oceanPct, roughness, climate, density, sandbox];
 		emitChange();
 	});
 
@@ -95,11 +85,6 @@
 	function randomizeSeed() {
 		seed = Math.floor(Math.random() * 999999);
 	}
-
-	// Sync disaster severity when difficulty changes
-	$effect(() => {
-		disasterSeverity = DIFFICULTY_DISASTER[difficulty] ?? 5;
-	});
 
 	// Initialize preset from defaults
 	$effect(() => {
@@ -226,15 +211,6 @@
 					<div class="slider-row">
 						<input type="range" min="0" max="100" bind:value={density} disabled={useRealEarth} />
 						<span class="slider-val">{density}%</span>
-					</div>
-				</label>
-			</div>
-			<div class="wcf-field">
-				<label class="wcf-label-sm">
-					Disaster Severity
-					<div class="slider-row">
-						<input type="range" min="1" max="10" bind:value={disasterSeverity} />
-						<span class="slider-val">{disasterSeverity}</span>
 					</div>
 				</label>
 			</div>

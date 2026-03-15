@@ -13,6 +13,7 @@
 	let health = $state<ServerHealth | null>(null);
 	let recentAudit = $state<AuditEntry[]>([]);
 	let loading = $state(true);
+	let error = $state<string | null>(null);
 
 	// Quick actions
 	let broadcastMsg = $state('');
@@ -26,9 +27,11 @@
 			]);
 			health = h;
 			recentAudit = a.audit_log;
-			loading = false;
+			error = null;
 		} catch (e) {
-			if (loading) loading = false;
+			error = e instanceof Error ? e.message : 'Failed to load data';
+		} finally {
+			loading = false;
 		}
 	}
 
@@ -64,7 +67,7 @@
 	}
 
 	onMount(() => {
-		startPolling('overview', loadData, 10000);
+		startPolling('overview', loadData);
 	});
 
 	onDestroy(() => {
@@ -77,7 +80,20 @@
 
 	{#if loading}
 		<LoadingSkeleton rows={4} height={40} />
+	{:else if error && !health}
+		<div class="error-state">
+			<div class="error-icon">!</div>
+			<h2 class="error-title">Unable to load dashboard</h2>
+			<p class="error-msg">{error}</p>
+			<button class="error-retry" onclick={loadData}>Retry</button>
+		</div>
 	{:else if health}
+		{#if error}
+			<div class="stale-banner">
+				<span>Data may be stale: {error}</span>
+				<button onclick={loadData}>Retry</button>
+			</div>
+		{/if}
 		<div class="stats-row">
 			<StatCard label="Version" value={health.version} color="var(--text-primary)" />
 			<StatCard label="Uptime" value={formatUptime(health.uptime_secs)} color="var(--green)" />
@@ -114,7 +130,7 @@
 				<p class="empty-text">No recent activity</p>
 			{:else}
 				<div class="activity-feed">
-					{#each recentAudit as entry}
+					{#each recentAudit as entry (entry.id)}
 						<div class="activity-item">
 							<div class="activity-info">
 								<span class="activity-actor">{entry.actor}</span>
@@ -135,12 +151,12 @@
 			<div class="section">
 				<h2 class="section-title">Active Worlds</h2>
 				<div class="worlds-grid">
-					{#each health.worlds as world}
+					{#each health.worlds as world (world.id)}
 						<a href="/worlds/{world.id}" class="world-card">
 							<div class="world-name">{world.name}</div>
 							<div class="world-meta">
 								<span>{world.player_count}/{world.max_players} players</span>
-								<span>Tick {world.tick}</span>
+								<span>Tick {world.tick.toLocaleString()}</span>
 								<Badge color={world.speed === 'Paused' ? 'amber' : 'green'}>{world.speed}</Badge>
 							</div>
 						</a>
@@ -292,6 +308,75 @@
 		font-size: 12px;
 		color: var(--text-dim);
 	}
+
+	/* Error state */
+	.error-state {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 60px 20px;
+		text-align: center;
+	}
+	.error-icon {
+		width: 48px;
+		height: 48px;
+		border-radius: 50%;
+		background: var(--red-bg);
+		color: var(--red);
+		font-size: 24px;
+		font-weight: 700;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin-bottom: 16px;
+	}
+	.error-title {
+		font-size: 16px;
+		font-weight: 600;
+		margin-bottom: 8px;
+	}
+	.error-msg {
+		font-size: 13px;
+		color: var(--text-dim);
+		margin-bottom: 16px;
+		max-width: 400px;
+	}
+	.error-retry {
+		padding: 8px 20px;
+		background: var(--blue);
+		color: white;
+		border: none;
+		border-radius: var(--radius-md);
+		font-size: 13px;
+		font-weight: 500;
+		cursor: pointer;
+	}
+	.error-retry:hover { opacity: 0.9; }
+
+	/* Stale data banner */
+	.stale-banner {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 8px 14px;
+		background: var(--amber-bg);
+		border: 1px solid rgba(245, 158, 11, 0.3);
+		border-radius: var(--radius-md);
+		margin-bottom: 16px;
+		font-size: 12px;
+		color: var(--amber);
+	}
+	.stale-banner button {
+		padding: 2px 10px;
+		background: rgba(245, 158, 11, 0.2);
+		border: 1px solid rgba(245, 158, 11, 0.3);
+		border-radius: var(--radius-sm);
+		color: var(--amber);
+		font-size: 11px;
+		cursor: pointer;
+	}
+
 	@media (max-width: 768px) {
 		.broadcast-inline {
 			min-width: 0;

@@ -2,8 +2,11 @@
 	import '../app.css';
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { navigating } from '$app/stores';
 	import { adminAuthed, adminKey } from '$lib/stores/auth.js';
 	import { validateAdminKey } from '$lib/api/client.js';
+	import { refreshAll } from '$lib/stores/polling.js';
+	import { connectionState, lastError, forceCheck } from '$lib/stores/connection.js';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Toast from '$lib/components/Toast.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
@@ -69,7 +72,6 @@
 		paletteOpen = true;
 		paletteQuery = '';
 		paletteIndex = 0;
-		// Focus input after DOM update
 		requestAnimationFrame(() => paletteInput?.focus());
 	}
 
@@ -151,15 +153,18 @@
 			return;
 		}
 
-		// R key refreshes (when not in an input/textarea/select and palette is closed)
+		// R key refreshes all pollers (when not in input and palette is closed)
 		if (e.key === 'r' && !e.ctrlKey && !e.metaKey && !e.altKey && $adminAuthed && !paletteOpen) {
 			const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
 			if (tag !== 'input' && tag !== 'textarea' && tag !== 'select') {
 				e.preventDefault();
-				window.dispatchEvent(new CustomEvent('gt-admin-refresh'));
+				refreshAll();
 			}
 		}
 	}
+
+	// Show connection banner when disconnected
+	const showConnBanner = $derived($connectionState === 'disconnected' && $adminAuthed);
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -168,7 +173,22 @@
 <ConfirmDialog />
 
 {#if $adminAuthed}
-	<div class="app-layout">
+	<!-- Navigation progress bar -->
+	{#if $navigating}
+		<div class="nav-progress">
+			<div class="nav-progress-bar"></div>
+		</div>
+	{/if}
+
+	<!-- Connection lost banner -->
+	{#if showConnBanner}
+		<div class="conn-banner">
+			<span class="conn-banner-text">Server unreachable{$lastError ? `: ${$lastError}` : ''}</span>
+			<button class="conn-retry-btn" onclick={forceCheck}>Retry</button>
+		</div>
+	{/if}
+
+	<div class="app-layout" class:with-banner={showConnBanner}>
 		{#if isMobile}
 			<div class="mobile-header">
 				<button class="hamburger-btn" onclick={() => (mobileNavOpen = !mobileNavOpen)} aria-label="Toggle navigation">
@@ -188,7 +208,9 @@
 			<Sidebar />
 		{/if}
 		<main class="app-content" class:mobile-content={isMobile}>
-			{@render children()}
+			<div class="page-transition" class:navigating={!!$navigating}>
+				{@render children()}
+			</div>
 		</main>
 	</div>
 
@@ -197,7 +219,6 @@
 		<div class="palette-overlay" onclick={closePalette} onkeydown={handlePaletteKeydown}>
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="palette-modal" onclick={(e: MouseEvent) => e.stopPropagation()} onkeydown={(e) => e.key === 'Escape' && (paletteOpen = false)}>
-
 				<input
 					bind:this={paletteInput}
 					type="text"
@@ -258,11 +279,84 @@
 {/if}
 
 <style>
+	/* Navigation progress bar */
+	.nav-progress {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 3px;
+		z-index: 1001;
+		overflow: hidden;
+	}
+	.nav-progress-bar {
+		height: 100%;
+		background: var(--blue);
+		animation: nav-loading 1.5s ease-in-out infinite;
+	}
+	@keyframes nav-loading {
+		0% { width: 0%; margin-left: 0%; }
+		50% { width: 60%; margin-left: 20%; }
+		100% { width: 0%; margin-left: 100%; }
+	}
+
+	/* Connection lost banner */
+	.conn-banner {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 36px;
+		background: var(--red-bg);
+		border-bottom: 1px solid var(--red);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 12px;
+		z-index: 999;
+		animation: slideDown 0.2s ease-out;
+	}
+	@keyframes slideDown {
+		from { transform: translateY(-100%); }
+		to { transform: translateY(0); }
+	}
+	.conn-banner-text {
+		font-size: 12px;
+		color: var(--red-light);
+		font-weight: 500;
+	}
+	.conn-retry-btn {
+		padding: 2px 10px;
+		font-size: 11px;
+		background: var(--red);
+		color: white;
+		border: none;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		font-weight: 500;
+	}
+	.conn-retry-btn:hover {
+		opacity: 0.8;
+	}
+
+	/* Page transition */
+	.page-transition {
+		transition: opacity 0.15s ease;
+	}
+	.page-transition.navigating {
+		opacity: 0.5;
+		pointer-events: none;
+	}
+
 	.app-layout {
 		display: flex;
 		height: 100vh;
 		width: 100vw;
 		overflow: hidden;
+	}
+	.app-layout.with-banner {
+		padding-top: 36px;
+		height: calc(100vh);
 	}
 	.app-content {
 		flex: 1;

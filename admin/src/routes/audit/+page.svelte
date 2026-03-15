@@ -9,6 +9,7 @@
 	let entries = $state<AuditEntry[]>([]);
 	let total = $state(0);
 	let loading = $state(true);
+	let error = $state<string | null>(null);
 	let currentPage = $state(0);
 	let pageSize = 50;
 	let actorFilter = $state('');
@@ -16,6 +17,9 @@
 	let dateFrom = $state('');
 	let dateTo = $state('');
 	let autoRefresh = $state(true);
+
+	// Debounce flag to prevent $effect loops
+	let fetchVersion = $state(0);
 
 	const columns = [
 		{ key: 'created_at', label: 'Time', sortable: true, format: (v: unknown) => v ? new Date(v as string).toLocaleString() : '--', width: '180px' },
@@ -36,8 +40,18 @@
 			const r = await fetchAuditLog(pageSize, currentPage * pageSize, actorFilter || undefined, action, from, to);
 			entries = r.audit_log;
 			total = r.total;
+			error = null;
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load audit log';
+		} finally {
 			loading = false;
-		} catch { if (loading) loading = false; }
+		}
+	}
+
+	/** Called when any filter changes. Resets page and triggers fetch. */
+	function onFilterChange() {
+		currentPage = 0;
+		fetchVersion++; // Trigger the $effect
 	}
 
 	function exportData(format: 'json' | 'csv') {
@@ -74,17 +88,14 @@
 	}
 
 	onMount(() => {
-		startPolling('audit', loadData, 10000);
+		if (autoRefresh) startPolling('audit', loadData);
 	});
 	onDestroy(() => stopPolling('audit'));
 
+	// Re-load when fetchVersion changes (filter/page change)
 	$effect(() => {
-		// Re-load when filter or page changes
-		actorFilter;
-		actionFilter;
-		dateFrom;
-		dateTo;
-		currentPage;
+		void fetchVersion;
+		void currentPage;
 		loadData();
 	});
 </script>
@@ -95,7 +106,7 @@
 		<div class="header-actions">
 			<label class="auto-toggle">
 				<input type="checkbox" bind:checked={autoRefresh} onchange={() => {
-					if (autoRefresh) startPolling('audit', loadData, 10000);
+					if (autoRefresh) startPolling('audit', loadData);
 					else stopPolling('audit');
 				}} />
 				Auto-refresh
@@ -105,14 +116,21 @@
 		</div>
 	</div>
 
+	{#if error && entries.length === 0}
+		<div class="error-inline">
+			<span>{error}</span>
+			<button onclick={loadData}>Retry</button>
+		</div>
+	{/if}
+
 	<div class="filters">
 		<div class="filter-group">
 			<label for="filter-actor">Actor Filter</label>
-			<input id="filter-actor" type="text" bind:value={actorFilter} placeholder="Filter by actor..." class="filter-input" />
+			<input id="filter-actor" type="text" bind:value={actorFilter} placeholder="Filter by actor..." class="filter-input" oninput={onFilterChange} />
 		</div>
 		<div class="filter-group">
 			<label for="filter-action">Action Type</label>
-			<select id="filter-action" bind:value={actionFilter} class="filter-input filter-select">
+			<select id="filter-action" bind:value={actionFilter} class="filter-input filter-select" onchange={onFilterChange}>
 				{#each actionTypes as t}
 					<option value={t}>{t === 'all' ? 'All Actions' : t.replace(/_/g, ' ')}</option>
 				{/each}
@@ -120,11 +138,11 @@
 		</div>
 		<div class="filter-group">
 			<label for="filter-from">From</label>
-			<input id="filter-from" type="date" bind:value={dateFrom} class="filter-input filter-date" />
+			<input id="filter-from" type="date" bind:value={dateFrom} class="filter-input filter-date" onchange={onFilterChange} />
 		</div>
 		<div class="filter-group">
 			<label for="filter-to">To</label>
-			<input id="filter-to" type="date" bind:value={dateTo} class="filter-input filter-date" />
+			<input id="filter-to" type="date" bind:value={dateTo} class="filter-input filter-date" onchange={onFilterChange} />
 		</div>
 		<span class="total-count">{total} total entries</span>
 	</div>
@@ -138,9 +156,9 @@
 
 	{#if total > pageSize}
 		<div class="pagination">
-			<button disabled={currentPage === 0} onclick={() => currentPage--}>Prev</button>
+			<button disabled={currentPage === 0} onclick={() => { currentPage--; }}>Prev</button>
 			<span>Page {currentPage + 1} of {Math.ceil(total / pageSize)}</span>
-			<button disabled={(currentPage + 1) * pageSize >= total} onclick={() => currentPage++}>Next</button>
+			<button disabled={(currentPage + 1) * pageSize >= total} onclick={() => { currentPage++; }}>Next</button>
 		</div>
 	{/if}
 </div>
@@ -165,21 +183,12 @@
 	.pagination button { padding: 4px 12px; font-size: 12px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-secondary); cursor: pointer; }
 	.pagination button:disabled { opacity: 0.4; cursor: default; }
 	.pagination span { font-size: 12px; color: var(--text-dim); }
+	.error-inline { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; background: var(--red-bg); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-md); margin-bottom: 12px; font-size: 12px; color: var(--red-light); }
+	.error-inline button { padding: 2px 10px; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-sm); color: var(--red-light); font-size: 11px; cursor: pointer; }
 	@media (max-width: 768px) {
-		.header-actions {
-			flex-wrap: wrap;
-		}
-		.filters {
-			flex-direction: column;
-			align-items: stretch;
-		}
-		.filter-input,
-		.filter-select,
-		.filter-date {
-			width: 100% !important;
-		}
-		.total-count {
-			margin-left: 0;
-		}
+		.header-actions { flex-wrap: wrap; }
+		.filters { flex-direction: column; align-items: stretch; }
+		.filter-input, .filter-select, .filter-date { width: 100% !important; }
+		.total-count { margin-left: 0; }
 	}
 </style>

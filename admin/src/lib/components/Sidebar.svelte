@@ -1,8 +1,10 @@
 <script lang="ts">
+	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import { clearAdmin } from '../stores/auth.js';
 	import { preferences } from '../stores/preferences.js';
 	import { pollingEnabled, lastRefresh } from '../stores/polling.js';
+	import { connectionState, lastError } from '../stores/connection.js';
 
 	let { mobile = false, onnavclick }: { mobile?: boolean; onnavclick?: () => void } = $props();
 
@@ -32,10 +34,39 @@
 		return page.url.pathname.startsWith(href);
 	}
 
-	const staleSeconds = $derived.by(() => {
-		if (!$lastRefresh) return null;
-		return Math.floor((Date.now() - $lastRefresh.getTime()) / 1000);
+	// Tick a counter every second so stale indicator updates reactively
+	let tickCount = $state(0);
+	let tickTimer: ReturnType<typeof setInterval> | undefined;
+
+	onMount(() => {
+		tickTimer = setInterval(() => { tickCount++; }, 1000);
 	});
+
+	onDestroy(() => {
+		if (tickTimer) clearInterval(tickTimer);
+	});
+
+	const staleText = $derived.by(() => {
+		// Depend on tickCount so this re-evaluates every second
+		void tickCount;
+		if (!$lastRefresh) return null;
+		const secs = Math.floor((Date.now() - $lastRefresh.getTime()) / 1000);
+		if (secs < 2) return 'just now';
+		if (secs < 60) return `${secs}s ago`;
+		return `${Math.floor(secs / 60)}m ago`;
+	});
+
+	const connDot = $derived(
+		$connectionState === 'connected' ? 'var(--green)' :
+		$connectionState === 'disconnected' ? 'var(--red)' :
+		'var(--amber)'
+	);
+
+	const connLabel = $derived(
+		$connectionState === 'connected' ? 'Connected' :
+		$connectionState === 'disconnected' ? 'Disconnected' :
+		'Checking...'
+	);
 </script>
 
 <aside class="sidebar" class:collapsed>
@@ -67,6 +98,12 @@
 
 	<div class="sidebar-footer">
 		{#if !collapsed}
+			<!-- Connection status -->
+			<div class="conn-status" title={$lastError ?? connLabel}>
+				<span class="conn-dot" style="background: {connDot}"></span>
+				<span class="conn-label">{connLabel}</span>
+			</div>
+
 			<div class="refresh-status">
 				<button
 					class="refresh-toggle"
@@ -76,9 +113,14 @@
 				>
 					{$pollingEnabled ? '\u{25CF}' : '\u{25CB}'} Auto
 				</button>
-				{#if staleSeconds !== null}
-					<span class="stale-indicator">{staleSeconds}s ago</span>
+				{#if staleText}
+					<span class="stale-indicator">{staleText}</span>
 				{/if}
+			</div>
+		{:else}
+			<!-- Collapsed: just show connection dot -->
+			<div class="conn-dot-only" title={connLabel}>
+				<span class="conn-dot" style="background: {connDot}"></span>
 			</div>
 		{/if}
 		<button class="logout-btn" onclick={clearAdmin} title="Logout">
@@ -168,6 +210,28 @@
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
+	}
+	.conn-status {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 4px 0;
+	}
+	.conn-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		flex-shrink: 0;
+		transition: background 0.3s;
+	}
+	.conn-label {
+		font-size: 11px;
+		color: var(--text-dim);
+	}
+	.conn-dot-only {
+		display: flex;
+		justify-content: center;
+		padding: 4px 0;
 	}
 	.refresh-status {
 		display: flex;

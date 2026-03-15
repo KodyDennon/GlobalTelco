@@ -5,10 +5,11 @@
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import { fetchMetrics } from '$lib/api/metrics.js';
 	import { startPolling, stopPolling } from '$lib/stores/polling.js';
-	import type { ServerMetrics, WorldMetrics } from '$lib/api/types.js';
+	import type { ServerMetrics } from '$lib/api/types.js';
 
 	let metrics = $state<ServerMetrics | null>(null);
 	let loading = $state(true);
+	let error = $state<string | null>(null);
 	let expandedWorld = $state<string | null>(null);
 
 	// History for sparklines
@@ -25,8 +26,12 @@
 			memoryHistory = [...memoryHistory.slice(-59), memMb];
 			playerHistory = [...playerHistory.slice(-59), m.server.connected_players];
 			wsHistory = [...wsHistory.slice(-59), m.server.ws_messages_per_sec ?? 0];
+			error = null;
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load metrics';
+		} finally {
 			loading = false;
-		} catch { if (loading) loading = false; }
+		}
 	}
 
 	function formatUs(us: number): string {
@@ -50,16 +55,30 @@
 		return `${h}h ${m}m`;
 	}
 
-	onMount(() => startPolling('monitoring', loadData, 10000));
+	onMount(() => startPolling('monitoring', loadData));
 	onDestroy(() => stopPolling('monitoring'));
 </script>
 
 <div class="page">
 	<h1 class="page-title">Monitoring</h1>
 
-	{#if loading}
+	{#if loading && !metrics}
 		<LoadingSkeleton rows={6} height={32} />
+	{:else if error && !metrics}
+		<div class="error-state">
+			<div class="error-icon">!</div>
+			<h2 class="error-title">Unable to load metrics</h2>
+			<p class="error-msg">{error}</p>
+			<button class="error-retry" onclick={loadData}>Retry</button>
+		</div>
 	{:else if metrics}
+		{#if error}
+			<div class="stale-banner">
+				<span>Data may be stale: {error}</span>
+				<button onclick={loadData}>Retry</button>
+			</div>
+		{/if}
+
 		<!-- Server Stats -->
 		<div class="stats-row">
 			<StatCard
@@ -95,7 +114,7 @@
 				<p class="empty-text">No worlds running</p>
 			{:else}
 				<div class="world-metrics">
-					{#each metrics.worlds as world}
+					{#each metrics.worlds as world (world.id)}
 						<div class="world-metric-card">
 							<button class="world-metric-header" onclick={() => (expandedWorld = expandedWorld === world.id ? null : world.id)}>
 								<span class="wm-name">{world.name}</span>
@@ -163,21 +182,20 @@
 	.sys-bar-wrap { flex: 1; height: 8px; background: var(--bg-panel); border-radius: 4px; overflow: hidden; }
 	.sys-bar { height: 100%; border-radius: 4px; transition: width 0.3s; }
 	.sys-val { font-size: 11px; font-family: var(--font-mono); min-width: 60px; text-align: right; }
+
+	/* Error state */
+	.error-state { display: flex; flex-direction: column; align-items: center; padding: 60px 20px; text-align: center; }
+	.error-icon { width: 48px; height: 48px; border-radius: 50%; background: var(--red-bg); color: var(--red); font-size: 24px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+	.error-title { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+	.error-msg { font-size: 13px; color: var(--text-dim); margin-bottom: 16px; }
+	.error-retry { padding: 8px 20px; background: var(--blue); color: white; border: none; border-radius: var(--radius-md); font-size: 13px; cursor: pointer; }
+	.stale-banner { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; background: var(--amber-bg); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: var(--radius-md); margin-bottom: 16px; font-size: 12px; color: var(--amber); }
+	.stale-banner button { padding: 2px 10px; background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: var(--radius-sm); color: var(--amber); font-size: 11px; cursor: pointer; }
+
 	@media (max-width: 768px) {
-		.world-metric-header {
-			flex-wrap: wrap;
-			gap: 8px;
-		}
-		.wm-stats {
-			flex-wrap: wrap;
-			gap: 8px;
-		}
-		.wm-name {
-			min-width: auto;
-			width: 100%;
-		}
-		.sys-name {
-			min-width: 80px;
-		}
+		.world-metric-header { flex-wrap: wrap; gap: 8px; }
+		.wm-stats { flex-wrap: wrap; gap: 8px; }
+		.wm-name { min-width: auto; width: 100%; }
+		.sys-name { min-width: 80px; }
 	}
 </style>
