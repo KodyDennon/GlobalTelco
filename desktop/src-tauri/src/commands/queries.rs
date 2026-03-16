@@ -48,6 +48,7 @@ json_query!(sim_get_acquisition_proposals, QueryKind::AcquisitionProposals);
 json_query!(sim_get_road_segments, QueryKind::RoadSegments);
 json_query!(sim_get_player_corp_id, QueryKind::PlayerCorpId);
 json_query!(sim_get_is_real_earth, QueryKind::IsRealEarth);
+json_query!(sim_get_static_definitions, QueryKind::StaticDefinitions);
 
 // ── Queries with a single entity ID ──────────────────────────────────────
 
@@ -69,6 +70,12 @@ json_query_u64!(sim_get_lawsuits, Lawsuits);
 json_query_u64!(sim_get_stock_market, StockMarket);
 json_query_u64!(sim_get_region_pricing, RegionPricing);
 json_query_u64!(sim_get_maintenance_priorities, MaintenancePriorities);
+json_query_u64!(sim_get_node_metadata, NodeMetadata);
+json_query_u64!(sim_get_edge_metadata, EdgeMetadata);
+json_query_u64!(sim_get_grants, Grants);
+json_query_u64!(sim_get_satellite_inventory, SatelliteInventory);
+json_query_u64!(sim_get_co_ownership_proposals, CoOwnershipProposals);
+json_query_u64!(sim_get_pending_upgrade_votes, PendingUpgradeVotes);
 
 // ── Queries with (lon, lat) ──────────────────────────────────────────────
 

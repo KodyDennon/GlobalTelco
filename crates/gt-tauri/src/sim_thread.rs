@@ -87,6 +87,12 @@ pub enum QueryKind {
     StockMarket(EntityId),
     RegionPricing(EntityId),
     MaintenancePriorities(EntityId),
+    NodeMetadata(EntityId),
+    EdgeMetadata(EntityId),
+    Grants(EntityId),
+    SatelliteInventory(EntityId),
+    CoOwnershipProposals(EntityId),
+    PendingUpgradeVotes(EntityId),
 }
 
 /// Binary query kinds for typed array data.
@@ -436,6 +442,24 @@ fn dispatch_json_query(bridge: &mut crate::TauriBridge, kind: QueryKind) -> Stri
         QueryKind::StockMarket(id) => bridge.get_stock_market(id),
         QueryKind::RegionPricing(id) => bridge.get_region_pricing(id),
         QueryKind::MaintenancePriorities(id) => bridge.get_maintenance_priorities(id),
+        QueryKind::NodeMetadata(id) => bridge.get_node_metadata(id),
+        QueryKind::EdgeMetadata(id) => bridge.get_edge_metadata(id),
+        QueryKind::Grants(id) => {
+            let w = bridge.world.lock().expect("GameWorld mutex poisoned");
+            gt_bridge::queries::query_grants(&w, id)
+        }
+        QueryKind::SatelliteInventory(id) => {
+            let w = bridge.world.lock().expect("GameWorld mutex poisoned");
+            gt_bridge::queries::query_satellite_inventory(&w, id)
+        }
+        QueryKind::CoOwnershipProposals(id) => {
+            let w = bridge.world.lock().expect("GameWorld mutex poisoned");
+            gt_bridge::queries::query_co_ownership_proposals(&w, id)
+        }
+        QueryKind::PendingUpgradeVotes(id) => {
+            let w = bridge.world.lock().expect("GameWorld mutex poisoned");
+            gt_bridge::queries::query_pending_upgrade_votes(&w, id)
+        }
     }
 }
 

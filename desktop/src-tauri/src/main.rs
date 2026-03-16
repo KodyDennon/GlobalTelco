@@ -48,6 +48,7 @@ fn main() {
             commands::queries::sim_get_road_segments,
             commands::queries::sim_get_player_corp_id,
             commands::queries::sim_get_is_real_earth,
+            commands::queries::sim_get_static_definitions,
             // ── JSON queries (entity ID) ─────────────────────────────
             commands::queries::sim_get_corporation_data,
             commands::queries::sim_get_contracts,
@@ -67,6 +68,12 @@ fn main() {
             commands::queries::sim_get_stock_market,
             commands::queries::sim_get_region_pricing,
             commands::queries::sim_get_maintenance_priorities,
+            commands::queries::sim_get_node_metadata,
+            commands::queries::sim_get_edge_metadata,
+            commands::queries::sim_get_grants,
+            commands::queries::sim_get_satellite_inventory,
+            commands::queries::sim_get_co_ownership_proposals,
+            commands::queries::sim_get_pending_upgrade_votes,
             // ── JSON queries (coords / viewport) ─────────────────────
             commands::queries::sim_get_buildable_nodes,
             commands::queries::sim_get_visible_entities,
