@@ -18,7 +18,7 @@ jobs:
           - platform: macos-15
             target: aarch64-apple-darwin
             name: macOS ARM
-          - platform: macos-13
+          - platform: macos-latest
             target: x86_64-apple-darwin
             name: macOS Intel
           - platform: ubuntu-22.04
