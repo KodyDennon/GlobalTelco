@@ -4,7 +4,7 @@
 
 - **Frontend:** `https://globaltelco.online` (Vercel + Cloudflare DNS)
 - **Server:** `https://server.globaltelco.online` (Oracle Cloud + Cloudflare proxy)
-- **Origin IP:** `159.54.188.149`
+- **Origin IP:** `<your-server-ip>`
 - **Instance:** VM.Standard.E2.1.Micro (AMD x86, 1 OCPU, 1GB RAM) — always free
 - **SSL:** Cloudflare terminates TLS (free plan), origin serves HTTP only
 - **DNS:** Cloudflare (zone: `globaltelco.online`)
@@ -12,7 +12,7 @@
   - Health: `https://server.globaltelco.online/health`
   - API: `https://server.globaltelco.online/api`
   - WebSocket: `wss://server.globaltelco.online/ws`
-- **SSH:** `ssh -i ~/.ssh/oracle_globaltelco ubuntu@159.54.188.149`
+- **SSH:** `ssh -i ~/.ssh/oracle_globaltelco ubuntu@<your-server-ip>`
 
 ## Architecture
 
@@ -42,7 +42,7 @@ Browser (HTTPS/WSS) ──► Cloudflare (TLS termination, WebSocket proxy)
 | WebSockets | Enabled |
 | `globaltelco.online` | A record → `76.76.21.21` (Vercel), DNS-only |
 | `www.globaltelco.online` | CNAME → `cname.vercel-dns.com`, DNS-only |
-| `server.globaltelco.online` | A record → `159.54.188.149`, Proxied (orange cloud) |
+| `server.globaltelco.online` | A record → `<your-server-ip>`, Proxied (orange cloud) |
 
 ## Step 1: Create a Compute Instance
 
@@ -84,7 +84,7 @@ DNS records are managed in the Cloudflare dashboard (or via API). Required recor
 |------|------|---------|-------|
 | A | `globaltelco.online` | `76.76.21.21` | DNS-only (gray) |
 | CNAME | `www` | `cname.vercel-dns.com` | DNS-only (gray) |
-| A | `server` | `159.54.188.149` | Proxied (orange) |
+| A | `server` | `<your-server-ip>` | Proxied (orange) |
 
 Cloudflare zone settings:
 - SSL/TLS → **Flexible**
@@ -96,7 +96,7 @@ From your local machine:
 
 ```bash
 # Set your instance IP
-export ORACLE_IP=159.54.188.149
+export ORACLE_IP=<your-server-ip>
 
 # Run the deploy script (builds + uploads + installs)
 ./deploy/deploy.sh
@@ -132,7 +132,7 @@ curl -s -H "Origin: https://globaltelco.online" \
 curl -sI https://server.globaltelco.online/health | grep cf-ray
 
 # Server status
-ssh -i ~/.ssh/oracle_globaltelco ubuntu@159.54.188.149 "sudo systemctl status globaltelco"
+ssh -i ~/.ssh/oracle_globaltelco ubuntu@<your-server-ip> "sudo systemctl status globaltelco"
 ```
 
 ## Frontend Configuration
@@ -179,20 +179,20 @@ All free, forever (not trial):
 
 ```bash
 # View server logs
-ssh -i ~/.ssh/oracle_globaltelco ubuntu@159.54.188.149 "sudo journalctl -u globaltelco -f"
+ssh -i ~/.ssh/oracle_globaltelco ubuntu@<your-server-ip> "sudo journalctl -u globaltelco -f"
 
 # Restart game server
-ssh -i ~/.ssh/oracle_globaltelco ubuntu@159.54.188.149 "sudo systemctl restart globaltelco"
+ssh -i ~/.ssh/oracle_globaltelco ubuntu@<your-server-ip> "sudo systemctl restart globaltelco"
 
 # Restart nginx
-ssh -i ~/.ssh/oracle_globaltelco ubuntu@159.54.188.149 "sudo systemctl restart nginx"
+ssh -i ~/.ssh/oracle_globaltelco ubuntu@<your-server-ip> "sudo systemctl restart nginx"
 
 # Check nginx config
-ssh -i ~/.ssh/oracle_globaltelco ubuntu@159.54.188.149 "sudo nginx -t"
+ssh -i ~/.ssh/oracle_globaltelco ubuntu@<your-server-ip> "sudo nginx -t"
 
 # Check if ports are open (from local machine)
 curl -s https://server.globaltelco.online/health
 
 # Memory usage
-ssh -i ~/.ssh/oracle_globaltelco ubuntu@159.54.188.149 "free -h"
+ssh -i ~/.ssh/oracle_globaltelco ubuntu@<your-server-ip> "free -h"
 ```

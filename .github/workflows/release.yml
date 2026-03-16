@@ -1,11 +1,13 @@
 name: Release
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'engine-v*'
       - 'server-v*'
       - 'web-v*'
+      - 'admin-v*'
       # desktop-v* is handled by desktop-release.yml (tauri-action creates the release)
 
 permissions:

@@ -1114,7 +1114,7 @@ checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
 name = "globaltelco-desktop"
-version = "2.3.0"
+version = "2.4.1"
 dependencies = [
  "gt-bridge",
  "gt-common",
@@ -1142,7 +1142,7 @@ dependencies = [
 
 [[package]]
 name = "gt-ai"
-version = "1.12.5"
+version = "1.13.0"
 dependencies = [
  "gt-common",
  "gt-economy",
@@ -1153,7 +1153,7 @@ dependencies = [
 
 [[package]]
 name = "gt-bridge"
-version = "1.12.5"
+version = "1.13.0"
 dependencies = [
  "gt-common",
  "gt-simulation",
@@ -1164,7 +1164,7 @@ dependencies = [
 
 [[package]]
 name = "gt-common"
-version = "1.12.5"
+version = "1.13.0"
 dependencies = [
  "chrono",
  "indexmap 2.13.0",
@@ -1178,7 +1178,7 @@ dependencies = [
 
 [[package]]
 name = "gt-economy"
-version = "1.12.5"
+version = "1.13.0"
 dependencies = [
  "gt-common",
  "serde",
@@ -1186,7 +1186,7 @@ dependencies = [
 
 [[package]]
 name = "gt-infrastructure"
-version = "1.12.5"
+version = "1.13.0"
 dependencies = [
  "gt-common",
  "indexmap 2.13.0",
@@ -1195,7 +1195,7 @@ dependencies = [
 
 [[package]]
 name = "gt-population"
-version = "1.12.5"
+version = "1.13.0"
 dependencies = [
  "gt-common",
  "serde",
@@ -1203,7 +1203,7 @@ dependencies = [
 
 [[package]]
 name = "gt-simulation"
-version = "1.12.5"
+version = "1.13.0"
 dependencies = [
  "bincode",
  "crc32fast",
@@ -1223,7 +1223,7 @@ dependencies = [
 
 [[package]]
 name = "gt-tauri"
-version = "1.12.5"
+version = "1.13.0"
 dependencies = [
  "gt-bridge",
  "gt-common",
@@ -1236,7 +1236,7 @@ dependencies = [
 
 [[package]]
 name = "gt-world"
-version = "1.12.5"
+version = "1.13.0"
 dependencies = [
  "delaunator",
  "gt-common",

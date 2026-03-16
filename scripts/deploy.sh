@@ -6,7 +6,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 echo "=== GlobalTelco Local Build & Verify ==="
 echo ""
 echo "Note: Vercel deploys frontend automatically on push to main."
-echo "Game server: ORACLE_IP=159.54.188.149 ./deploy/deploy.sh"
+echo "Game server: ORACLE_IP=\$ORACLE_IP ./deploy/deploy.sh"
 echo "This script builds everything locally to verify before pushing."
 echo ""
 

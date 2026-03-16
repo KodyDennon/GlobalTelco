@@ -46,10 +46,15 @@ impl ServerConfig {
             host: env_or("GT_HOST", "0.0.0.0"),
             port: env_or("GT_PORT", "3001").parse().unwrap_or(3001),
             auth: AuthConfig {
-                jwt_secret: env_or(
-                    "GT_JWT_SECRET",
-                    "globaltelco-dev-secret-change-in-production",
-                ),
+                jwt_secret: {
+                    let secret = env_or("GT_JWT_SECRET", "");
+                    if secret.is_empty() {
+                        eprintln!("WARNING: GT_JWT_SECRET not set — using insecure dev default. Set this in production!");
+                        "globaltelco-dev-secret-change-in-production".to_string()
+                    } else {
+                        secret
+                    }
+                },
                 access_token_expiry_secs: env_or("GT_ACCESS_TOKEN_EXPIRY", "3600")
                     .parse()
                     .unwrap_or(3600),

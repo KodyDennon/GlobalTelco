@@ -1,9 +1,11 @@
 package config
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // VersionFileType describes how a version is stored in a file.
@@ -146,17 +148,62 @@ func ComponentIDs() []string {
 	return ids
 }
 
-// DefaultDeployConfig returns the Oracle Cloud deploy configuration.
+// DefaultDeployConfig returns the deploy configuration.
+// Host and SSH key are read from environment variables (ORACLE_IP, SSH_KEY)
+// to avoid hardcoding infrastructure details in source code.
 func DefaultDeployConfig() DeployConfig {
 	home, _ := os.UserHomeDir()
+	host := envOrDotenv("ORACLE_IP")
+	sshKey := envOrDotenv("SSH_KEY")
+	if sshKey == "" {
+		sshKey = filepath.Join(home, ".ssh", "oracle_globaltelco")
+	}
+	sshUser := envOrDotenv("SSH_USER")
+	if sshUser == "" {
+		sshUser = "ubuntu"
+	}
 	return DeployConfig{
-		Host:        "159.54.188.149",
-		SSHKey:      filepath.Join(home, ".ssh", "oracle_globaltelco"),
-		SSHUser:     "ubuntu",
+		Host:        host,
+		SSHKey:      sshKey,
+		SSHUser:     sshUser,
 		Domain:      "server.globaltelco.online",
 		ServiceName: "globaltelco",
 		BinaryPath:  "/opt/globaltelco/gt-server",
 	}
+}
+
+// envFromDotenv reads a key from the project root .env file.
+// Returns empty string if the file doesn't exist or key isn't found.
+func envFromDotenv(key string) string {
+	root, err := FindProjectRoot()
+	if err != nil {
+		return ""
+	}
+	f, err := os.Open(filepath.Join(root, ".env"))
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if ok && strings.TrimSpace(k) == key {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+// envOrDotenv reads from OS environment first, then falls back to .env file.
+func envOrDotenv(key string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return envFromDotenv(key)
 }
 
 // FindProjectRoot walks up from cwd looking for the VERSION file.
