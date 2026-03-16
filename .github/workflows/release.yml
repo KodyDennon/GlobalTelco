@@ -25,16 +25,32 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           COMPONENT="${TAG%%-v*}"
           VERSION="${TAG#*-v}"
+          # Human-readable display names
+          case "$COMPONENT" in
+            engine) DISPLAY="Simulation Engine" ;;
+            server) DISPLAY="Multiplayer Server" ;;
+            web)    DISPLAY="Web Client" ;;
+            admin)  DISPLAY="Admin Panel" ;;
+            *)      DISPLAY="$COMPONENT" ;;
+          esac
           echo "component=${COMPONENT}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Component: ${COMPONENT}, Version: ${VERSION}"
+          echo "display=${DISPLAY}" >> "$GITHUB_OUTPUT"
+          echo "Component: ${DISPLAY}, Version: ${VERSION}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: "GlobalTelco ${{ steps.meta.outputs.component }} v${{ steps.meta.outputs.version }}"
-          draft: true
+          name: "${{ steps.meta.outputs.display }} v${{ steps.meta.outputs.version }}"
+          draft: false
           generate_release_notes: true
+          body: |
+            ## GlobalTelco — ${{ steps.meta.outputs.display }} v${{ steps.meta.outputs.version }}
+
+            **Component:** ${{ steps.meta.outputs.display }}
+            **Tag:** `${{ github.ref_name }}`
+
+            See the auto-generated changelog below for details.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

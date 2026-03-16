@@ -78,8 +78,20 @@ jobs:
         with:
           projectPath: desktop
           tagName: ${{ github.ref_name }}
-          releaseName: 'GlobalTelco ${{ github.ref_name }}'
-          releaseBody: 'Desktop release for GlobalTelco. See assets below to download for your platform.'
-          releaseDraft: true
+          releaseName: 'Desktop App v${{ github.ref_name }}'
+          releaseBody: |
+            ## GlobalTelco — Desktop App
+
+            Native desktop application with full offline single-player support.
+            The simulation runs natively in Rust for maximum performance.
+
+            ### Downloads
+            | Platform | File |
+            |----------|------|
+            | **Windows** | `.msi` installer |
+            | **macOS (Apple Silicon)** | `.dmg` (aarch64) |
+            | **macOS (Intel)** | `.dmg` (x86_64) |
+            | **Linux** | `.deb` / `.AppImage` |
+          releaseDraft: false
           prerelease: false
           args: --target ${{ matrix.target }}
