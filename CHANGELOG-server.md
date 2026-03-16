@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.4.0 (2026-03-15)
+
+### Features
+
+- **desktop:** add 7 missing Tauri IPC query commands (2e510ae)
+
+### Bug Fixes
+
+- improve release naming and publish releases (not draft) (5c75f0e)
+- clean up release pipeline and remove hardcoded secrets for public repo (83ced8d)
+- **admin:** live state awareness, error handling, reactive polling, and proper transitions (4c9601b)
+
+### Other
+
+- **engine:** v2.0.0 (1900c05)
+- crgo (16bcb14)
+- **desktop:** v2.4.1 (b0e4b70)
+- **web:** v1.11.1 (18e69ef)
+
+
 ## 1.3.0 (2026-03-15)
 
 ### Features
