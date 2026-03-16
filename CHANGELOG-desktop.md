@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.5.1 (2026-03-16)
+
+### Bug Fixes
+
+- restore map and game data in Pure Worker mode (dd6b2fd)
+
+### Other
+
+- **web:** v1.11.3 (fca49a5)
+- **engine:** v2.0.1 (ff49d96)
+
+
 ## 2.5.0 (2026-03-15)
 
 ### Features
