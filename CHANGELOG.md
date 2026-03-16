@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.0.1 (2026-03-16)
+
+### Bug Fixes
+
+- restore map and game data in Pure Worker mode (dd6b2fd)
+- **ci:** use macos-latest for Intel build (c2c807e)
+- **ci:** revert macOS Intel to macos-13 (x86_64 needs Intel runner) (12d9f59)
+- **ci:** switch macOS Intel build to macos-15 runner, fix release name (358f807)
+
+### Chores
+
+- remove release.yml workflow (only desktop releases have artifacts) (42363c9)
+- remove unused fly.toml (deployed on Oracle Cloud, not Fly.io) (8cd74e2)
+- update Cargo.lock for v2.0.0 workspace version (7234142)
+
+### Other
+
+- **desktop:** v2.5.0 (a0acb86)
+- **web:** v1.11.2 (995dbc2)
+- **admin:** v1.3.0 (27be406)
+- **server:** v1.4.0 (5899903)
+
+
 ## 2.0.0 (2026-03-15)
 
 ### Features
