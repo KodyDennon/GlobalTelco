@@ -18,7 +18,7 @@ jobs:
           - platform: macos-15
             target: aarch64-apple-darwin
             name: macOS ARM
-          - platform: macos-13
+          - platform: macos-15
             target: x86_64-apple-darwin
             name: macOS Intel
           - platform: ubuntu-22.04
@@ -78,7 +78,7 @@ jobs:
         with:
           projectPath: desktop
           tagName: ${{ github.ref_name }}
-          releaseName: 'Desktop App v${{ github.ref_name }}'
+          releaseName: 'GlobalTelco Desktop ${{ github.ref_name }}'
           releaseBody: |
             ## GlobalTelco — Desktop App
 
