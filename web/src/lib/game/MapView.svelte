@@ -175,7 +175,11 @@
 			if (init && container && !renderer) {
 				const info = get(worldInfo);
 				renderer = new MapRenderer(container, get(mapQuality), info?.is_real_earth);
-				await renderer.buildMap();
+				try {
+					await renderer.buildMap();
+				} catch (e) {
+					console.error('[MapView] buildMap() failed:', e);
+				}
 				mapReady.set(true);
 				renderer.updateInfrastructure();
 

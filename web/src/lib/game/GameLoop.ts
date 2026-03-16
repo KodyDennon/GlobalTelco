@@ -246,15 +246,24 @@ function handleWorkerTickResult(result: workerBridge.TickResult) {
 		const panelOpen = get(activePanelGroup) !== 'none';
 		const shouldUpdateFullAsync = info && (info.tick % 10 === 0 || info.tick === 0 || get(allCorporations).length === 0);
 		
-		if (shouldUpdateFullAsync && (panelOpen || info.tick === 0)) {
+		if (shouldUpdateFullAsync && (panelOpen || info.tick <= 2)) {
 			workerBridge.query('get_regions').then(data => {
-				if (data) { regions.set(data); }
+				if (data) { regions.set(data); bridge.updateWorkerCache('regions', data); }
 			}).catch(() => { });
 			workerBridge.query('get_cities').then(data => {
-				if (data) { cities.set(data); }
+				if (data) { cities.set(data); bridge.updateWorkerCache('cities', data); }
 			}).catch(() => { });
 			workerBridge.query('get_all_corporations').then(data => {
-				if (data) { allCorporations.set(data); }
+				if (data) { allCorporations.set(data); bridge.updateWorkerCache('allCorporations', data); }
+			}).catch(() => { });
+			workerBridge.query('get_all_infrastructure').then(data => {
+				if (data) bridge.updateWorkerCache('allInfra', data);
+			}).catch(() => { });
+			workerBridge.query('get_cell_coverage').then(data => {
+				if (data) bridge.updateWorkerCache('coverage', data);
+			}).catch(() => { });
+			workerBridge.query('get_traffic_flows').then(data => {
+				if (data) bridge.updateWorkerCache('traffic', data);
 			}).catch(() => { });
 		}
 
@@ -433,7 +442,8 @@ function yieldToUI(): Promise<void> {
 export async function initGame(config?: Partial<import('$lib/wasm/types').WorldConfig>) {
 	loadingStage.set(0);
 	mapReady.set(false);
-	
+	bridge.setIsRealEarth(!!config?.use_real_earth);
+
 	const canUseWorker = workerBridge.isSupported() && !bridge.isNativeSim();
 
 	if (canUseWorker) {
@@ -487,11 +497,21 @@ export async function initGame(config?: Partial<import('$lib/wasm/types').WorldC
 
 	if (useWorker) {
 		workerBridge.requestTick();
+		// Pre-populate worldInfo with is_real_earth from config so MapRenderer
+		// picks the correct style before the first tick result arrives.
+		worldInfo.set({ is_real_earth: !!config?.use_real_earth } as any);
 	} else {
 		updateStores();
 	}
-	
+
 	await bridge.fetchGridCells();
+	await bridge.fetchEssentialData();
+	// Populate stores from worker caches so HUD + map have data immediately
+	if (useWorker) {
+		regions.set(bridge.getRegions());
+		cities.set(bridge.getCities());
+		allCorporations.set(bridge.getAllCorporations());
+	}
 	loadingStage.set(3);
 	await yieldToUI();
 

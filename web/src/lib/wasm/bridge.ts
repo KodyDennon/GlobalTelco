@@ -47,6 +47,14 @@ let bridge: any = null;
 const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
 let tauriInvoke: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null = null;
 
+// Cached from game config at init time — available synchronously before first tick.
+let _isRealEarth = false;
+
+/** Set the real earth flag from game config (call before MapRenderer init). */
+export function setIsRealEarth(value: boolean): void {
+	_isRealEarth = value;
+}
+
 // When true, all sim queries route to native Rust via Tauri IPC (no WASM loaded).
 let useNativeSim = false;
 
@@ -287,6 +295,7 @@ export function getCorporationData(corpId: number): CorporationData {
 
 export function getRegions(): Region[] {
 	if (useNativeSim) return tauriBridge.getCachedRegions();
+	if (_commandProxy) return _workerCachedRegions || [];
 	try {
 		const res = bridge?.get_regions();
 		return parseJsonIfNeeded(res, []);
@@ -297,15 +306,15 @@ export function getRegions(): Region[] {
 }
 
 export function isRealEarth(): boolean {
-	if (_latestTickResult?.info) {
-		return _latestTickResult.info.is_real_earth;
-	}
+	if (_isRealEarth) return true;
+	if (_latestTickResult?.info?.is_real_earth) return true;
 	if (useNativeSim) return tauriBridge.getCachedIsRealEarth();
 	return bridge?.is_real_earth() ?? false;
 }
 
 export function getCities(): City[] {
 	if (useNativeSim) return tauriBridge.getCachedCities();
+	if (_commandProxy) return _workerCachedCities || [];
 	try {
 		const res = bridge?.get_cities();
 		return parseJsonIfNeeded(res, []);
@@ -384,6 +393,7 @@ export function setPlayerCorpId(id: number): void {
 
 export function getAllCorporations(): CorpSummary[] {
 	if (useNativeSim) return tauriBridge.getCachedAllCorporations();
+	if (_commandProxy) return _workerCachedAllCorps || [];
 	try {
 		const res = bridge?.get_all_corporations();
 		return parseJsonIfNeeded(res, []);
@@ -398,6 +408,7 @@ export function getCellCoverage(): CellCoverage[] {
 		return parseJsonIfNeeded(_latestTickResult.cellCoverage, []);
 	}
 	if (useNativeSim) return tauriBridge.getCachedCellCoverage();
+	if (_commandProxy) return _workerCachedCoverage || [];
 	try {
 		const res = bridge?.get_cell_coverage();
 		return parseJsonIfNeeded(res, []);
@@ -412,6 +423,7 @@ export function getAllInfrastructure(): AllInfrastructure {
 		return parseJsonIfNeeded(_latestTickResult.allInfra, { nodes: [], edges: [] });
 	}
 	if (useNativeSim) return tauriBridge.getCachedAllInfrastructure();
+	if (_commandProxy) return _workerCachedAllInfra || { nodes: [], edges: [] };
 	try {
 		const res = bridge?.get_all_infrastructure();
 		return parseJsonIfNeeded(res, { nodes: [], edges: [] });
@@ -422,6 +434,12 @@ export function getAllInfrastructure(): AllInfrastructure {
 }
 
 let _cachedGridCells: GridCell[] | null = null;
+let _workerCachedCities: City[] | null = null;
+let _workerCachedRegions: Region[] | null = null;
+let _workerCachedAllCorps: CorpSummary[] | null = null;
+let _workerCachedAllInfra: AllInfrastructure | null = null;
+let _workerCachedCoverage: CellCoverage[] | null = null;
+let _workerCachedTraffic: TrafficFlows | null = null;
 
 export async function fetchGridCells(): Promise<GridCell[]> {
 	if (_cachedGridCells) return _cachedGridCells;
@@ -452,6 +470,42 @@ export async function fetchGridCells(): Promise<GridCell[]> {
 
 export function getGridCells(): GridCell[] {
 	return _cachedGridCells || [];
+}
+
+/** Fetch cities, regions, corporations, and other essential data from worker.
+ *  Must be called after newGame/loadGame in worker mode before map init. */
+export async function fetchEssentialData(): Promise<void> {
+	if (!_commandProxy) return; // Only needed in worker mode
+	try {
+		const [citiesData, regionsData, corpsData, allInfraData, coverageData, trafficData] = await Promise.all([
+			workerBridge.query('get_cities'),
+			workerBridge.query('get_regions'),
+			workerBridge.query('get_all_corporations'),
+			workerBridge.query('get_all_infrastructure'),
+			workerBridge.query('get_cell_coverage'),
+			workerBridge.query('get_traffic_flows'),
+		]);
+		if (citiesData) _workerCachedCities = citiesData;
+		if (regionsData) _workerCachedRegions = regionsData;
+		if (corpsData) _workerCachedAllCorps = corpsData;
+		if (allInfraData) _workerCachedAllInfra = allInfraData;
+		if (coverageData) _workerCachedCoverage = coverageData;
+		if (trafficData) _workerCachedTraffic = trafficData;
+	} catch (e) {
+		onBridgeError(e, 'fetchEssentialData');
+	}
+}
+
+/** Update worker caches (called from tick handler for periodic refresh). */
+export function updateWorkerCache(key: string, data: any): void {
+	switch (key) {
+		case 'cities': _workerCachedCities = data; break;
+		case 'regions': _workerCachedRegions = data; break;
+		case 'allCorporations': _workerCachedAllCorps = data; break;
+		case 'allInfra': _workerCachedAllInfra = data; break;
+		case 'coverage': _workerCachedCoverage = data; break;
+		case 'traffic': _workerCachedTraffic = data; break;
+	}
 }
 
 export function getContracts(corpId: number): ContractInfo[] {
@@ -498,8 +552,21 @@ export function getResearchState(): ResearchInfo[] {
 	}
 }
 
+let _workerCachedBuildableNodes: BuildOption[] = [];
+let _workerBuildableNodesKey = '';
+
 export function getBuildableNodes(lon: number, lat: number): BuildOption[] {
 	if (useNativeSim) return tauriBridge.getCachedBuildableNodes(lon, lat);
+	if (_commandProxy) {
+		const key = `${lon},${lat}`;
+		if (key !== _workerBuildableNodesKey) {
+			_workerBuildableNodesKey = key;
+			workerBridge.query('get_buildable_nodes', lon, lat).then(data => {
+				if (data) _workerCachedBuildableNodes = data;
+			}).catch(() => {});
+		}
+		return _workerCachedBuildableNodes;
+	}
 	try {
 		const res = bridge?.get_buildable_nodes(lon, lat);
 		return parseJsonIfNeeded(res, []);
@@ -509,8 +576,20 @@ export function getBuildableNodes(lon: number, lat: number): BuildOption[] {
 	}
 }
 
+let _workerCachedBuildableEdges: EdgeTarget[] = [];
+let _workerBuildableEdgesId = -1;
+
 export function getBuildableEdges(sourceId: number): EdgeTarget[] {
 	if (useNativeSim) return tauriBridge.getCachedBuildableEdges(sourceId);
+	if (_commandProxy) {
+		if (sourceId !== _workerBuildableEdgesId) {
+			_workerBuildableEdgesId = sourceId;
+			workerBridge.query('get_buildable_edges', sourceId).then(data => {
+				if (data) _workerCachedBuildableEdges = data;
+			}).catch(() => {});
+		}
+		return _workerCachedBuildableEdges;
+	}
 	try {
 		const res = bridge?.get_buildable_edges(BigInt(sourceId));
 		return parseJsonIfNeeded(res, []);
@@ -613,14 +692,17 @@ export function getVictoryState(): VictoryInfo {
 	}
 }
 
+const _emptyTraffic: TrafficFlows = { edge_flows: [], node_flows: [], total_served: 0, total_dropped: 0, total_demand: 0, player_served: 0, player_dropped: 0, top_congested: [] };
+
 export function getTrafficFlows(): TrafficFlows {
 	if (_latestTickResult?.trafficFlows) {
-		return parseJsonIfNeeded(_latestTickResult.trafficFlows, { edge_flows: [], node_flows: [], total_served: 0, total_dropped: 0, total_demand: 0, player_served: 0, player_dropped: 0, top_congested: [] });
+		return parseJsonIfNeeded(_latestTickResult.trafficFlows, _emptyTraffic);
 	}
 	if (useNativeSim) return tauriBridge.getCachedTrafficFlows();
+	if (_commandProxy) return _workerCachedTraffic || _emptyTraffic;
 	try {
 		const res = bridge?.get_traffic_flows();
-		return parseJsonIfNeeded(res, { edge_flows: [], node_flows: [], total_served: 0, total_dropped: 0, total_demand: 0, player_served: 0, player_dropped: 0, top_congested: [] });
+		return parseJsonIfNeeded(res, _emptyTraffic);
 	} catch (e) {
 		onBridgeError(e, 'getTrafficFlows');
 		return { edge_flows: [], node_flows: [], total_served: 0, total_dropped: 0, total_demand: 0, player_served: 0, player_dropped: 0, top_congested: [] };
@@ -663,8 +745,23 @@ const EMPTY_F64 = new Float64Array(0);
 const EMPTY_U32 = new Uint32Array(0);
 const EMPTY_U8 = new Uint8Array(0);
 
+let _workerCachedStaticDefs: any = null;
+
+export async function fetchStaticDefinitions(): Promise<any> {
+    if (_workerCachedStaticDefs) return _workerCachedStaticDefs;
+    if (_commandProxy) {
+        try {
+            _workerCachedStaticDefs = await workerBridge.query('get_static_definitions');
+            return _workerCachedStaticDefs;
+        } catch { return {}; }
+    }
+    return getStaticDefinitions();
+}
+
 export function getStaticDefinitions(): any {
+    if (_workerCachedStaticDefs) return _workerCachedStaticDefs;
     if (useNativeSim) return tauriBridge.getCachedStaticDefinitions();
+    if (_commandProxy) return _workerCachedStaticDefs || {};
     try {
         const res = bridge?.get_static_definitions();
         return parseJsonIfNeeded(res, {});
@@ -1272,5 +1369,5 @@ export function isTauriDesktop(): boolean {
 }
 
 export function isInitialized(): boolean {
-	return useNativeSim || bridge !== null;
+	return useNativeSim || bridge !== null || _commandProxy !== null;
 }

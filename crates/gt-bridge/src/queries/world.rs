@@ -34,6 +34,7 @@ pub fn query_world_info(world: &GameWorld) -> String {
         "player_corp_id": world.player_corp_id().unwrap_or(0),
         "cell_spacing_km": world.cell_spacing_km,
         "sandbox": world.config().sandbox,
+        "is_real_earth": world.config().use_real_earth,
     });
     serde_json::to_string(&info).unwrap_or_default()
 }

@@ -1,7 +1,7 @@
-import { 
-    getInfraNodesTyped, 
-    getInfraEdgesTyped, 
-    getStaticDefinitions,
+import {
+    getInfraNodesTyped,
+    getInfraEdgesTyped,
+    fetchStaticDefinitions,
     getInfraNodesTypedViewport,
     getInfraEdgesTypedViewport
 } from '$lib/wasm/bridge';
@@ -27,8 +27,7 @@ class DataStore {
     }
 
     async init() {
-        this.staticDefs = await getStaticDefinitions();
-        console.log('[DataStore] Static definitions loaded:', this.staticDefs);
+        this.staticDefs = await fetchStaticDefinitions();
     }
 
     /**
@@ -72,11 +71,11 @@ class DataStore {
     // ── Helper Accessors ────────────────────────────────────────────────
 
     getNodeType(typeId: number): string {
-        return this.staticDefs?.node_types[typeId] ?? 'Unknown';
+        return this.staticDefs?.node_types?.[typeId] ?? 'Unknown';
     }
 
     getEdgeType(typeId: number): string {
-        return this.staticDefs?.edge_types[typeId] ?? 'Unknown';
+        return this.staticDefs?.edge_types?.[typeId] ?? 'Unknown';
     }
 
     /**

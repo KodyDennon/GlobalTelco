@@ -13,11 +13,9 @@ self.onmessage = async (e: MessageEvent) => {
             break;
 
         case 'newGame':
-            if (!bridge) return;
             try {
                 const { config } = e.data;
-                // new_game is a static method that re-initializes the internal world
-                (bridge as any).constructor.new_game(config ? JSON.stringify(config) : undefined);
+                bridge = WasmBridge.new_game(config ? JSON.stringify(config) : '{}');
                 self.postMessage({ type: 'newGameComplete' });
             } catch (err) {
                 console.error('Worker newGame failed:', err);
@@ -102,7 +100,17 @@ self.onmessage = async (e: MessageEvent) => {
                 const { id, name, args } = e.data;
                 let result;
                 if (typeof (bridge as any)[name] === 'function') {
-                    const rawResult = (bridge as any)[name](...args);
+                    // WASM u64 params need BigInt — convert numeric args
+                    const convertedArgs = (args || []).map((a: any) =>
+                        typeof a === 'number' && Number.isInteger(a) && a > 0 ? BigInt(a) : a
+                    );
+                    let rawResult;
+                    try {
+                        rawResult = (bridge as any)[name](...convertedArgs);
+                    } catch {
+                        // Retry without BigInt conversion in case method uses f64
+                        rawResult = (bridge as any)[name](...(args || []));
+                    }
                     // If result is a string that looks like JSON, parse it here
                     if (typeof rawResult === 'string' && (rawResult.startsWith('{') || rawResult.startsWith('['))) {
                         try {

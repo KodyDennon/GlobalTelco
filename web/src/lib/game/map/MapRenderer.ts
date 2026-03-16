@@ -198,16 +198,33 @@ export class MapRenderer {
         // Globe projection toggle based on zoom level
         const setProjectionForZoom = (zoom: number) => {
             if (!this.map || !this.map.isStyleLoaded()) return;
-            this.map.setProjection({ type: zoom < 2.5 ? 'globe' : 'mercator' } as any);
+            try {
+                this.map.setProjection({ type: zoom < 2.5 ? 'globe' : 'mercator' } as any);
+            } catch {
+                // Globe projection not supported in this webview — ignore
+            }
         };
 
-        // Defer overlay + projection until style is loaded
+        // Defer overlay + projection until style is loaded.
+        // Must handle race: inline style objects may load before listener is registered.
         this.mapReadyPromise = new Promise<void>((resolve) => {
-            this.map!.once('style.load', () => {
-                this.map!.addControl(this.overlay as any);
+            let resolved = false;
+            const onReady = () => {
+                if (resolved) return;
+                resolved = true;
+                try {
+                    this.map!.addControl(this.overlay as any);
+                } catch (e) {
+                    console.warn('[MapRenderer] Failed to add deck.gl overlay:', e);
+                }
                 setProjectionForZoom(this.map!.getZoom());
                 resolve();
-            });
+            };
+            if (this.map!.isStyleLoaded()) {
+                onReady();
+            } else {
+                this.map!.once('load', onReady);
+            }
         });
 
         this.map.on('zoom', () => {
@@ -390,12 +407,12 @@ export class MapRenderer {
         this.pathfinder.init(cells);
 
         // Build road network and building footprint data (both modes)
-        buildRoadData(this.cachedCities, this.cachedRegions);
-        buildBuildingData(this.cachedCities);
+        try { buildRoadData(this.cachedCities, this.cachedRegions); } catch (e) { console.warn('[MapRenderer] buildRoadData failed:', e); }
+        try { buildBuildingData(this.cachedCities); } catch (e) { console.warn('[MapRenderer] buildBuildingData failed:', e); }
 
         // Mark map as ready and do initial render
         this.mapBuilt = true;
-        this.renderLayers();
+        try { this.renderLayers(); } catch (e) { console.warn('[MapRenderer] renderLayers failed:', e); }
 
         // Start the animation loop now that we have content to render
         this.startAnimationLoop();
