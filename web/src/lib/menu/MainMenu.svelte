@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { tr } from '$lib/i18n/index';
-	import { isAuthenticated } from '$lib/stores/multiplayerState';
+	import { SITE_URL } from '$lib/config';
 
-	let { onNewGame, onLoadGame, onSettings, onMultiplayer, onCredits, onProfile }: { onNewGame: () => void; onLoadGame: () => void; onSettings: () => void; onMultiplayer: () => void; onCredits: () => void; onProfile: () => void } = $props();
+	let { onNewGame, onLoadGame, onSettings, onCredits }: { onNewGame: () => void; onLoadGame: () => void; onSettings: () => void; onCredits: () => void } = $props();
 
 	const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '2.0.1';
 </script>
@@ -15,11 +15,8 @@
 		<div class="menu-buttons" role="group" aria-label="Main menu options">
 			<button class="menu-btn primary" onclick={onNewGame} aria-label="Start a new game">{$tr('menu.new_game')}</button>
 			<button class="menu-btn" onclick={onLoadGame} aria-label="Load a saved game">{$tr('menu.load_game')}</button>
-			<button class="menu-btn" onclick={onMultiplayer} aria-label="Join or host multiplayer">{$tr('menu.multiplayer')}</button>
+			<a class="menu-btn" href={SITE_URL} target="_blank" rel="noopener noreferrer" aria-label="Open the GlobalTelco website">{$tr('menu.website')}</a>
 			<button class="menu-btn" onclick={onSettings} aria-label="Open settings">{$tr('menu.settings')}</button>
-			{#if $isAuthenticated}
-				<button class="menu-btn" onclick={onProfile} aria-label="View profile">Profile</button>
-			{/if}
 			<button class="menu-btn" onclick={onCredits} aria-label="View credits">{$tr('menu.credits')}</button>
 		</div>
 	</div>
@@ -82,6 +79,8 @@
 		border-radius: 8px;
 		cursor: pointer;
 		transition: all 0.2s;
+		text-align: center;
+		text-decoration: none;
 	}
 
 	.menu-btn:hover:not(:disabled) {

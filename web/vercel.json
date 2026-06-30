@@ -1,25 +1,13 @@
 {
-  "installCommand": "sh scripts/vercel-install.sh",
-  "buildCommand": "export PATH=\"/rust/bin:$PATH\" && export RUSTFLAGS=\"-C target-feature=+simd128,+nontrapping-fptoint,+sign-ext\" && cd .. && wasm-pack build crates/gt-wasm --target web --release --out-dir ../../web/src/lib/wasm/pkg && cd web && bun run build",
+  "installCommand": "echo \"GlobalTelco web is retired; skipping dependency install\"",
+  "buildCommand": "mkdir -p build && cp static/retired.html build/index.html && cp static/robots.txt build/robots.txt",
   "outputDirectory": "build",
   "cleanUrls": true,
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
-  ],
-  "headers": [
-    {
-      "source": "/(.*)\\.wasm",
-      "headers": [
-        { "key": "Content-Type", "value": "application/wasm" },
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
-      ]
-    },
+  "redirects": [
     {
       "source": "/(.*)",
-      "headers": [
-        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
-        { "key": "Cross-Origin-Embedder-Policy", "value": "require-corp" }
-      ]
+      "destination": "https://github.com/KodyDennon/GlobalTelco",
+      "permanent": false
     }
   ]
 }

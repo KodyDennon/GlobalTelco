@@ -4,7 +4,7 @@
 
 Mix of city builder, tycoon/business sim, and grand strategy. Web-based with offline single-player and async persistent multiplayer.
 
-> **Live demo:** [globaltelco.online](https://globaltelco.online)
+> **Hosted game retired:** [globaltelco.online](https://globaltelco.online) redirects to this public repository.
 
 ![GlobalTelco Map View](screenshots/01-default-map.png)
 
